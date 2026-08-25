@@ -63,6 +63,55 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Chrome remote-control clicks are not user gestures**: WebAudio stays suspended in
   automated tests; verify audio by WAV capture, not by listening.
 
+## WiFi and networking
+- **Emulate the MAC, do not shim `esp_wifi`.** A shim (or the OpenCores Ethernet MAC IDF ships a
+  driver for) needs a firmware config change, so the binary under test stops being the binary that
+  runs on the board. Modelling the MAC registers keeps "unmodified firmware" literally true, and
+  the blob's state machine then has to be walked to CONNECTED by frames a real AP would send —
+  no register shortcuts it.
+- **A pure-Rust NAT, not libslirp.** Terminating TCP/UDP in the emulator and relaying over ordinary
+  host sockets — the way Contiki-NG's NAT64 does — is a few hundred lines, adds no C dependency and
+  needs no root, tun device or entitlement. The cost is what user-mode NAT always costs: no
+  multicast/mDNS, and inbound needs explicit forwarding.
+- **`DSCR_RELOAD` (0x60033084 bit 0) must not rewind the RX pointer.** Software rewrites
+  `BASE_RX_DSCR` every time it recycles descriptors; treating that as "restart here" made every
+  second frame land in a descriptor the stack had moved past, so it was batch-recycled instead of
+  indicated (`wDev_ProcessRxSucData` `a3=0xa` rather than `0x1`).
+- **`rx_ctrl` word 0 must set filter-match bit 28**, plus bit 29 for unicast. With bit 29 alone the
+  frame is dropped inside `wDev_ProcessRxSucData` before it is ever indicated — silicon shows
+  `0x111b20ad` for a broadcast beacon.
+- **The EAPOL MIC covers exactly the 802.1X frame**, not the whole 802.11 payload, which can carry
+  trailing bytes; and **group-addressed downlink frames need CCMP key id 1** (the GTK) or the
+  station drops them silently.
+- **Trim IP payloads to the header's total-length field.** An 802.11 frame carries a 4-byte FCS;
+  without trimming, the NAT hands those bytes to the peer as TCP payload and the guest's real
+  request then arrives at a sequence number the connection has already passed.
+- **Debugging aid that paid for itself**: rebuild the specimen firmware with
+  `CONFIG_WPA_DEBUG_PRINT=y` and `CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y` and read the supplicant's own
+  verdicts instead of guessing from the emulator side.
+
+## Crypto accelerators
+- **They are not optional.** mbedTLS and the WPA supplicant route everything through hardware, so a
+  missing or subtly wrong accelerator does not raise an error — it hangs in a polling loop or
+  returns a plausible wrong answer. WPA2 died at handshake message 3 without AES; TLS hung in the
+  MPI driver without RSA; certificates failed to verify with a wrong SHA.
+- **RSA `0x818` is an idle status, not the interrupt latch.** It reads 1 whenever the unit is done
+  and stays 1; `0x81c` clears only the interrupt signal. Model it as a latch and every
+  interrupt-driven `mbedtls_mpi_exp_mod` deadlocks — the ISR clears the flag, then the result path
+  waits for it forever. `0x808` (QUERY_CLEAN) must read 1 or firmware spins before the first op.
+- **Compute the arithmetic exactly, ignore Montgomery.** The silicon works in the Montgomery domain,
+  which is why the driver also loads M' and R⁻¹; a model that computes `X*Y mod M` and `X^Y mod M`
+  directly produces the same results the driver expects, including the failover case where it sets
+  M = 2^n − 1, M' = 1, R⁻¹ = 1 to get a plain multiply.
+- **mbedTLS hashes through GDMA and asks for SHA-384**, so the block interface alone is not enough
+  and the 64-bit SHA-512 core is required. H_MEM words read back byte-swapped, 64-bit state stored
+  high-half first, so the driver's plain `memcpy` yields digest order.
+- **AES CTR (block mode 3) is used by the TLS record layer**; executing it as ECB produces traffic
+  the server answers with a fatal alert rather than anything diagnosable.
+- **Check the primitives against published vectors, not against the firmware.** RFC 3174/2202/3394,
+  FIPS-197, 802.11i Annex H, and 2048-bit modexp vectors generated with Python — every one of these
+  bugs above would otherwise have looked like "the network is broken".
+
 ## Process
 - Bring-up loop: run → first unknown register / unimplemented instruction (`--log-periph`,
   `Unimplemented(pc, raw)`) → model it → rerun. Keep the objdump test and the hardware

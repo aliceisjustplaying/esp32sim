@@ -13,8 +13,13 @@ esp32s3/      the SoC and boards
   machine.rs  Machine: two Cpus + SocBus, scheduler, scripts, web push/poll, reboot, WAV/PNG
   bus.rs      SocBus: memory map, cache MMU, peripheral dispatch, DMA pumps (I2S, camera)
   periph.rs   register models (UART, USB-Serial/JTAG, systimer, TIMG, interrupt matrix, GPIO,
-              RTC_CNTL + WDT, efuse, SPI0/1 flash + PSRAM, SHA, RNG, regi2c, GDMA, I2S, RMT, LCD_CAM)
+              RTC_CNTL + WDT, efuse, SPI0/1 flash + PSRAM, SHA, AES, RSA/MPI, RNG, regi2c,
+              GDMA, I2S, RMT, LCD_CAM, WiFi MAC)
   i2c.rs      I2C master controller + bus devices (CH32V003, OV5640, ES8311/ES7210)
+  wifi.rs     virtual 802.11 access point: beacons, probe/auth/assoc, WPA2 four-way handshake
+  net.rs      the emulated subnet 10.0.2.0/24: ARP, DHCP, ICMP, DNS, SNTP
+  nat.rs      user-mode NAT: guest TCP/UDP relayed over ordinary host sockets
+  crypto.rs   SHA-1/2, HMAC, PBKDF2, the 802.11 PRF, AES, AES key wrap, bignum arithmetic
   board.rs    BoardModel trait; Atech14, WaveshareCam, NoBoard; ST7735 and WS2812 decoders
   web.rs      dependency-free HTTP + WebSocket server
   elf.rs / image.rs / picture.rs   loaders (ELF symbols/segments, ESP app images, BMP/PPM)
@@ -74,6 +79,37 @@ chunks until a timer or DMA event is due. Peripheral clocks (APB 80 MHz, systime
 RTC slow 150 kHz) are derived from the 240 MHz cycle counter with delivered-tick accounting.
 With `--web` the machine is paced to wall time (sleeping when ahead, resynchronising rather
 than bursting if it falls > 0.5 s behind).
+
+## Networking
+
+Nothing about the network is faked at the API level: the firmware runs Espressif's own closed
+`libpp`/`libnet80211` against a modelled MAC, and what comes out the other end is 802.11 frames.
+Five layers turn those into packets on the host's network:
+
+```
+esp_wifi + libpp/libnet80211        unmodified blob, drives the MAC registers
+  WifiMac (periph.rs)               TX queues, RX descriptor ring, interrupt events, TSF
+  VirtualAp (wifi.rs)               beacons, probe/auth/assoc responses, WPA2 four-way handshake,
+                                    802.11 <-> Ethernet conversion, CCMP framing
+  VirtualNet (net.rs)               10.0.2.0/24: ARP, DHCP, ICMP echo, DNS, SNTP from the host clock
+  Nat (nat.rs)                      everything past the gateway -> host sockets
+```
+
+- **The air**: `wifi_air_step()` in `bus.rs` delivers one frame at a time into the RX ring —
+  spaced ~400 µs apart, and never before the driver has recycled the previous descriptor —
+  then raises the MAC's RX interrupt. Management frames are delivered ahead of beacons so a
+  response never waits behind a beacon the ring may drop.
+- **Encryption**: the four-way handshake is real (PMK, PTK, MIC, AES-key-wrapped GTK), but data
+  frames carry plaintext *framed* as CCMP — protected bit, 8-byte CCMP header with the right key
+  id, 8 bytes of MIC space — which is exactly what firmware sees when silicon encrypts in place.
+- **Off the subnet**: `Nat` terminates each guest flow. A SYN starts `TcpStream::connect` on a
+  worker thread and the SYN/ACK waits for it; guest payload is written to the socket; socket
+  reads come back as segments the emulator sequences, acknowledges, retransmits and closes.
+  UDP is a bound socket per flow with an idle reaper. Name lookups go to the host's own resolver.
+- **Crypto accelerators**: mbedTLS drives AES (block + GDMA, ECB/CBC/CTR/OFB), SHA (block + GDMA,
+  SHA-1 through SHA-512) and the RSA/MPI unit; the WPA supplicant unwraps the group key on AES.
+  All three are modelled at the register level, so a TLS session exercises the same peripherals
+  it would on silicon — see peripherals.md and networking-plan.md.
 
 ## Boards
 

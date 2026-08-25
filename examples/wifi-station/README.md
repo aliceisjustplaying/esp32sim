@@ -16,5 +16,13 @@ The unmodified blob boots, scans, authenticates, associates and takes a DHCP lea
     wpa: WPA: Key negotiation completed with 02:53:49:4d:00:01 [PTK=CCMP GTK=CCMP]
 
 `ESP_EMU_DEBUG_WIFI_FRAMES=1` decodes every 802.11 frame on the air, `ESP_EMU_DEBUG_NET=1` the
-DHCP/ARP/ICMP exchanges. Drop `psk=` (and rebuild the example without a password) for an open
-network. The build enables `CONFIG_WPA_DEBUG_PRINT`, which is what made the handshake debuggable.
+DHCP/ARP/ICMP exchanges and the NAT flows. The build enables `CONFIG_WPA_DEBUG_PRINT`, which is what
+made the handshake debuggable.
+
+To join an **open** network the example has to be rebuilt without a password: with one compiled in,
+its authmode threshold is WPA2 and it refuses the open AP with `reason=210`
+(`NO_AP_FOUND_W_COMPATIBLE_SECURITY`) — the firmware's own policy, not an emulator limit.
+
+This example only takes a lease; it does not send traffic, so `--net nat` (the default) has nothing
+to do here. See [../../docs/networking-howto.md](../../docs/networking-howto.md) for firmware that
+talks to the real network.

@@ -97,9 +97,10 @@ device.
 ```
 
 runs the esp32-screen energy panel: it joins, takes a lease, syncs its clock, fetches two days of
-electricity prices over **HTTPS** and polls a real Home Assistant on the LAN. See
-[docs/wifi-plan.md](docs/wifi-plan.md) (what the MAC model does) and
-[docs/networking-plan.md](docs/networking-plan.md) (what happens to the packets).
+electricity prices over **HTTPS** and polls a real Home Assistant on the LAN.
+[docs/networking-howto.md](docs/networking-howto.md) is the how-to (flags, debugging, limits);
+[docs/wifi-plan.md](docs/wifi-plan.md) and [docs/networking-plan.md](docs/networking-plan.md)
+describe how the MAC model and the packet path work.
 
 ## Debugging
 
@@ -114,8 +115,8 @@ Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`, `ESP_EMU_DEBUG_W
 `docs/` — [architecture](docs/architecture.md), [peripheral coverage](docs/peripherals.md),
 [boards](docs/boards.md), [CLI reference](docs/cli.md), [web UI protocol](docs/web-ui.md),
 [design decisions & gotchas](docs/decisions.md), [roadmap](docs/roadmap.md),
-[WiFi](docs/wifi-plan.md) and [networking](docs/networking-plan.md), and the
-[testing](docs/testing-plan.md) plan.
+[networking how-to](docs/networking-howto.md), the [WiFi](docs/wifi-plan.md) and
+[networking](docs/networking-plan.md) design notes, and the [testing](docs/testing-plan.md) plan.
 
 ## Provenance
 

@@ -10,6 +10,7 @@
 | [decisions.md](decisions.md) | Design decisions and hard-won gotchas (the "why" behind the code) |
 | [roadmap.md](roadmap.md) | What is planned, in priority order |
 | [wifi-plan.md](wifi-plan.md) | Plan + status: full WiFi emulation with the unmodified blob (MAC model + virtual AP) |
+| [networking-howto.md](networking-howto.md) | How to run firmware with WiFi and the network: flags, what the subnet offers, debugging, limits |
 | [networking-plan.md](networking-plan.md) | Status: the emulated subnet and the user-mode NAT that carries traffic to the host network |
 | [testing-plan.md](testing-plan.md) | Plan: test layers, CPU/SoC/board/firmware suites, CI tiers, milestones |
 
