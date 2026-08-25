@@ -12,6 +12,7 @@
 | [wifi-plan.md](wifi-plan.md) | Plan + status: full WiFi emulation with the unmodified blob (MAC model + virtual AP) |
 | [networking-howto.md](networking-howto.md) | How to run firmware with WiFi and the network: flags, what the subnet offers, debugging, limits |
 | [networking-plan.md](networking-plan.md) | Status: the emulated subnet and the user-mode NAT that carries traffic to the host network |
+| [wasm-plan.md](wasm-plan.md) | Plan: running the emulator itself in the browser, with the measured native-vs-wasm cost |
 | [testing-plan.md](testing-plan.md) | Plan: test layers, CPU/SoC/board/firmware suites, CI tiers, milestones |
 
 Board-specific material lives next to the board: `../boards/atech14/README.md`,
