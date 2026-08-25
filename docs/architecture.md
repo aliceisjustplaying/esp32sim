@@ -73,12 +73,14 @@ web/          index.html: board drawing, console, WebAudio, camera panel (no bui
 
 ## Scheduling and time
 
-`Machine::run` interleaves the cores in quanta of 32 instructions. A core sitting in `waiti`
+`Machine::run` interleaves the cores in quanta of 64 instructions. A core sitting in `waiti`
 with nothing pending costs nothing; when both cores are idle time advances in 256-cycle
 chunks until a timer or DMA event is due. Peripheral clocks (APB 80 MHz, systimer 16 MHz,
 RTC slow 150 kHz) are derived from the 240 MHz cycle counter with delivered-tick accounting.
 With `--web` the machine is paced to wall time (sleeping when ahead, resynchronising rather
-than bursting if it falls > 0.5 s behind).
+than bursting if it falls > 0.5 s behind). Work that costs host syscalls — reading the NAT's
+sockets — runs on its own emulated-time cadence rather than every round, because at 240 MHz a
+per-round syscall costs more than the instructions it interleaves with.
 
 ## Networking
 

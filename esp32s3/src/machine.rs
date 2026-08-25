@@ -11,6 +11,9 @@ pub struct Machine {
     pub reboots: u64,
     /// function stubs: at this PC (a function entry, before its `entry`), return `value` in a2 immediately
     pub stubs: std::collections::HashMap<u32, u32>,
+    /// one bit per PC bucket for `stubs` / `fn_probes`, so the common case costs a shift and a test
+    /// instead of hashing every PC (a hash lookup per instruction cost ~16% of run time)
+    stub_bloom: u64, probe_bloom: u64,
     pub stub_hits: u64,
     /// function-entry tracing: pc -> name (`--trace-fn PREFIX`)
     pub fn_probes: std::collections::HashMap<u32, String>,
@@ -71,9 +74,13 @@ pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bo
 #[derive(Debug)]
 pub enum Stop { MaxInsns, Breakpoint(u32), Unimplemented(u32, u32), SwReset, Halted, Simcall(u32), Watch(u32, u32, u32), Exceptions(u64) }
 
+/// Bloom bit for a PC, used to skip the stub/probe maps on the hot path.
+#[inline(always)]
+fn pc_bit(pc: u32) -> u64 { 1u64 << ((pc >> 2) & 63) }
+
 impl Machine {
     pub fn new(mac: [u8; 6]) -> Self {
-        Machine { mac, reboots: 0, stubs: std::collections::HashMap::new(), stub_hits: 0, fn_probes: std::collections::HashMap::new(), cpu: Cpu::new(0xCDCD), cpu1: Cpu::new(0xABAB), core1_was_reset: true, bus: SocBus::new(8 * 1024 * 1024, 2 * 1024 * 1024, mac), symbols: BTreeMap::new(),
+        Machine { mac, reboots: 0, stubs: std::collections::HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: std::collections::HashMap::new(), cpu: Cpu::new(0xCDCD), cpu1: Cpu::new(0xABAB), core1_was_reset: true, bus: SocBus::new(8 * 1024 * 1024, 2 * 1024 * 1024, mac), symbols: BTreeMap::new(),
                   trace: false, trace_from: 0, breakpoints: Vec::new(), stop_on_unimplemented: true, console: Vec::new(), exceptions: 0, interrupts: 0, watch: None, stop_after_exceptions: u64::MAX, profile: None, irq_hist: [[0; 32]; 2], script: Vec::new(), script_pos: 0, max_cycles: u64::MAX, script_log: true, console_mask: 3, console_prefix: false, regtrace: None, regtrace_core: 0, regtrace_max: u64::MAX, regtrace_from_pc: None, regtrace_armed: true, regtrace_count: 0, web: None, realtime: false, wall_start: None, web_last_frame: 0, web_audio_sent: 0, web_ring_updates: 0, web_last_push_cycles: 0, console_usb: Vec::new(), console_uart0: Vec::new(), knob_next: 0, web_px_pending: 0, web_px_sent: 0, rt_last_check: 0, rt_behind: 0.0, irq_poll: 0, rt_resyncs: 0, rt_log: std::env::var("ESP_EMU_RT_LOG").is_ok(), rt_log_last: None, rt_log_insns: (0, 0), web_cam_pushed: u64::MAX, web_cam_sent: false }
     }
 
@@ -224,12 +231,12 @@ impl Machine {
     fn step_core(&mut self, core: usize) -> Option<Stop> {
         let (cpu, bus) = if core == 0 { (&mut self.cpu, &mut self.bus) } else { (&mut self.cpu1, &mut self.bus) };
         let pc = cpu.pc;
-        if !self.fn_probes.is_empty() && !cpu.waiting {
+        if self.probe_bloom & pc_bit(pc) != 0 && !cpu.waiting {
             if let Some(name) = self.fn_probes.get(&pc) {
                 eprintln!("[fn] i={} t={:.4}s c{} {}(a2={:#x} a3={:#x} a4={:#x}) ret={:#x}", cpu.insn_count, bus.cycles as f64 / crate::periph::CPU_HZ as f64, core, name, cpu.get_ar(2), cpu.get_ar(3), cpu.get_ar(4), cpu.get_ar(0) & 0x3fff_ffff | 0x4000_0000);
             }
         }
-        if !self.stubs.is_empty() && !cpu.waiting {
+        if self.stub_bloom & pc_bit(pc) != 0 && !cpu.waiting {
             if let Some(&ret) = self.stubs.get(&pc) {
                 // synthetic return from a windowed function entry (its `entry` has not executed): a0 holds
                 // the return address with the call increment in bits 31:30; no window rotation to undo
@@ -286,7 +293,9 @@ impl Machine {
     }
 
     pub fn run(&mut self, max_insns: u64) -> Stop {
-        const QUANTUM: u64 = 32;
+        const QUANTUM: u64 = 64;
+        self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
+        self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
         let mut n = 0u64;
         loop {
             if n >= max_insns { self.drain_console(); return Stop::MaxInsns; }

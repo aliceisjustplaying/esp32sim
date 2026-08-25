@@ -482,11 +482,19 @@ impl Bus for SocBus {
         if self.periph.wifi.net.is_some() {
             let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
             let out = std::mem::take(&mut self.periph.wifi.eth_tx);
-            let net = self.periph.wifi.net.as_mut().unwrap();
-            let mut replies = Vec::new();
-            for e in out { replies.extend(net.handle(&e, now_us)); }
-            replies.extend(net.poll(now_us));
-            self.periph.wifi.eth_rx.extend(replies);
+            // Frames from the station are handled the moment they are sent, but reading the host
+            // sockets means syscalls: doing that every scheduling round costs more than emulating
+            // the CPU. NET_POLL_US is well under any timeout the guest's TCP stack cares about.
+            const NET_POLL_US: u64 = 500;
+            let due = now_us.wrapping_sub(self.periph.wifi.net_polled_us) >= NET_POLL_US;
+            if !out.is_empty() || due {
+                if due { self.periph.wifi.net_polled_us = now_us; }
+                let net = self.periph.wifi.net.as_mut().unwrap();
+                let mut replies = Vec::new();
+                for e in out { replies.extend(net.handle(&e, now_us)); }
+                replies.extend(net.poll(now_us));
+                self.periph.wifi.eth_rx.extend(replies);
+            }
         }
         if !self.periph.gpio.changes.is_empty() { let ch = std::mem::take(&mut self.periph.gpio.changes); self.board.gpio_changes(&ch); }
         if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }

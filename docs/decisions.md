@@ -112,6 +112,22 @@ Things that cost real time to find out, recorded so they do not have to be found
   FIPS-197, 802.11i Annex H, and 2048-bit modexp vectors generated with Python — every one of these
   bugs above would otherwise have looked like "the network is broken".
 
+## Performance
+- **A host syscall in the tick costs more than emulating the CPU.** The NAT polled its sockets every
+  scheduling round — ~7.5 M `recvfrom` calls per emulated second — which put 69 % of run time in the
+  kernel and only 26 % in the interpreter. Polling on an emulated-time cadence (500 µs, far below
+  anything the guest's TCP stack notices) made WiFi workloads 3× faster.
+- **Nothing per-instruction may hash.** `--stub` and `--trace-fn` looked their PC up in a `HashMap`
+  on every instruction; SipHash alone was 16 % of run time. A 64-bit bloom bit (`1 << ((pc >> 2) & 63)`)
+  in front of the map removes it, and the map stays the authority.
+- **Scheduling quantum 64**, not 32: half the device-tick overhead for ~9 % more throughput, and the
+  Atech WAV regression stays bit-identical. 128 gains almost nothing and costs interrupt latency.
+- **Profile the emulator, not just the guest.** `--profile` reports guest PCs and disables idle
+  skipping, so an idle core shows up as a hot `waiti` — an artefact, not work. For emulator-side
+  cost use `sample <pid>` (macOS) against a normal run.
+- **Check for leftover runs before benchmarking.** A background emulator from an earlier session at
+  100 % CPU is indistinguishable from "the emulator got slower".
+
 ## Process
 - Bring-up loop: run → first unknown register / unimplemented instruction (`--log-periph`,
   `Unimplemented(pc, raw)`) → model it → rerun. Keep the objdump test and the hardware
