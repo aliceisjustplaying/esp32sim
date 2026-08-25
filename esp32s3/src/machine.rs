@@ -153,6 +153,7 @@ impl Machine {
                     let vpage = (((s.load_addr & 0x1FF_FFFF) >> 16) + i) as usize;
                     self.bus.mmu[vpage] = first_page + i;
                 }
+                self.bus.invalidate_fetch_cache();
             } else {
                 let data = self.bus.flash[start..end].to_vec();
                 self.bus.load_bytes(s.load_addr, &data)?;

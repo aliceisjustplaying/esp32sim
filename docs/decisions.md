@@ -120,6 +120,14 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Nothing per-instruction may hash.** `--stub` and `--trace-fn` looked their PC up in a `HashMap`
   on every instruction; SipHash alone was 16 % of run time. A 64-bit bloom bit (`1 << ((pc >> 2) & 63)`)
   in front of the map removes it, and the map stays the authority.
+- **Cache the instruction-fetch *mapping*, never the bytes.** Every fetch walked the address ranges
+  and, for XIP code, the flash MMU — 13 % of run time. Remembering which buffer and offset the
+  current 64 KiB page resolves to makes the common fetch a bounds check and an index; because only
+  the mapping is cached, code rewritten in place still fetches fresh bytes, and the icache's
+  byte-compare still decides whether to re-decode. Anything that re-points the MMU (register writes,
+  the image loader) must call `invalidate_fetch_cache()`.
+- **`lto = "fat"`, `codegen-units = 1`**: 11 % for a 7-second build. `-C target-cpu=native` gains
+  nothing on Apple Silicon, where the default target already is the host.
 - **Scheduling quantum 64**, not 32: half the device-tick overhead for ~9 % more throughput, and the
   Atech WAV regression stays bit-identical. 128 gains almost nothing and costs interrupt latency.
 - **Profile the emulator, not just the guest.** `--profile` reports guest PCs and disables idle

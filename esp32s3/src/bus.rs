@@ -42,6 +42,9 @@ pub struct SocBus {
     pub last_fault: Option<(u32, bool)>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
+    /// cached instruction-fetch mapping: [fetch_lo, fetch_hi) lives at `fetch_off` in buffer
+    /// `fetch_src`. Saves walking the address ranges and the flash MMU on every instruction.
+    fetch_lo: u32, fetch_hi: u32, fetch_off: usize, fetch_src: u8,
 }
 
 impl SocBus {
@@ -51,11 +54,45 @@ impl SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false,
+            fetch_lo: 0, fetch_hi: 0, fetch_off: 0, fetch_src: 0,
         }
     }
 
     /// Resolve an address to (buffer, offset, writable). Cache-mapped regions go through the MMU.
     #[inline]
+    /// Drop the cached fetch mapping. Anything that re-points the flash MMU must call this.
+    pub fn invalidate_fetch_cache(&mut self) { self.fetch_hi = 0; }
+
+    /// Which buffer a cached fetch mapping points into.
+    fn fetch_buf(&self, which: u8) -> &Vec<u8> {
+        match which { 0 => &self.sram, 1 => &self.irom, 2 => &self.flash, _ => &self.psram }
+    }
+
+    /// Remember the mapping that covers `pc` so the next fetch in the same page is a bounds check
+    /// and an index. Only the *mapping* is cached, never instruction bytes, so code that is
+    /// rewritten in place still fetches fresh — but a new MMU entry must invalidate this.
+    fn cache_fetch_page(&mut self, pc: u32) {
+        let (lo, hi, which, off) = match pc {
+            IRAM_LOW..=0x403D_FFFF => (IRAM_LOW, 0x403E_0000, 0u8, (IRAM_LOW - IRAM_LOW) as usize),
+            IROM_MASK_LOW..=0x4005_FFFF => (IROM_MASK_LOW, 0x4006_0000, 1u8, 0usize),
+            IBUS_LOW..=0x43FF_FFFF => {
+                let linear = pc & 0x1FF_FFFF;
+                let entry = self.mmu[(linear >> 16) as usize];
+                if entry & MMU_INVALID != 0 { self.fetch_hi = 0; return; }
+                let page = (entry & 0x3fff) as usize;
+                let base = pc & !0xffff;
+                let off = page * PAGE as usize;
+                let which = if entry & MMU_SPIRAM != 0 { 3u8 } else { 2u8 };
+                if off + PAGE as usize > self.fetch_buf(which).len() { self.fetch_hi = 0; return; }
+                (base, base.wrapping_add(0x10000), which, off)
+            }
+            _ => { self.fetch_hi = 0; return; }
+        };
+        if which == 0 { self.fetch_off = 0; } else { self.fetch_off = off; }
+        self.fetch_lo = lo; self.fetch_hi = hi; self.fetch_src = which;
+        if which == 0 { self.fetch_off = 0; }
+    }
+
     fn resolve(&mut self, addr: u32) -> Option<(&mut Vec<u8>, usize, bool)> {
         match addr {
             DRAM_LOW..=0x3FCF_FFFF => Some((&mut self.sram, (addr - DRAM_LOW + 0x8000) as usize, true)),
@@ -90,6 +127,7 @@ impl SocBus {
     fn periph_write(&mut self, addr: u32, v: u32, size: u32) {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
             self.mmu[((addr - MMU_TABLE) >> 2) as usize] = v & 0xffff;
+            self.fetch_hi = 0;                                   // the cached fetch mapping may be stale
             return;
         }
         let a = addr & !3;
@@ -464,12 +502,26 @@ impl Bus for SocBus {
         match self.resolve(addr) { Some((b, o, true)) if o + 4 <= b.len() => { b[o..o + 4].copy_from_slice(&v.to_le_bytes()); Ok(()) } _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) } }
     }
     fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
+        if pc >= self.fetch_lo && pc.wrapping_add(4) <= self.fetch_hi {
+            let off = self.fetch_off + (pc - self.fetch_lo) as usize;
+            let b = self.fetch_buf(self.fetch_src);
+            if let Some(w) = b.get(off..off + 4) { return Ok([w[0], w[1], w[2], w[3]]); }
+        }
+        let r = self.fetch_slow(pc);
+        if r.is_ok() { self.cache_fetch_page(pc); }
+        r
+    }
+    fn tick(&mut self, cycles: u32) -> u32 { self.tick_impl(cycles) }
+}
+
+impl SocBus {
+    fn fetch_slow(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
         match self.resolve(pc) {
             Some((b, o, _)) => { if let Some(w) = b.get(o..o + 4) { Ok([w[0], w[1], w[2], w[3]]) } else { let mut r = [0u8; 4]; for i in 0..4 { if o + i < b.len() { r[i] = b[o + i]; } } Ok(r) } }
             None => { self.last_fault = Some((pc, false)); Err(Fault::Unmapped) }
         }
     }
-    fn tick(&mut self, cycles: u32) -> u32 {
+    fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.cycles += cycles as u64;
         self.periph.tick(cycles as u64);
         self.dma_i2s_step(cycles as u64);
