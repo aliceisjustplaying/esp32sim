@@ -6,5 +6,6 @@ pub mod machine;
 pub mod periph;
 pub mod i2c;
 pub mod picture;
+pub mod wifi;
 pub mod web;
 pub use machine::{Machine, Stop};

@@ -236,6 +236,63 @@ impl SocBus {
         }
     }
 
+    /// WiFi MAC transmit: fetch the queued frames from their DMA descriptors and complete them.
+    fn wifi_tx_step(&mut self) {
+        let pending = std::mem::take(&mut self.periph.wifi.tx_pending);
+        for (slot, desc) in pending {
+            let dw0 = self.read32(desc).unwrap_or(0); let pkt = self.read32(desc + 4).unwrap_or(0);
+            let len = ((dw0 >> 12) & 0xfff) as usize;
+            let mut frame = Vec::with_capacity(len);
+            for i in 0..len { frame.push(self.read8(pkt + i as u32).unwrap_or(0)); }
+            if self.periph.wifi.log || std::env::var("ESP_EMU_DEBUG_WIFI_FRAMES").is_ok() { eprintln!("[wifi] TX slot {} desc {:#010x} pkt {:#010x} {}", slot, desc, pkt, crate::wifi::describe(&frame)); }
+            self.periph.wifi.tx_done(slot);
+            self.irq_dirty = true;
+            let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
+            if let Some(ap) = &mut self.periph.wifi.ap {
+                if let Some(data) = ap.on_station_tx(&frame, now_us) {
+                    if let Some(eth) = crate::wifi::data_to_eth(&data) { self.periph.wifi.eth_tx.push(eth); }
+                }
+            }
+        }
+    }
+
+    /// The virtual air: beacons/responses from the AP and frames from the network backend land in the RX ring.
+    fn wifi_air_step(&mut self) {
+        let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
+        let mut due = { let ap = self.periph.wifi.ap.as_mut().unwrap(); ap.step(now_us) };
+        let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
+        for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
+        for a in due { self.wifi_rx_deliver(&a.frame, now_us); }
+    }
+
+    /// Write one received frame into the next RX descriptor (rx_ctrl header + frame + FCS) and raise the RX event.
+    fn wifi_rx_deliver(&mut self, frame: &[u8], now_us: u64) {
+        let desc = self.periph.wifi.rx_next;
+        if desc == 0 { self.periph.wifi.rx_dropped += 1; return; }
+        let dw0 = self.read32(desc).unwrap_or(0); let buf = self.read32(desc + 4).unwrap_or(0); let next = self.read32(desc + 8).unwrap_or(0);
+        let size = (dw0 & 0xfff) as usize;
+        let total = 48 + frame.len() + 4;
+        if dw0 & (1 << 31) == 0 || buf == 0 || size < total { self.periph.wifi.rx_dropped += 1; return; }
+        let (chan, log) = { let ap = self.periph.wifi.ap.as_ref().unwrap(); (ap.cfg.channel as u32, ap.log) };
+        let mut b = Vec::with_capacity(total);
+        let unicast = frame.len() >= 10 && frame[4] & 1 == 0;
+        let w0: u32 = 0xd8 | (0 << 8) | (0 << 14) | 0x8000_0000 | if unicast { 0x3000_0000 } else { 0x1000_0000 };   // rssi -40, 1 Mbps, legacy; bit 31 valid; bits 29:28 = filter_match (1 broadcast/bssid, 3 unicast to us)
+        let w2: u32 = (chan << 16) | (chan << 20);                                        // channel, secondary
+        let w5: u32 = 0xa6;                                                                // noise floor -90
+        let w11: u32 = ((frame.len() + 4) as u32 & 0xfff) | (0 << 24);                    // sig_len (incl. FCS), rx_state OK
+        for w in [w0, 0, w2, now_us as u32, 0, w5, 0, 0, 0, 0, 0, w11] { b.extend_from_slice(&w.to_le_bytes()); }
+        b.extend_from_slice(frame); b.extend_from_slice(&crate::wifi::fcs(frame).to_le_bytes());
+        let mut i = 0usize;
+        while i + 4 <= b.len() { let v = u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]); let _ = self.write32(buf + i as u32, v); i += 4; }
+        while i < b.len() { let _ = self.write8(buf + i as u32, b[i]); i += 1; }
+        let ndw0 = (dw0 & !(0xfff << 12) & !(1 << 31)) | ((total as u32) << 12) | (1 << 30);   // length, owner=cpu, has_data
+        let _ = self.write32(desc, ndw0);
+        let w = &mut self.periph.wifi;
+        w.rx_last = desc; w.rx_next = next; w.rx_frames += 1; w.events |= 1 << 14;   // libpp wDev_ProcessFiq: bits 14/24 -> lmacProcessRxSucData
+        if log { eprintln!("[wifi] RX -> desc {:#010x} {}", desc, crate::wifi::describe(frame)); }
+        self.irq_dirty = true;
+    }
+
     pub fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> {
         for (i, b) in data.iter().enumerate() {
             let a = addr.wrapping_add(i as u32);
@@ -282,6 +339,8 @@ impl Bus for SocBus {
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
+        if !self.periph.wifi.tx_pending.is_empty() { self.wifi_tx_step(); }
+        if self.periph.wifi.ap.is_some() { self.wifi_air_step(); }
         if !self.periph.gpio.changes.is_empty() { let ch = std::mem::take(&mut self.periph.gpio.changes); self.board.gpio_changes(&ch); }
         if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
         if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }

@@ -12,6 +12,8 @@ pub struct Machine {
     /// function stubs: at this PC (a function entry, before its `entry`), return `value` in a2 immediately
     pub stubs: std::collections::HashMap<u32, u32>,
     pub stub_hits: u64,
+    /// function-entry tracing: pc -> name (`--trace-fn PREFIX`)
+    pub fn_probes: std::collections::HashMap<u32, String>,
     pub cpu: Cpu,
     /// APP CPU (core 1)
     pub cpu1: Cpu,
@@ -64,14 +66,14 @@ pub struct Machine {
 }
 
 #[derive(Clone, Debug)]
-pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bool) }
+pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bool), Poke(u32, u32) }
 
 #[derive(Debug)]
 pub enum Stop { MaxInsns, Breakpoint(u32), Unimplemented(u32, u32), SwReset, Halted, Simcall(u32), Watch(u32, u32, u32), Exceptions(u64) }
 
 impl Machine {
     pub fn new(mac: [u8; 6]) -> Self {
-        Machine { mac, reboots: 0, stubs: std::collections::HashMap::new(), stub_hits: 0, cpu: Cpu::new(0xCDCD), cpu1: Cpu::new(0xABAB), core1_was_reset: true, bus: SocBus::new(8 * 1024 * 1024, 2 * 1024 * 1024, mac), symbols: BTreeMap::new(),
+        Machine { mac, reboots: 0, stubs: std::collections::HashMap::new(), stub_hits: 0, fn_probes: std::collections::HashMap::new(), cpu: Cpu::new(0xCDCD), cpu1: Cpu::new(0xABAB), core1_was_reset: true, bus: SocBus::new(8 * 1024 * 1024, 2 * 1024 * 1024, mac), symbols: BTreeMap::new(),
                   trace: false, trace_from: 0, breakpoints: Vec::new(), stop_on_unimplemented: true, console: Vec::new(), exceptions: 0, interrupts: 0, watch: None, stop_after_exceptions: u64::MAX, profile: None, irq_hist: [[0; 32]; 2], script: Vec::new(), script_pos: 0, max_cycles: u64::MAX, script_log: true, console_mask: 3, console_prefix: false, regtrace: None, regtrace_core: 0, regtrace_max: u64::MAX, regtrace_from_pc: None, regtrace_armed: true, regtrace_count: 0, web: None, realtime: false, wall_start: None, web_last_frame: 0, web_audio_sent: 0, web_ring_updates: 0, web_last_push_cycles: 0, console_usb: Vec::new(), console_uart0: Vec::new(), knob_next: 0, web_px_pending: 0, web_px_sent: 0, rt_last_check: 0, rt_behind: 0.0, irq_poll: 0, rt_resyncs: 0, rt_log: std::env::var("ESP_EMU_RT_LOG").is_ok(), rt_log_last: None, rt_log_insns: (0, 0), web_cam_pushed: u64::MAX, web_cam_sent: false }
     }
 
@@ -222,6 +224,11 @@ impl Machine {
     fn step_core(&mut self, core: usize) -> Option<Stop> {
         let (cpu, bus) = if core == 0 { (&mut self.cpu, &mut self.bus) } else { (&mut self.cpu1, &mut self.bus) };
         let pc = cpu.pc;
+        if !self.fn_probes.is_empty() && !cpu.waiting {
+            if let Some(name) = self.fn_probes.get(&pc) {
+                eprintln!("[fn] t={:.4}s c{} {}(a2={:#x} a3={:#x} a4={:#x}) from {:#x}", bus.cycles as f64 / crate::periph::CPU_HZ as f64, core, name, cpu.get_ar(2), cpu.get_ar(3), cpu.get_ar(4), cpu.get_ar(0) & 0x3fff_ffff | 0x4000_0000);
+            }
+        }
         if !self.stubs.is_empty() && !cpu.waiting {
             if let Some(&ret) = self.stubs.get(&pc) {
                 // synthetic return from a windowed function entry (its `entry` has not executed): a0 holds
@@ -346,6 +353,7 @@ impl Machine {
                 ScriptAction::Serial(text) => self.bus.periph.usb.host_input(text.as_bytes()),
                 ScriptAction::Stop => { self.max_cycles = 0; }
                 ScriptAction::Touch(x, y, d) => { self.bus.board.touch(x, y, d); }
+                ScriptAction::Poke(a, v) => { let _ = self.bus.write32(a, v); }
             }
         }
         if self.web.is_some() && self.bus.cycles.wrapping_sub(self.web_last_push_cycles) >= crate::periph::CPU_HZ / 50 { self.web_last_push_cycles = self.bus.cycles; self.web_push(); self.web_poll_input(); }
@@ -536,6 +544,8 @@ impl Machine {
                              ev.push((c, ScriptAction::Gpio(pn, false))); ev.push((c + (ms / 1000.0 * hz) as u64, ScriptAction::Gpio(pn, true))); }
                 "release" => ev.push((c, ScriptAction::Gpio(pin(rest)?, true))),
                 "gpio" => { let mut p = rest.split_whitespace(); let pn = pin(p.next().unwrap_or(""))?; let l = p.next().unwrap_or("1") == "1"; ev.push((c, ScriptAction::Gpio(pn, l))); }
+                "poke" => { let mut p = rest.split_whitespace(); let a = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).map_err(|e| e.to_string())?; let v = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).map_err(|e| e.to_string())?; ev.push((c, ScriptAction::Poke(a, v))); }
+                "poke" => { let mut p = rest.split_whitespace(); let a = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).map_err(|e| e.to_string())?; let v = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).map_err(|e| e.to_string())?; ev.push((c, ScriptAction::Poke(a, v))); }
                 "touch" => { let mut p = rest.split_whitespace(); let x: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0); let d = p.next().unwrap_or("1") == "1"; ev.push((c, ScriptAction::Touch(x, y, d))); }
                 "serial" => ev.push((c, ScriptAction::Serial(format!("{}\n", rest)))),
                 "knob" => {

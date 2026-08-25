@@ -2,9 +2,11 @@
 
 Ordered by value; each item links to its plan where one exists.
 
-1. **Networking** — virtual Ethernet + user-mode NAT, then the `esp_wifi` shim
-   ([networking-plan.md](networking-plan.md)). Unblocks autopling's web UI/`/api/pling`,
-   the Home Assistant panel, Atech cloud events.
+1. **WiFi (full, unmodified)** — fake the radio registers + model the MAC + a virtual AP so the
+   real blob associates ([wifi-plan.md](wifi-plan.md)). In progress: scan works, auth handshake
+   reached, association next. Then a network backend (libslirp) for real internet.
+   The `esp_wifi` shim ([networking-plan.md](networking-plan.md)) remains the fallback if the
+   blob route stalls; either unblocks the panel/autopling network features.
 2. **Testing** — hermetic CPU/SoC/board suites, conformance firmware, CI tiers
    ([testing-plan.md](testing-plan.md)). Milestone 1 (no silent skips, shared CPU harness,
    parser robustness) first.

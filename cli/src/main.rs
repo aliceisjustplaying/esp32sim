@@ -16,7 +16,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut rom = find_rom(); let mut bootloader = None; let mut ptable = None; let mut app = None; let mut elfs: Vec<String> = Vec::new();
     let mut boot = "app".to_string(); let mut max_insns = u64::MAX; let mut trace = false; let mut trace_from = 0u64;
-    let mut breaks = Vec::new(); let mut log_periph = false; let mut dump_at_end = true; let mut peeks: Vec<(u32, usize)> = Vec::new(); let mut disasms: Vec<(u32, usize)> = Vec::new(); let mut watch = None; let mut stop_exc = u64::MAX; let mut profile = false; let mut wav: Option<String> = None; let mut tft_png: Option<String> = None; let mut gram_png: Option<String> = None; let mut script: Option<String> = None; let mut max_seconds: Option<f64> = None; let mut console = "both".to_string(); let mut console_prefix = false; let mut regtrace: Option<String> = None; let mut regtrace_max = u64::MAX; let mut regtrace_from_pc: Option<u32> = None; let mut efuse_file: Option<String> = None; let mut regs_init: Option<String> = None; let mut web_port: Option<u16> = None; let mut realtime = false; let mut web_dir: Option<String> = None; let mut strap: Option<u32> = None; let mut reset_cause: Option<u32> = None; let mut flash_mb: usize = 8; let mut flash_image: Option<String> = None; let mut board = "atech14".to_string(); let mut no_reboot = false; let mut psram_mb: usize = 2; let mut cam_image: Option<String> = None; let mut cam_fps: f64 = 10.0; let mut stubs: Vec<String> = Vec::new();
+    let mut breaks = Vec::new(); let mut log_periph = false; let mut dump_at_end = true; let mut peeks: Vec<(u32, usize)> = Vec::new(); let mut disasms: Vec<(u32, usize)> = Vec::new(); let mut watch = None; let mut stop_exc = u64::MAX; let mut profile = false; let mut wav: Option<String> = None; let mut tft_png: Option<String> = None; let mut gram_png: Option<String> = None; let mut script: Option<String> = None; let mut max_seconds: Option<f64> = None; let mut console = "both".to_string(); let mut console_prefix = false; let mut regtrace: Option<String> = None; let mut regtrace_max = u64::MAX; let mut regtrace_from_pc: Option<u32> = None; let mut efuse_file: Option<String> = None; let mut regs_init: Option<String> = None; let mut web_port: Option<u16> = None; let mut realtime = false; let mut web_dir: Option<String> = None; let mut strap: Option<u32> = None; let mut reset_cause: Option<u32> = None; let mut flash_mb: usize = 8; let mut flash_image: Option<String> = None; let mut board = "atech14".to_string(); let mut no_reboot = false; let mut psram_mb: usize = 2; let mut cam_image: Option<String> = None; let mut cam_fps: f64 = 10.0; let mut stubs: Vec<String> = Vec::new(); let mut regstat: Option<String> = None; let mut trace_fns: Vec<String> = Vec::new(); let mut wifi: Option<String> = None;
     let mut i = 1;
     while i < args.len() {
         let a = args[i].as_str();
@@ -61,6 +61,9 @@ fn main() {
             "--cam-image" => cam_image = Some(next()),
             "--cam-fps" => cam_fps = next().parse().expect("fps"),
             "--stub" => stubs.push(next()),
+            "--regstat" => regstat = Some(next()),
+            "--trace-fn" => trace_fns.push(next()),
+            "--wifi" => wifi = Some(next()),
             "--flash-image" => flash_image = Some(next()),      // raw flash dump written at offset 0
             "--max-seconds" => max_seconds = Some(next().parse().expect("seconds")),
             "--gram-png" => gram_png = Some(next()),
@@ -71,6 +74,21 @@ fn main() {
     let mut m = Machine::new([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
     m.bus.board = esp32s3::board::make_board(&board).unwrap_or_else(|| { eprintln!("unknown board '{}' (atech14, waveshare-cam, waveshare-lcd4b, none)", board); std::process::exit(2) });
     for (addr, dev) in m.bus.board.i2c_devices() { m.bus.periph.i2c[0].attach(addr, dev); }
+    if regstat.is_some() { m.bus.periph.regstat = Some(Default::default()); }
+    if let Some(spec) = &wifi {
+        let mut cfg = esp32s3::wifi::ApConfig { ssid: "esp32sim".into(), bssid: [0x02, 0x53, 0x49, 0x4d, 0x00, 0x01], channel: 6, psk: None };
+        for kv in spec.split(',') {
+            match kv.split_once('=') {
+                Some(("ssid", v)) => cfg.ssid = v.to_string(),
+                Some(("chan", v)) | Some(("channel", v)) => cfg.channel = v.parse().unwrap_or(6),
+                Some(("psk", v)) | Some(("password", v)) => cfg.psk = Some(v.to_string()),
+                Some(("bssid", v)) => { let b: Vec<u8> = v.split(':').filter_map(|x| u8::from_str_radix(x, 16).ok()).collect(); if b.len() == 6 { cfg.bssid.copy_from_slice(&b); } }
+                _ => {}
+            }
+        }
+        eprintln!("[emu] virtual AP '{}' bssid {} channel {} ({})", cfg.ssid, esp32s3::wifi::mac_str(&cfg.bssid), cfg.channel, if cfg.psk.is_some() { "WPA2-PSK" } else { "open" });
+        m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg));
+    }
     if let Some(p) = &cam_image { match esp32s3::picture::load(p) { Ok(pic) => { eprintln!("[emu] camera picture {} ({}x{})", p, pic.w, pic.h); m.bus.board.set_camera_picture(pic); } Err(e) => { eprintln!("[emu] {}", e); std::process::exit(2); } } }
     m.bus.periph.lcd_cam.frame_cycles = (esp32s3::periph::CPU_HZ as f64 / cam_fps) as u64;
     if flash_mb != 8 { m.bus.flash = vec![0xff; flash_mb * 1024 * 1024]; let cap = (flash_mb * 1024 * 1024).trailing_zeros() as u8; m.bus.periph.spi1.jedec[2] = cap; m.bus.periph.spi0.jedec[2] = cap; }
@@ -82,6 +100,11 @@ fn main() {
     if let Some(p) = &ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }
     if let Some(p) = &app { m.write_flash(0x10000, &std::fs::read(p).expect("app")).unwrap(); }
     for p in &elfs { m.add_symbols(&std::fs::read(p).expect("elf")).expect("elf symbols"); }
+    for pre in &trace_fns {
+        let mut n = 0;
+        for (&a, name) in m.symbols.iter() { if name.starts_with(pre.as_str()) || (pre.ends_with('$') && name == &pre[..pre.len() - 1]) { m.fn_probes.insert(a, name.clone()); n += 1; } }
+        eprintln!("[emu] --trace-fn {}: {} functions", pre, n);
+    }
     for st in &stubs {
         let (name, val) = match st.split_once('=') { Some((n, v)) => (n, u32::from_str_radix(v.trim_start_matches("0x"), if v.starts_with("0x") { 16 } else { 10 }).unwrap_or(0)), None => (st.as_str(), 0) };
         let addr = if let Some(a) = m.sym_addr(name) { a } else if let Ok(a) = u32::from_str_radix(name.trim_start_matches("0x"), 16) { a } else { eprintln!("--stub: unknown symbol {}", name); std::process::exit(2) };
@@ -160,6 +183,18 @@ fn main() {
     if let Some(w) = &wav { match m.write_wav(w) { Ok(n) => eprintln!("[emu] wrote {} samples ({:.2} s) to {}", n, n as f64 / m.bus.periph.audio().sample_rate as f64, w), Err(e) => eprintln!("[emu] wav: {}", e) } }
     eprintln!("[emu] i2s frames out: {} (i2s0) {} (i2s1)", m.bus.periph.i2s0.frames_out, m.bus.periph.i2s1.frames_out);
     if let Some(t) = m.bus.board.tft() { eprintln!("[emu] tft: {} RAMWR, {} pixels, madctl={:#x} inverted={} on={} bbox={:?} top colours {:x?}; gpio events {}", t.frames, t.pixels_written, t.madctl, t.inverted, t.on, t.bbox(), t.histogram(5), m.bus.board.gpio_events()); }
+    if let (Some(path), Some(st)) = (&regstat, &m.bus.periph.regstat) {
+        use std::io::Write;
+        let mut rows: Vec<_> = st.iter().collect(); rows.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+        let mut f = std::io::BufWriter::new(std::fs::File::create(path).expect("regstat file"));
+        let _ = writeln!(f, "# count kind block+off addr last_value pc symbol");
+        for (&(addr, pc, wr), &(n, val)) in rows {
+            let block = (addr.wrapping_sub(esp32s3::periph::PERIPH_BASE)) >> 12;
+            let _ = writeln!(f, "{} {} {}+0x{:03x} {:#010x} {:#010x} {:#010x} {}", n, if wr { "wr" } else { "rd" }, esp32s3::periph::Peripherals::block_name_pub(block), addr & 0xfff, addr, val, pc, m.sym(pc));
+        }
+        eprintln!("[emu] wrote {} register access rows to {}", st.len(), path);
+    }
+    { let w = &m.bus.periph.wifi; if w.tx_frames + w.rx_frames > 0 { eprintln!("[emu] wifi: {} frames sent by the station, {} received ({} dropped: no descriptor){}", w.tx_frames, w.rx_frames, w.rx_dropped, w.ap.as_ref().map_or(String::new(), |ap| format!("; AP: {} beacons, {} probe responses, {} data frames from the station, state {:?}", ap.stats.0, ap.stats.1, ap.stats.2, ap.state))); } }
     if m.stub_hits > 0 { eprintln!("[emu] stubs hit {} times", m.stub_hits); }
     if m.bus.periph.lcd_cam.lcd_frames > 0 { eprintln!("[emu] lcd: {} RGB frames", m.bus.periph.lcd_cam.lcd_frames); }
     if m.bus.periph.lcd_cam.frames + m.bus.periph.lcd_cam.dropped > 0 { eprintln!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)", m.bus.periph.lcd_cam.frames, m.bus.periph.lcd_cam.dropped); }

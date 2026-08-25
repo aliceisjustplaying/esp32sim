@@ -9,7 +9,8 @@
 | [web-ui.md](web-ui.md) | The browser UI and its WebSocket protocol |
 | [decisions.md](decisions.md) | Design decisions and hard-won gotchas (the "why" behind the code) |
 | [roadmap.md](roadmap.md) | What is planned, in priority order |
-| [networking-plan.md](networking-plan.md) | Plan: WiFi/network support (virtual Ethernet + user-mode NAT + `esp_wifi` shim) |
+| [wifi-plan.md](wifi-plan.md) | Plan + status: full WiFi emulation with the unmodified blob (MAC model + virtual AP) |
+| [networking-plan.md](networking-plan.md) | Alternative: virtual Ethernet + user-mode NAT + `esp_wifi` shim |
 | [testing-plan.md](testing-plan.md) | Plan: test layers, CPU/SoC/board/firmware suites, CI tiers, milestones |
 
 Board-specific material lives next to the board: `../boards/atech14/README.md`,
