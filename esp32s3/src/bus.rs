@@ -259,10 +259,20 @@ impl SocBus {
     /// The virtual air: beacons/responses from the AP and frames from the network backend land in the RX ring.
     fn wifi_air_step(&mut self) {
         let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
+        // one frame reaches the MAC at a time, spaced by roughly a frame's airtime: real hardware never
+        // presents 10 descriptors at once, and the blob's RX path only *indicates* a frame when the ring is
+        // shallow (deep rings switch it to batch block-recycle, which drops the frame).
+        if now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 400 { return; }
         let mut due = { let ap = self.periph.wifi.ap.as_mut().unwrap(); ap.step(now_us) };
         let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
         for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
-        for a in due { self.wifi_rx_deliver(&a.frame, now_us); }
+        if due.is_empty() { return; }
+        // deliver the earliest, requeue the rest so they arrive on later ticks
+        due.sort_by_key(|a| a.at_us);
+        let first = due.remove(0);
+        self.wifi_rx_deliver(&first.frame, now_us);
+        self.periph.wifi.last_rx_us = now_us;
+        if let Some(ap) = &mut self.periph.wifi.ap { for a in due { ap.queue.push(a); } }
     }
 
     /// Write one received frame into the next RX descriptor (rx_ctrl header + frame + FCS) and raise the RX event.

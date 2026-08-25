@@ -442,9 +442,9 @@ pub struct WifiMac { pub ram: RegRam, pub ram2: RegRam, pub log: bool,
                      pub tx_pending: Vec<(u8, u32)>, pub tx_frames: u64,
                      /// RX descriptor ring: base written by the driver (0x088), the descriptor the hardware fills next, the last one filled
                      pub rx_base: u32, pub rx_next: u32, pub rx_last: u32, pub rx_frames: u64, pub rx_dropped: u64,
-                     pub ap: Option<crate::wifi::VirtualAp>, pub eth_tx: Vec<Vec<u8>>, pub eth_rx: Vec<Vec<u8>> }
+                     pub ap: Option<crate::wifi::VirtualAp>, pub eth_tx: Vec<Vec<u8>>, pub eth_rx: Vec<Vec<u8>>, pub last_rx_us: u64 }
 impl WifiMac {
-    pub fn new() -> Self { WifiMac { ram: RegRam::new(), ram2: RegRam::new(), log: std::env::var("ESP_EMU_DEBUG_WIFI").is_ok(), tsf_offset: 0, tsf_latched: 0, now_cycles: 0, rx_base: 0, rx_next: 0, rx_last: 0, rx_frames: 0, rx_dropped: 0, ap: None, eth_tx: Vec::new(), eth_rx: Vec::new(), events: 0, pwr_events: 0, txq_complete: 0, txq_error: 0, tx_pending: Vec::new(), tx_frames: 0 } }
+    pub fn new() -> Self { WifiMac { ram: RegRam::new(), ram2: RegRam::new(), log: std::env::var("ESP_EMU_DEBUG_WIFI").is_ok(), tsf_offset: 0, tsf_latched: 0, now_cycles: 0, rx_base: 0, rx_next: 0, rx_last: 0, rx_frames: 0, rx_dropped: 0, ap: None, eth_tx: Vec::new(), eth_rx: Vec::new(), last_rx_us: 0, events: 0, pwr_events: 0, txq_complete: 0, txq_error: 0, tx_pending: Vec::new(), tx_frames: 0 } }
     pub fn irq(&self) -> bool { self.events != 0 || self.pwr_events != 0 }
     /// TX queue n has its PLCP0 register at 0xd08 - 8n (hal_mac_txq_enable: (0x0c0067a1 - n) << 3).
     fn txq_of(off: u32) -> Option<u8> { if off <= 0xd08 && (0xd08 - off) % 8 == 0 && (0xd08 - off) / 8 < 16 { Some(((0xd08 - off) / 8) as u8) } else { None } }

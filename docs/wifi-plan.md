@@ -28,28 +28,29 @@ Working today (`--wifi ssid=…[,chan=,psk=,bssid=]`, no firmware changes):
   and 802.11 ↔ Ethernet translation for data frames.
 - Reaches **`state: init -> auth`** and exchanges authentication frames with the AP.
 
-Not yet working: **open association does not complete**, and the blocker is now localized to the
-ROM's RX-block memory management (2026-08-25):
+Progress (2026-08-25): **authentication now completes with the unmodified blob** (`cnx_auth_done`
+fires and the station proceeds to `cnx_do_assoc`). The breakthrough: the blob's RX path only
+*indicates* a frame up the stack when the descriptor ring is **shallow** — when several descriptors
+are pending at once it switches to a batch block-recycle mode (`wDev_ProcessRxSucData`/
+`wDev_IndicateFrame` receive `a3 = pending count`; `a3 = 1` -> indicate -> `ppRxPkt` -> `sta_input`,
+`a3 = 0xa` -> recycle -> dropped). The virtual AP was delivering beacons + probe responses in bursts,
+so the auth response arrived amid a deep ring and was recycled. `bus.rs::wifi_air_step` now delivers
+**one frame at a time, spaced by ~400 us of airtime** (excess requeued), which keeps the ring shallow
+and lets the auth response reach the 802.11 stack.
 
-- The AP's open auth response is received into the RX descriptor ring correctly (silicon-verified
-  descriptor format) and `wDev_ProcessRxSucData` runs on it with the right length.
-- `wDev_ProcessRxSucData` calls `wDev_IndicateFrame` for the auth with the same arguments as for a
-  beacon that *is* processed — but the auth (a small, unicast frame) is **not propagated to
-  `ppRxPkt`/`sta_input`**, so the 802.11 stack never sees it; `cnx_auth_timeout` fires 1 s later.
-- The difference is inside the ROM's RX-block/bank management: `wDev_IndicateFrame` copies the DMA
-  frame into managed "rx blocks" (the `wdev` bank structure at `0x3fcef944`, allocator/copy via
-  offsets `0x188`/`0x1d0`/`0x1cc`/`0x1f8`), and `wDev_AppendRxBlocks` walks a descriptor chain,
-  writes `0xdeadbeef` free-markers, and re-arms via `WIFI_MAC_BITMASK_084` (`0x60033084`) bit 0.
-  The batch "block count" passed down (`a3`) is the number of ring descriptors filled since the last
-  pass; my delivery advances the ring pointers in a way that mishandles a small frame arriving amid
-  the beacon/probe traffic.
+Determinism note: the WDEV RNG (`0x60035000+0x7c`) is fixed-seed, so runs are reproducible for
+tracing/tests.
 
-Modelling this ROM block/bank batch path faithfully — how it links descriptors into a frame, marks
-EOF, counts blocks, and recycles — is the remaining reverse-engineering. It is the minimal AP-side
-work that cannot be skipped for unmodified firmware (the app only advances on
-`WIFI_EVENT_STA_CONNECTED`, which the blob posts after auth+assoc). Realistically a multi-day effort;
-the hardware oracle (JTAG on the Atech board) can dump the real descriptor chain and bank state for a
-received unicast frame to nail the exact linkage.
+Still to do:
+- **Reliability**: auth completes on some attempts, not all — the auth response must still land in a
+  shallow-ring window, which the beacon/probe cadence can crowd. Deliver management responses in true
+  isolation (pause beacons briefly around a connect), or model the ring-depth gate exactly.
+- **Association**: `cnx_do_assoc` runs but the assoc response handling / state to CONNECTED is not yet
+  verified end to end.
+- Then **DHCP + internet** via a libslirp backend (the 802.11<->Ethernet path already exists).
+
+This is the minimal AP logic that cannot be skipped for unmodified firmware; the hardware oracle
+(JTAG on the Atech board) remains available to dump the real ring/bank state when needed.
 
 ## Scope: what is and isn't needed
 
