@@ -69,4 +69,5 @@ One action per line, `<seconds> <cmd> [args]`; buttons/encoder are active low.
 ```
 
 `hw/wsdrive.py [port] [seconds]` drives the same inputs over the UI's WebSocket and reports
-real-time keep-up (push gaps, lag, audio delivered).
+real-time keep-up (push gaps, lag, audio delivered); `hw/wsaudio.py [port] [seconds]` listens to the
+UI's audio stream and reports sample counts/peak (how to check sound without listening).
