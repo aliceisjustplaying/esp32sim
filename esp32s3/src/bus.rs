@@ -179,6 +179,52 @@ impl SocBus {
         self.irq_dirty = true;
     }
 
+    /// LCD RGB output: consume the GDMA out-channel bound to LCD (trigger 5) at the panel's pixel rate,
+    /// assemble frames, publish each completed frame to the board and raise LCD_VSYNC.
+    fn dma_lcd_step(&mut self, cycles: u64) {
+        if !self.periph.lcd_cam.lcd_running() { return; }
+        let (ha, va, bpp, frame_cycles) = self.periph.lcd_cam.lcd_geometry();
+        let frame_bytes = (ha * va * bpp) as usize;
+        if frame_bytes == 0 { return; }
+        self.periph.lcd_cam.lcd_acc += cycles;
+        let due = (self.periph.lcd_cam.lcd_acc as u128 * frame_bytes as u128 / frame_cycles as u128) as usize;
+        if due < 512 { return; }
+        self.periph.lcd_cam.lcd_acc = 0;
+        let Some(ch) = self.periph.gdma.out_channel_for(5) else { return };
+        let mut need = due.min(frame_bytes);
+        while need > 0 {
+            let c = self.periph.gdma.out[ch];
+            if !c.running || c.desc == 0 { break; }
+            let dw0 = self.read32(c.desc).unwrap_or(0);
+            let length = (dw0 >> 12) & 0xfff; let eof = dw0 & (1 << 30) != 0; let buf = self.read32(c.desc + 4).unwrap_or(0); let next = self.read32(c.desc + 8).unwrap_or(0);
+            let remaining = length.saturating_sub(c.buf_pos) as usize;
+            if remaining == 0 {
+                let ch_ref = &mut self.periph.gdma.out[ch];
+                ch_ref.int_raw |= 1 << 0;
+                if eof { ch_ref.int_raw |= 1 << 1; ch_ref.eof_desc = c.desc; }
+                if next == 0 { ch_ref.running = false; ch_ref.desc = 0; ch_ref.int_raw |= 1 << 3; break; }
+                ch_ref.desc = next; ch_ref.buf_pos = 0;
+                self.irq_dirty = true;
+                continue;
+            }
+            let take = remaining.min(need);
+            let start = buf + c.buf_pos;
+            let mut i = 0usize;
+            while i + 4 <= take { let v = self.read32(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_line.extend_from_slice(&v.to_le_bytes()); i += 4; }
+            while i < take { let b = self.read8(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_line.push(b); i += 1; }
+            self.periph.gdma.out[ch].buf_pos += take as u32;
+            need -= take;
+            if self.periph.lcd_cam.lcd_line.len() >= frame_bytes {
+                let frame = std::mem::take(&mut self.periph.lcd_cam.lcd_line);
+                self.board.lcd_frame(ha, va, &frame[..frame_bytes]);
+                if frame.len() > frame_bytes { self.periph.lcd_cam.lcd_line.extend_from_slice(&frame[frame_bytes..]); }
+                self.periph.lcd_cam.lcd_frames += 1;
+                self.periph.lcd_cam.int_raw |= 1 << 0;                                    // LCD_VSYNC_INT
+                self.irq_dirty = true;
+            }
+        }
+    }
+
     pub fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> {
         for (i, b) in data.iter().enumerate() {
             let a = addr.wrapping_add(i as u32);
@@ -224,6 +270,7 @@ impl Bus for SocBus {
         self.periph.tick(cycles as u64);
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
+        self.dma_lcd_step(cycles as u64);
         if !self.periph.gpio.changes.is_empty() { let ch = std::mem::take(&mut self.periph.gpio.changes); self.board.gpio_changes(&ch); }
         if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
         if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }

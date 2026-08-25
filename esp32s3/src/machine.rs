@@ -361,6 +361,16 @@ impl Machine {
         }
         let Some(w) = self.web.clone() else { return };
         self.drain_console();
+        if self.bus.board.tft().is_none() {
+            if let Some((w_, h_, px, ver)) = self.bus.board.display() {
+                if ver != self.web_px_sent {
+                    self.web_px_sent = ver;
+                    let mut b = vec![1u8, w_ as u8, (w_ >> 8) as u8, h_ as u8, (h_ >> 8) as u8];
+                    for p in &px { b.push(*p as u8); b.push((*p >> 8) as u8); }
+                    w.send_binary(&b);
+                }
+            }
+        }
         if let Some(tft) = self.bus.board.tft() {
             // send a frame once the pixel stream has been quiet for a push interval (avoids half-drawn frames)
             let px = tft.pixels_written;
@@ -401,14 +411,14 @@ impl Machine {
             hello.push(mk(&format!("{{\"t\":\"serial\",\"src\":\"uart0\",\"data\":\"{}\"}}", json_escape(&String::from_utf8_lossy(&self.console_uart0)))));
             hello.push(mk(&format!("{{\"t\":\"serial\",\"src\":\"usb\",\"data\":\"{}\"}}", json_escape(&String::from_utf8_lossy(&self.console_usb)))));
             hello.push(mk(&format!("{{\"t\":\"board\",\"name\":\"{}\"}}", self.bus.board.name())));
-            if let Some(tft) = self.bus.board.tft() { let f = tft.frame_160x80(); let mut b = vec![1u8, 160, 0, 80, 0]; for p in &f { b.push(*p as u8); b.push((*p >> 8) as u8); } hello.push(mkb(&b)); }
+            if let Some((w_, h_, px, _)) = self.bus.board.display() { let mut b = vec![1u8, w_ as u8, (w_ >> 8) as u8, h_ as u8, (h_ >> 8) as u8]; for p in &px { b.push(*p as u8); b.push((*p >> 8) as u8); } hello.push(mkb(&b)); }
             if let Some(rgb) = self.bus.board.camera_preview(320, 240) { let mut b = vec![4u8, (320u16 & 255) as u8, (320u16 >> 8) as u8, (240u16 & 255) as u8, (240u16 >> 8) as u8]; b.extend_from_slice(&rgb); hello.push(mkb(&b)); }
             if let Some(ring) = self.bus.board.ring() { let leds: Vec<String> = ring.leds.iter().map(|c| format!("[{},{},{}]", c[0], c[1], c[2])).collect();
             hello.push(mk(&format!("{{\"t\":\"ring\",\"leds\":[{}]}}", leds.join(",")))); }
             w.set_hello(hello);
         }
         let t = self.bus.cycles as f64 / crate::periph::CPU_HZ as f64;
-        w.send_text(&format!("{{\"t\":\"stat\",\"time\":{:.2},\"insns\":{},\"frames\":{},\"behind\":{:.2},\"resyncs\":{},\"cam\":{},\"gpio_in\":\"{:x}\"}}", t, self.cpu.insn_count + self.cpu1.insn_count, self.bus.board.tft().map_or(0, |t| t.frames), self.rt_behind, self.rt_resyncs, self.bus.periph.lcd_cam.frames, self.bus.periph.gpio.input));
+        w.send_text(&format!("{{\"t\":\"stat\",\"time\":{:.2},\"insns\":{},\"frames\":{},\"behind\":{:.2},\"resyncs\":{},\"cam\":{},\"gpio_in\":\"{:x}\"}}", t, self.cpu.insn_count + self.cpu1.insn_count, self.bus.board.tft().map_or(self.bus.periph.lcd_cam.lcd_frames, |t| t.frames), self.rt_behind, self.rt_resyncs, self.bus.periph.lcd_cam.frames, self.bus.periph.gpio.input));
     }
 
     fn web_poll_input(&mut self) {
@@ -443,6 +453,8 @@ impl Machine {
                     self.script_pos = self.script.iter().position(|e| e.0 > self.bus.cycles).unwrap_or(self.script.len());
                 }
                 "serial" => { let line = json_str(&m, "line").unwrap_or_default(); self.bus.periph.usb.host_input(format!("{}\n", line).as_bytes()); }
+                "touch" => { let x: u16 = json_str(&m, "x").and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = json_str(&m, "y").and_then(|v| v.parse().ok()).unwrap_or(0);
+                             let down = json_str(&m, "down").unwrap_or_default() == "1"; self.bus.board.touch(x, y, down); }
                 _ => {}
             }
         }
@@ -477,8 +489,8 @@ impl Machine {
 
     /// Save the TFT frame (160x80, scaled) as PNG.
     pub fn write_tft_png(&self, path: &str, scale: usize) -> std::io::Result<()> {
-        let Some(tft) = self.bus.board.tft() else { return Err(std::io::Error::other("this board has no TFT")) };
-        write_png_rgb565(path, &tft.frame_160x80(), 160, 80, scale)
+        let Some((w, h, px, _)) = self.bus.board.display() else { return Err(std::io::Error::other("this board has no display")) };
+        write_png_rgb565(path, &px, w as usize, h as usize, if w > 200 { 1 } else { scale })
     }
     pub fn write_gram_png(&self, path: &str) -> std::io::Result<()> {
         let Some(t) = self.bus.board.tft() else { return Err(std::io::Error::other("this board has no TFT")) };

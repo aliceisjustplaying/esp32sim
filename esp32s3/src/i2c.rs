@@ -177,3 +177,64 @@ impl I2cDevice for Ov5640 {
     }
     fn read(&mut self) -> u8 { let v = self.get(self.addr); self.addr = self.addr.wrapping_add(1); v }
 }
+
+/// State of an ST7701S panel controller as seen through its 9-bit init SPI (D/C bit + 8 data bits).
+#[derive(Default, Debug)]
+pub struct St7701State { pub words: u64, pub last_cmd: u8, pub sleep_out: bool, pub display_on: bool, pub cmds: Vec<u8> }
+
+/// TCA9554 / PCA9554 8-bit IO expander (regs: 0 input, 1 output, 2 polarity, 3 config). On the
+/// Waveshare Touch-LCD-4B the panel's init SPI hangs off EXIO0 (CS), EXIO1 (MOSI), EXIO2 (CLK); the
+/// device decodes that bit-banged stream into `St7701State`.
+pub struct Tca9554 { pub regs: [u8; 4], ptr: u8, first: bool, panel: std::sync::Arc<std::sync::Mutex<St7701State>>, shift: u16, nbits: u8 }
+impl Tca9554 {
+    pub fn new(panel: std::sync::Arc<std::sync::Mutex<St7701State>>) -> Self { Tca9554 { regs: [0xff, 0xff, 0x00, 0xff], ptr: 0, first: true, panel, shift: 0, nbits: 0 } }
+    fn output(&mut self, old: u8, new: u8) {
+        let cs = new & 1 != 0; let mosi = (new >> 1) & 1; let clk_rise = new & 4 != 0 && old & 4 == 0;
+        if cs { self.nbits = 0; self.shift = 0; return; }
+        if clk_rise {
+            self.shift = (self.shift << 1) | mosi as u16; self.nbits += 1;
+            if self.nbits == 9 {
+                let dc = self.shift & 0x100 != 0; let b = self.shift as u8; self.nbits = 0; self.shift = 0;
+                let mut st = self.panel.lock().unwrap(); st.words += 1;
+                if !dc { st.last_cmd = b; st.cmds.push(b); match b { 0x11 => st.sleep_out = true, 0x10 => st.sleep_out = false, 0x29 => st.display_on = true, 0x28 => st.display_on = false, _ => {} } }
+            }
+        }
+    }
+}
+impl I2cDevice for Tca9554 {
+    fn start(&mut self, read: bool) -> bool { if !read { self.first = true; } true }
+    fn write(&mut self, b: u8) -> bool {
+        if self.first { self.ptr = b & 3; self.first = false; }
+        else { let old = self.regs[1]; self.regs[self.ptr as usize] = b; if self.ptr == 1 { self.output(old, b); } }
+        true
+    }
+    fn read(&mut self) -> u8 { self.regs[self.ptr as usize] }
+}
+
+/// Touch state shared between the board (UI) and the GT911 model.
+#[derive(Default, Debug, Clone, Copy)]
+pub struct TouchState { pub down: bool, pub x: u16, pub y: u16 }
+
+/// Goodix GT911 capacitive touch controller: 16-bit register addresses; product ID at 0x8140,
+/// config at 0x8047.., status + up to 5 points at 0x814E...
+pub struct Gt911 { addr: u16, phase: u8, touch: std::sync::Arc<std::sync::Mutex<TouchState>>, pub reads: u64, w: u16, h: u16 }
+impl Gt911 {
+    pub fn new(touch: std::sync::Arc<std::sync::Mutex<TouchState>>, w: u16, h: u16) -> Self { Gt911 { addr: 0, phase: 0, touch, reads: 0, w, h } }
+    fn reg(&self, a: u16) -> u8 {
+        let t = *self.touch.lock().unwrap();
+        match a {
+            0x8140 => b'9', 0x8141 => b'1', 0x8142 => b'1', 0x8143 => 0, 0x8144 => 0x60, 0x8145 => 0x10,      // "911", firmware 0x1060
+            0x8047 => 0x41,                                                                                     // config version
+            0x8048 => self.w as u8, 0x8049 => (self.w >> 8) as u8, 0x804a => self.h as u8, 0x804b => (self.h >> 8) as u8,
+            0x804c => 5,                                                                                        // touch number
+            0x814e => 0x80 | t.down as u8,                                                                      // buffer ready + count
+            0x814f => 0, 0x8150 => t.x as u8, 0x8151 => (t.x >> 8) as u8, 0x8152 => t.y as u8, 0x8153 => (t.y >> 8) as u8, 0x8154 => 20, 0x8155 => 0, 0x8156 => 0,
+            _ => 0,
+        }
+    }
+}
+impl I2cDevice for Gt911 {
+    fn start(&mut self, read: bool) -> bool { if !read { self.phase = 0; } true }
+    fn write(&mut self, b: u8) -> bool { match self.phase { 0 => { self.addr = (b as u16) << 8; self.phase = 1; } 1 => { self.addr |= b as u16; self.phase = 2; } _ => { self.addr = self.addr.wrapping_add(1); } } true }
+    fn read(&mut self) -> u8 { let v = self.reg(self.addr); self.addr = self.addr.wrapping_add(1); self.reads += 1; v }
+}

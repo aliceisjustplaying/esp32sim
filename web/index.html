@@ -82,6 +82,10 @@
   </section>
 
   <section class="right">
+    <div class="card" id="lcdpanel" style="display:none">
+      <div class="row"><strong>Panel</strong><span class="st" id="lcdstat">ST7701S 480×480 over the RGB bus — click/drag to touch</span></div>
+      <canvas id="lcd" width="480" height="480" style="margin-top:8px;width:480px;height:480px;border-radius:12px;background:#000;cursor:crosshair;touch-action:none"></canvas>
+    </div>
     <div class="card" id="campanel" style="display:none">
       <div class="row"><strong>Camera</strong><span class="st">what the OV5640 sees — a picture file or your webcam (frames go to the DVP port at 10 fps)</span></div>
       <div class="row" style="gap:8px;align-items:center;margin-top:6px">
@@ -130,6 +134,12 @@ function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
 function drawFrame(buf) {
   const dv = new DataView(buf); const w = dv.getUint16(1, true), h = dv.getUint16(3, true);
+  if (w > 160) {   // a panel, not the Atech TFT
+    const c = $('#lcd'); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const ctx = c.getContext('2d'); const im = ctx.createImageData(w, h); const d = im.data;
+    for (let i = 0; i < w * h; i++) { const p = dv.getUint16(5 + i * 2, true); d[i*4] = (p >> 11) * 255 / 31; d[i*4+1] = ((p >> 5) & 63) * 255 / 63; d[i*4+2] = (p & 31) * 255 / 31; d[i*4+3] = 255; }
+    ctx.putImageData(im, 0, 0); return;
+  }
   const img = tftbig.createImageData(w, h); const px = img.data;
   for (let i = 0; i < w * h; i++) { const p = dv.getUint16(5 + i * 2, true);
     px[i*4] = (p >> 11) * 255 / 31; px[i*4+1] = ((p >> 5) & 63) * 255 / 63; px[i*4+2] = (p & 31) * 255 / 31; px[i*4+3] = 255; }
@@ -176,7 +186,7 @@ function connect() {
     if (ev.data instanceof ArrayBuffer) { const t = new Uint8Array(ev.data)[0]; if (t === 1) drawFrame(ev.data); else if (t === 2) playAudio(ev.data); else if (t === 4) drawCamPreview(ev.data); return; }
     const m = JSON.parse(ev.data);
     if (m.t === 'serial') addSerial(m.src, m.data);
-    else if (m.t === 'board') { document.body.classList.toggle('bare', m.name !== 'atech14'); if (m.name === 'none') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — bare module'; document.querySelector('.tabs button[data-src="uart0"]').click(); } if (m.name === 'waveshare-cam') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑CAM‑OV5640'; $('#campanel').style.display = ''; } }
+    else if (m.t === 'board') { document.body.classList.toggle('bare', m.name !== 'atech14'); if (m.name === 'none') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — bare module'; document.querySelector('.tabs button[data-src="uart0"]').click(); } if (m.name === 'waveshare-cam') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑CAM‑OV5640'; $('#campanel').style.display = ''; } if (m.name === 'waveshare-lcd4b') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑Touch‑LCD‑4B'; $('#lcdpanel').style.display = ''; } }
     else if (m.t === 'ring') { ringLeds = m.leds; drawRing(); }
     else if (m.t === 'stat') { $('#stat').textContent = `t = ${m.time.toFixed(2)} s · ${(m.insns/1e6).toFixed(1)} M insns · ${m.frames} frames` + (m.behind > 0 ? ` · ⚠ ${m.behind.toFixed(2)} s behind real time` : ' · real time') + (m.resyncs ? ` · ${m.resyncs} resync` : '') + (m.cam ? ` · ${m.cam} camera frames` : ''); $('#stat').style.color = m.behind > 0 ? '#f66' : ''; }
   };
@@ -201,6 +211,14 @@ $('#audioBtn').onclick = async () => { if (!audioCtx) audioCtx = new (window.Aud
 const presets = [['set_note C','{"action":"set_note","value":"0"}'],['set_note A','{"action":"set_note","value":"5"}'],['octave 5','{"action":"set_octave","value":"5"}'],['trigger_note','{"action":"trigger_note","value":""}'],['chord','{"action":"play_chord_voices","value":""}'],['play_note 880','{"action":"play_note","value":"{\\"frequency\\":880,\\"duration\\":300}"}'],['volume 1.0','{"action":"set_volume","value":"1.0"}'],['ring red','{"action":"set_ring_color","value":"{\\"r\\":255,\\"g\\":0,\\"b\\":40}"}']];
 presets.forEach(([n, l]) => { const b = document.createElement('button'); b.className = 'act'; b.textContent = n; b.onclick = () => { $('#line').value = l; $('#send').click(); }; $('#presets').appendChild(b); });
 drawRing(); connect();
+// ---- touch panel: mouse/pointer -> GT911 touch points
+{ const c = $('#lcd'); let down = false, last = 0;
+  const pos = (e) => { const r = c.getBoundingClientRect(); return { x: Math.max(0, Math.min(c.width - 1, Math.round((e.clientX - r.left) * c.width / r.width))), y: Math.max(0, Math.min(c.height - 1, Math.round((e.clientY - r.top) * c.height / r.height))) }; };
+  const send = (p, d) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'touch', x: p.x, y: p.y, down: d ? 1 : 0 })); };
+  c.addEventListener('pointerdown', (e) => { down = true; c.setPointerCapture(e.pointerId); send(pos(e), true); });
+  c.addEventListener('pointermove', (e) => { if (!down) return; const now = performance.now(); if (now - last < 40) return; last = now; send(pos(e), true); });
+  const up = (e) => { if (!down) return; down = false; send(pos(e), false); };
+  c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up); }
 // ---- camera source (waveshare-cam): send RGBA frames as binary type 3
 const camCanvas = $('#camcanvas'), camCtx = camCanvas.getContext('2d'); let camStream = null, camTimer = null;
 function sendCamFrame() {

@@ -535,15 +535,40 @@ impl GpSpi {
 /// The camera engine of LCD_CAM: once started it pulls one frame per sensor period through the GDMA
 /// channel bound to trigger 5 (CAM). Only the register semantics the DVP driver needs are modelled.
 pub struct LcdCam { pub ram: RegRam, pub cam_ctrl: u32, pub cam_ctrl1: u32, pub int_raw: u32, pub int_ena: u32, pub running: bool,
-                    pub frame_cycles: u64, pub acc: u64, pub frames: u64, pub dropped: u64 }
+                    pub frame_cycles: u64, pub acc: u64, pub frames: u64, pub dropped: u64,
+                    // LCD side (RGB / DPI mode): the panel is refreshed from a GDMA out-channel on trigger 5
+                    pub lcd_clock: u32, pub lcd_user: u32, pub lcd_ctrl: u32, pub lcd_ctrl1: u32, pub lcd_acc: u64, pub lcd_frames: u64, pub lcd_line: Vec<u8> }
 impl LcdCam {
-    pub fn new() -> Self { LcdCam { ram: RegRam::new(), cam_ctrl: 0, cam_ctrl1: 0, int_raw: 0, int_ena: 0, running: false, frame_cycles: CPU_HZ / 10, acc: 0, frames: 0, dropped: 0 } }
+    pub fn new() -> Self { LcdCam { ram: RegRam::new(), cam_ctrl: 0, cam_ctrl1: 0, int_raw: 0, int_ena: 0, running: false, frame_cycles: CPU_HZ / 10, acc: 0, frames: 0, dropped: 0,
+                                    lcd_clock: 0, lcd_user: 0, lcd_ctrl: 0, lcd_ctrl1: 0, lcd_acc: 0, lcd_frames: 0, lcd_line: Vec::new() } }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
+    /// LCD RGB mode running: LCD_START (USER bit 27) with LCD_RGB_MODE_EN (CTRL bit 31).
+    pub fn lcd_running(&self) -> bool { self.lcd_user & (1 << 27) != 0 && self.lcd_ctrl & (1 << 31) != 0 }
+    /// (active width, active height, bytes per pixel, CPU cycles per frame) from the timing registers.
+    pub fn lcd_geometry(&self) -> (u32, u32, u32, u64) {
+        // the registers hold (value - 1): lcd_ll_set_horizontal/vertical_timing
+        let ha = ((self.lcd_ctrl1 >> 8) & 0xfff) + 1; let ht = ((self.lcd_ctrl1 >> 20) & 0xfff) + 1;
+        let va = ((self.lcd_ctrl >> 11) & 0x3ff) + 1; let vt = ((self.lcd_ctrl >> 21) & 0x3ff) + 1;
+        let bpp = if self.lcd_user & (1 << 23) != 0 { 2 } else { 1 };
+        // lcd_clk = src / (div_num + div_b/div_a); pclk = lcd_clk / (clkcnt_n + 1) unless CLK_EQU_SYSCLK
+        let src = match (self.lcd_clock >> 29) & 3 { 1 => 40_000_000f64, 2 => 240_000_000.0, _ => 160_000_000.0 };
+        let div_num = ((self.lcd_clock >> 9) & 0xff).max(1) as f64; let div_b = ((self.lcd_clock >> 17) & 0x3f) as f64; let div_a = ((self.lcd_clock >> 23) & 0x3f) as f64;
+        let lcd_clk = src / (div_num + if div_a > 0.0 { div_b / div_a } else { 0.0 });
+        let n = if self.lcd_clock & (1 << 6) != 0 { 1.0 } else { (self.lcd_clock & 0x3f) as f64 + 1.0 };
+        let pclk = (lcd_clk / n).max(1_000_000.0) as u64;
+        let frame_px = (ht as u64) * (vt as u64);
+        (ha, va, bpp, frame_px * CPU_HZ / pclk)
+    }
     pub fn read(&self, off: u32) -> u32 {
-        match off { 0x04 => self.cam_ctrl, 0x08 => self.cam_ctrl1, 0x64 => self.int_ena, 0x68 => self.int_raw, 0x6c => self.int_raw & self.int_ena, _ => self.ram.read(off) }
+        match off { 0x00 => self.lcd_clock, 0x04 => self.cam_ctrl, 0x08 => self.cam_ctrl1, 0x14 => self.lcd_user & !((1 << 20) | (1 << 28)), 0x1c => self.lcd_ctrl, 0x20 => self.lcd_ctrl1,
+                    0x64 => self.int_ena, 0x68 => self.int_raw, 0x6c => self.int_raw & self.int_ena, _ => self.ram.read(off) }
     }
     pub fn write(&mut self, off: u32, v: u32) {
         match off {
+            0x00 => self.lcd_clock = v,
+            0x14 => { let was = self.lcd_running(); self.lcd_user = v; if v & (1 << 28) != 0 { self.lcd_line.clear(); self.lcd_acc = 0; }   // LCD_RESET
+                      if !was && self.lcd_running() { self.lcd_line.clear(); self.lcd_acc = 0; } }
+            0x1c => self.lcd_ctrl = v, 0x20 => self.lcd_ctrl1 = v,
             0x04 => { self.cam_ctrl = v & !(1 << 4); }                                                                          // CAM_UPDATE (self-clearing)
             0x08 => { self.cam_ctrl1 = v & !(3 << 30); self.running = v & (1 << 29) != 0; if v & (1 << 30) != 0 { self.acc = 0; } }   // CAM_START / CAM_RESET
             0x64 => self.int_ena = v, 0x70 => self.int_raw &= !v,

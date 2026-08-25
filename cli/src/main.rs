@@ -68,7 +68,7 @@ fn main() {
         i += 1;
     }
     let mut m = Machine::new([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
-    m.bus.board = esp32s3::board::make_board(&board).unwrap_or_else(|| { eprintln!("unknown board '{}' (atech14, waveshare-cam, none)", board); std::process::exit(2) });
+    m.bus.board = esp32s3::board::make_board(&board).unwrap_or_else(|| { eprintln!("unknown board '{}' (atech14, waveshare-cam, waveshare-lcd4b, none)", board); std::process::exit(2) });
     for (addr, dev) in m.bus.board.i2c_devices() { m.bus.periph.i2c[0].attach(addr, dev); }
     if let Some(p) = &cam_image { match esp32s3::picture::load(p) { Ok(pic) => { eprintln!("[emu] camera picture {} ({}x{})", p, pic.w, pic.h); m.bus.board.set_camera_picture(pic); } Err(e) => { eprintln!("[emu] {}", e); std::process::exit(2); } } }
     m.bus.periph.lcd_cam.frame_cycles = (esp32s3::periph::CPU_HZ as f64 / cam_fps) as u64;
@@ -153,6 +153,7 @@ fn main() {
     if let Some(w) = &wav { match m.write_wav(w) { Ok(n) => eprintln!("[emu] wrote {} samples ({:.2} s) to {}", n, n as f64 / m.bus.periph.audio().sample_rate as f64, w), Err(e) => eprintln!("[emu] wav: {}", e) } }
     eprintln!("[emu] i2s frames out: {} (i2s0) {} (i2s1)", m.bus.periph.i2s0.frames_out, m.bus.periph.i2s1.frames_out);
     if let Some(t) = m.bus.board.tft() { eprintln!("[emu] tft: {} RAMWR, {} pixels, madctl={:#x} inverted={} on={} bbox={:?} top colours {:x?}; gpio events {}", t.frames, t.pixels_written, t.madctl, t.inverted, t.on, t.bbox(), t.histogram(5), m.bus.board.gpio_events()); }
+    if m.bus.periph.lcd_cam.lcd_frames > 0 { eprintln!("[emu] lcd: {} RGB frames", m.bus.periph.lcd_cam.lcd_frames); }
     if m.bus.periph.lcd_cam.frames + m.bus.periph.lcd_cam.dropped > 0 { eprintln!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)", m.bus.periph.lcd_cam.frames, m.bus.periph.lcd_cam.dropped); }
     if let Some(r) = m.bus.board.ring() { eprintln!("[emu] ring: {} updates, leds {:?}; rmt tx {}", r.updates, &r.leds[..4], m.bus.periph.rmt.tx_count); }
     if let Some(p) = &tft_png { match m.write_tft_png(p, 3) { Ok(()) => eprintln!("[emu] wrote {}", p), Err(e) => eprintln!("[emu] png: {}", e) } }
