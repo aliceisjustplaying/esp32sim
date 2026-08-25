@@ -259,16 +259,21 @@ impl SocBus {
     /// The virtual air: beacons/responses from the AP and frames from the network backend land in the RX ring.
     fn wifi_air_step(&mut self) {
         let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
-        // one frame reaches the MAC at a time, spaced by roughly a frame's airtime: real hardware never
-        // presents 10 descriptors at once, and the blob's RX path only *indicates* a frame when the ring is
-        // shallow (deep rings switch it to batch block-recycle, which drops the frame).
+        // The blob's RX path only *indicates* a frame up the 802.11 stack while the descriptor ring is
+        // shallow; with several filled descriptors pending it switches to batch block-recycle and drops
+        // them. So hold off until the previously delivered descriptor has been recycled by software
+        // (has_data cleared) — that is what a real radio sees at low traffic — and never deliver two
+        // frames closer than a frame's airtime.
         if now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 400 { return; }
+        let busy = { let d = self.periph.wifi.last_rx_desc; d != 0 && self.read32(d).unwrap_or(0) & (1 << 30) != 0 };
+        if busy { return; }
         let mut due = { let ap = self.periph.wifi.ap.as_mut().unwrap(); ap.step(now_us) };
         let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
         for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
         if due.is_empty() { return; }
-        // deliver the earliest, requeue the rest so they arrive on later ticks
-        due.sort_by_key(|a| a.at_us);
+        // management responses (auth, assoc, probe) go before beacons: a connect exchange must not be
+        // crowded out by beacon traffic
+        due.sort_by_key(|a| (crate::wifi::is_beacon(&a.frame), a.at_us));
         let first = due.remove(0);
         self.wifi_rx_deliver(&first.frame, now_us);
         self.periph.wifi.last_rx_us = now_us;
@@ -292,7 +297,9 @@ impl SocBus {
         // addr1 is our unicast MAC must carry the unicast-match bit (29), not the broadcast bit (28), or
         // wDev_IndicateFrame drops it as "not for me".
         let bcast = frame.len() >= 5 && frame[4] & 1 == 1;
-        let fm = if bcast { 1u32 << 28 } else { 1u32 << 29 };
+        // filter-match nibble: bit 28 is the "accepted by the address filter" bit the blob's RX path
+        // requires (silicon: a broadcast beacon reads 0x111b20ad); unicast frames add bit 29.
+        let fm = if bcast { 1u32 << 28 } else { (1u32 << 28) | (1u32 << 29) };
         let w0: u32 = fm | (0xd8u32 & 0xff);   // rssi -40 dBm, 1 Mbps, legacy
         let w2: u32 = (chan << 16) | (chan << 20);                                        // channel, secondary
         let w5: u32 = 0xa6;                                                                // noise floor -90
@@ -305,7 +312,7 @@ impl SocBus {
         let ndw0 = (dw0 & !(0xfff << 12)) | ((total as u32) << 12) | (1 << 30) | (1 << 31);   // length; owner AND has_data set (verified on silicon 2026-08-25: dw0=0xc0..)
         let _ = self.write32(desc, ndw0);
         let w = &mut self.periph.wifi;
-        w.rx_last = (desc & 0xf_ffff) | (1 << 24); w.rx_next = next & 0xf_ffff; w.rx_frames += 1; w.events |= 1 << 14;   // registers hold masked descriptor addrs; rx_last has a 0x01 prefix (silicon)
+        w.rx_last = (desc & 0xf_ffff) | (1 << 24); w.rx_next = next & 0xf_ffff; w.last_rx_desc = desc; w.rx_frames += 1; w.events |= (1 << 14) | (1 << 24);   // RX data (wDev_ProcessFiq tests 0x1004000)   // registers hold masked descriptor addrs; rx_last has a 0x01 prefix (silicon)
         if log { let d = crate::wifi::describe(frame); if d.contains("auth")||d.contains("assoc") { eprintln!("[wifi] RX AUTH/ASSOC -> desc {:#010x} buf {:#010x} {}", desc, buf, d); } else { eprintln!("[wifi] RX -> desc {:#010x} {}", desc, d); } }
         self.irq_dirty = true;
     }
@@ -358,6 +365,13 @@ impl Bus for SocBus {
         self.dma_lcd_step(cycles as u64);
         if !self.periph.wifi.tx_pending.is_empty() { self.wifi_tx_step(); }
         if self.periph.wifi.ap.is_some() { self.wifi_air_step(); }
+        if !self.periph.wifi.eth_tx.is_empty() && self.periph.wifi.net.is_some() {
+            let out = std::mem::take(&mut self.periph.wifi.eth_tx);
+            let net = self.periph.wifi.net.as_mut().unwrap();
+            let mut replies = Vec::new();
+            for e in out { replies.extend(net.handle(&e)); }
+            self.periph.wifi.eth_rx.extend(replies);
+        }
         if !self.periph.gpio.changes.is_empty() { let ch = std::mem::take(&mut self.periph.gpio.changes); self.board.gpio_changes(&ch); }
         if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
         if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }

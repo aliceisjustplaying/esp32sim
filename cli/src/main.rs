@@ -88,6 +88,9 @@ fn main() {
         }
         eprintln!("[emu] virtual AP '{}' bssid {} channel {} ({})", cfg.ssid, esp32s3::wifi::mac_str(&cfg.bssid), cfg.channel, if cfg.psk.is_some() { "WPA2-PSK" } else { "open" });
         m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg));
+        let net = esp32s3::net::VirtualNet::new();
+        eprintln!("[emu] virtual network: station {}.{}.{}.{}, gateway {}.{}.{}.{} (DHCP, ARP, ICMP)", net.sta_ip[0], net.sta_ip[1], net.sta_ip[2], net.sta_ip[3], net.gw_ip[0], net.gw_ip[1], net.gw_ip[2], net.gw_ip[3]);
+        m.bus.periph.wifi.net = Some(net);
     }
     if let Some(p) = &cam_image { match esp32s3::picture::load(p) { Ok(pic) => { eprintln!("[emu] camera picture {} ({}x{})", p, pic.w, pic.h); m.bus.board.set_camera_picture(pic); } Err(e) => { eprintln!("[emu] {}", e); std::process::exit(2); } } }
     m.bus.periph.lcd_cam.frame_cycles = (esp32s3::periph::CPU_HZ as f64 / cam_fps) as u64;
@@ -194,7 +197,9 @@ fn main() {
         }
         eprintln!("[emu] wrote {} register access rows to {}", st.len(), path);
     }
-    { let w = &m.bus.periph.wifi; if w.tx_frames + w.rx_frames > 0 { eprintln!("[emu] wifi: {} frames sent by the station, {} received ({} dropped: no descriptor){}", w.tx_frames, w.rx_frames, w.rx_dropped, w.ap.as_ref().map_or(String::new(), |ap| format!("; AP: {} beacons, {} probe responses, {} data frames from the station, state {:?}", ap.stats.0, ap.stats.1, ap.stats.2, ap.state))); } }
+    { let w = &m.bus.periph.wifi;
+      if w.tx_frames + w.rx_frames > 0 { eprintln!("[emu] wifi: {} frames sent by the station, {} received ({} dropped: no descriptor){}", w.tx_frames, w.rx_frames, w.rx_dropped, w.ap.as_ref().map_or(String::new(), |ap| format!("; AP: {} beacons, {} probe responses, {} data frames from the station, state {:?}", ap.stats.0, ap.stats.1, ap.stats.2, ap.state))); }
+      if let Some(n) = &w.net { eprintln!("[emu] net: {} DHCP leases, {} ARP replies, {} pings answered, {} frames ignored", n.dhcp_acks, n.arp_replies, n.pings, n.unhandled); } }
     if m.stub_hits > 0 { eprintln!("[emu] stubs hit {} times", m.stub_hits); }
     if m.bus.periph.lcd_cam.lcd_frames > 0 { eprintln!("[emu] lcd: {} RGB frames", m.bus.periph.lcd_cam.lcd_frames); }
     if m.bus.periph.lcd_cam.frames + m.bus.periph.lcd_cam.dropped > 0 { eprintln!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)", m.bus.periph.lcd_cam.frames, m.bus.periph.lcd_cam.dropped); }

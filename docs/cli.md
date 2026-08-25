@@ -18,7 +18,7 @@ esp32sim --flash-image flash.bin --boot rom ...
 | `--strap HEX`, `--reset-cause HEX`, `--efuse-regs F`, `--regs-init F` | reproduce a real chip's boot state (used by the differential tests) |
 | `--no-reboot` | stop at the first chip reset instead of rebooting from ROM |
 | `--stub SYMBOL[=value]` (repeatable) | return `value` (default 0) immediately when execution reaches the function's entry |
-| `--wifi SPEC` | attach a virtual access point the WiFi blob hears — `ssid=NAME,chan=N,psk=PASS,bssid=xx:..` (see docs/wifi-plan.md) |
+| `--wifi SPEC` | attach a virtual access point the WiFi blob hears, plus a virtual network (DHCP/ARP/ICMP; station 10.0.2.15, gateway 10.0.2.2) — `ssid=NAME,chan=N,psk=PASS,bssid=xx:..`. Open networks join end to end; WPA2 is not implemented yet (docs/wifi-plan.md) |
 | `--trace-fn PREFIX` (repeatable) | log every call to functions whose name starts with PREFIX, with args and caller |
 | `--regstat FILE` | write per-register access statistics (count, pc, symbol) at exit — for reverse-engineering |
 
@@ -52,7 +52,7 @@ esp32sim --flash-image flash.bin --boot rom ...
 | `--regtrace F`, `--regtrace-from-pc PC`, `--regtrace-max N` | register trace file for `hw/compare.py` |
 
 Environment: `ESP_EMU_DEBUG` (misc), `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`,
-`ESP_EMU_DEBUG_I2C` (bus traces), `ESP_EMU_LOG_ALL` (every peripheral access),
+`ESP_EMU_DEBUG_I2C` (bus traces), `ESP_EMU_DEBUG_WIFI` / `ESP_EMU_DEBUG_WIFI_FRAMES` / `ESP_EMU_DEBUG_NET`, `ESP_EMU_LOG_ALL` (every peripheral access),
 `ESP_EMU_RT_LOG` (20 ms windows that took > 40 ms wall, with PCs), `ESP_EMU_DEBUG_LCD` (LCD engine
 start/reset, DMA link restarts, descriptor completions), `ESP_EMU_DEBUG_SPI2`.
 `XTENSA_DIS_FILES=a.dis:b.dis` feeds the decoder equivalence test.

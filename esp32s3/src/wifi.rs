@@ -28,6 +28,9 @@ pub fn describe(f: &[u8]) -> String {
     s
 }
 
+/// True for a beacon frame (management subtype 8).
+pub fn is_beacon(f: &[u8]) -> bool { f.len() >= 2 && f[0] & 0x0c == 0 && (f[0] >> 4) & 0xf == 8 }
+
 #[derive(Clone, Debug)]
 pub struct ApConfig { pub ssid: String, pub bssid: [u8; 6], pub channel: u8, pub psk: Option<String> }
 
@@ -89,7 +92,8 @@ impl VirtualAp {
     }
     /// Time-driven behaviour (beacons). Returns frames due at or before `now_us`.
     pub fn step(&mut self, now_us: u64) -> Vec<AirFrame> {
-        if now_us >= self.next_beacon_us {
+        let mgmt_pending = self.queue.iter().any(|a| !is_beacon(&a.frame));
+        if now_us >= self.next_beacon_us && !mgmt_pending {
             self.next_beacon_us += self.beacon_interval_us;
             if self.next_beacon_us <= now_us { self.next_beacon_us = now_us + self.beacon_interval_us; }
             let b = self.beacon_like(8, &[0xff; 6], now_us); self.stats.0 += 1;

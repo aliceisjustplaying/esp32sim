@@ -14,43 +14,43 @@ our `0x60033000`). Everything below was learned by tracing the blob's own access
 
 ## Status
 
-Working today (`--wifi ssid=…[,chan=,psk=,bssid=]`, no firmware changes):
-- The blob boots, calibrates and reaches `wifi:mode : sta` — the PHY calibration loops
-  (`rom_pkdet_vol_start`, `txdc_cal_v70`, `ram_iq_est_enable`, the analog I2C-master handshakes,
-  the temperature sensor) are satisfied by faked done-bits.
-- **Scan**: the station transmits probe requests; the virtual AP answers with probe responses and
-  beacons; the blob receives, parses and lists the BSS (`scan_parse_beacon`, `sta_recv_mgmt`).
-- **MAC model** (`esp32s3/src/periph.rs` `WifiMac`): TX via the PLCP0 queue registers → frame
-  fetched from its DMA descriptor and completed (`txq_complete`/event bit 7, `hal_mac_get_txq_pmd`
-  result word); RX via the descriptor ring at `0x088` → `rx_ctrl` header + frame + FCS written into
-  the next descriptor, RX event bits 14/24 (`wDev_ProcessFiq` → `lmacProcessRxSucData`).
-- **Virtual AP** (`esp32s3/src/wifi.rs`): beacons, probe responses, open-system auth, association,
-  and 802.11 ↔ Ethernet translation for data frames.
-- Reaches **`state: init -> auth`** and exchanges authentication frames with the AP.
+**A station firmware now joins the virtual AP and gets an IP address, with the unmodified blob and
+no firmware changes** (`--wifi ssid=esp32sim`, open network):
 
-Progress (2026-08-25): **authentication now completes with the unmodified blob** (`cnx_auth_done`
-fires and the station proceeds to `cnx_do_assoc`). The breakthrough: the blob's RX path only
-*indicates* a frame up the stack when the descriptor ring is **shallow** — when several descriptors
-are pending at once it switches to a batch block-recycle mode (`wDev_ProcessRxSucData`/
-`wDev_IndicateFrame` receive `a3 = pending count`; `a3 = 1` -> indicate -> `ppRxPkt` -> `sta_input`,
-`a3 = 0xa` -> recycle -> dropped). The virtual AP was delivering beacons + probe responses in bursts,
-so the auth response arrived amid a deep ring and was recycled. `bus.rs::wifi_air_step` now delivers
-**one frame at a time, spaced by ~400 us of airtime** (excess requeued), which keeps the ring shallow
-and lets the auth response reach the 802.11 stack.
+```
+wifi:state: init -> auth -> assoc -> run
+wifi:connected with esp32sim, aid = 1, channel 6, BW20, bssid = 02:53:49:4d:00:01
+esp_netif_handlers: sta ip: 10.0.2.15, mask: 255.255.255.0, gw: 10.0.2.2
+wifi station: got ip:10.0.2.15
+```
 
-Determinism note: the WDEV RNG (`0x60035000+0x7c`) is fixed-seed, so runs are reproducible for
-tracing/tests.
+Working: PHY calibration (faked done-bits), scan, open-system authentication, association, and a
+minimal virtual network behind the AP (`esp32s3/src/net.rs`: DHCP, ARP, ICMP echo) so `esp_netif`
+reaches `IP_EVENT_STA_GOT_IP`. The station's data frames are unwrapped 802.11 -> Ethernet and
+answered locally.
 
-Still to do:
-- **Reliability**: auth completes on some attempts, not all — the auth response must still land in a
-  shallow-ring window, which the beacon/probe cadence can crowd. Deliver management responses in true
-  isolation (pause beacons briefly around a connect), or model the ring-depth gate exactly.
-- **Association**: `cnx_do_assoc` runs but the assoc response handling / state to CONNECTED is not yet
-  verified end to end.
-- Then **DHCP + internet** via a libslirp backend (the 802.11<->Ethernet path already exists).
+Two model bugs had to be fixed before the blob would accept a connect exchange, both found by
+tracing its own RX path (`--trace-fn`):
 
-This is the minimal AP logic that cannot be skipped for unmodified firmware; the hardware oracle
-(JTAG on the Atech board) remains available to dump the real ring/bank state when needed.
+- **`DSCR_RELOAD` must not rewind the hardware's RX pointer.** Software rewrites `BASE_RX_DSCR`
+  every time it recycles descriptors; treating that as "restart here" made every second frame land
+  in a descriptor the stack had moved past, and it was recycled instead of indicated (visible as
+  `wDev_ProcessRxSucData` alternating between the indicate and batch-recycle arguments). Base only
+  matters once the ring has actually run dry.
+- **The `rx_ctrl` filter-match nibble must set bit 28**, the "accepted by the address filter" bit
+  (silicon: a broadcast beacon reads `0x111b20ad`). With only the unicast bit 29 set, the auth
+  response reached `wDev_ProcessRxSucData` and was dropped there without ever being indicated.
+  Unicast frames now carry bits 28+29, broadcast bit 28.
+
+Not yet working:
+- **WPA2/PSK**: the AP advertises RSN but does not run the 4-way EAPOL handshake, so a firmware
+  configured with a password associates and then stalls. Open networks are the supported case
+  today. This is the next step for real projects (autopling, the energy panel), and needs
+  host-side PBKDF2/HMAC-SHA1/AES-keywrap plus the EAPOL exchange.
+- **Real internet**: `net.rs` answers the local subnet only. Outbound traffic needs the NAT
+  backend (libslirp) from docs/networking-plan.md; the 802.11 <-> Ethernet path it plugs into
+  already exists.
+- Roaming, power save, 802.11n rates, multiple stations.
 
 ## Scope: what is and isn't needed
 

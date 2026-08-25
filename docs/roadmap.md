@@ -2,9 +2,9 @@
 
 Ordered by value; each item links to its plan where one exists.
 
-1. **WiFi (full, unmodified)** — fake the radio registers + model the MAC + a virtual AP so the
-   real blob associates ([wifi-plan.md](wifi-plan.md)). In progress: scan works, auth handshake
-   reached, association next. Then a network backend (libslirp) for real internet.
+1. **WiFi (full, unmodified)** — open networks work end to end: scan, auth, association, DHCP, IP
+   ([wifi-plan.md](wifi-plan.md)). Next: WPA2 4-way handshake (real firmware uses a password), then
+   a NAT backend (libslirp) for traffic beyond the emulated subnet.
    The `esp_wifi` shim ([networking-plan.md](networking-plan.md)) remains the fallback if the
    blob route stalls; either unblocks the panel/autopling network features.
 2. **Testing** — hermetic CPU/SoC/board suites, conformance firmware, CI tiers
