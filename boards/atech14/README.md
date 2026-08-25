@@ -53,6 +53,9 @@ examples/idf-minimal/       bare ESP-IDF sample (pre-Atech)
 
 ## Setup
 
+The Atech SDK hardware modules (`firmware/lib/atech_*`) are not part of this repository; fetch
+them from the `atech` package with `make sync-sdk` before building the firmware.
+
 ```sh
 make sdk                     # .venv with the atech SDK (drivers + `atech` CLI)
 make install-wokwi-cli       # once
