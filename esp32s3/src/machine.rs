@@ -64,7 +64,7 @@ pub struct Machine {
 }
 
 #[derive(Clone, Debug)]
-pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop }
+pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bool) }
 
 #[derive(Debug)]
 pub enum Stop { MaxInsns, Breakpoint(u32), Unimplemented(u32, u32), SwReset, Halted, Simcall(u32), Watch(u32, u32, u32), Exceptions(u64) }
@@ -345,6 +345,7 @@ impl Machine {
                 ScriptAction::Gpio(pin, level) => { self.bus.periph.gpio.set_input(pin, level); self.bus.irq_dirty = true; }
                 ScriptAction::Serial(text) => self.bus.periph.usb.host_input(text.as_bytes()),
                 ScriptAction::Stop => { self.max_cycles = 0; }
+                ScriptAction::Touch(x, y, d) => { self.bus.board.touch(x, y, d); }
             }
         }
         if self.web.is_some() && self.bus.cycles.wrapping_sub(self.web_last_push_cycles) >= crate::periph::CPU_HZ / 50 { self.web_last_push_cycles = self.bus.cycles; self.web_push(); self.web_poll_input(); }
@@ -515,7 +516,7 @@ impl Machine {
     }
 
     /// Parse a script: one action per line, `<seconds> <cmd> [args]`.
-    ///   press <pin> [ms]   release <pin>   gpio <pin> <0|1>   serial <text...>   knob <cw|ccw> [detents]   stop
+    ///   press <pin> [ms]   release <pin>   gpio <pin> <0|1>   serial <text...>   knob <cw|ccw> [detents]   touch <x> <y> <0|1>   stop
     /// Buttons/encoder are active-low with pull-ups (release = 1).
     pub fn load_script(&mut self, text: &str) -> Result<(), String> {
         use crate::board::*;
@@ -535,6 +536,7 @@ impl Machine {
                              ev.push((c, ScriptAction::Gpio(pn, false))); ev.push((c + (ms / 1000.0 * hz) as u64, ScriptAction::Gpio(pn, true))); }
                 "release" => ev.push((c, ScriptAction::Gpio(pin(rest)?, true))),
                 "gpio" => { let mut p = rest.split_whitespace(); let pn = pin(p.next().unwrap_or(""))?; let l = p.next().unwrap_or("1") == "1"; ev.push((c, ScriptAction::Gpio(pn, l))); }
+                "touch" => { let mut p = rest.split_whitespace(); let x: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0); let d = p.next().unwrap_or("1") == "1"; ev.push((c, ScriptAction::Touch(x, y, d))); }
                 "serial" => ev.push((c, ScriptAction::Serial(format!("{}\n", rest)))),
                 "knob" => {
                     let mut p = rest.split_whitespace(); let dir = p.next().unwrap_or("cw"); let n: usize = p.next().map(|x| x.parse().unwrap_or(1)).unwrap_or(1);

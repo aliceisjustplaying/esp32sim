@@ -35,6 +35,12 @@ Things that cost real time to find out, recorded so they do not have to be found
   `IN_PERI_SEL` is +0x48. The camera is trigger 5 on the in side.
 - **LCD_CAM `cam_start` is CTRL1 bit 29 and takes effect directly** — not gated by
   `CAM_UPDATE`; `cam_ll_start` sets update first, then start.
+- **LCD_CAM RGB output**: timing registers hold value−1; pclk = src/(div_num + b/a)/(clkcnt_n+1),
+  clk_sel 3 = PLL160M, 2 = PLL240M; the engine's 16-word async FIFO runs ahead of the pixel clock and
+  the RGB driver relies on that when it restarts the DMA link mid-frame (skips FIFO depth + 1 pixels) —
+  without the lookahead the picture drifts 17 px per restart; a one-byte misalignment byte-swaps colours.
+- **Touch controllers must latch**: LVGL polls the GT911 every 30 ms; a UI click shorter than that must
+  stay readable until the driver has seen it, or taps are lost.
 - **`cycles * 1e9 / CPU_HZ` overflows u64 at 76.86 s** — keep wall/emulated time in f64.
 - **WebSocket sends must not block the emulator thread** — a frozen browser tab stalled
   emulation until sends moved to per-client writer threads with bounded queues.

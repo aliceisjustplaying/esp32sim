@@ -181,47 +181,58 @@ impl SocBus {
 
     /// LCD RGB output: consume the GDMA out-channel bound to LCD (trigger 5) at the panel's pixel rate,
     /// assemble frames, publish each completed frame to the board and raise LCD_VSYNC.
+    /// LCD RGB output. The LCD engine's async FIFO (16 words) is kept full ahead of the pixel clock,
+    /// so a DMA link restart mid-frame (the RGB driver skips LCD_FIFO_PRESERVE_SIZE_PX pixels then)
+    /// behaves as on silicon. Frames are published to the board and raise LCD_VSYNC.
     fn dma_lcd_step(&mut self, cycles: u64) {
         if !self.periph.lcd_cam.lcd_running() { return; }
         let (ha, va, bpp, frame_cycles) = self.periph.lcd_cam.lcd_geometry();
         let frame_bytes = (ha * va * bpp) as usize;
         if frame_bytes == 0 { return; }
+        const FIFO_BYTES: usize = 17 * 2;
         self.periph.lcd_cam.lcd_acc += cycles;
         let due = (self.periph.lcd_cam.lcd_acc as u128 * frame_bytes as u128 / frame_cycles as u128) as usize;
         if due < 512 { return; }
         self.periph.lcd_cam.lcd_acc = 0;
-        let Some(ch) = self.periph.gdma.out_channel_for(5) else { return };
-        let mut need = due.min(frame_bytes);
-        while need > 0 {
-            let c = self.periph.gdma.out[ch];
-            if !c.running || c.desc == 0 { break; }
-            let dw0 = self.read32(c.desc).unwrap_or(0);
-            let length = (dw0 >> 12) & 0xfff; let eof = dw0 & (1 << 30) != 0; let buf = self.read32(c.desc + 4).unwrap_or(0); let next = self.read32(c.desc + 8).unwrap_or(0);
-            let remaining = length.saturating_sub(c.buf_pos) as usize;
-            if remaining == 0 {
-                let ch_ref = &mut self.periph.gdma.out[ch];
-                ch_ref.int_raw |= 1 << 0;
-                if eof { ch_ref.int_raw |= 1 << 1; ch_ref.eof_desc = c.desc; }
-                if next == 0 { ch_ref.running = false; ch_ref.desc = 0; ch_ref.int_raw |= 1 << 3; break; }
-                ch_ref.desc = next; ch_ref.buf_pos = 0;
-                self.irq_dirty = true;
-                continue;
+        let log = self.periph.lcd_cam.lcd_log;
+        // 1) top the FIFO up from DMA so that it holds `due` + lookahead bytes
+        if let Some(ch) = self.periph.gdma.out_channel_for(5) {
+            let mut want = (due + FIFO_BYTES).saturating_sub(self.periph.lcd_cam.lcd_fifo.len());
+            while want > 0 {
+                let c = self.periph.gdma.out[ch];
+                if !c.running || c.desc == 0 { break; }
+                let dw0 = self.read32(c.desc).unwrap_or(0);
+                let length = (dw0 >> 12) & 0xfff; let eof = dw0 & (1 << 30) != 0; let buf = self.read32(c.desc + 4).unwrap_or(0); let next = self.read32(c.desc + 8).unwrap_or(0);
+                let remaining = length.saturating_sub(c.buf_pos) as usize;
+                if remaining == 0 {
+                    if log { eprintln!("[lcd] desc {:#010x} done (buf {:#010x} len {} eof {}) -> next {:#010x}", c.desc, buf, length, eof, next); }
+                    let ch_ref = &mut self.periph.gdma.out[ch];
+                    ch_ref.int_raw |= 1 << 0;
+                    if eof { ch_ref.int_raw |= 1 << 1; ch_ref.eof_desc = c.desc; }
+                    if next == 0 { ch_ref.running = false; ch_ref.desc = 0; ch_ref.int_raw |= 1 << 3; break; }
+                    ch_ref.desc = next; ch_ref.buf_pos = 0;
+                    self.irq_dirty = true;
+                    continue;
+                }
+                let take = remaining.min(want);
+                let start = buf + c.buf_pos;
+                let mut i = 0usize;
+                while i + 4 <= take && (start + i as u32) & 3 == 0 { let v = self.read32(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_fifo.extend(v.to_le_bytes()); i += 4; }
+                while i < take { let b = self.read8(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_fifo.push_back(b); i += 1; }
+                self.periph.gdma.out[ch].buf_pos += take as u32;
+                want -= take;
             }
-            let take = remaining.min(need);
-            let start = buf + c.buf_pos;
-            let mut i = 0usize;
-            while i + 4 <= take { let v = self.read32(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_line.extend_from_slice(&v.to_le_bytes()); i += 4; }
-            while i < take { let b = self.read8(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_line.push(b); i += 1; }
-            self.periph.gdma.out[ch].buf_pos += take as u32;
-            need -= take;
-            if self.periph.lcd_cam.lcd_line.len() >= frame_bytes {
-                let frame = std::mem::take(&mut self.periph.lcd_cam.lcd_line);
-                self.board.lcd_frame(ha, va, &frame[..frame_bytes]);
-                if frame.len() > frame_bytes { self.periph.lcd_cam.lcd_line.extend_from_slice(&frame[frame_bytes..]); }
-                self.periph.lcd_cam.lcd_frames += 1;
-                self.periph.lcd_cam.int_raw |= 1 << 0;                                    // LCD_VSYNC_INT
-                self.irq_dirty = true;
-            }
+        }
+        // 2) the panel consumes `due` bytes from the FIFO
+        let n = due.min(self.periph.lcd_cam.lcd_fifo.len());
+        for _ in 0..n { let b = self.periph.lcd_cam.lcd_fifo.pop_front().unwrap(); self.periph.lcd_cam.lcd_line.push(b); }
+        while self.periph.lcd_cam.lcd_line.len() >= frame_bytes {
+            let frame = std::mem::take(&mut self.periph.lcd_cam.lcd_line);
+            self.board.lcd_frame(ha, va, &frame[..frame_bytes]);
+            if frame.len() > frame_bytes { self.periph.lcd_cam.lcd_line.extend_from_slice(&frame[frame_bytes..]); }
+            self.periph.lcd_cam.lcd_frames += 1;
+            self.periph.lcd_cam.int_raw |= 1 << 0;                                    // LCD_VSYNC_INT
+            self.irq_dirty = true;
         }
     }
 

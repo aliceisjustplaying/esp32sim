@@ -537,10 +537,10 @@ impl GpSpi {
 pub struct LcdCam { pub ram: RegRam, pub cam_ctrl: u32, pub cam_ctrl1: u32, pub int_raw: u32, pub int_ena: u32, pub running: bool,
                     pub frame_cycles: u64, pub acc: u64, pub frames: u64, pub dropped: u64,
                     // LCD side (RGB / DPI mode): the panel is refreshed from a GDMA out-channel on trigger 5
-                    pub lcd_clock: u32, pub lcd_user: u32, pub lcd_ctrl: u32, pub lcd_ctrl1: u32, pub lcd_acc: u64, pub lcd_frames: u64, pub lcd_line: Vec<u8> }
+                    pub lcd_clock: u32, pub lcd_user: u32, pub lcd_ctrl: u32, pub lcd_ctrl1: u32, pub lcd_acc: u64, pub lcd_frames: u64, pub lcd_line: Vec<u8>, pub lcd_fifo: std::collections::VecDeque<u8>, pub lcd_log: bool }
 impl LcdCam {
     pub fn new() -> Self { LcdCam { ram: RegRam::new(), cam_ctrl: 0, cam_ctrl1: 0, int_raw: 0, int_ena: 0, running: false, frame_cycles: CPU_HZ / 10, acc: 0, frames: 0, dropped: 0,
-                                    lcd_clock: 0, lcd_user: 0, lcd_ctrl: 0, lcd_ctrl1: 0, lcd_acc: 0, lcd_frames: 0, lcd_line: Vec::new() } }
+                                    lcd_clock: 0, lcd_user: 0, lcd_ctrl: 0, lcd_ctrl1: 0, lcd_acc: 0, lcd_frames: 0, lcd_line: Vec::new(), lcd_fifo: std::collections::VecDeque::new(), lcd_log: std::env::var("ESP_EMU_DEBUG_LCD").is_ok() } }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
     /// LCD RGB mode running: LCD_START (USER bit 27) with LCD_RGB_MODE_EN (CTRL bit 31).
     pub fn lcd_running(&self) -> bool { self.lcd_user & (1 << 27) != 0 && self.lcd_ctrl & (1 << 31) != 0 }
@@ -566,8 +566,11 @@ impl LcdCam {
     pub fn write(&mut self, off: u32, v: u32) {
         match off {
             0x00 => self.lcd_clock = v,
-            0x14 => { let was = self.lcd_running(); self.lcd_user = v; if v & (1 << 28) != 0 { self.lcd_line.clear(); self.lcd_acc = 0; }   // LCD_RESET
-                      if !was && self.lcd_running() { self.lcd_line.clear(); self.lcd_acc = 0; } }
+            0x14 => { let was = self.lcd_running(); self.lcd_user = v;
+                      if v & (1 << 28) != 0 { self.lcd_line.clear(); self.lcd_fifo.clear(); self.lcd_acc = 0; }                       // LCD_RESET
+                      if !was && self.lcd_running() { self.lcd_line.clear(); self.lcd_acc = 0; }
+                      if self.lcd_log { eprintln!("[lcd] USER <- {:#010x} (start {} reset {} update {})", v, v >> 27 & 1, v >> 28 & 1, v >> 20 & 1); } }
+            0x18 => { if v & (1 << 27) != 0 { self.lcd_fifo.clear(); if self.lcd_log { eprintln!("[lcd] AFIFO reset"); } } self.ram.write(off, v); }   // LCD_MISC.AFIFO_RESET
             0x1c => self.lcd_ctrl = v, 0x20 => self.lcd_ctrl1 = v,
             0x04 => { self.cam_ctrl = v & !(1 << 4); }                                                                          // CAM_UPDATE (self-clearing)
             0x08 => { self.cam_ctrl1 = v & !(3 << 30); self.running = v & (1 << 29) != 0; if v & (1 << 30) != 0 { self.acc = 0; } }   // CAM_START / CAM_RESET
@@ -1157,7 +1160,7 @@ impl Gdma {
                 0x64 => c.conf1 = v, 0x70 => c.int_ena = v, 0x74 => c.int_raw &= !v,
                 0x80 => {
                     c.link = v & 0xF_FFFF;
-                    if v & (1 << 21) != 0 || v & (1 << 22) != 0 { c.desc = DMA_ADDR_BASE | (v & 0xF_FFFF); c.buf_pos = 0; c.running = true; }   // START / RESTART
+                    if v & (1 << 21) != 0 || v & (1 << 22) != 0 { c.desc = DMA_ADDR_BASE | (v & 0xF_FFFF); c.buf_pos = 0; c.running = true; if c.peri_sel == 5 && std::env::var("ESP_EMU_DEBUG_LCD").is_ok() { eprintln!("[lcd] gdma out link {} at {:#010x}", if v & (1 << 22) != 0 { "RESTART" } else { "START" }, c.desc); } }   // START / RESTART
                     if v & (1 << 20) != 0 { c.running = false; }                                                                                 // STOP
                 }
                 0xa4 => c.pri = v, 0xa8 => c.peri_sel = v & 0x3f,

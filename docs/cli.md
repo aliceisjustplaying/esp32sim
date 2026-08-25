@@ -50,7 +50,8 @@ esp32sim --flash-image flash.bin --boot rom ...
 
 Environment: `ESP_EMU_DEBUG` (misc), `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`,
 `ESP_EMU_DEBUG_I2C` (bus traces), `ESP_EMU_LOG_ALL` (every peripheral access),
-`ESP_EMU_RT_LOG` (20 ms windows that took > 40 ms wall, with PCs).
+`ESP_EMU_RT_LOG` (20 ms windows that took > 40 ms wall, with PCs), `ESP_EMU_DEBUG_LCD` (LCD engine
+start/reset, DMA link restarts, descriptor completions), `ESP_EMU_DEBUG_SPI2`.
 `XTENSA_DIS_FILES=a.dis:b.dis` feeds the decoder equivalence test.
 
 ## Action scripts
@@ -63,6 +64,7 @@ One action per line, `<seconds> <cmd> [args]`; buttons/encoder are active low.
 2.5  gpio 17 0
 3.0  knob cw 3             # 3 detents clockwise (ccw for the other way)
 4.0  serial {"action":"set_note","value":"5"}
+4.5  touch 450 30 1        # touch panel press at (450,30); `touch x y 0` releases
 5.5  stop
 ```
 
