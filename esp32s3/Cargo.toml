@@ -1,0 +1,9 @@
+[package]
+name = "esp32s3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ESP32-S3 SoC emulation (memory map, cache MMU, peripherals) on the xtensa-lx7 core"
+
+[dependencies]
+xtensa-lx7 = { path = "../xtensa-lx7" }

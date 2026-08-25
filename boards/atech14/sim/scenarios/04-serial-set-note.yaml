@@ -1,0 +1,13 @@
+name: Host selects note A via the SDK action envelope, button plays A4
+version: 1
+author: atech-sim
+steps:
+  - wait-serial: "FreeRTOS tasks started!"
+  - delay: 300ms
+  - write-serial: "{\"action\":\"set_note\",\"value\":\"5\"}\n"
+  - delay: 300ms
+  - set-control: { part-id: btn1, control: pressed, value: 1 }
+  - wait-serial: "SIM:AUDIO:note=A4"
+  - wait-serial: '"key":"note_triggered","value":"A4"'
+  - set-control: { part-id: btn1, control: pressed, value: 0 }
+  - take-screenshot: { part-id: tft, save-to: ../sim/screenshots/04-note-A4-tft.png }

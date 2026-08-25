@@ -1,0 +1,13 @@
+name: Octave change, trigger_note plays C5, play_chord_voices renders 3 voices
+version: 1
+author: atech-sim
+steps:
+  - wait-serial: "FreeRTOS tasks started!"
+  - delay: 300ms
+  - write-serial: "{\"action\":\"set_octave\",\"value\":\"5\"}\n"
+  - delay: 200ms
+  - write-serial: "{\"action\":\"trigger_note\",\"value\":\"\"}\n"
+  - wait-serial: "SIM:AUDIO:note=C5"
+  - wait-serial: '"key":"note_triggered","value":"C"'
+  - write-serial: "{\"action\":\"play_chord_voices\",\"value\":\"\"}\n"
+  - wait-serial: "SIM:AUDIO:note="

@@ -1,0 +1,10 @@
+pub mod board;
+pub mod bus;
+pub mod elf;
+pub mod image;
+pub mod machine;
+pub mod periph;
+pub mod i2c;
+pub mod picture;
+pub mod web;
+pub use machine::{Machine, Stop};

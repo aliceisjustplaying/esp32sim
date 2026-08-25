@@ -1,0 +1,13 @@
+name: Boots, initialises all modules (speaker, TFT, encoder ring), starts main task
+version: 1
+author: atech-sim
+steps:
+  - wait-serial: "ATECH BOOT"
+  - wait-serial: "SIM:AUDIO:init port=0 rate=44100"
+  - wait-serial: "SIM:AUDIO:pins port=0 bclk=12 lrclk=13 dout=10"
+  - wait-serial: "ST7735 display initialized"
+  - wait-serial: "[RotaryEncoder] Ring initialized on pin 8"
+  - wait-serial: "Setup complete!"
+  - wait-serial: "FreeRTOS tasks started!"
+  - delay: 500ms
+  - take-screenshot: { part-id: tft, save-to: ../sim/screenshots/01-boot-tft.png }

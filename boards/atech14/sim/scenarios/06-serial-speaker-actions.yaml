@@ -1,0 +1,16 @@
+name: Speaker driver actions over serial - volume, play_note (background task), stop, ring
+version: 1
+author: atech-sim
+steps:
+  - wait-serial: "FreeRTOS tasks started!"
+  - delay: 300ms
+  - write-serial: "{\"action\":\"set_volume\",\"value\":\"1.0\"}\n"
+  - write-serial: "{\"action\":\"play_note\",\"value\":\"{\\\"frequency\\\":880,\\\"duration\\\":400}\"}\n"
+  - wait-serial: "SIM:AUDIO:note=A5"
+  - write-serial: "{\"action\":\"speaker_stop\",\"value\":\"\"}\n"
+  - write-serial: "{\"action\":\"set_ring_color\",\"value\":\"{\\\"r\\\":255,\\\"g\\\":0,\\\"b\\\":64}\"}\n"
+  - write-serial: "{\"action\":\"set_ring_brightness\",\"value\":\"200\"}\n"
+  - delay: 300ms
+  # still alive after the ring commands: a plain tone renders
+  - write-serial: "{\"action\":\"play_tone\",\"value\":\"{\\\"frequency\\\":440,\\\"duration\\\":300}\"}\n"
+  - wait-serial: "SIM:AUDIO:note=A4"
