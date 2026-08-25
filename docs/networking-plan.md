@@ -37,8 +37,8 @@ not cross; use IP addresses or add an emulator-side mDNS responder later.
 - `esp32s3/src/net.rs`: `--net none|user[,hostfwd=tcp:127.0.0.1:8080-:80,...]` backed by
   libslirp (FFI, own thread; frames exchanged through a channel; `--pcap file` for Wireshark).
 - UI: a **Network** card — guest IP, TX/RX counters, active forwards, link up/down toggle.
-- Free core 0: recognise the blob's PHY-calibration spin (`esp_wifi_start` with no RF) and
-  report "WiFi not emulated" once instead of burning 50 % of the emulator on it.
+- Free core 0: done as `--stub esp_wifi_start=0` (a synthetic return at the function entry);
+  the real fix is the shim in phase 2.
 - Validate: IDF `examples/protocols/http_request` built with ETHERNET+OPENETH fetches a real
   URL; then **autopling** rebuilt with the same two menuconfig options → its web UI on
   `http://127.0.0.1:8080`, `curl -X POST …/api/pling` plings the emulated speaker,

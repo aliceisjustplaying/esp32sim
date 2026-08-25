@@ -9,6 +9,9 @@ use xtensa_lx7::{decode, disasm, step, Cpu, Trap};
 pub struct Machine {
     pub mac: [u8; 6],
     pub reboots: u64,
+    /// function stubs: at this PC (a function entry, before its `entry`), return `value` in a2 immediately
+    pub stubs: std::collections::HashMap<u32, u32>,
+    pub stub_hits: u64,
     pub cpu: Cpu,
     /// APP CPU (core 1)
     pub cpu1: Cpu,
@@ -68,7 +71,7 @@ pub enum Stop { MaxInsns, Breakpoint(u32), Unimplemented(u32, u32), SwReset, Hal
 
 impl Machine {
     pub fn new(mac: [u8; 6]) -> Self {
-        Machine { mac, reboots: 0, cpu: Cpu::new(0xCDCD), cpu1: Cpu::new(0xABAB), core1_was_reset: true, bus: SocBus::new(8 * 1024 * 1024, 2 * 1024 * 1024, mac), symbols: BTreeMap::new(),
+        Machine { mac, reboots: 0, stubs: std::collections::HashMap::new(), stub_hits: 0, cpu: Cpu::new(0xCDCD), cpu1: Cpu::new(0xABAB), core1_was_reset: true, bus: SocBus::new(8 * 1024 * 1024, 2 * 1024 * 1024, mac), symbols: BTreeMap::new(),
                   trace: false, trace_from: 0, breakpoints: Vec::new(), stop_on_unimplemented: true, console: Vec::new(), exceptions: 0, interrupts: 0, watch: None, stop_after_exceptions: u64::MAX, profile: None, irq_hist: [[0; 32]; 2], script: Vec::new(), script_pos: 0, max_cycles: u64::MAX, script_log: true, console_mask: 3, console_prefix: false, regtrace: None, regtrace_core: 0, regtrace_max: u64::MAX, regtrace_from_pc: None, regtrace_armed: true, regtrace_count: 0, web: None, realtime: false, wall_start: None, web_last_frame: 0, web_audio_sent: 0, web_ring_updates: 0, web_last_push_cycles: 0, console_usb: Vec::new(), console_uart0: Vec::new(), knob_next: 0, web_px_pending: 0, web_px_sent: 0, rt_last_check: 0, rt_behind: 0.0, irq_poll: 0, rt_resyncs: 0, rt_log: std::env::var("ESP_EMU_RT_LOG").is_ok(), rt_log_last: None, rt_log_insns: (0, 0), web_cam_pushed: u64::MAX, web_cam_sent: false }
     }
 
@@ -181,6 +184,9 @@ impl Machine {
         cause
     }
 
+    /// Address of a symbol loaded from the ELFs.
+    pub fn sym_addr(&self, name: &str) -> Option<u32> { self.symbols.iter().find(|(_, n)| n.as_str() == name).map(|(&a, _)| a) }
+
     pub fn sym(&self, addr: u32) -> String {
         match self.symbols.range(..=addr).next_back() {
             Some((&a, n)) if addr - a < 0x10000 => if a == addr { n.clone() } else { format!("{}+{:#x}", n, addr - a) },
@@ -216,6 +222,17 @@ impl Machine {
     fn step_core(&mut self, core: usize) -> Option<Stop> {
         let (cpu, bus) = if core == 0 { (&mut self.cpu, &mut self.bus) } else { (&mut self.cpu1, &mut self.bus) };
         let pc = cpu.pc;
+        if !self.stubs.is_empty() && !cpu.waiting {
+            if let Some(&ret) = self.stubs.get(&pc) {
+                // synthetic return from a windowed function entry (its `entry` has not executed): a0 holds
+                // the return address with the call increment in bits 31:30; no window rotation to undo
+                let a0 = cpu.get_ar(0);
+                cpu.set_ar(2, ret);
+                cpu.pc = (a0 & 0x3fff_ffff) | (pc & 0xc000_0000);
+                cpu.insn_count += 1; cpu.advance_ccount(1); self.stub_hits += 1;
+                return None;
+            }
+        }
         if !self.breakpoints.is_empty() && self.breakpoints.contains(&pc) && cpu.insn_count > 0 { return Some(Stop::Breakpoint(pc)); }
         if self.trace && cpu.insn_count >= self.trace_from {
             if let Ok(b) = bus.fetch(pc) {

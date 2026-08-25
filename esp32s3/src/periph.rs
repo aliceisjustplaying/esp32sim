@@ -1076,6 +1076,7 @@ impl I2cMst {
                 if c & (1 << 24) == 0 { let key = c & 0xffff; let d = *self.ana.get(&key).unwrap_or(&0) as u32; (c & !(0xff << 16) & !(1 << 25)) | (d << 16) } else { c & !(1 << 25) }
             }
             0x40 => self.ram.read(off) | (1 << 24),   // ANA_CONF0: BBPLL_CAL_DONE
+            0x50 => self.ram.read(off) | (7 << 24),   // ROM rom_pkdet_vol_start polls bits 26:24 == 7 (calibration done)
             _ => self.ram.read(off),
         }
     }

@@ -16,7 +16,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut rom = find_rom(); let mut bootloader = None; let mut ptable = None; let mut app = None; let mut elfs: Vec<String> = Vec::new();
     let mut boot = "app".to_string(); let mut max_insns = u64::MAX; let mut trace = false; let mut trace_from = 0u64;
-    let mut breaks = Vec::new(); let mut log_periph = false; let mut dump_at_end = true; let mut peeks: Vec<(u32, usize)> = Vec::new(); let mut disasms: Vec<(u32, usize)> = Vec::new(); let mut watch = None; let mut stop_exc = u64::MAX; let mut profile = false; let mut wav: Option<String> = None; let mut tft_png: Option<String> = None; let mut gram_png: Option<String> = None; let mut script: Option<String> = None; let mut max_seconds: Option<f64> = None; let mut console = "both".to_string(); let mut console_prefix = false; let mut regtrace: Option<String> = None; let mut regtrace_max = u64::MAX; let mut regtrace_from_pc: Option<u32> = None; let mut efuse_file: Option<String> = None; let mut regs_init: Option<String> = None; let mut web_port: Option<u16> = None; let mut realtime = false; let mut web_dir: Option<String> = None; let mut strap: Option<u32> = None; let mut reset_cause: Option<u32> = None; let mut flash_mb: usize = 8; let mut flash_image: Option<String> = None; let mut board = "atech14".to_string(); let mut no_reboot = false; let mut psram_mb: usize = 2; let mut cam_image: Option<String> = None; let mut cam_fps: f64 = 10.0;
+    let mut breaks = Vec::new(); let mut log_periph = false; let mut dump_at_end = true; let mut peeks: Vec<(u32, usize)> = Vec::new(); let mut disasms: Vec<(u32, usize)> = Vec::new(); let mut watch = None; let mut stop_exc = u64::MAX; let mut profile = false; let mut wav: Option<String> = None; let mut tft_png: Option<String> = None; let mut gram_png: Option<String> = None; let mut script: Option<String> = None; let mut max_seconds: Option<f64> = None; let mut console = "both".to_string(); let mut console_prefix = false; let mut regtrace: Option<String> = None; let mut regtrace_max = u64::MAX; let mut regtrace_from_pc: Option<u32> = None; let mut efuse_file: Option<String> = None; let mut regs_init: Option<String> = None; let mut web_port: Option<u16> = None; let mut realtime = false; let mut web_dir: Option<String> = None; let mut strap: Option<u32> = None; let mut reset_cause: Option<u32> = None; let mut flash_mb: usize = 8; let mut flash_image: Option<String> = None; let mut board = "atech14".to_string(); let mut no_reboot = false; let mut psram_mb: usize = 2; let mut cam_image: Option<String> = None; let mut cam_fps: f64 = 10.0; let mut stubs: Vec<String> = Vec::new();
     let mut i = 1;
     while i < args.len() {
         let a = args[i].as_str();
@@ -60,6 +60,7 @@ fn main() {
             "--psram-mb" => psram_mb = next().parse().expect("mb"),
             "--cam-image" => cam_image = Some(next()),
             "--cam-fps" => cam_fps = next().parse().expect("fps"),
+            "--stub" => stubs.push(next()),
             "--flash-image" => flash_image = Some(next()),      // raw flash dump written at offset 0
             "--max-seconds" => max_seconds = Some(next().parse().expect("seconds")),
             "--gram-png" => gram_png = Some(next()),
@@ -81,6 +82,12 @@ fn main() {
     if let Some(p) = &ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }
     if let Some(p) = &app { m.write_flash(0x10000, &std::fs::read(p).expect("app")).unwrap(); }
     for p in &elfs { m.add_symbols(&std::fs::read(p).expect("elf")).expect("elf symbols"); }
+    for st in &stubs {
+        let (name, val) = match st.split_once('=') { Some((n, v)) => (n, u32::from_str_radix(v.trim_start_matches("0x"), if v.starts_with("0x") { 16 } else { 10 }).unwrap_or(0)), None => (st.as_str(), 0) };
+        let addr = if let Some(a) = m.sym_addr(name) { a } else if let Ok(a) = u32::from_str_radix(name.trim_start_matches("0x"), 16) { a } else { eprintln!("--stub: unknown symbol {}", name); std::process::exit(2) };
+        eprintln!("[emu] stub {} @ {:#010x} -> returns {:#x}", name, addr, val);
+        m.stubs.insert(addr, val);
+    }
     match boot.as_str() {
         "app" => { let entry = m.boot_app(0x10000).expect("boot app"); eprintln!("[emu] app boot: entry {:#010x} {}", entry, m.sym(entry)); }
         "rom" => { m.boot_rom(); eprintln!("[emu] ROM boot from reset vector {:#010x}", m.cpu.pc); }
@@ -153,6 +160,7 @@ fn main() {
     if let Some(w) = &wav { match m.write_wav(w) { Ok(n) => eprintln!("[emu] wrote {} samples ({:.2} s) to {}", n, n as f64 / m.bus.periph.audio().sample_rate as f64, w), Err(e) => eprintln!("[emu] wav: {}", e) } }
     eprintln!("[emu] i2s frames out: {} (i2s0) {} (i2s1)", m.bus.periph.i2s0.frames_out, m.bus.periph.i2s1.frames_out);
     if let Some(t) = m.bus.board.tft() { eprintln!("[emu] tft: {} RAMWR, {} pixels, madctl={:#x} inverted={} on={} bbox={:?} top colours {:x?}; gpio events {}", t.frames, t.pixels_written, t.madctl, t.inverted, t.on, t.bbox(), t.histogram(5), m.bus.board.gpio_events()); }
+    if m.stub_hits > 0 { eprintln!("[emu] stubs hit {} times", m.stub_hits); }
     if m.bus.periph.lcd_cam.lcd_frames > 0 { eprintln!("[emu] lcd: {} RGB frames", m.bus.periph.lcd_cam.lcd_frames); }
     if m.bus.periph.lcd_cam.frames + m.bus.periph.lcd_cam.dropped > 0 { eprintln!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)", m.bus.periph.lcd_cam.frames, m.bus.periph.lcd_cam.dropped); }
     if let Some(r) = m.bus.board.ring() { eprintln!("[emu] ring: {} updates, leds {:?}; rmt tx {}", r.updates, &r.leds[..4], m.bus.periph.rmt.tx_count); }

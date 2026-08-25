@@ -22,10 +22,10 @@ registers are logged with `--log-periph`).
 | GDMA | 0x6003F000 | partial | out-channels (I2S0/I2S1) and in-channels (CAM); descriptor walk, DONE/EOF/TOTAL_EOF |
 | I2S0 / I2S1 | 0x6000F000/2D000 | partial | TX: clock config, sample rate, 16-bit stereo capture to PCM; RX — |
 | RMT | 0x60016000 | partial | TX channels: symbol RAM, clock divider, end marker, done interrupt; RX — |
-| LCD_CAM | 0x60041000 | partial | camera engine: start/reset, VSYNC interrupt, frame pump to GDMA; LCD side — |
+| LCD_CAM | 0x60041000 | partial | camera engine (start/reset, VSYNC, frame pump from GDMA RX) and the LCD RGB/DPI engine (timing/clock registers, frame pump into GDMA TX, LCD_VSYNC); i8080 LCD mode — |
 | SHA | 0x6003B000 | full | SHA-1/224/256 in block mode (bootloader image verification) |
 | RNG | 0x6003B000 | full | random words |
-| regi2c (PLL/BBPLL) | 0x60021000 | stub | reads back what was written |
+| regi2c / I2C_MST (PLL, RF analog) | 0x6000E000 | stub | reads back what was written; BBPLL and pkdet calibration-done bits set |
 | GP-SPI2 master | 0x60024000 | partial | CPU-driven transfers (command/address/MOSI phases, W0–W15, UPDATE/USR, TRANS_DONE); DMA and MISO devices — |
 | PCNT | 0x60017000 | full | 4 units × 2 channels, pos/neg/ctrl modes via the GPIO matrix, limits/thresholds/zero events, counter reset/pause |
 | LEDC, ADC, SPI3, TWAI, SDMMC, USB-OTG | — | — | |

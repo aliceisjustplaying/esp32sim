@@ -17,6 +17,7 @@ esp32sim --flash-image flash.bin --boot rom ...
 | `--board atech14\|waveshare-cam\|none` | board model (default atech14) |
 | `--strap HEX`, `--reset-cause HEX`, `--efuse-regs F`, `--regs-init F` | reproduce a real chip's boot state (used by the differential tests) |
 | `--no-reboot` | stop at the first chip reset instead of rebooting from ROM |
+| `--stub SYMBOL[=value]` (repeatable) | return `value` (default 0) immediately when execution reaches the function's entry — e.g. `--stub esp_wifi_start=0` keeps the WiFi blob from spinning in PHY calibration until the network backend exists |
 
 ## Running
 | Flag | Meaning |

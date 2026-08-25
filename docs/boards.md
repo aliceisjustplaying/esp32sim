@@ -42,6 +42,18 @@ Firmware, hostsim and Wokwi scenarios: `boards/atech14/`.
 
 Needs `--flash-mb 16 --psram-mb 8`. Example: `examples/waveshare-cam/run-autopling.sh`.
 
+## `waveshare-lcd4b` — Waveshare ESP32-S3-Touch-LCD-4B
+
+| Device | Bus | Model |
+| --- | --- | --- |
+| TCA9554 IO expander @0x20 | I2C0 (SDA 47, SCL 48) | 4 registers; decodes the 9-bit SPI the firmware bit-bangs on EXIO0–2 into the ST7701S init stream |
+| ST7701S 480×480 panel | LCD_CAM RGB (16-bit: D0–D15, DE 17, VSYNC 3, HSYNC 46, PCLK 9) | frames assembled from the GDMA out-channel at the programmed pixel clock (bounce buffers or direct framebuffer), `LCD_VSYNC` per frame |
+| GT911 touch @0x14 | I2C0 | product ID/config/status/points; UI pointer events become touch points (latched until the driver reads them) |
+| ES8311 / ES7210 | I2C0 @0x18 / 0x40; I2S0 (MCLK 5, BCLK 16) | codec registers; audio captured from I2S0 |
+| Backlight LEDC on GPIO 4 | LEDC | unmodelled, harmless |
+
+Needs `--flash-mb 16 --psram-mb 8`; `examples/waveshare-lcd4b/run-energy-panel.sh` runs the esp32-screen panel.
+
 ## `none` — bare module
 
 No devices; console only. For stock ESP-IDF projects (`examples/hello_world`).

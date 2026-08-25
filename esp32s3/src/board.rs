@@ -298,5 +298,8 @@ impl BoardModel for WaveshareLcd4b {
         self.frames += 1;
     }
     fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> { Some((self.w, self.h, self.frame.clone(), self.frames)) }
-    fn touch(&mut self, x: u16, y: u16, down: bool) { let mut t = self.touch_state.lock().unwrap(); t.x = x; t.y = y; t.down = down; }
+    fn touch(&mut self, x: u16, y: u16, down: bool) {
+        let mut t = self.touch_state.lock().unwrap(); t.x = x; t.y = y;
+        if down { t.down = true; t.seen = false; t.release_pending = false; } else if t.seen { t.down = false; } else { t.release_pending = true; }
+    }
 }

@@ -31,7 +31,9 @@ esp32sim/
 The SoC model emits pin-level events (GPIO edges, RMT symbol streams, I2S samples); a
 `BoardModel` (`esp32s3/src/board.rs`) interprets them. `--board atech14` (default) is the Atech
 14‑port board with its ST7735, WS2812 ring, encoder and buttons; `--board none` is a bare
-module — any ESP32‑S3 firmware, console only; `--board waveshare-cam` is the Waveshare
+module — any ESP32‑S3 firmware, console only; `--board waveshare-lcd4b` is the Waveshare
+ESP32‑S3‑Touch‑LCD‑4B (ST7701S 480×480 over the LCD_CAM RGB bus, GT911 touch, TCA9554, codecs)
+running the esp32-screen LVGL panel with touch; `--board waveshare-cam` is the Waveshare
 ESP32‑S3‑CAM‑OV5640 (CH32V003 IO expander, OV5640 over SCCB, ES8311/ES7210 codecs on I2C0,
 speaker on I2S1, OV5640 on the LCD_CAM DVP port) — runs the `waveshare-autopling` firmware
 (IDF 5.5, 16 MB flash, 8 MB octal PSRAM: `--flash-mb 16 --psram-mb 8`) end to end: camera frames
