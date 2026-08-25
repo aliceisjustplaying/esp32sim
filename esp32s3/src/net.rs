@@ -15,6 +15,8 @@ pub struct VirtualNet {
     pub sta_ip: [u8; 4],
     pub mask: [u8; 4],
     pub log: bool,
+    /// user-mode NAT to the host's network; None keeps everything inside the emulated subnet
+    pub nat: Option<crate::nat::Nat>,
     pub dhcp_acks: u64,
     pub dns_answers: u64,
     pub ntp_answers: u64,
@@ -22,6 +24,7 @@ pub struct VirtualNet {
     pub arp_replies: u64,
     pub pings: u64,
     pub unhandled: u64,
+    now_us: u64,
 }
 
 fn be16(b: &[u8]) -> u16 { u16::from_be_bytes([b[0], b[1]]) }
@@ -38,12 +41,13 @@ impl VirtualNet {
     pub fn new() -> Self {
         VirtualNet { gw_mac: [0x02, 0x53, 0x49, 0x4d, 0x00, 0x02], gw_ip: [10, 0, 2, 2], dns_ip: [10, 0, 2, 3],
                      sta_ip: [10, 0, 2, 15], mask: [255, 255, 255, 0],
-                     log: std::env::var("ESP_EMU_DEBUG_NET").is_ok(), dhcp_acks: 0, dns_answers: 0, ntp_answers: 0, tcp_rejects: 0, arp_replies: 0, pings: 0, unhandled: 0 }
+                     log: std::env::var("ESP_EMU_DEBUG_NET").is_ok(), nat: None, dhcp_acks: 0, dns_answers: 0, ntp_answers: 0, tcp_rejects: 0, arp_replies: 0, pings: 0, unhandled: 0, now_us: 0 }
     }
 
     /// Handle one Ethernet frame from the station; returns frames to send back to it.
-    pub fn handle(&mut self, eth: &[u8]) -> Vec<Vec<u8>> {
+    pub fn handle(&mut self, eth: &[u8], now_us: u64) -> Vec<Vec<u8>> {
         if eth.len() < 14 { return Vec::new(); }
+        self.now_us = now_us;
         let mut src = [0u8; 6]; src.copy_from_slice(&eth[6..12]);
         match be16(&eth[12..14]) {
             0x0806 => self.arp(&eth[14..], &src),
@@ -74,12 +78,27 @@ impl VirtualNet {
     fn ipv4(&mut self, p: &[u8], src: &[u8; 6]) -> Vec<Vec<u8>> {
         if p.len() < 20 { return Vec::new(); }
         let ihl = ((p[0] & 0xf) as usize) * 4;
-        if p.len() < ihl { return Vec::new(); }
-        let (proto, body) = (p[9], &p[ihl..]);
+        if p.len() < ihl.max(20) { return Vec::new(); }
+        // Trust the header's total length: the frame may carry padding or a trailing FCS.
+        let total = (u16::from_be_bytes([p[2], p[3]]) as usize).clamp(ihl, p.len());
+        let (proto, body) = (p[9], &p[ihl..total]);
         let mut sip = [0u8; 4]; sip.copy_from_slice(&p[12..16]);
         let mut dip = [0u8; 4]; dip.copy_from_slice(&p[16..20]);
         match proto {
             17 if body.len() >= 8 && be16(&body[2..4]) == 67 => self.dhcp(&body[8..], src),
+            // with NAT the flow goes out through a host socket; DNS is redirected to the host's own
+            // resolver but still looks like it came from the emulated one
+            17 if self.nat.is_some() => {
+                let (sport, dport) = (be16(&body[0..2]), be16(&body[2..4]));
+                let (host_dst, reply_src) = if dport == 53 { (self.nat.as_ref().unwrap().resolver, dip) } else { (dip, dip) };
+                let now = self.now_us;
+                self.nat.as_mut().unwrap().udp_out(src, &sip, sport, &host_dst, &reply_src, dport, &body[8..], now);
+                Vec::new()
+            }
+            6 if self.nat.is_some() => {
+                let now = self.now_us;
+                self.nat.as_mut().unwrap().tcp_in(src, &sip, &dip, body, now)
+            }
             17 if body.len() >= 8 && be16(&body[2..4]) == 53 => self.dns(&body[8..], src, &sip, &dip, be16(&body[0..2])),
             17 if body.len() >= 8 && be16(&body[2..4]) == 123 => self.ntp(&body[8..], src, &sip, &dip, be16(&body[0..2])),
             6 if body.len() >= 20 && body[13] & 0x02 != 0 && body[13] & 0x10 == 0 => self.tcp_reject(body, src, &sip, &dip),
@@ -147,6 +166,12 @@ impl VirtualNet {
 }
 
 impl VirtualNet {
+    /// Pump the NAT's host sockets; returns frames for the guest.
+    pub fn poll(&mut self, now_us: u64) -> Vec<Vec<u8>> {
+        self.now_us = now_us;
+        match &mut self.nat { Some(n) => n.poll(now_us), None => Vec::new() }
+    }
+
     /// UDP datagram with a correct checksum (IPv4 pseudo-header).
     fn udp(&self, src_ip: &[u8; 4], dst_ip: &[u8; 4], sport: u16, dport: u16, payload: &[u8]) -> Vec<u8> {
         let len = 8 + payload.len();

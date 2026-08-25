@@ -81,19 +81,41 @@ ROM with the right reset cause; `--no-reboot` stops at the first reset instead.
 5.0  stop
 ```
 
+## WiFi
+
+`--wifi ssid=NAME[,psk=PASS,chan=N,bssid=..]` attaches a virtual access point that the **unmodified**
+Espressif WiFi blob associates with — scan, authentication, association and, with a passphrase, the
+WPA2-PSK four-way handshake — and a virtual network behind it (DHCP, ARP, ICMP, DNS, SNTP off the
+host clock). `--net nat` (the default) relays the guest's TCP and UDP over ordinary host sockets, so
+firmware reaches the real network; `--net none` refuses it. No firmware changes, no root, no tun
+device.
+
+```sh
+./target/release/esp32sim --board waveshare-lcd4b --boot rom --flash-mb 16 --psram-mb 8 \
+    --bootloader $P/bootloader/bootloader.bin --ptable $P/partition_table/partition-table.bin \
+    --app $P/energy_panel.bin --console usb --wifi "ssid=home,psk=secret" --max-seconds 45
+```
+
+runs the esp32-screen energy panel: it joins, takes a lease, syncs its clock, fetches two days of
+electricity prices over **HTTPS** and polls a real Home Assistant on the LAN. See
+[docs/wifi-plan.md](docs/wifi-plan.md) (what the MAC model does) and
+[docs/networking-plan.md](docs/networking-plan.md) (what happens to the packets).
+
 ## Debugging
 
 `--trace [--trace-from N]`, `--break ADDR`, `--watch ADDR` (stop when a word changes),
 `--peek ADDR[,N]`, `--profile` (pc histogram), `--log-periph` (first touch of every
 unknown register), `--stop-after-exceptions N`, `--gram-png` (raw ST7735 GRAM).
-Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`.
+Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`, `ESP_EMU_DEBUG_WIFI[_FRAMES]`,
+`ESP_EMU_DEBUG_NET`, `ESP_EMU_DEBUG_AES`, `ESP_EMU_DEBUG_SHA`, `ESP_EMU_DEBUG_RSA`.
 
 ## Documentation
 
 `docs/` — [architecture](docs/architecture.md), [peripheral coverage](docs/peripherals.md),
 [boards](docs/boards.md), [CLI reference](docs/cli.md), [web UI protocol](docs/web-ui.md),
-[design decisions & gotchas](docs/decisions.md), [roadmap](docs/roadmap.md), and the
-[networking](docs/networking-plan.md) and [testing](docs/testing-plan.md) plans.
+[design decisions & gotchas](docs/decisions.md), [roadmap](docs/roadmap.md),
+[WiFi](docs/wifi-plan.md) and [networking](docs/networking-plan.md), and the
+[testing](docs/testing-plan.md) plan.
 
 ## Provenance
 

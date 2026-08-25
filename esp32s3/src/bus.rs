@@ -238,6 +238,35 @@ impl SocBus {
 
     /// AES accelerator in DMA mode: pull the plaintext from the GDMA out-channel bound to AES,
     /// transform it block by block and write the result back through the in-channel.
+    /// Feed the SHA engine from the GDMA out channel bound to it (peripheral 7). mbedTLS hashes
+    /// anything bigger than a block this way, so certificate digests never touch the block path.
+    fn sha_dma_step(&mut self) {
+        self.periph.sha.dma_pending = false;
+        let want = self.periph.sha.block_num as usize * self.periph.sha.block_bytes();
+        let mut input = Vec::with_capacity(want);
+        if let Some(out_ch) = self.periph.gdma.out_channel_for(7) {
+            let mut desc = self.periph.gdma.out[out_ch].desc;
+            while desc != 0 && input.len() < want {
+                let dw0 = self.read32(desc).unwrap_or(0);
+                let (len, buf, next) = (((dw0 >> 12) & 0xfff) as usize, self.read32(desc + 4).unwrap_or(0), self.read32(desc + 8).unwrap_or(0));
+                for i in 0..len { input.push(self.read8(buf + i as u32).unwrap_or(0)); }
+                let eof = dw0 & (1 << 30) != 0;
+                let _ = self.write32(desc, dw0 & !(1 << 31));                   // hand the descriptor back
+                if eof { self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1); self.periph.gdma.out[out_ch].eof_desc = desc; break; }
+                desc = next;
+            }
+        }
+        input.resize(want, 0);
+        let bs = self.periph.sha.block_bytes();
+        let mut first = self.periph.sha.dma_first;
+        for block in input.chunks(bs) {
+            self.periph.sha.hash_block(block, first);
+            first = false;
+        }
+        self.periph.sha.busy = false;
+        self.irq_dirty = true;
+    }
+
     fn aes_dma_step(&mut self) {
         self.periph.aes.dma_pending = false;
         let (Some(out_ch), Some(in_ch)) = (self.periph.gdma.out_channel_for(6), self.periph.gdma.in_channel_for(6)) else {
@@ -255,10 +284,13 @@ impl SocBus {
             if eof { self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1); self.periph.gdma.out[out_ch].eof_desc = desc; break; }
             desc = next;
         }
+        if std::env::var("ESP_EMU_DEBUG_AES").is_ok() {
+            eprintln!("[aes] dma block_mode={} num_blocks={} mode={} bytes={}", self.periph.aes.block_mode, self.periph.aes.num_blocks, self.periph.aes.mode, input.len());
+        }
         // transform (ECB and CBC cover what the crypto libraries ask for here)
         let key = self.periph.aes.key_bytes();
         let decrypt = self.periph.aes.decrypting();
-        let cbc = self.periph.aes.block_mode == 1;
+        let block_mode = self.periph.aes.block_mode;
         let mut iv = [0u8; 16];
         for (i, w) in self.periph.aes.iv.iter().enumerate() { iv[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes()); }
         let mut output = Vec::with_capacity(input.len());
@@ -266,9 +298,29 @@ impl SocBus {
             let mut b = [0u8; 16];
             b[..chunk.len()].copy_from_slice(chunk);
             let cipher_in = b;
-            if cbc && !decrypt { for i in 0..16 { b[i] ^= iv[i]; } }
-            let mut o = crate::crypto::aes_block(&key, &b, decrypt);
-            if cbc { if decrypt { for i in 0..16 { o[i] ^= iv[i]; } iv = cipher_in; } else { iv = o; } }
+            let o = match block_mode {
+                1 => {                                                          // CBC
+                    if !decrypt { for i in 0..16 { b[i] ^= iv[i]; } }
+                    let mut o = crate::crypto::aes_block(&key, &b, decrypt);
+                    if decrypt { for i in 0..16 { o[i] ^= iv[i]; } iv = cipher_in; } else { iv = o; }
+                    o
+                }
+                2 => {                                                          // OFB: keystream feeds itself
+                    let ks = crate::crypto::aes_block(&key, &iv, false);
+                    iv = ks;
+                    let mut o = [0u8; 16];
+                    for i in 0..16 { o[i] = b[i] ^ ks[i]; }
+                    o
+                }
+                3 => {                                                          // CTR: encrypt the counter, then bump it
+                    let ks = crate::crypto::aes_block(&key, &iv, false);
+                    let mut o = [0u8; 16];
+                    for i in 0..16 { o[i] = b[i] ^ ks[i]; }
+                    for i in (0..16).rev() { iv[i] = iv[i].wrapping_add(1); if iv[i] != 0 { break; } }
+                    o
+                }
+                _ => crate::crypto::aes_block(&key, &b, decrypt),                // ECB
+            };
             output.extend_from_slice(&o);
             self.periph.aes.blocks += 1;
         }
@@ -425,12 +477,15 @@ impl Bus for SocBus {
         self.dma_lcd_step(cycles as u64);
         if !self.periph.wifi.tx_pending.is_empty() { self.wifi_tx_step(); }
         if self.periph.aes.dma_pending { self.aes_dma_step(); }
+        if self.periph.sha.dma_pending { self.sha_dma_step(); }
         if self.periph.wifi.ap.is_some() { self.wifi_air_step(); }
-        if !self.periph.wifi.eth_tx.is_empty() && self.periph.wifi.net.is_some() {
+        if self.periph.wifi.net.is_some() {
+            let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
             let out = std::mem::take(&mut self.periph.wifi.eth_tx);
             let net = self.periph.wifi.net.as_mut().unwrap();
             let mut replies = Vec::new();
-            for e in out { replies.extend(net.handle(&e)); }
+            for e in out { replies.extend(net.handle(&e, now_us)); }
+            replies.extend(net.poll(now_us));
             self.periph.wifi.eth_rx.extend(replies);
         }
         if !self.periph.gpio.changes.is_empty() { let ch = std::mem::take(&mut self.periph.gpio.changes); self.board.gpio_changes(&ch); }

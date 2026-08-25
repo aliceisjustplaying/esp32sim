@@ -2,12 +2,11 @@
 
 Ordered by value; each item links to its plan where one exists.
 
-1. **WiFi (full, unmodified)** — open and WPA2-PSK both work end to end: scan, auth, association,
-   four-way handshake, DHCP, IP ([wifi-plan.md](wifi-plan.md)). Next: a NAT backend (libslirp) so
-   traffic reaches beyond the emulated 10.0.2.0/24 subnet — that unlocks NTP, HTTP, MQTT and the
-   Home Assistant / price feeds the panel and autopling actually want.
-   The `esp_wifi` shim ([networking-plan.md](networking-plan.md)) remains the fallback if the
-   blob route stalls; either unblocks the panel/autopling network features.
+1. **WiFi (full, unmodified)** — done: open and WPA2-PSK both associate through the closed blob,
+   and outbound TCP/UDP reaches the real network through a user-mode NAT, TLS included
+   ([wifi-plan.md](wifi-plan.md), [networking-plan.md](networking-plan.md)). Remaining: inbound
+   port forwarding (autopling's web UI from the Mac), multicast/mDNS, and a `--net tap` backend
+   for real LAN presence.
 2. **Testing** — hermetic CPU/SoC/board suites, conformance firmware, CI tiers
    ([testing-plan.md](testing-plan.md)). Milestone 1 (no silent skips, shared CPU harness,
    parser robustness) first.

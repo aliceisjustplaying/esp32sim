@@ -488,6 +488,60 @@ impl Aes {
     }
 }
 
+// ------------------------------------------------------------------ RSA/MPI accelerator (0x6003C000)
+pub const SRC_RSA: usize = 76;
+/// The big-number accelerator mbedTLS uses for every RSA and ECC operation (`CONFIG_MBEDTLS_HARDWARE_MPI`).
+/// Four 4096-bit memory blocks — M at 0x000, Z at 0x200, Y at 0x400, X at 0x600 — plus three start
+/// registers. The silicon works in the Montgomery domain, which is why firmware also loads M' and
+/// R^-1; here the operations are computed exactly, so those two are accepted and ignored.
+///   Z = X * Y          (0x814, LENGTH = 2*words-1, Y read from the Z block's upper half)
+///   Z = X * Y mod M    (0x810, LENGTH = words-1)
+///   Z = X ^ Y mod M    (0x80c, LENGTH = words-1)
+pub struct Rsa { pub mem: Vec<u32>, pub m_prime: u32, pub length: u32, pub int_ena: u32, pub int_raw: u32,
+                 pub constant_time: u32, pub search_open: u32, pub search_pos: u32, pub ops: u64, ram: RegRam }
+impl Rsa {
+    pub fn new() -> Self { Rsa { mem: vec![0; 512], m_prime: 0, length: 0, int_ena: 0, int_raw: 0,
+                                 constant_time: 0, search_open: 0, search_pos: 0, ops: 0, ram: RegRam::new() } }
+    pub fn irq(&self) -> bool { self.int_raw != 0 && self.int_ena != 0 }
+    fn block(&self, base: usize, words: usize) -> Vec<u32> { self.mem[base..base + words.min(128)].to_vec() }
+    pub fn read(&mut self, off: u32) -> u32 {
+        match off {
+            0x000..=0x7fc => self.mem[(off / 4) as usize],
+            0x800 => self.m_prime,
+            0x804 => self.length,
+            0x808 => 1,                                   // memory initialised: firmware spins on this
+            0x818 => 1,                                   // idle: operations here complete before the next read
+            0x820 => self.constant_time, 0x824 => self.search_open, 0x828 => self.search_pos,
+            0x82c => self.int_ena,
+            _ => self.ram.read(off),
+        }
+    }
+    pub fn write(&mut self, off: u32, v: u32) {
+        match off {
+            0x000..=0x7fc => self.mem[(off / 4) as usize] = v,
+            0x800 => self.m_prime = v,
+            0x804 => self.length = v,
+            0x80c => { let n = self.length as usize + 1; let z = crate::crypto::bn_modexp(&self.block(384, n), &self.block(256, n), &self.block(0, n)); self.finish(z, n); }
+            0x810 => { let n = self.length as usize + 1; let z = crate::crypto::bn_mod(&crate::crypto::bn_mul(&self.block(384, n), &self.block(256, n)), &self.block(0, n)); self.finish(z, n); }
+            0x814 => { let n = (self.length as usize + 1) / 2; let z = crate::crypto::bn_mul(&self.block(384, n), &self.block(128 + n, n)); self.finish(z, 2 * n); }
+            0x81c => self.int_raw = 0,                    // clears the interrupt signal, not the idle status
+            0x820 => self.constant_time = v, 0x824 => self.search_open = v, 0x828 => self.search_pos = v,
+            0x82c => self.int_ena = v,
+            _ => self.ram.write(off, v),
+        }
+    }
+    /// Publish a result in the Z block, zero-padded to `words`, and raise the completion flag.
+    fn finish(&mut self, z: Vec<u32>, words: usize) {
+        if std::env::var("ESP_EMU_DEBUG_RSA").is_ok() {
+            eprintln!("[rsa] op #{} len={} -> {} words, z[0]={:08x} int_ena={}", self.ops, self.length, words, z.first().copied().unwrap_or(0), self.int_ena);
+        }
+        let words = words.min(128);
+        for i in 0..words { self.mem[128 + i] = *z.get(i).unwrap_or(&0); }
+        self.int_raw = 1;
+        self.ops += 1;
+    }
+}
+
 // ------------------------------------------------------------------ WiFi MAC (blocks 0x33/0x34)
 pub const SRC_WIFI_MAC: usize = 0;
 /// The 802.11 MAC the closed `libpp`/`libnet80211` drive. Undocumented by Espressif; the register
@@ -814,6 +868,7 @@ pub struct Peripherals {
     pub pcnt: Pcnt,
     pub wifi: WifiMac,
     pub aes: Aes,
+    pub rsa: Rsa,
     pub sha: Sha,
     pub wdev: Wdev,
     pub i2c_mst: I2cMst,
@@ -843,7 +898,7 @@ impl Peripherals {
         Peripherals {
             usb: UsbSerialJtag::new(), uart: [Uart::new(), Uart::new(), Uart::new()], systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], intmatrix: IntMatrix::new(), gpio: Gpio::new(), rtc: RtcCntl::new(),
-            efuse: Efuse::new(mac), system: SystemRegs::new(), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true), i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), spi2: GpSpi::new(), pcnt: Pcnt::new(), wifi: WifiMac::new(), aes: Aes::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(), i2s1: I2s::new(), rmt: Rmt::new(), generic: Default::default(),
+            efuse: Efuse::new(mac), system: SystemRegs::new(), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true), i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), spi2: GpSpi::new(), pcnt: Pcnt::new(), wifi: WifiMac::new(), aes: Aes::new(), rsa: Rsa::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(), i2s1: I2s::new(), rmt: Rmt::new(), generic: Default::default(),
             log_unknown: false, regstat: None, fake_reads: std::env::var("ESP_EMU_FAKE_READ").ok().map(|v| v.split(',').filter_map(|e| { let mut p = e.split(':'); let a = u32::from_str_radix(p.next()?.trim_start_matches("0x"), 16).ok()?; let o = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).ok()?; let m = u32::from_str_radix(p.next().unwrap_or("ffffffff").trim_start_matches("0x"), 16).ok()?; Some((a, (o, m))) }).collect()).unwrap_or_default(), log_all: std::env::var("ESP_EMU_LOG_ALL").is_ok(), seen: HashSet::new(), cur_pc: 0, cycle_total: 0, st_done: 0, apb_done: 0, rtc_done: 0, sw_int: 0, spi_exec: false, last_status: [0; 4], intmatrix_dirty: true, io_mux: RegRam::new(),
         }
     }
@@ -908,6 +963,7 @@ impl Peripherals {
             0x17 => self.pcnt.read(off),
             0x33 | 0x34 => self.wifi.read(block, off),
             0x3a => self.aes.read(off),
+            0x3c => self.rsa.read(off),
             _ => { self.note(addr, false, 0); self.generic.entry(block).or_insert_with(RegRam::new).read(off) }
         };
         if self.log_all { eprintln!("[rd] {}+0x{:03x} ({:#010x}) -> {:#010x} pc={:#010x}", Self::block_name(block), off, addr, v, self.cur_pc); }
@@ -946,6 +1002,7 @@ impl Peripherals {
             0x17 => self.pcnt.write(off, v),
             0x33 | 0x34 => self.wifi.write(block, off, v),
             0x3a => self.aes.write(off, v),
+            0x3c => self.rsa.write(off, v),
             _ => { self.note(addr, true, v); self.generic.entry(block).or_insert_with(RegRam::new).write(off, v) }
         }
     }
@@ -1010,6 +1067,7 @@ impl Peripherals {
         set(SRC_WIFI_MAC, self.wifi.irq());
         set(SRC_PCNT, self.pcnt.irq());
         set(SRC_AES, self.aes.irq());
+        set(SRC_RSA, self.rsa.irq());
         set(SRC_I2S0, self.i2s0.irq()); set(SRC_I2S1, self.i2s1.irq());
         set(SRC_RMT, self.rmt.irq());
         set(SRC_I2C0, self.i2c[0].irq()); set(SRC_I2C1, self.i2c[1].irq());
@@ -1156,24 +1214,60 @@ impl SpiMem {
 }
 
 // ------------------------------------------------------------------ SHA accelerator (register/block mode; SHA-1/224/256)
-pub struct Sha { pub mode: u32, pub h: [u32; 16], pub m: [u32; 32], pub busy: bool, ram: RegRam }
+pub struct Sha { pub mode: u32, pub h: [u32; 16], pub m: [u32; 32], pub busy: bool,
+                 pub block_num: u32, pub dma_pending: bool, pub dma_first: bool, pub blocks: u64, ram: RegRam }
 impl Sha {
-    pub fn new() -> Self { Sha { mode: 2, h: [0; 16], m: [0; 32], busy: false, ram: RegRam::new() } }
+    pub fn new() -> Self { Sha { mode: 2, h: [0; 16], m: [0; 32], busy: false, block_num: 0,
+                                 dma_pending: false, dma_first: false, blocks: 0, ram: RegRam::new() } }
+    /// 64 bytes for the 32-bit family, 128 for SHA-384/512.
+    pub fn block_bytes(&self) -> usize { if self.mode >= 3 { 128 } else { 64 } }
+    /// Feed one message block, as the DMA engine does; `first` restarts from the initial state.
+    pub fn hash_block(&mut self, bytes: &[u8], first: bool) {
+        for (i, c) in bytes.chunks(4).enumerate().take(32) {
+            let mut w = [0u8; 4];
+            w[..c.len()].copy_from_slice(c);
+            self.m[i] = u32::from_le_bytes(w);
+        }
+        if first { self.init(); }
+        self.compress();
+    }
     fn init(&mut self) {
         self.h = [0; 16];
         match self.mode {
             0 => self.h[..5].copy_from_slice(&[0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0]),
             1 => self.h[..8].copy_from_slice(&[0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4]),
-            _ => self.h[..8].copy_from_slice(&[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]),
+            2 => self.h[..8].copy_from_slice(&[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]),
+            // SHA-384/512: eight 64-bit words, held high half first so H_MEM reads back digest order
+            3 => self.set_h64(&[0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
+                                0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4]),
+            _ => self.set_h64(&[0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
+                                0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179]),
         }
+    }
+    fn set_h64(&mut self, v: &[u64; 8]) {
+        for (i, x) in v.iter().enumerate() { self.h[2 * i] = (x >> 32) as u32; self.h[2 * i + 1] = *x as u32; }
+    }
+    fn h64(&self) -> [u64; 8] {
+        let mut v = [0u64; 8];
+        for i in 0..8 { v[i] = ((self.h[2 * i] as u64) << 32) | self.h[2 * i + 1] as u64; }
+        v
     }
     fn compress(&mut self) {
         // message words are written by software as the bytes of the block; interpret big-endian per SHA
-        let w0: Vec<u32> = self.m[..16].iter().map(|x| x.swap_bytes()).collect();
-        match self.mode {
-            0 => sha1_block(&mut self.h, &w0),
-            _ => sha256_block(&mut self.h, &w0),
+        if self.mode >= 3 {
+            let mut w = [0u64; 16];
+            for j in 0..16 { w[j] = ((self.m[2 * j].swap_bytes() as u64) << 32) | self.m[2 * j + 1].swap_bytes() as u64; }
+            let mut h = self.h64();
+            sha512_block(&mut h, &w);
+            self.set_h64(&h);
+        } else {
+            let w0: Vec<u32> = self.m[..16].iter().map(|x| x.swap_bytes()).collect();
+            match self.mode {
+                0 => sha1_block(&mut self.h, &w0),
+                _ => sha256_block(&mut self.h, &w0),
+            }
         }
+        self.blocks += 1;
     }
     pub fn read(&self, off: u32) -> u32 {
         match off {
@@ -1188,13 +1282,52 @@ impl Sha {
     pub fn write(&mut self, off: u32, v: u32) {
         match off {
             0x0 => self.mode = v & 7,
+            0x0c => self.block_num = v,
             0x10 => { self.init(); self.compress(); }
             0x14 => self.compress(),
+            0x1c => { self.busy = true; self.dma_pending = true; self.dma_first = true; }    // DMA_START
+            0x20 => { self.busy = true; self.dma_pending = true; self.dma_first = false; }   // DMA_CONTINUE
             0x40..=0x7c => { let i = ((off - 0x40) / 4) as usize; self.h[i] = v.swap_bytes(); }
             0x80..=0xfc => self.m[((off - 0x80) / 4) as usize] = v,
-            _ => self.ram.write(off, v),
+            _ => { if std::env::var("ESP_EMU_DEBUG_SHA").is_ok() { eprintln!("[sha] write +0x{:02x} = {} (mode {})", off, v, self.mode); } self.ram.write(off, v) }
         }
     }
+}
+
+
+/// SHA-512 compression (also SHA-384; they differ only in the initial state and truncation).
+fn sha512_block(h: &mut [u64; 8], w0: &[u64; 16]) {
+    const K: [u64; 80] = [
+        0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc, 0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
+        0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2, 0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235, 0xc19bf174cf692694,
+        0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65, 0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
+        0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4, 0xc6e00bf33da88fc2, 0xd5a79147930aa725, 0x06ca6351e003826f, 0x142929670a0e6e70,
+        0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df, 0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b,
+        0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30, 0xd192e819d6ef5218, 0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
+        0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8, 0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3,
+        0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec, 0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b,
+        0xca273eceea26619c, 0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178, 0x06f067aa72176fba, 0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
+        0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817];
+    let mut w = [0u64; 80];
+    w[..16].copy_from_slice(w0);
+    for i in 16..80 {
+        let s0 = w[i - 15].rotate_right(1) ^ w[i - 15].rotate_right(8) ^ (w[i - 15] >> 7);
+        let s1 = w[i - 2].rotate_right(19) ^ w[i - 2].rotate_right(61) ^ (w[i - 2] >> 6);
+        w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+    }
+    let (mut a, mut b, mut c, mut d) = (h[0], h[1], h[2], h[3]);
+    let (mut e, mut f, mut g, mut hh) = (h[4], h[5], h[6], h[7]);
+    for i in 0..80 {
+        let s1 = e.rotate_right(14) ^ e.rotate_right(18) ^ e.rotate_right(41);
+        let ch = (e & f) ^ (!e & g);
+        let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+        let s0 = a.rotate_right(28) ^ a.rotate_right(34) ^ a.rotate_right(39);
+        let maj = (a & b) ^ (a & c) ^ (b & c);
+        let t2 = s0.wrapping_add(maj);
+        hh = g; g = f; f = e; e = d.wrapping_add(t1);
+        d = c; c = b; b = a; a = t1.wrapping_add(t2);
+    }
+    for (i, v) in [a, b, c, d, e, f, g, hh].iter().enumerate() { h[i] = h[i].wrapping_add(*v); }
 }
 
 fn sha256_block(h: &mut [u32; 16], w0: &[u32]) {
@@ -1492,5 +1625,81 @@ impl Rmt {
                 if d1 == 0 && !l1 && c.rd % mem_words == 0 && c.conf0 & (1 << 4) == 0 { /* no wrap: stop at end of memory */ }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod rsa_tests {
+    use super::*;
+
+    /// Program the block the way `bignum_alt.c` does and check the three operations.
+    #[test]
+    fn hardware_ops_match_arithmetic() {
+        let mut r = Rsa::new();
+        let words = 4usize;
+        let x: Vec<u32> = vec![0x0123_4567, 0x89ab_cdef, 0xfedc_ba98, 0x7654_3210];
+        let y: Vec<u32> = vec![0x1111_2222, 0x3333_4444, 0x5555_6666, 0x0000_0007];
+        let m: Vec<u32> = vec![0xffff_fff1, 0x1234_5678, 0x9abc_def0, 0x8000_0001];  // odd modulus
+        let load = |r: &mut Rsa, base: u32, v: &[u32]| { for (i, w) in v.iter().enumerate() { r.write(base + 4 * i as u32, *w); } };
+
+        // Z = X * Y: X in the X block, Y left-extended into the Z block, LENGTH = 2*words-1
+        load(&mut r, 0x600, &x);
+        load(&mut r, 0x200 + 4 * words as u32, &y);
+        r.write(0x804, words as u32 * 2 - 1);
+        r.write(0x814, 1);
+        assert_eq!(r.read(0x818), 1, "the block reports idle once the operation is done");
+        assert!(r.int_raw != 0, "completion raises the interrupt latch");
+        let z: Vec<u32> = (0..2 * words).map(|i| r.read(0x200 + 4 * i as u32)).collect();
+        assert_eq!(z, crate::crypto::bn_mul(&x, &y));
+        r.write(0x81c, 1);
+        assert_eq!(r.int_raw, 0, "interrupt clear drops the latch");
+        assert_eq!(r.read(0x818), 1, "but the block still reads idle");
+
+        // Z = X * Y mod M, LENGTH = words-1
+        load(&mut r, 0x600, &x); load(&mut r, 0x400, &y); load(&mut r, 0x000, &m);
+        r.write(0x804, words as u32 - 1);
+        r.write(0x810, 1);
+        let z: Vec<u32> = (0..words).map(|i| r.read(0x200 + 4 * i as u32)).collect();
+        let expect = crate::crypto::bn_mod(&crate::crypto::bn_mul(&x, &y), &m);
+        assert_eq!(z[..expect.len()], expect[..]);
+
+        // Z = X ^ Y mod M
+        r.write(0x81c, 1);
+        r.write(0x80c, 1);
+        let z: Vec<u32> = (0..words).map(|i| r.read(0x200 + 4 * i as u32)).collect();
+        let expect = crate::crypto::bn_modexp(&x, &y, &m);
+        assert_eq!(z[..expect.len()], expect[..]);
+        assert!(r.read(0x808) == 1, "memory-init query must read back ready");
+    }
+}
+
+#[cfg(test)]
+mod sha_tests {
+    use super::*;
+
+    /// Hash one padded block through the register interface and read the digest back the way
+    /// `sha_ll_read_digest` does — a plain word copy, no swapping in software.
+    fn digest(mode: u32, msg: &[u8], out_bytes: usize) -> String {
+        let block = if mode >= 3 { 128 } else { 64 };
+        let mut b = vec![0u8; block];
+        b[..msg.len()].copy_from_slice(msg);
+        b[msg.len()] = 0x80;
+        let bits = (msg.len() as u64) * 8;
+        b[block - 8..].copy_from_slice(&bits.to_be_bytes());
+        let mut s = Sha::new();
+        s.write(0x0, mode);
+        s.hash_block(&b, true);
+        let mut out = Vec::new();
+        for i in 0..out_bytes / 4 { out.extend_from_slice(&s.read(0x40 + 4 * i as u32).to_le_bytes()); }
+        out.iter().map(|x| format!("{:02x}", x)).collect()
+    }
+
+    #[test]
+    fn known_answer_vectors() {
+        assert_eq!(digest(0, b"abc", 20), "a9993e364706816aba3e25717850c26c9cd0d89d");
+        assert_eq!(digest(2, b"abc", 32), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(digest(3, b"abc", 48), "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7");
+        assert_eq!(digest(4, b"abc", 64), "ddaf35a193617abacc417349ae204131\
+12e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f");
     }
 }

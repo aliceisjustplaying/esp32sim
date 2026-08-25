@@ -23,8 +23,9 @@ registers are logged with `--log-periph`).
 | I2S0 / I2S1 | 0x6000F000/2D000 | partial | TX: clock config, sample rate, 16-bit stereo capture to PCM; RX — |
 | RMT | 0x60016000 | partial | TX channels: symbol RAM, clock divider, end marker, done interrupt; RX — |
 | LCD_CAM | 0x60041000 | partial | camera engine (start/reset, VSYNC, frame pump from GDMA RX) and the LCD RGB/DPI engine (timing/clock registers, frame pump into GDMA TX, LCD_VSYNC); i8080 LCD mode — |
-| SHA | 0x6003B000 | full | SHA-1/224/256 in block mode (bootloader image verification) |
-| AES | 0x6003A000 | partial | block and DMA modes, ECB/CBC, all key lengths (mbedTLS, WPA2 group-key unwrap) |
+| SHA | 0x6003B000 | full | SHA-1/224/256/384/512, block and GDMA modes (bootloader image verification, TLS certificate digests) |
+| AES | 0x6003A000 | partial | block and DMA modes, ECB/CBC/CTR/OFB, all key lengths (mbedTLS, WPA2 group-key unwrap); hardware GCM — |
+| RSA/MPI | 0x6003C000 | full | large-number multiply, modular multiply and modular exponentiation up to 4096 bits, polled or interrupt-driven (every mbedTLS public-key operation) |
 | WiFi MAC | 0x60033000 | partial | TX queues, RX descriptor ring, interrupt events, TSF, filters — enough for scan/auth/assoc/data with the unmodified blob (docs/wifi-plan.md) |
 | RNG | 0x6003B000 | full | random words |
 | regi2c / I2C_MST (PLL, RF analog) | 0x6000E000 | stub | reads back what was written; BBPLL and pkdet calibration-done bits set |

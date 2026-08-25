@@ -34,51 +34,54 @@ What is modelled:
   every key length in both directions, AES key wrap — all checked against RFC/FIPS/802.11i vectors.
 - A **virtual network** (`esp32s3/src/net.rs`): DHCP, ARP, ICMP echo, a DNS responder and an SNTP
   server that hands out the host clock, so `esp_netif` reaches `IP_EVENT_STA_GOT_IP` and firmware
-  waiting for time gets it. TCP connections are refused immediately (RST) rather than left to time
-  out, so applications fail fast and retry instead of hanging.
+  waiting for time gets it.
+- A **user-mode NAT** (`esp32s3/src/nat.rs`, `--net nat`, on by default): TCP and UDP flows are
+  terminated in the emulator and relayed over ordinary host sockets, the way Contiki-NG's NAT64
+  does it — no libslirp, no root, no tun device. Guest name lookups go to the host's own resolver.
+- The **RSA/MPI accelerator** (`Rsa` in `periph.rs`) and **SHA over GDMA including SHA-384/512**.
+  mbedTLS routes every public-key operation and every certificate digest through them, so without
+  both, TLS hangs in the driver's polling loop or fails certificate verification.
+
+**HTTPS works end to end.** The esp32-screen energy panel boots, joins WPA2, takes a DHCP lease,
+syncs its clock, resolves `www.elprisetjustnu.se`, fetches two days of prices over TLS (200, 13.6 kB,
+96 slots each) and polls the real Home Assistant on the LAN — its energy history, entity states and
+control tiles all live:
+
+```
+hass: HA reachable, light.pool_pool = off
+prices: -> status 200, 13603 bytes ... fetched 2026-08-25: 96 slots
+energy: today: 56.3 kWh over 24 h
+```
 
 Bulk traffic is **not** encrypted: the emulated MAC presents plaintext framed as CCMP would be
 (protected bit, 8-byte CCMP header with the right key id, 8 bytes of MIC space), which is what
 firmware sees when real hardware encrypts and decrypts in place.
 
-Four model bugs had to be fixed before the blob would complete a connect, all found by tracing its
-own code paths (`--trace-fn`) and, for the last two, by turning on the supplicant's debug log:
+Bugs found on the way to a TLS session, each one a place where the model was plausible but wrong:
 
-- **`DSCR_RELOAD` must not rewind the hardware's RX pointer.** Software rewrites `BASE_RX_DSCR`
-  whenever it recycles descriptors; treating that as "restart here" made every second frame land in
-  a descriptor the stack had moved past, and it was recycled instead of indicated.
-- **The `rx_ctrl` filter-match nibble must set bit 28** ("accepted by the address filter"; silicon:
-  a broadcast beacon reads `0x111b20ad`). With only the unicast bit 29, the auth response was
-  dropped inside `wDev_ProcessRxSucData` without ever being indicated.
-- **The MIC covers exactly the 802.1X frame**, not the whole 802.11 payload, which can carry
-  trailing bytes.
-- **Group-addressed downlink frames must carry key id 1** (the GTK); with key id 0 the station
-  silently drops them. DHCP replies are now unicast anyway, which keeps them under the pairwise key.
+- **`0x818` on the RSA block is an idle status, not the interrupt latch.** The ISR clears the
+  interrupt, then the result path waits for `0x818` to read non-zero — latching it deadlocked
+  every interrupt-driven modular exponentiation.
+- **IP payloads must be trimmed to the header's total-length field.** The 802.11 frame carries a
+  4-byte FCS, which the NAT was feeding to the peer as TCP payload; the guest's real request then
+  arrived at a sequence number the connection had already moved past.
+- **mbedTLS hashes certificates through GDMA, not the block interface** — and reaches for SHA-384,
+  which needs the 64-bit core. Digest-shaped garbage came back as `PK verify failed`.
+- **The AES accelerator's CTR mode** (block mode 3) was being executed as ECB, which the server
+  answered with a fatal alert rather than an error we could read.
 
 Not yet working:
-- **Real internet**: `net.rs` answers the emulated subnet only (10.0.2.0/24). Name lookups resolve
-  and the clock syncs, but every TCP connection is refused, so HTTP/HTTPS, MQTT and anything on the
-  real LAN (a Home Assistant instance, for example) cannot be reached. That needs the NAT backend
-  (libslirp) from docs/networking-plan.md; the 802.11 <-> Ethernet path it plugs into already exists.
-
-  Concretely, the esp32-screen energy panel now boots, joins WPA2, takes a DHCP lease, syncs its
-  clock over the emulated NTP (the header shows the real time), resolves
-  `www.elprisetjustnu.se`, builds the correct URL for today and then gets a connection refusal —
-  the price chart and the Home Assistant tiles stay empty until NAT exists.
+- Inbound connections (no port forwarding yet), multicast and mDNS, so `esp-web.local` and Home
+  Assistant discovery do not cross; use IP addresses.
+- Hardware AES-GCM (block mode 6) and the DS/HMAC peripherals; mbedTLS has not asked for them yet.
 - Roaming, power save, 802.11n rates, multiple stations, WPA3/SAE, PMF.
 
-## Scope: what is and isn't needed
+## Scope
 
-To get *unmodified* firmware to "joined + internet", the blob's state machine must be walked to
-CONNECTED by frames a real AP would send. There is no register or flag that shortcuts it. But the
-AP logic is **minimal** if the network is **open** (no PSK): just auth-response + assoc-response, no
-beacons-for-scan strictly needed, no WPA2 4-way handshake, no crypto. The heavy AP behaviour built
-so far can be trimmed to that. Then "internet" is the **libslirp** backend (DHCP + DNS + NAT over the
-Mac's network), which is independent of association fidelity and is the larger, reusable half.
-
-Alternative if the auth-accept RE stalls: a small `esp_wifi` shim / OpenCores-Ethernet netif
-(docs/networking-plan.md) skips association entirely but requires a one-line firmware config change
-(not fully "unmodified"). That's the decision to make.
+Getting *unmodified* firmware to "joined + internet" meant walking the blob's state machine to
+CONNECTED with frames a real AP would send — no register or flag shortcuts it — and then giving the
+resulting Ethernet traffic somewhere to go. Both halves are done; the shim and OpenCores-Ethernet
+routes sketched in docs/networking-plan.md were never needed and are not built.
 
 ## What was reverse-engineered
 

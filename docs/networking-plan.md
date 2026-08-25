@@ -1,75 +1,41 @@
-# Networking (WiFi) plan for esp32sim
+# Networking
 
 Goal: firmware that needs the network — the Waveshare autopling web UI / `/api/pling`, the
 esp32-screen Home Assistant panel, Atech cloud events — runs in the emulator and talks to
 real hosts (Home Assistant, price APIs, a browser on the Mac), with no root privileges.
 
-## What we can and cannot emulate
+**Status: done, over emulated 802.11.** Firmware associates with a virtual access point through
+the unmodified Espressif blob (docs/wifi-plan.md), and the Ethernet traffic that comes out of the
+MAC is handled by two layers in front of the host network:
 
-The ESP32-S3 WiFi stack is `esp_wifi` (open glue) on top of `libpp`/`libnet80211`/`libphy`
-(closed blobs) driving undocumented MAC/baseband/RF registers (the `BB`, `NRX`, `FE`, `FE2`,
-`WIFI MAC` blocks that `--log-periph` shows). Emulating that register interface well enough
-for the blob to associate and pass frames is a Wokwi-scale reverse-engineering job (months) —
-that is **phase 4, research only**. Everything useful is reachable earlier by substituting the
-driver *below the public API*, which is what Espressif's own QEMU does.
+- `esp32s3/src/net.rs` — the emulated subnet 10.0.2.0/24 (station 10.0.2.15, gateway 10.0.2.2,
+  resolver 10.0.2.3): ARP, DHCP, ICMP echo, DNS and an SNTP server serving the host clock.
+- `esp32s3/src/nat.rs` — `--net nat` (the default): everything addressed past the gateway is
+  terminated in the emulator and relayed over ordinary host sockets, which is how Contiki-NG's
+  NAT64 does it. A guest SYN becomes a `TcpStream::connect` on a worker thread, guest payload is
+  written to that socket, socket reads come back as segments the emulator sequences, acknowledges
+  and retransmits; UDP flows are a bound `UdpSocket` per (port, destination) with a reply path
+  and an idle reaper. Name lookups are forwarded to the host's own first resolver from
+  `/etc/resolv.conf`. `--net none` refuses outbound traffic instead (immediate RST).
 
-Two facts make the substitute cheap:
+No libslirp, no tun device, no entitlement, no root. TLS works: the panel fetches
+`https://www.elprisetjustnu.se` and polls Home Assistant on the LAN. That needed the RSA/MPI
+accelerator, SHA over GDMA (including SHA-384) and AES-CTR — see docs/peripherals.md.
 
-- ESP-IDF ships an **OpenCores Ethernet MAC driver** for QEMU (`CONFIG_ETH_USE_OPENETH`,
-  `components/esp_eth/src/openeth/`), registers at `0x600CD000`, interrupt source
-  `ETS_WIFI_MAC_INTR_SOURCE` (0), available for esp32s3. The MAC is tiny (MODER, INT_SOURCE,
-  INT_MASK, MAC_ADDR0/1, TX_BD_NUM, 128 buffer descriptors at +0x400); QEMU's
-  `hw/net/opencores_eth.c` is the semantic reference.
-- `protocol_examples_common` (used by autopling's `example_connect()`) already offers
-  `EXAMPLE_CONNECT_ETHERNET` + `EXAMPLE_USE_OPENETH` — a menuconfig change, no source change.
+## Not there yet
 
-Host side: **libslirp** (QEMU's user-mode NAT; `brew install libslirp`, crate `libslirp-sys`)
-gives the guest 10.0.2.15, DHCP, DNS, outbound TCP/UDP through the Mac's own connections, and
-`hostfwd` port forwards for inbound (guest HTTP server → `http://127.0.0.1:8080`). No root,
-no vmnet entitlement. Limitation: no multicast, so mDNS (`esp-web.local`, HA discovery) does
-not cross; use IP addresses or add an emulator-side mDNS responder later.
-
-## Phases
-
-### Phase 1 — virtual NIC + user-mode network (2–3 days)
-- `esp32s3/src/openeth.rs`: OpenCores MAC model; RX/TX through the BD ring in the MMIO
-  window, IRQ on source 0, MAC address from the efuse/`--mac`.
-- `esp32s3/src/net.rs`: `--net none|user[,hostfwd=tcp:127.0.0.1:8080-:80,...]` backed by
-  libslirp (FFI, own thread; frames exchanged through a channel; `--pcap file` for Wireshark).
-- UI: a **Network** card — guest IP, TX/RX counters, active forwards, link up/down toggle.
-- Free core 0: done as `--stub esp_wifi_start=0` (a synthetic return at the function entry);
-  the real fix is the shim in phase 2.
-- Validate: IDF `examples/protocols/http_request` built with ETHERNET+OPENETH fetches a real
-  URL; then **autopling** rebuilt with the same two menuconfig options → its web UI on
-  `http://127.0.0.1:8080`, `curl -X POST …/api/pling` plings the emulated speaker,
-  detector + camera + pling all live in one page.
-
-### Phase 2 — `esp32sim_wifi` shim component (1–2 days)
-Projects that call `esp_wifi_*` directly (esp32-screen: `esp_wifi_init/set_mode/set_config/
-start/connect/disconnect/scan_start/scan_get_ap_records/sta_get_ap_info`) get a drop-in
-component with the same public headers that implements them over the openeth netif: posts
-`WIFI_EVENT_STA_START/CONNECTED` (and `DISCONNECTED` on link-down from the UI), lets the
-default `esp_netif` handlers deliver `IP_EVENT_STA_GOT_IP`, answers scans with a virtual AP
-list (`--net user,ssid=Home,rssi=-55`). Integration is `EXTRA_COMPONENT_DIRS` / a component
-override in `idf_component.yml`; no application source changes. Target: the HA panel polling
-elprisetjustnu.se and Home Assistant from the emulator.
-
-### Phase 3 — Arduino / PlatformIO (≈1 day, some uncertainty)
-Arduino's `WiFi.begin()` is the same `esp_wifi_*` API inside `libesp_wifi.a`; the shim must
-win at link time (`lib_extra_dirs` + `-Wl,--allow-multiple-definition`, or a patched
-`libesp_wifi.a` in a PlatformIO `board_build` override). Needed for the Atech firmware's cloud
-events (`wifi.postStateEvent`), which would then reach a local mock of the Atech dev server.
-
-### Phase 4 — real 802.11 emulation (research)
-Only if unmodified binaries must associate. Steps if ever: log the blob's register traffic
-(`--log-periph` already names the blocks), find the MAC RX/TX descriptor path in `libpp`,
-model beacons/association from a virtual AP. Not planned.
+- **Inbound**: no port forwarding, so a server in the guest (autopling's web UI) is not reachable
+  from the Mac. A `hostfwd=tcp:127.0.0.1:8080-:80` option over the same NAT is the natural next step.
+- **Multicast/mDNS**: not carried, so `esp-web.local` and Home Assistant discovery do not resolve;
+  use IP addresses.
+- **Real LAN presence**: a `--net tap`/vmnet backend would give the guest an address on the real
+  network (and mDNS with it), at the cost of root or the macOS vmnet entitlement.
 
 ## Alternatives considered
-- **TAP/vmnet** instead of slirp: real LAN presence (mDNS, HA discovery work) but needs root
-  on Linux and the vmnet entitlement (or `sudo`) on macOS. Worth adding as `--net tap` later;
-  slirp first because it needs nothing.
-- **Pure-Rust NAT** instead of libslirp: no C dependency, but a TCP proxy state machine is a
-  week of work for no functional gain. Revisit if packaging (`cargo install`) matters.
-- **Custom "esp32sim NIC"** instead of OpenCores: would need our own guest driver for IDF *and*
-  Arduino; openeth's driver already exists in IDF and is target-independent.
+
+- **libslirp** (QEMU's user-mode NAT) instead of the Rust NAT: a C dependency and an FFI thread for
+  behaviour we needed only a subset of. The subset turned out to be a few hundred lines.
+- **An `esp_wifi` shim or the OpenCores Ethernet MAC** (`CONFIG_ETH_USE_OPENETH`, which IDF ships a
+  driver for) instead of emulating the 802.11 MAC: cheaper, but it needs a firmware config change,
+  so binaries would no longer be the ones that run on the board. Emulating the MAC kept "unmodified
+  firmware" true; neither route is built.
