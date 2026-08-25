@@ -236,6 +236,64 @@ impl SocBus {
         }
     }
 
+    /// AES accelerator in DMA mode: pull the plaintext from the GDMA out-channel bound to AES,
+    /// transform it block by block and write the result back through the in-channel.
+    fn aes_dma_step(&mut self) {
+        self.periph.aes.dma_pending = false;
+        let (Some(out_ch), Some(in_ch)) = (self.periph.gdma.out_channel_for(6), self.periph.gdma.in_channel_for(6)) else {
+            self.periph.aes.state = 2; self.periph.aes.int_raw |= 1; self.irq_dirty = true; return;
+        };
+        // gather input
+        let mut input = Vec::new();
+        let mut desc = self.periph.gdma.out[out_ch].desc;
+        while desc != 0 {
+            let dw0 = self.read32(desc).unwrap_or(0);
+            let (len, buf, next) = (((dw0 >> 12) & 0xfff) as usize, self.read32(desc + 4).unwrap_or(0), self.read32(desc + 8).unwrap_or(0));
+            for i in 0..len { input.push(self.read8(buf + i as u32).unwrap_or(0)); }
+            let eof = dw0 & (1 << 30) != 0;
+            let _ = self.write32(desc, dw0 & !(1 << 31));                       // hand the descriptor back
+            if eof { self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1); self.periph.gdma.out[out_ch].eof_desc = desc; break; }
+            desc = next;
+        }
+        // transform (ECB and CBC cover what the crypto libraries ask for here)
+        let key = self.periph.aes.key_bytes();
+        let decrypt = self.periph.aes.decrypting();
+        let cbc = self.periph.aes.block_mode == 1;
+        let mut iv = [0u8; 16];
+        for (i, w) in self.periph.aes.iv.iter().enumerate() { iv[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes()); }
+        let mut output = Vec::with_capacity(input.len());
+        for chunk in input.chunks(16) {
+            let mut b = [0u8; 16];
+            b[..chunk.len()].copy_from_slice(chunk);
+            let cipher_in = b;
+            if cbc && !decrypt { for i in 0..16 { b[i] ^= iv[i]; } }
+            let mut o = crate::crypto::aes_block(&key, &b, decrypt);
+            if cbc { if decrypt { for i in 0..16 { o[i] ^= iv[i]; } iv = cipher_in; } else { iv = o; } }
+            output.extend_from_slice(&o);
+            self.periph.aes.blocks += 1;
+        }
+        for (i, w) in iv.chunks(4).enumerate() { self.periph.aes.iv[i] = u32::from_le_bytes([w[0], w[1], w[2], w[3]]); }
+        // scatter the result
+        let mut pos = 0usize;
+        let mut desc = self.periph.gdma.inp[in_ch].desc;
+        while desc != 0 && pos < output.len() {
+            let dw0 = self.read32(desc).unwrap_or(0);
+            let (size, buf, next) = ((dw0 & 0xfff) as usize, self.read32(desc + 4).unwrap_or(0), self.read32(desc + 8).unwrap_or(0));
+            let n = size.min(output.len() - pos);
+            for i in 0..n { let _ = self.write8(buf + i as u32, output[pos + i]); }
+            pos += n;
+            let ndw0 = (dw0 & !(0xfff << 12) & !(1 << 31)) | ((n as u32) << 12) | (1 << 30);
+            let _ = self.write32(desc, ndw0);
+            self.periph.gdma.inp[in_ch].eof_desc = desc;
+            self.periph.gdma.inp[in_ch].int_raw |= (1 << 0) | (1 << 1);
+            if next == 0 { break; }
+            desc = next;
+        }
+        self.periph.aes.state = 2;                                              // DONE
+        self.periph.aes.int_raw |= 1;
+        self.irq_dirty = true;
+    }
+
     /// WiFi MAC transmit: fetch the queued frames from their DMA descriptors and complete them.
     fn wifi_tx_step(&mut self) {
         let pending = std::mem::take(&mut self.periph.wifi.tx_pending);
@@ -265,8 +323,10 @@ impl SocBus {
         // (has_data cleared) — that is what a real radio sees at low traffic — and never deliver two
         // frames closer than a frame's airtime.
         if now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 400 { return; }
+        // ... but if software stops recycling altogether, don't stall the air forever: after 50 ms
+        // the frame is dropped, exactly as a real ring would overflow.
         let busy = { let d = self.periph.wifi.last_rx_desc; d != 0 && self.read32(d).unwrap_or(0) & (1 << 30) != 0 };
-        if busy { return; }
+        if busy && now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 50_000 { return; }
         let mut due = { let ap = self.periph.wifi.ap.as_mut().unwrap(); ap.step(now_us) };
         let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
         for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
@@ -364,6 +424,7 @@ impl Bus for SocBus {
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
         if !self.periph.wifi.tx_pending.is_empty() { self.wifi_tx_step(); }
+        if self.periph.aes.dma_pending { self.aes_dma_step(); }
         if self.periph.wifi.ap.is_some() { self.wifi_air_step(); }
         if !self.periph.wifi.eth_tx.is_empty() && self.periph.wifi.net.is_some() {
             let out = std::mem::take(&mut self.periph.wifi.eth_tx);

@@ -129,8 +129,12 @@ impl VirtualNet {
         if self.log { eprintln!("[net] DHCP {} -> {} for {}", if msg_type == 1 { "DISCOVER" } else { "REQUEST" },
                                 if reply_type == 2 { "OFFER" } else { "ACK" },
                                 format!("{}.{}.{}.{}", self.sta_ip[0], self.sta_ip[1], self.sta_ip[2], self.sta_ip[3])); }
-        let ip = ip_packet(17, &self.gw_ip, &[255, 255, 255, 255], &udp);
-        vec![self.frame(&[0xff; 6], 0x0800, &ip)]
+        // Unicast the reply unless the client asked for a broadcast one (BOOTP flags bit 15): a
+        // unicast frame travels under the pairwise key, which keeps the group key out of the picture.
+        let want_bcast = d[10] & 0x80 != 0;
+        let (l2, l3) = if want_bcast { ([0xffu8; 6], [255u8, 255, 255, 255]) } else { (*src, self.sta_ip) };
+        let ip = ip_packet(17, &self.gw_ip, &l3, &udp);
+        vec![self.frame(&l2, 0x0800, &ip)]
     }
 }
 

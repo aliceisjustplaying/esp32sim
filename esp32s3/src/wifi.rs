@@ -31,6 +31,9 @@ pub fn describe(f: &[u8]) -> String {
 /// True for a beacon frame (management subtype 8).
 pub fn is_beacon(f: &[u8]) -> bool { f.len() >= 2 && f[0] & 0x0c == 0 && (f[0] >> 4) & 0xf == 8 }
 
+/// RSN information element advertised in beacons and echoed in handshake message 3: WPA2-PSK, CCMP.
+pub const RSN_IE: &[u8] = &[48, 20, 1, 0, 0x00, 0x0f, 0xac, 4, 1, 0, 0x00, 0x0f, 0xac, 4, 1, 0, 0x00, 0x0f, 0xac, 2, 0, 0];
+
 #[derive(Clone, Debug)]
 pub struct ApConfig { pub ssid: String, pub bssid: [u8; 6], pub channel: u8, pub psk: Option<String> }
 
@@ -40,8 +43,21 @@ pub enum StaState { Idle, Authenticated, Associated }
 /// A frame the AP puts on the air, with the emulated time (µs) it should reach the station.
 pub struct AirFrame { pub at_us: u64, pub frame: Vec<u8> }
 
+/// WPA2 four-way handshake state (AP side).
+#[derive(Default)]
+pub struct Wpa {
+    pub pmk: [u8; 32],
+    pub anonce: [u8; 32],
+    pub snonce: [u8; 32],
+    pub ptk: Option<[u8; 48]>,
+    pub gtk: [u8; 16],
+    pub replay: u64,
+    pub msg: u8,          // last message exchanged (0 = not started, 4 = done)
+}
+
 pub struct VirtualAp {
     pub cfg: ApConfig,
+    pub wpa: Wpa,
     pub state: StaState,
     pub sta: [u8; 6],
     pub aid: u16,
@@ -51,12 +67,21 @@ pub struct VirtualAp {
     pub queue: Vec<AirFrame>,
     pub log: bool,
     pub stats: (u64, u64, u64),   // beacons, probe responses, data frames from the station
+    pub pn: u64,                  // CCMP packet number for frames we send
 }
 
 impl VirtualAp {
     pub fn new(cfg: ApConfig) -> Self {
-        VirtualAp { cfg, state: StaState::Idle, sta: [0; 6], aid: 1, next_beacon_us: 100_000, beacon_interval_us: 102_400, seq: 0,
-                    queue: Vec::new(), log: std::env::var("ESP_EMU_DEBUG_WIFI_FRAMES").is_ok(), stats: (0, 0, 0) }
+        let mut wpa = Wpa::default();
+        if let Some(psk) = &cfg.psk {
+            wpa.pmk.copy_from_slice(&crate::crypto::pbkdf2_sha1(psk.as_bytes(), cfg.ssid.as_bytes(), 4096, 32));
+            // deterministic nonces/GTK: the emulator must replay identically run to run
+            let seed = crate::crypto::sha1(&[&wpa.pmk[..], &cfg.bssid[..]].concat());
+            for i in 0..32 { wpa.anonce[i] = seed[i % 20] ^ (i as u8); }
+            for i in 0..16 { wpa.gtk[i] = seed[(i + 3) % 20] ^ 0x5a; }
+        }
+        VirtualAp { cfg, wpa, state: StaState::Idle, sta: [0; 6], aid: 1, next_beacon_us: 100_000, beacon_interval_us: 102_400, seq: 0,
+                    queue: Vec::new(), pn: 0, log: std::env::var("ESP_EMU_DEBUG_WIFI_FRAMES").is_ok(), stats: (0, 0, 0) }
     }
     fn hdr(&mut self, fc: u16, a1: &[u8; 6], a3: &[u8; 6]) -> Vec<u8> {
         let mut f = Vec::with_capacity(128);
@@ -73,9 +98,7 @@ impl VirtualAp {
         f.extend_from_slice(&[5, 4, 0, 1, 0, 0]);                                           // TIM
         f.extend_from_slice(&[7, 6, b'S', b'E', b' ', 1, 13, 20]);                          // country
         f.extend_from_slice(&[50, 4, 0x30, 0x48, 0x60, 0x6c]);                              // extended rates 24 36 48 54
-        if self.cfg.psk.is_some() {                                                         // RSN: WPA2-PSK, CCMP
-            f.extend_from_slice(&[48, 20, 1, 0, 0x00, 0x0f, 0xac, 4, 1, 0, 0x00, 0x0f, 0xac, 4, 1, 0, 0x00, 0x0f, 0xac, 2, 0, 0]);
-        }
+        if self.cfg.psk.is_some() { f.extend_from_slice(RSN_IE); }                          // RSN: WPA2-PSK, CCMP
     }
     fn beacon_like(&mut self, subtype: u16, dst: &[u8; 6], now_us: u64) -> Vec<u8> {
         let bssid = self.cfg.bssid;
@@ -87,7 +110,7 @@ impl VirtualAp {
         f
     }
     fn send(&mut self, at_us: u64, frame: Vec<u8>) {
-        if self.log { let d = describe(&frame); if d.contains("auth") || d.contains("assoc") { eprintln!("[wifi] AP -> {}  hex={:02x?}", d, frame); } else { eprintln!("[wifi] AP -> {} (t+{} us)", d, at_us); } }
+        if self.log { let d = describe(&frame); if d.contains("auth") || d.contains("assoc") || d.contains("888e") { eprintln!("[wifi] AP -> {}  hex={:02x?}", d, frame); } else { eprintln!("[wifi] AP -> {} (t+{} us)", d, at_us); } }
         self.queue.push(AirFrame { at_us, frame });
     }
     /// Time-driven behaviour (beacons). Returns frames due at or before `now_us`.
@@ -131,25 +154,148 @@ impl VirtualAp {
                 r.extend_from_slice(&self.capability().to_le_bytes()); r.extend_from_slice(&[0, 0]); r.extend_from_slice(&(0xc000 | self.aid).to_le_bytes());
                 r.extend_from_slice(&[1, 8, 0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24]); r.extend_from_slice(&[50, 4, 0x30, 0x48, 0x60, 0x6c]);
                 self.send(now_us + 300, r);
+                if self.cfg.psk.is_some() {                       // WPA2: start the four-way handshake
+                    self.wpa.ptk = None; self.wpa.msg = 0; self.wpa.replay += 1;
+                    let m1 = self.eapol(0x008a, self.wpa.anonce, &[], false);
+                    self.send(now_us + 30_000, m1);
+                    self.wpa.msg = 1;
+                }
             }
             (0, 12) | (0, 10) if to_us(&f[4..10]) => { self.state = StaState::Idle; }
             (2, _) if self.state == StaState::Associated && f[4..10] == self.cfg.bssid => {  // data to the DS
                 if st == 4 || st == 12 { return None; }                                       // null frames (power save)
+                let hdr = if st & 8 != 0 { 26 } else { 24 };
+                // Protected frame: the MAC would have encrypted in place, so the descriptor holds
+                // plaintext framed by an 8-byte CCMP header and 8 bytes of MIC space. Take those off.
+                let plain;
+                let f: &[u8] = if fc & 0x4000 != 0 && f.len() > hdr + 16 {
+                    let mut v = Vec::with_capacity(f.len() - 16);
+                    v.extend_from_slice(&f[..hdr]);
+                    v.extend_from_slice(&f[hdr + 8..f.len() - 8]);
+                    v[1] &= !0x40;                                                             // clear the protected bit
+                    plain = v; &plain
+                } else { f };
+                if f.len() > hdr + 8 && f[hdr] == 0xaa && f[hdr + 6] == 0x88 && f[hdr + 7] == 0x8e {
+                    self.on_eapol(&f[hdr + 8..], now_us);
+                    return None;
+                }
                 self.stats.2 += 1; return Some(f.to_vec());
             }
             _ => {}
         }
         None
     }
+    /// Build an EAPOL-Key frame (802.1X over LLC/SNAP in an 802.11 data frame from the DS).
+    fn eapol(&mut self, key_info: u16, nonce: [u8; 32], key_data: &[u8], mic: bool) -> Vec<u8> {
+        let mut body = Vec::with_capacity(99 + key_data.len());
+        body.push(2);                                                    // 802.1X-2004
+        body.push(3);                                                    // EAPOL-Key
+        body.extend_from_slice(&((95 + key_data.len()) as u16).to_be_bytes());
+        body.push(2);                                                    // RSN key descriptor
+        body.extend_from_slice(&key_info.to_be_bytes());
+        body.extend_from_slice(&16u16.to_be_bytes());                    // key length (CCMP)
+        body.extend_from_slice(&self.wpa.replay.to_be_bytes());
+        body.extend_from_slice(&nonce);
+        body.extend_from_slice(&[0u8; 16]);                              // key IV
+        body.extend_from_slice(&[0u8; 8]);                               // key RSC
+        body.extend_from_slice(&[0u8; 8]);                               // key ID
+        let mic_at = body.len();
+        body.extend_from_slice(&[0u8; 16]);
+        body.extend_from_slice(&(key_data.len() as u16).to_be_bytes());
+        body.extend_from_slice(key_data);
+        if mic {
+            if let Some(ptk) = self.wpa.ptk {
+                let m = crate::crypto::hmac_sha1(&ptk[0..16], &body);    // KCK
+                body[mic_at..mic_at + 16].copy_from_slice(&m[..16]);
+            }
+        }
+        let sta = self.sta; let bssid = self.cfg.bssid;
+        let mut f = self.hdr(0x0208, &sta, &bssid);                      // data, from-DS
+        f[16..22].copy_from_slice(&bssid);
+        f.extend_from_slice(&[0xaa, 0xaa, 0x03, 0, 0, 0, 0x88, 0x8e]);
+        f.extend_from_slice(&body);
+        f
+    }
+
+    /// Handle an EAPOL-Key frame from the station (messages 2 and 4 of the handshake).
+    fn on_eapol(&mut self, body: &[u8], now_us: u64) {
+        if body.len() < 99 || body[1] != 3 { return; }
+        // the MIC covers exactly the 802.1X frame; the 802.11 payload can carry trailing bytes
+        let n = (4 + u16::from_be_bytes([body[2], body[3]]) as usize).min(body.len());
+        let body = &body[..n];
+        let key_info = u16::from_be_bytes([body[5], body[6]]);
+        let has_mic = key_info & 0x0100 != 0;
+        let secure = key_info & 0x0200 != 0;
+        if !has_mic { return; }
+        if !secure && self.wpa.msg == 1 {
+            // message 2: take the SNonce and derive the pairwise key
+            self.wpa.snonce.copy_from_slice(&body[17..49]);
+            let (aa, spa) = (self.cfg.bssid, self.sta);
+            let (lo_mac, hi_mac) = if aa <= spa { (aa, spa) } else { (spa, aa) };
+            let (an, sn) = (self.wpa.anonce, self.wpa.snonce);
+            let (lo_n, hi_n) = if an <= sn { (an, sn) } else { (sn, an) };
+            let mut data = Vec::with_capacity(76);
+            data.extend_from_slice(&lo_mac); data.extend_from_slice(&hi_mac);
+            data.extend_from_slice(&lo_n); data.extend_from_slice(&hi_n);
+            let ptk_v = crate::crypto::prf(&self.wpa.pmk, "Pairwise key expansion", &data, 384);
+            let mut ptk = [0u8; 48]; ptk.copy_from_slice(&ptk_v);
+            self.wpa.ptk = Some(ptk);
+            // self-check: recompute the station's own MIC over message 2. If this matches, the PMK,
+            // the PTK derivation and the MIC scope are all right and any later failure is elsewhere.
+            {
+                let mut probe = body.to_vec();
+                let mic_at = 81;
+                let mut recv = [0u8; 16]; recv.copy_from_slice(&probe[mic_at..mic_at + 16]);
+                for b in probe[mic_at..mic_at + 16].iter_mut() { *b = 0; }
+                let calc = crate::crypto::hmac_sha1(&ptk[0..16], &probe);
+                if self.log {
+                    eprintln!("[wifi] WPA2 msg2: PTK derived, station MIC {} (recv {:02x?} calc {:02x?})",
+                              if calc[..16] == recv { "VERIFIED" } else { "MISMATCH" }, &recv[..4], &calc[..4]);
+                }
+            }
+
+            // message 3: RSN IE + the group key, wrapped with the KEK
+            let mut kd = Vec::new();
+            kd.extend_from_slice(RSN_IE);
+            kd.extend_from_slice(&[0xdd, 22, 0x00, 0x0f, 0xac, 0x01, 0x01, 0x00]);   // GTK KDE, key id 1
+            kd.extend_from_slice(&self.wpa.gtk);
+            if kd.len() % 8 != 0 { kd.push(0xdd); while kd.len() % 8 != 0 { kd.push(0); } }   // pad: one 0xDD then zeros
+            let mut kek = [0u8; 16]; kek.copy_from_slice(&ptk[16..32]);
+            let wrapped = crate::crypto::aes_key_wrap(&kek, &kd);
+            self.wpa.replay += 1;
+            let anonce = self.wpa.anonce;
+            let m3 = self.eapol(0x13ca, anonce, &wrapped, true);
+            self.send(now_us + 2_000, m3);
+            self.wpa.msg = 3;
+        } else if secure && self.wpa.msg == 3 {
+            self.wpa.msg = 4;                                            // message 4: keys are installed
+            if self.log { eprintln!("[wifi] WPA2 four-way handshake complete"); }
+        }
+    }
+
     /// Wrap an Ethernet frame from the network backend into an 802.11 data frame from the DS.
     pub fn data_from_ds(&mut self, eth: &[u8]) -> Option<Vec<u8>> {
         if self.state != StaState::Associated || eth.len() < 14 { return None; }
         let mut dst = [0u8; 6]; dst.copy_from_slice(&eth[0..6]); let mut src = [0u8; 6]; src.copy_from_slice(&eth[6..12]);
         let bssid = self.cfg.bssid;
-        let mut f = self.hdr((2 << 2) | 0x0200, &dst, &src);                                    // data, from-DS
+        // Once the keys are installed the frame must look encrypted: protected bit, CCMP header and
+        // room for the MIC. The payload stays in the clear — as far as firmware is concerned the MAC
+        // decrypted it in place.
+        let protected = if self.wpa.msg == 4 { 0x4000 } else { 0 };
+        let ccmp_hdr = protected != 0;
+        let mut f = self.hdr((2 << 2) | 0x0200 | protected, &dst, &src);                        // data, from-DS
         f[16..22].copy_from_slice(&src); f[10..16].copy_from_slice(&bssid);
+        if ccmp_hdr {
+            // CCMP header, as the hardware would leave it after decrypting in place
+            self.pn += 1;
+            let pn = self.pn;
+            let keyid = if dst[0] & 1 != 0 { 1 } else { 0 };                                    // group frames use the GTK
+            f.extend_from_slice(&[pn as u8, (pn >> 8) as u8, 0, 0x20 | (keyid << 6),
+                                  (pn >> 16) as u8, (pn >> 24) as u8, (pn >> 32) as u8, (pn >> 40) as u8]);
+        }
         f.extend_from_slice(&[0xaa, 0xaa, 0x03, 0, 0, 0]); f.extend_from_slice(&eth[12..14]);  // LLC/SNAP
         f.extend_from_slice(&eth[14..]);
+        if ccmp_hdr { f.extend_from_slice(&[0u8; 8]); }                                         // MIC space
         Some(f)
     }
 }

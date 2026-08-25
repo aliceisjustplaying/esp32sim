@@ -2,9 +2,10 @@
 
 Ordered by value; each item links to its plan where one exists.
 
-1. **WiFi (full, unmodified)** — open networks work end to end: scan, auth, association, DHCP, IP
-   ([wifi-plan.md](wifi-plan.md)). Next: WPA2 4-way handshake (real firmware uses a password), then
-   a NAT backend (libslirp) for traffic beyond the emulated subnet.
+1. **WiFi (full, unmodified)** — open and WPA2-PSK both work end to end: scan, auth, association,
+   four-way handshake, DHCP, IP ([wifi-plan.md](wifi-plan.md)). Next: a NAT backend (libslirp) so
+   traffic reaches beyond the emulated 10.0.2.0/24 subnet — that unlocks NTP, HTTP, MQTT and the
+   Home Assistant / price feeds the panel and autopling actually want.
    The `esp_wifi` shim ([networking-plan.md](networking-plan.md)) remains the fallback if the
    blob route stalls; either unblocks the panel/autopling network features.
 2. **Testing** — hermetic CPU/SoC/board suites, conformance firmware, CI tiers

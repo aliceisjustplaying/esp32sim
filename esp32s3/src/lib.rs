@@ -8,5 +8,6 @@ pub mod i2c;
 pub mod picture;
 pub mod wifi;
 pub mod net;
+pub mod crypto;
 pub mod web;
 pub use machine::{Machine, Stop};

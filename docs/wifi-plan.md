@@ -14,43 +14,50 @@ our `0x60033000`). Everything below was learned by tracing the blob's own access
 
 ## Status
 
-**A station firmware now joins the virtual AP and gets an IP address, with the unmodified blob and
-no firmware changes** (`--wifi ssid=esp32sim`, open network):
+**Firmware joins the virtual AP and gets an IP address — open *and* WPA2-PSK — with the unmodified
+blob and no firmware changes** (`--wifi ssid=esp32sim[,psk=...]`):
 
 ```
-wifi:state: init -> auth -> assoc -> run
+wpa: WPA: Key negotiation completed with 02:53:49:4d:00:01 [PTK=CCMP GTK=CCMP]
 wifi:connected with esp32sim, aid = 1, channel 6, BW20, bssid = 02:53:49:4d:00:01
-esp_netif_handlers: sta ip: 10.0.2.15, mask: 255.255.255.0, gw: 10.0.2.2
 wifi station: got ip:10.0.2.15
 ```
 
-Working: PHY calibration (faked done-bits), scan, open-system authentication, association, and a
-minimal virtual network behind the AP (`esp32s3/src/net.rs`: DHCP, ARP, ICMP echo) so `esp_netif`
-reaches `IP_EVENT_STA_GOT_IP`. The station's data frames are unwrapped 802.11 -> Ethernet and
-answered locally.
+What is modelled:
+- PHY calibration loops satisfied with faked done-bits; scan, open-system auth, association.
+- The 802.11 MAC (TX queue registers, RX descriptor ring, interrupt events) — see below.
+- A **virtual AP** (`esp32s3/src/wifi.rs`): beacons, probe responses, auth/assoc, and the WPA2
+  four-way handshake (PMK from the passphrase, PTK derivation, MIC, GTK delivered AES-key-wrapped).
+- The **AES accelerator** (`Aes` in `periph.rs`, DMA and block mode) — the supplicant unwraps the
+  group key with it, so without this peripheral WPA2 stops dead at message 3.
+- Crypto primitives (`esp32s3/src/crypto.rs`): SHA-1, HMAC-SHA1, PBKDF2, the 802.11 PRF, AES for
+  every key length in both directions, AES key wrap — all checked against RFC/FIPS/802.11i vectors.
+- A **virtual network** (`esp32s3/src/net.rs`): DHCP, ARP, ICMP echo, so `esp_netif` reaches
+  `IP_EVENT_STA_GOT_IP`.
 
-Two model bugs had to be fixed before the blob would accept a connect exchange, both found by
-tracing its own RX path (`--trace-fn`):
+Bulk traffic is **not** encrypted: the emulated MAC presents plaintext framed as CCMP would be
+(protected bit, 8-byte CCMP header with the right key id, 8 bytes of MIC space), which is what
+firmware sees when real hardware encrypts and decrypts in place.
+
+Four model bugs had to be fixed before the blob would complete a connect, all found by tracing its
+own code paths (`--trace-fn`) and, for the last two, by turning on the supplicant's debug log:
 
 - **`DSCR_RELOAD` must not rewind the hardware's RX pointer.** Software rewrites `BASE_RX_DSCR`
-  every time it recycles descriptors; treating that as "restart here" made every second frame land
-  in a descriptor the stack had moved past, and it was recycled instead of indicated (visible as
-  `wDev_ProcessRxSucData` alternating between the indicate and batch-recycle arguments). Base only
-  matters once the ring has actually run dry.
-- **The `rx_ctrl` filter-match nibble must set bit 28**, the "accepted by the address filter" bit
-  (silicon: a broadcast beacon reads `0x111b20ad`). With only the unicast bit 29 set, the auth
-  response reached `wDev_ProcessRxSucData` and was dropped there without ever being indicated.
-  Unicast frames now carry bits 28+29, broadcast bit 28.
+  whenever it recycles descriptors; treating that as "restart here" made every second frame land in
+  a descriptor the stack had moved past, and it was recycled instead of indicated.
+- **The `rx_ctrl` filter-match nibble must set bit 28** ("accepted by the address filter"; silicon:
+  a broadcast beacon reads `0x111b20ad`). With only the unicast bit 29, the auth response was
+  dropped inside `wDev_ProcessRxSucData` without ever being indicated.
+- **The MIC covers exactly the 802.1X frame**, not the whole 802.11 payload, which can carry
+  trailing bytes.
+- **Group-addressed downlink frames must carry key id 1** (the GTK); with key id 0 the station
+  silently drops them. DHCP replies are now unicast anyway, which keeps them under the pairwise key.
 
 Not yet working:
-- **WPA2/PSK**: the AP advertises RSN but does not run the 4-way EAPOL handshake, so a firmware
-  configured with a password associates and then stalls. Open networks are the supported case
-  today. This is the next step for real projects (autopling, the energy panel), and needs
-  host-side PBKDF2/HMAC-SHA1/AES-keywrap plus the EAPOL exchange.
-- **Real internet**: `net.rs` answers the local subnet only. Outbound traffic needs the NAT
-  backend (libslirp) from docs/networking-plan.md; the 802.11 <-> Ethernet path it plugs into
-  already exists.
-- Roaming, power save, 802.11n rates, multiple stations.
+- **Real internet**: `net.rs` answers the local subnet only (10.0.2.0/24). Outbound traffic needs
+  the NAT backend (libslirp) from docs/networking-plan.md; the 802.11 <-> Ethernet path it plugs
+  into already exists. DNS, TCP to real hosts, NTP and HTTP therefore do not work yet.
+- Roaming, power save, 802.11n rates, multiple stations, WPA3/SAE, PMF.
 
 ## Scope: what is and isn't needed
 

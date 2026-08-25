@@ -11,6 +11,7 @@ pub const SRC_UART0: usize = 27;
 pub const SRC_UART1: usize = 28;
 pub const SRC_SPI2: usize = 21;
 pub const SRC_PCNT: usize = 41;
+pub const SRC_AES: usize = 77;
 pub const SRC_LCD_CAM: usize = 24;
 pub const SRC_I2S0: usize = 25;
 pub const SRC_I2S1: usize = 26;
@@ -423,6 +424,70 @@ impl RtcCntl {
     }
 }
 
+// ------------------------------------------------------------------ AES accelerator (0x6003A000)
+/// The block-mode AES accelerator. Firmware writes the key, the mode and one 16-byte block, pulses
+/// TRIGGER and polls STATE until it reads idle again. Used by mbedTLS and — the reason it is here —
+/// by the WPA supplicant to unwrap the group key during the four-way handshake.
+pub struct Aes { pub key: [u32; 8], pub text_in: [u32; 4], pub text_out: [u32; 4], pub mode: u32, pub blocks: u64,
+                 pub dma: bool, pub block_mode: u32, pub num_blocks: u32, pub iv: [u32; 4], pub state: u32,
+                 pub dma_pending: bool, pub int_raw: u32, pub int_ena: u32, ram: RegRam }
+impl Aes {
+    pub fn new() -> Self { Aes { key: [0; 8], text_in: [0; 4], text_out: [0; 4], mode: 0, blocks: 0, dma: false, block_mode: 0,
+                                num_blocks: 0, iv: [0; 4], state: 0, dma_pending: false, int_raw: 0, int_ena: 0, ram: RegRam::new() } }
+    pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
+    /// key bytes selected by the mode register (0/1/2 = 128/192/256, +4 = decrypt)
+    pub fn key_bytes(&self) -> Vec<u8> {
+        let words = ((self.mode & 3) + 2) as usize * 2;
+        let mut k = Vec::with_capacity(words * 4);
+        for w in &self.key[..words.min(8)] { k.extend_from_slice(&w.to_le_bytes()); }
+        k
+    }
+    pub fn decrypting(&self) -> bool { self.mode & 4 != 0 }
+    pub fn read(&mut self, off: u32) -> u32 {
+        match off {
+            0x00..=0x1c => self.key[(off / 4) as usize],
+            0x20..=0x2c => self.text_in[((off - 0x20) / 4) as usize],
+            0x30..=0x3c => self.text_out[((off - 0x30) / 4) as usize],
+            0x40 => self.mode,
+            0x4c => self.state,                          // 0 idle, 2 done (DMA mode waits for done)
+            0x50..=0x5c => self.iv[((off - 0x50) / 4) as usize],
+            0x90 => self.dma as u32, 0x94 => self.block_mode, 0x98 => self.num_blocks,
+            0xb0 => self.int_ena,
+            _ => self.ram.read(off),
+        }
+    }
+    pub fn write(&mut self, off: u32, v: u32) {
+        match off {
+            0x00..=0x1c => self.key[(off / 4) as usize] = v,
+            0x20..=0x2c => self.text_in[((off - 0x20) / 4) as usize] = v,
+            0x40 => self.mode = v,
+            0x50..=0x5c => self.iv[((off - 0x50) / 4) as usize] = v,
+            0x90 => self.dma = v & 1 != 0,
+            0x94 => self.block_mode = v,
+            0x98 => self.num_blocks = v,
+            0xac => { if v & 1 != 0 { self.int_raw = 0; } }
+            0xb0 => self.int_ena = v,
+            0xb8 => { self.state = 0; self.dma_pending = false; }              // DMA_EXIT
+            0x48 => if v & 1 != 0 {
+                if self.dma { self.state = 1; self.dma_pending = true; }        // the bus walks the descriptors
+                else { self.transform(); self.state = 0; }
+            },
+            _ => self.ram.write(off, v),
+        }
+    }
+    fn transform(&mut self) {
+        let decrypt = self.mode & 4 != 0;
+        let key_words = ((self.mode & 3) + 2) as usize * 2;      // mode 0/1/2 -> 128/192/256 bits
+        let mut key = Vec::with_capacity(key_words * 4);
+        for w in &self.key[..key_words.min(8)] { key.extend_from_slice(&w.to_le_bytes()); }
+        let mut block = [0u8; 16];
+        for (i, w) in self.text_in.iter().enumerate() { block[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes()); }
+        let out = crate::crypto::aes_block(&key, &block, decrypt);
+        for i in 0..4 { self.text_out[i] = u32::from_le_bytes([out[4 * i], out[4 * i + 1], out[4 * i + 2], out[4 * i + 3]]); }
+        self.blocks += 1;
+    }
+}
+
 // ------------------------------------------------------------------ WiFi MAC (blocks 0x33/0x34)
 pub const SRC_WIFI_MAC: usize = 0;
 /// The 802.11 MAC the closed `libpp`/`libnet80211` drive. Undocumented by Espressif; the register
@@ -748,6 +813,7 @@ pub struct Peripherals {
     pub spi2: GpSpi,
     pub pcnt: Pcnt,
     pub wifi: WifiMac,
+    pub aes: Aes,
     pub sha: Sha,
     pub wdev: Wdev,
     pub i2c_mst: I2cMst,
@@ -777,7 +843,7 @@ impl Peripherals {
         Peripherals {
             usb: UsbSerialJtag::new(), uart: [Uart::new(), Uart::new(), Uart::new()], systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], intmatrix: IntMatrix::new(), gpio: Gpio::new(), rtc: RtcCntl::new(),
-            efuse: Efuse::new(mac), system: SystemRegs::new(), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true), i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), spi2: GpSpi::new(), pcnt: Pcnt::new(), wifi: WifiMac::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(), i2s1: I2s::new(), rmt: Rmt::new(), generic: Default::default(),
+            efuse: Efuse::new(mac), system: SystemRegs::new(), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true), i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), spi2: GpSpi::new(), pcnt: Pcnt::new(), wifi: WifiMac::new(), aes: Aes::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(), i2s1: I2s::new(), rmt: Rmt::new(), generic: Default::default(),
             log_unknown: false, regstat: None, fake_reads: std::env::var("ESP_EMU_FAKE_READ").ok().map(|v| v.split(',').filter_map(|e| { let mut p = e.split(':'); let a = u32::from_str_radix(p.next()?.trim_start_matches("0x"), 16).ok()?; let o = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).ok()?; let m = u32::from_str_radix(p.next().unwrap_or("ffffffff").trim_start_matches("0x"), 16).ok()?; Some((a, (o, m))) }).collect()).unwrap_or_default(), log_all: std::env::var("ESP_EMU_LOG_ALL").is_ok(), seen: HashSet::new(), cur_pc: 0, cycle_total: 0, st_done: 0, apb_done: 0, rtc_done: 0, sw_int: 0, spi_exec: false, last_status: [0; 4], intmatrix_dirty: true, io_mux: RegRam::new(),
         }
     }
@@ -788,7 +854,7 @@ impl Peripherals {
             0x00 => "UART0", 0x02 => "SPI1", 0x03 => "SPI0", 0x04 => "GPIO", 0x05 => "FE2", 0x06 => "FE", 0x07 => "EFUSE", 0x08 => "RTC", 0x09 => "IO_MUX",
             0x0b => "HINF", 0x0c => "UHCI1", 0x0f => "I2S0", 0x10 => "UART1", 0x11 => "BT", 0x13 => "I2C0", 0x14 => "UHCI0", 0x15 => "SLCHOST", 0x16 => "RMT", 0x17 => "PCNT",
             0x18 => "SLC", 0x19 => "LEDC", 0x1c => "NRX", 0x1d => "BB", 0x1e => "PWM0", 0x1f => "TIMG0", 0x20 => "TIMG1", 0x21 => "RTC_SLOWMEM", 0x23 => "SYSTIMER",
-            0x24 => "SPI2", 0x25 => "SPI3", 0x26 => "APB_CTRL", 0x27 => "I2C1", 0x28 => "SDMMC", 0x2a => "PERI_BACKUP", 0x2b => "TWAI", 0x2c => "PWM1", 0x2d => "I2S1", 0x2e => "UART2", 0x33 => "WIFI_MAC", 0x34 => "WIFI_MAC2", 0x35 => "WDEV", 0x0e => "I2C_MST",
+            0x24 => "SPI2", 0x25 => "SPI3", 0x26 => "APB_CTRL", 0x27 => "I2C1", 0x28 => "SDMMC", 0x2a => "PERI_BACKUP", 0x2b => "TWAI", 0x2c => "PWM1", 0x2d => "I2S1", 0x2e => "UART2", 0x3a => "AES", 0x33 => "WIFI_MAC", 0x34 => "WIFI_MAC2", 0x35 => "WDEV", 0x0e => "I2C_MST",
             0x38 => "USB_SERIAL_JTAG", 0x39 => "USB_WRAP", 0x3a => "AES", 0x3b => "SHA", 0x3c => "RSA", 0x3d => "DS", 0x3e => "HMAC", 0x3f => "GDMA", 0x40 => "APB_SARADC", 0x41 => "LCD_CAM",
             0xc0 => "SYSTEM", 0xc1 => "SENSITIVE", 0xc2 => "INTERRUPT", 0xc4 => "EXTMEM", 0xc5 => "MMU", 0xce => "ASSIST_DEBUG", 0xcf => "ASSIST_DEBUG2", 0xd0 => "WCL",
             _ => "?",
@@ -841,6 +907,7 @@ impl Peripherals {
             0x24 => self.spi2.read(off),
             0x17 => self.pcnt.read(off),
             0x33 | 0x34 => self.wifi.read(block, off),
+            0x3a => self.aes.read(off),
             _ => { self.note(addr, false, 0); self.generic.entry(block).or_insert_with(RegRam::new).read(off) }
         };
         if self.log_all { eprintln!("[rd] {}+0x{:03x} ({:#010x}) -> {:#010x} pc={:#010x}", Self::block_name(block), off, addr, v, self.cur_pc); }
@@ -878,6 +945,7 @@ impl Peripherals {
             0x24 => self.spi2.write(off, v),
             0x17 => self.pcnt.write(off, v),
             0x33 | 0x34 => self.wifi.write(block, off, v),
+            0x3a => self.aes.write(off, v),
             _ => { self.note(addr, true, v); self.generic.entry(block).or_insert_with(RegRam::new).write(off, v) }
         }
     }
@@ -941,6 +1009,7 @@ impl Peripherals {
         set(SRC_SPI2, self.spi2.irq());
         set(SRC_WIFI_MAC, self.wifi.irq());
         set(SRC_PCNT, self.pcnt.irq());
+        set(SRC_AES, self.aes.irq());
         set(SRC_I2S0, self.i2s0.irq()); set(SRC_I2S1, self.i2s1.irq());
         set(SRC_RMT, self.rmt.irq());
         set(SRC_I2C0, self.i2c[0].irq()); set(SRC_I2C1, self.i2c[1].irq());
