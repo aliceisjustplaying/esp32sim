@@ -2,11 +2,14 @@
 
     ./run-energy-panel.sh --web 8768      # http://127.0.0.1:8768/ — 480x480 panel, click/drag to touch
     ./run-energy-panel.sh --script touch.txt --tft-png panel.png --max-seconds 6
+    ./run-energy-panel.sh --script sid.txt --wav sid.wav --max-seconds 25   # SID page, press play
     ./run-energy-panel.sh --wifi "ssid=NAME,psk=PASS" --web 8768    # live data
 
 What works: ST7701S init through the TCA9554, LVGL UI on the RGB bus at 60 fps, GT911 touch (taps,
 swipes between the tileview pages), the SID player (libcRSID → ES8311 → I2S0, audible in the UI or
-`--wav`). Check audio without listening: `hw/wsaudio.py 8768 8`.
+`--wav`). Check audio without listening: `hw/wsaudio.py 8768 8`. `sid.txt` is the scripted
+version: three swipes to the SID tile, then the play button — the capture is silent until the
+tap and then carries the tune, and the whole thing runs at about real time.
 
 **With `--wifi`** the panel runs its real network stack on the unmodified WiFi blob: it associates
 with the emulated AP, takes a DHCP lease, syncs its clock, fetches electricity prices over HTTPS and
