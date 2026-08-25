@@ -84,7 +84,7 @@ impl VirtualAp {
         f
     }
     fn send(&mut self, at_us: u64, frame: Vec<u8>) {
-        if self.log { eprintln!("[wifi] AP -> {} (t+{} us)", describe(&frame), at_us); }
+        if self.log { let d = describe(&frame); if d.contains("auth") || d.contains("assoc") { eprintln!("[wifi] AP -> {}  hex={:02x?}", d, frame); } else { eprintln!("[wifi] AP -> {} (t+{} us)", d, at_us); } }
         self.queue.push(AirFrame { at_us, frame });
     }
     /// Time-driven behaviour (beacons). Returns frames due at or before `now_us`.
@@ -113,6 +113,7 @@ impl VirtualAp {
             }
             (0, 11) if to_us(&f[4..10]) => {                                                 // authentication (open system)
                 let (alg, seq) = (u16::from_le_bytes([f[24], f[25]]), u16::from_le_bytes([f[26], f[27]]));
+                if self.log { eprintln!("[wifi] station AUTH req alg={} seq={} status={} hex={:02x?}", alg, seq, u16::from_le_bytes([f[28],f[29]]), f); }
                 if alg == 0 && seq == 1 {
                     self.sta = a2; self.state = StaState::Authenticated;
                     let mut r = self.hdr(11 << 4, &a2, &self.cfg.bssid.clone());

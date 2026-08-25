@@ -275,8 +275,10 @@ impl SocBus {
         if dw0 & (1 << 31) == 0 || buf == 0 || size < total { self.periph.wifi.rx_dropped += 1; return; }
         let (chan, log) = { let ap = self.periph.wifi.ap.as_ref().unwrap(); (ap.cfg.channel as u32, ap.log) };
         let mut b = Vec::with_capacity(total);
-        let unicast = frame.len() >= 10 && frame[4] & 1 == 0;
-        let w0: u32 = 0xd8 | (0 << 8) | (0 << 14) | 0x8000_0000 | if unicast { 0x3000_0000 } else { 0x1000_0000 };   // rssi -40, 1 Mbps, legacy; bit 31 valid; bits 29:28 = filter_match (1 broadcast/bssid, 3 unicast to us)
+        // rx_ctrl word 0 (silicon: a real broadcast beacon reads 0x111b20ad — bit 28 set, signed rssi in the low
+        // byte). The MAC has already address-filtered, so every delivered frame is "for us"; use the same flags
+        // for unicast and broadcast (an invented "filter_match" nibble made the blob discard unicast frames).
+        let w0: u32 = 0x1000_0000 | (0xd8u32 & 0xff);   // rssi -40 dBm, 1 Mbps, legacy, filtered-match
         let w2: u32 = (chan << 16) | (chan << 20);                                        // channel, secondary
         let w5: u32 = 0xa6;                                                                // noise floor -90
         let w11: u32 = ((frame.len() + 4) as u32 & 0xfff) | (0 << 24);                    // sig_len (incl. FCS), rx_state OK
@@ -289,7 +291,7 @@ impl SocBus {
         let _ = self.write32(desc, ndw0);
         let w = &mut self.periph.wifi;
         w.rx_last = (desc & 0xf_ffff) | (1 << 24); w.rx_next = next & 0xf_ffff; w.rx_frames += 1; w.events |= 1 << 14;   // registers hold masked descriptor addrs; rx_last has a 0x01 prefix (silicon)
-        if log { eprintln!("[wifi] RX -> desc {:#010x} {}", desc, crate::wifi::describe(frame)); }
+        if log { let d = crate::wifi::describe(frame); if d.contains("auth")||d.contains("assoc") { eprintln!("[wifi] RX AUTH/ASSOC -> desc {:#010x} buf {:#010x} {}", desc, buf, d); } else { eprintln!("[wifi] RX -> desc {:#010x} {}", desc, d); } }
         self.irq_dirty = true;
     }
 

@@ -28,12 +28,27 @@ Working today (`--wifi ssid=…[,chan=,psk=,bssid=]`, no firmware changes):
   and 802.11 ↔ Ethernet translation for data frames.
 - Reaches **`state: init -> auth`** and exchanges authentication frames with the AP.
 
-Not yet working: **association does not complete** — the station authenticates, the AP replies, but
-the station falls back `auth -> init` (status 0x200, timeout) instead of sending the association
-request. Next debugging step: the `rx_ctrl` status/`filter_match` bits or the auth-response timing
-that `sta_recv_mgmt` accepts (the auth reply is delivered but not consumed). After that: WPA2 4-way
-handshake (needs the crypto the blob does in software — should "just work" once assoc completes),
-then a network backend (Ethernet frames ↔ libslirp, per docs/networking-plan.md).
+Not yet working: **open association does not complete**. Traced precisely (2026-08-25): the AP's
+auth response *is* received into the RX ring, `wDev_ProcessRxSucData` *indicates* it up the stack
+(not discarded), and it reaches `sta_recv_mgmt` — but the blob's auth handler rejects the content and
+`cnx_auth_timeout` fires 1 s later; `cnx_auth_done` never runs. The frame is a textbook open-system
+auth response (alg 0, seq 2, status 0, correct addressing), so the reject is a subtle context check
+inside `sta_recv_mgmt`/`sta_recv_auth` that needs more disassembly to pin down. **This is the
+minimal AP logic that cannot be skipped** for unmodified firmware: the app waits on
+`WIFI_EVENT_STA_CONNECTED`, which only the blob posts after it accepts auth+assoc.
+
+## Scope: what is and isn't needed
+
+To get *unmodified* firmware to "joined + internet", the blob's state machine must be walked to
+CONNECTED by frames a real AP would send. There is no register or flag that shortcuts it. But the
+AP logic is **minimal** if the network is **open** (no PSK): just auth-response + assoc-response, no
+beacons-for-scan strictly needed, no WPA2 4-way handshake, no crypto. The heavy AP behaviour built
+so far can be trimmed to that. Then "internet" is the **libslirp** backend (DHCP + DNS + NAT over the
+Mac's network), which is independent of association fidelity and is the larger, reusable half.
+
+Alternative if the auth-accept RE stalls: a small `esp_wifi` shim / OpenCores-Ethernet netif
+(docs/networking-plan.md) skips association entirely but requires a one-line firmware config change
+(not fully "unmodified"). That's the decision to make.
 
 ## What was reverse-engineered
 
