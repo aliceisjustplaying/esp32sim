@@ -32,8 +32,10 @@ What is modelled:
   group key with it, so without this peripheral WPA2 stops dead at message 3.
 - Crypto primitives (`esp32s3/src/crypto.rs`): SHA-1, HMAC-SHA1, PBKDF2, the 802.11 PRF, AES for
   every key length in both directions, AES key wrap — all checked against RFC/FIPS/802.11i vectors.
-- A **virtual network** (`esp32s3/src/net.rs`): DHCP, ARP, ICMP echo, so `esp_netif` reaches
-  `IP_EVENT_STA_GOT_IP`.
+- A **virtual network** (`esp32s3/src/net.rs`): DHCP, ARP, ICMP echo, a DNS responder and an SNTP
+  server that hands out the host clock, so `esp_netif` reaches `IP_EVENT_STA_GOT_IP` and firmware
+  waiting for time gets it. TCP connections are refused immediately (RST) rather than left to time
+  out, so applications fail fast and retry instead of hanging.
 
 Bulk traffic is **not** encrypted: the emulated MAC presents plaintext framed as CCMP would be
 (protected bit, 8-byte CCMP header with the right key id, 8 bytes of MIC space), which is what
@@ -54,9 +56,15 @@ own code paths (`--trace-fn`) and, for the last two, by turning on the supplican
   silently drops them. DHCP replies are now unicast anyway, which keeps them under the pairwise key.
 
 Not yet working:
-- **Real internet**: `net.rs` answers the local subnet only (10.0.2.0/24). Outbound traffic needs
-  the NAT backend (libslirp) from docs/networking-plan.md; the 802.11 <-> Ethernet path it plugs
-  into already exists. DNS, TCP to real hosts, NTP and HTTP therefore do not work yet.
+- **Real internet**: `net.rs` answers the emulated subnet only (10.0.2.0/24). Name lookups resolve
+  and the clock syncs, but every TCP connection is refused, so HTTP/HTTPS, MQTT and anything on the
+  real LAN (a Home Assistant instance, for example) cannot be reached. That needs the NAT backend
+  (libslirp) from docs/networking-plan.md; the 802.11 <-> Ethernet path it plugs into already exists.
+
+  Concretely, the esp32-screen energy panel now boots, joins WPA2, takes a DHCP lease, syncs its
+  clock over the emulated NTP (the header shows the real time), resolves
+  `www.elprisetjustnu.se`, builds the correct URL for today and then gets a connection refusal —
+  the price chart and the Home Assistant tiles stay empty until NAT exists.
 - Roaming, power save, 802.11n rates, multiple stations, WPA3/SAE, PMF.
 
 ## Scope: what is and isn't needed
