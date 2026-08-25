@@ -26,7 +26,9 @@ registers are logged with `--log-periph`).
 | SHA | 0x6003B000 | full | SHA-1/224/256 in block mode (bootloader image verification) |
 | RNG | 0x6003B000 | full | random words |
 | regi2c (PLL/BBPLL) | 0x60021000 | stub | reads back what was written |
-| LEDC, PCNT, ADC, SPI2/3, TWAI, SDMMC, USB-OTG | — | — | |
+| GP-SPI2 master | 0x60024000 | partial | CPU-driven transfers (command/address/MOSI phases, W0–W15, UPDATE/USR, TRANS_DONE); DMA and MISO devices — |
+| PCNT | 0x60017000 | full | 4 units × 2 channels, pos/neg/ctrl modes via the GPIO matrix, limits/thresholds/zero events, counter reset/pause |
+| LEDC, ADC, SPI3, TWAI, SDMMC, USB-OTG | — | — | |
 | WiFi MAC/BB/PHY, BT | — | — | see networking-plan.md |
 
 CPU-side: full base ISA, FPU (single precision), MAC16, booleans, PIE (all esp-dl/esp-dsp

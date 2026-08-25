@@ -40,6 +40,12 @@ Things that cost real time to find out, recorded so they do not have to be found
   emulation until sends moved to per-client writer threads with bounded queues.
 
 ## Boards and firmware
+- **Atech's own Pocket Synth build drives the ST7735 over hardware SPI2 and reads the encoder
+  with PCNT**; our PlatformIO build of the same sketch bit-bangs SPI and uses a GPIO ISR (older
+  SDK modules). Both paths are modelled; the display decoder accepts bytes from either.
+- **The real board boots app1 (0x340000)**: its partition table is the Arduino 8 MB OTA layout and
+  `otadata` selects the slot with the higher sequence — a 1 MB flash dump is not enough, and
+  `pio run -t upload` alone would not change what runs (erase `otadata` at 0xE000 first).
 - **ST7735 output is decoded from bit-banged GPIO**: a full redraw is ~4.8 M instructions per
   20 ms (100 % of core 1), the one place the Pocket Synth firmware cannot run at real time
   in an interpreter (~70 Minsn/s dual core vs 240 needed). The UI absorbs it.

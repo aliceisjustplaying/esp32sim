@@ -15,6 +15,8 @@ pub trait BoardModel {
     fn gpio_changes(&mut self, _changes: &[(u8, bool)]) {}
     /// A completed RMT transmission on channel `ch`, decoded to bits by the peripheral model.
     fn rmt_frame(&mut self, _ch: usize, _bits: &[bool]) {}
+    /// Bytes a GP-SPI master (`host` = 2 or 3) shifted out on MOSI.
+    fn spi_tx(&mut self, _host: u8, _data: &[u8]) {}
     fn tft(&self) -> Option<&St7735> { None }
     fn ring(&self) -> Option<&Ring> { None }
     fn gpio_events(&self) -> u64 { 0 }
@@ -102,6 +104,9 @@ impl St7735 {
             _ => {}
         }
     }
+
+    /// A byte delivered by a hardware SPI master (DC still comes from its GPIO).
+    pub fn spi_byte(&mut self, b: u8) { self.byte(b); }
 
     fn byte(&mut self, b: u8) {
         if !self.dc {
@@ -212,6 +217,7 @@ impl BoardModel for Atech14 {
         for &(pin, level) in changes { self.gpio_events += 1; self.tft.gpio(pin, level); }
     }
     fn rmt_frame(&mut self, _ch: usize, bits: &[bool]) { self.ring.from_bits(bits); }
+    fn spi_tx(&mut self, host: u8, data: &[u8]) { if host == 2 { for &b in data { self.tft.spi_byte(b); } } }
     fn tft(&self) -> Option<&St7735> { Some(&self.tft) }
     fn ring(&self) -> Option<&Ring> { Some(&self.ring) }
     fn gpio_events(&self) -> u64 { self.gpio_events }

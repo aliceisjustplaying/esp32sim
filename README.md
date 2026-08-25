@@ -101,6 +101,10 @@ observed firmware behaviour. QEMU was consulted only to confirm instruction sema
 
 ## Differential testing against real silicon (`hw/`)
 
+`DIFF_DIR=hw/<board> FLASH_MB=8 hw/difftest.sh 3000` — the scripts read efuses/strap from the
+attached chip over JTAG, then step it and the emulator in lock-step on the same flash dump
+(`flash-8M.bin` if present). Atech board, 2026-08-25: 3000 steps from reset, 0 divergences.
+
 Any ESP32‑S3 board on USB works (its built‑in USB‑Serial/JTAG carries both the console
 and JTAG). The flow, all scripted:
 

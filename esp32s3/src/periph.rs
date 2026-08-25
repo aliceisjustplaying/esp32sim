@@ -9,6 +9,8 @@ pub const PERIPH_END: u32 = 0x600D_0000;
 pub const SRC_GPIO: usize = 16;
 pub const SRC_UART0: usize = 27;
 pub const SRC_UART1: usize = 28;
+pub const SRC_SPI2: usize = 21;
+pub const SRC_PCNT: usize = 41;
 pub const SRC_LCD_CAM: usize = 24;
 pub const SRC_I2S0: usize = 25;
 pub const SRC_I2S1: usize = 26;
@@ -273,12 +275,13 @@ impl IntMatrix {
 pub struct Gpio {
     pub out: u64, pub enable: u64, pub input: u64, pub status: u64, pub pin: [u32; 49],
     pub func_in_sel: [u32; 256], pub func_out_sel: [u32; 49], ram: RegRam,
+    pub input_changes: Vec<(u8, bool)>,
     /// (pin, level) changes of enabled outputs since last drain
     pub changes: Vec<(u8, bool)>,
     pub strap: u32,
 }
 impl Gpio {
-    pub fn new() -> Self { Gpio { out: 0, enable: 0, input: !0u64 & ((1u64 << 49) - 1), status: 0, pin: [0; 49], func_in_sel: [0x3c; 256], func_out_sel: [0x100; 49], ram: RegRam::new(), changes: Vec::new(), strap: 0x0f } }
+    pub fn new() -> Self { Gpio { out: 0, enable: 0, input: !0u64 & ((1u64 << 49) - 1), status: 0, pin: [0; 49], func_in_sel: [0x3c; 256], func_out_sel: [0x100; 49], ram: RegRam::new(), changes: Vec::new(), strap: 0x0f, input_changes: Vec::new() } }
     fn note_out(&mut self, old: u64) {
         let vis = self.out & self.enable; let oldvis = old & self.enable;
         let diff = vis ^ oldvis;
@@ -289,6 +292,7 @@ impl Gpio {
         let old = self.input;
         if level { self.input |= 1u64 << pin; } else { self.input &= !(1u64 << pin); }
         if old == self.input { return false; }
+        self.input_changes.push((pin, level));
         // edge detection per GPIO_PINn INT_TYPE (bits 7..9): 1 rising, 2 falling, 3 any, 4 low level, 5 high level
         let typ = (self.pin[pin as usize] >> 7) & 7;
         let rising = level && (typ == 1 || typ == 3);
@@ -414,6 +418,119 @@ impl RtcCntl {
     }
 }
 
+// ------------------------------------------------------------------ PCNT (pulse counter)
+/// Four units, two channels each: a signal input counts on rising/falling edges (mode 0 ignore,
+/// 1 increment, 2 decrement) and a control input modifies that (hctrl/lctrl mode 0 keep, 1 invert,
+/// 2 disable). Inputs arrive through the GPIO matrix (signals 33 + 4*unit .. 36 + 4*unit).
+/// Counters are 16-bit signed; high/low limits, thresholds and zero crossings raise the unit's interrupt.
+pub struct Pcnt { pub conf: [[u32; 3]; 4], pub cnt: [i16; 4], pub status: [u32; 4], pub int_raw: u32, pub int_ena: u32, pub ctrl: u32, ram: RegRam, pub events: u64 }
+impl Pcnt {
+    pub fn new() -> Self { Pcnt { conf: [[0; 3]; 4], cnt: [0; 4], status: [0; 4], int_raw: 0, int_ena: 0, ctrl: 0, ram: RegRam::new(), events: 0 } }
+    pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
+    pub fn read(&self, off: u32) -> u32 {
+        match off {
+            0x00..=0x2c => { let u = (off / 12) as usize; self.conf[u][((off % 12) / 4) as usize] }
+            0x30..=0x3c => self.cnt[((off - 0x30) / 4) as usize] as u16 as u32,
+            0x40 => self.int_raw, 0x44 => self.int_raw & self.int_ena, 0x48 => self.int_ena,
+            0x50..=0x5c => self.status[((off - 0x50) / 4) as usize],
+            0x60 => self.ctrl, 0xfc => 0x1912_0400,
+            _ => self.ram.read(off),
+        }
+    }
+    pub fn write(&mut self, off: u32, v: u32) {
+        match off {
+            0x00..=0x2c => { let u = (off / 12) as usize; self.conf[u][((off % 12) / 4) as usize] = v; }
+            0x48 => self.int_ena = v, 0x4c => self.int_raw &= !v,
+            0x60 => { self.ctrl = v; for u in 0..4 { if v & (1 << (2 * u)) != 0 { self.cnt[u] = 0; } } }
+            _ => self.ram.write(off, v),
+        }
+    }
+    /// A GPIO input changed: `sig(idx)` gives the level of matrix input signal `idx` (None = not routed).
+    pub fn gpio_edge(&mut self, pin: u8, level: bool, sig: &dyn Fn(u32) -> Option<(u8, bool)>) {
+        for u in 0..4 {
+            if self.ctrl & (1 << (2 * u)) != 0 || self.ctrl & (1 << (2 * u + 1)) != 0 { continue; }   // reset held / paused
+            let conf0 = self.conf[u][0];
+            for ch in 0..2u32 {
+                let Some((sp, _)) = sig(33 + 4 * u as u32 + ch) else { continue };
+                if sp != pin { continue; }
+                let sh = 16 + 8 * ch;
+                let mode = if level { (conf0 >> (sh + 2)) & 3 } else { (conf0 >> sh) & 3 };          // pos_mode / neg_mode
+                let mut delta: i32 = match mode { 1 => 1, 2 => -1, _ => 0 };
+                if delta != 0 {
+                    let ctrl_level = sig(35 + 4 * u as u32 + ch).map_or(true, |(_, l)| l);
+                    let cm = if ctrl_level { (conf0 >> (sh + 4)) & 3 } else { (conf0 >> (sh + 6)) & 3 };   // hctrl / lctrl
+                    match cm { 1 => delta = -delta, 2 => delta = 0, _ => {} }
+                }
+                if delta != 0 { self.count(u, delta); }
+            }
+        }
+    }
+    fn count(&mut self, u: usize, delta: i32) {
+        let conf0 = self.conf[u][0]; let conf1 = self.conf[u][1]; let conf2 = self.conf[u][2];
+        let old = self.cnt[u] as i32; let mut new = old + delta;
+        let mut ev = 0u32;
+        if conf0 & (1 << 12) != 0 && new >= (conf2 & 0xffff) as i16 as i32 { ev |= 1 << 5; new = 0; }         // h_lim
+        if conf0 & (1 << 13) != 0 && new <= (conf2 >> 16) as i16 as i32 { ev |= 1 << 4; new = 0; }             // l_lim
+        if conf0 & (1 << 14) != 0 && new == (conf1 & 0xffff) as i16 as i32 { ev |= 1 << 3; }                   // thres0
+        if conf0 & (1 << 15) != 0 && new == (conf1 >> 16) as i16 as i32 { ev |= 1 << 2; }                      // thres1
+        if conf0 & (1 << 11) != 0 && new == 0 && old != 0 { ev |= if delta > 0 { 1 } else { 2 }; }             // zero (mode: 1 from negative, 2 from positive)
+        self.cnt[u] = new as i16; self.events += 1;
+        if ev != 0 { self.status[u] = ev; self.int_raw |= 1 << u; }
+    }
+}
+
+// ------------------------------------------------------------------ GP-SPI2/3 master (CPU-driven)
+/// General-purpose SPI master as the Arduino HAL / IDF `spi_master` use it without DMA: the CPU
+/// fills W0..W15, sets the phase enables and lengths, writes CMD.UPDATE then CMD.USR, and polls
+/// USR until the transfer is done. Transfers complete instantly; the bytes that went out on MOSI
+/// are queued in `tx` for the board (the display), MISO reads back as 0xFF.
+pub struct GpSpi { pub regs: RegRam, pub w: [u32; 16], pub int_raw: u32, pub int_ena: u32, pub tx: Vec<u8>, pub transfers: u64, pub log: bool }
+impl GpSpi {
+    pub fn new() -> Self { GpSpi { regs: RegRam::new(), w: [0; 16], int_raw: 0, int_ena: 0, tx: Vec::new(), transfers: 0, log: std::env::var("ESP_EMU_DEBUG_SPI2").is_ok() } }
+    pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
+    pub fn read(&self, off: u32) -> u32 {
+        match off {
+            0x00 => self.regs.read(0) & !((1 << 23) | (1 << 24)),      // CMD: UPDATE and USR self-clear
+            0x34 => self.int_ena, 0x3c => self.int_raw, 0x40 => self.int_raw & self.int_ena,
+            0x98..=0xd4 => self.w[((off - 0x98) / 4) as usize],
+            0xf0 => 0x2101_0100,
+            _ => self.regs.read(off),
+        }
+    }
+    pub fn write(&mut self, off: u32, v: u32) {
+        match off {
+            0x00 => { self.regs.write(0, v & !((1 << 23) | (1 << 24))); if v & (1 << 24) != 0 { self.transfer(); } }
+            0x34 => self.int_ena = v, 0x38 => self.int_raw &= !v,
+            0x98..=0xd4 => self.w[((off - 0x98) / 4) as usize] = v,
+            _ => self.regs.write(off, v),
+        }
+    }
+    fn transfer(&mut self) {
+        let user = self.regs.read(0x10); let user1 = self.regs.read(0x14); let user2 = self.regs.read(0x18);
+        let start = self.tx.len();
+        if user & (1 << 31) != 0 {                                        // command phase, LSB byte first
+            let n = (((user2 >> 28) & 0xf) + 1 + 7) / 8; let c = user2 & 0xffff;
+            for i in 0..n { self.tx.push((c >> (8 * i)) as u8); }
+        }
+        if user & (1 << 30) != 0 {                                        // address phase, MSB first from the top of ADDR
+            let bits = (user1 >> 27) + 1; let n = (bits + 7) / 8; let a = self.regs.read(0x04);
+            for i in 0..n { self.tx.push((a >> (24 - 8 * i)) as u8); }
+        }
+        if user & (1 << 27) != 0 {                                        // MOSI data phase from W0.. (or W8.. with HIGHPART)
+            let bits = (self.regs.read(0x1c) & 0x3ffff) + 1; let n = ((bits + 7) / 8) as usize;
+            let base = if user & (1 << 25) != 0 { 8 } else { 0 };
+            for i in 0..n.min((16 - base) * 4) { self.tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8); }
+        }
+        if user & (1 << 28) != 0 {                                        // MISO: nothing answers
+            let base = if user & (1 << 24) != 0 { 8 } else { 0 };
+            for k in base..16 { self.w[k] = 0xffff_ffff; }
+        }
+        if self.log { eprintln!("[spi2] transfer {} bytes: {:02x?}", self.tx.len() - start, &self.tx[start..(start + 16).min(self.tx.len())]); }
+        self.transfers += 1;
+        self.int_raw |= 1 << 12;                                          // TRANS_DONE
+    }
+}
+
 // ------------------------------------------------------------------ LCD_CAM (camera side)
 /// The camera engine of LCD_CAM: once started it pulls one frame per sensor period through the GDMA
 /// channel bound to trigger 5 (CAM). Only the register semantics the DVP driver needs are modelled.
@@ -506,6 +623,8 @@ pub struct Peripherals {
     pub spi1: SpiMem,
     pub i2c: [crate::i2c::I2c; 2],
     pub lcd_cam: LcdCam,
+    pub spi2: GpSpi,
+    pub pcnt: Pcnt,
     pub sha: Sha,
     pub wdev: Wdev,
     pub i2c_mst: I2cMst,
@@ -531,7 +650,7 @@ impl Peripherals {
         Peripherals {
             usb: UsbSerialJtag::new(), uart: [Uart::new(), Uart::new(), Uart::new()], systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], intmatrix: IntMatrix::new(), gpio: Gpio::new(), rtc: RtcCntl::new(),
-            efuse: Efuse::new(mac), system: SystemRegs::new(), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true), i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(), i2s1: I2s::new(), rmt: Rmt::new(), generic: Default::default(),
+            efuse: Efuse::new(mac), system: SystemRegs::new(), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true), i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), spi2: GpSpi::new(), pcnt: Pcnt::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(), i2s1: I2s::new(), rmt: Rmt::new(), generic: Default::default(),
             log_unknown: false, log_all: std::env::var("ESP_EMU_LOG_ALL").is_ok(), seen: HashSet::new(), cur_pc: 0, cycle_total: 0, st_done: 0, apb_done: 0, rtc_done: 0, sw_int: 0, spi_exec: false, last_status: [0; 4], intmatrix_dirty: true, io_mux: RegRam::new(),
         }
     }
@@ -583,6 +702,8 @@ impl Peripherals {
             0x16 => self.rmt.read(off),
             0x13 => self.i2c[0].read(off), 0x27 => self.i2c[1].read(off),
             0x41 => self.lcd_cam.read(off),
+            0x24 => self.spi2.read(off),
+            0x17 => self.pcnt.read(off),
             _ => { self.note(addr, false, 0); self.generic.entry(block).or_insert_with(RegRam::new).read(off) }
         };
         if self.log_all { eprintln!("[rd] {}+0x{:03x} ({:#010x}) -> {:#010x} pc={:#010x}", Self::block_name(block), off, addr, v, self.cur_pc); }
@@ -615,6 +736,8 @@ impl Peripherals {
             0x16 => self.rmt.write(off, v),
             0x13 => self.i2c[0].write(off, v), 0x27 => self.i2c[1].write(off, v),
             0x41 => self.lcd_cam.write(off, v),
+            0x24 => self.spi2.write(off, v),
+            0x17 => self.pcnt.write(off, v),
             _ => { self.note(addr, true, v); self.generic.entry(block).or_insert_with(RegRam::new).write(off, v) }
         }
     }
@@ -650,6 +773,17 @@ impl Peripherals {
         if rtc > self.rtc_done { let d = rtc - self.rtc_done; self.rtc.slow_ticks += d; self.rtc_done = rtc; self.rtc.wdt_tick(d); }
         self.usb.tick(cycles);
         self.rmt.tick(cycles);
+        if !self.gpio.input_changes.is_empty() {
+            let changes = std::mem::take(&mut self.gpio.input_changes);
+            let gpio = &self.gpio;
+            let sig = |idx: u32| -> Option<(u8, bool)> {
+                let sel = *gpio.func_in_sel.get(idx as usize)?;
+                if sel & 0x80 == 0 { return None; }                       // not routed through the matrix
+                let pin = (sel & 0x3f) as u8; if pin >= 49 { return None; }
+                let lvl = (gpio.input >> pin) & 1 != 0; Some((pin, lvl ^ (sel & 0x40 != 0)))
+            };
+            for (pin, level) in changes { self.pcnt.gpio_edge(pin, level, &sig); }
+        }
     }
 
     /// Raw per-source interrupt status (4 × 32 bits).
@@ -664,6 +798,8 @@ impl Peripherals {
         for i in 0..4 { set(SRC_FROM_CPU0 + i, self.sw_int & (1 << i) != 0); }
         for ch in 0..GDMA_CHANNELS { set(SRC_DMA_OUT_CH0 + ch, self.gdma.out[ch].irq()); set(SRC_DMA_IN_CH0 + ch, self.gdma.inp[ch].irq()); }
         set(SRC_LCD_CAM, self.lcd_cam.irq());
+        set(SRC_SPI2, self.spi2.irq());
+        set(SRC_PCNT, self.pcnt.irq());
         set(SRC_I2S0, self.i2s0.irq()); set(SRC_I2S1, self.i2s1.irq());
         set(SRC_RMT, self.rmt.irq());
         set(SRC_I2C0, self.i2c[0].irq()); set(SRC_I2C1, self.i2c[1].irq());
