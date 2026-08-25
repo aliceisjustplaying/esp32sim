@@ -226,7 +226,7 @@ impl Machine {
         let pc = cpu.pc;
         if !self.fn_probes.is_empty() && !cpu.waiting {
             if let Some(name) = self.fn_probes.get(&pc) {
-                eprintln!("[fn] t={:.4}s c{} {}(a2={:#x} a3={:#x} a4={:#x}) from {:#x}", bus.cycles as f64 / crate::periph::CPU_HZ as f64, core, name, cpu.get_ar(2), cpu.get_ar(3), cpu.get_ar(4), cpu.get_ar(0) & 0x3fff_ffff | 0x4000_0000);
+                eprintln!("[fn] i={} t={:.4}s c{} {}(a2={:#x} a3={:#x} a4={:#x} a5={:#x} a6={:#x} a7={:#x})", cpu.insn_count, bus.cycles as f64 / crate::periph::CPU_HZ as f64, core, name, cpu.get_ar(2), cpu.get_ar(3), cpu.get_ar(4), cpu.get_ar(5), cpu.get_ar(6), cpu.get_ar(7));
             }
         }
         if !self.stubs.is_empty() && !cpu.waiting {

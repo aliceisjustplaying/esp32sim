@@ -28,14 +28,28 @@ Working today (`--wifi ssid=…[,chan=,psk=,bssid=]`, no firmware changes):
   and 802.11 ↔ Ethernet translation for data frames.
 - Reaches **`state: init -> auth`** and exchanges authentication frames with the AP.
 
-Not yet working: **open association does not complete**. Traced precisely (2026-08-25): the AP's
-auth response *is* received into the RX ring, `wDev_ProcessRxSucData` *indicates* it up the stack
-(not discarded), and it reaches `sta_recv_mgmt` — but the blob's auth handler rejects the content and
-`cnx_auth_timeout` fires 1 s later; `cnx_auth_done` never runs. The frame is a textbook open-system
-auth response (alg 0, seq 2, status 0, correct addressing), so the reject is a subtle context check
-inside `sta_recv_mgmt`/`sta_recv_auth` that needs more disassembly to pin down. **This is the
-minimal AP logic that cannot be skipped** for unmodified firmware: the app waits on
-`WIFI_EVENT_STA_CONNECTED`, which only the blob posts after it accepts auth+assoc.
+Not yet working: **open association does not complete**, and the blocker is now localized to the
+ROM's RX-block memory management (2026-08-25):
+
+- The AP's open auth response is received into the RX descriptor ring correctly (silicon-verified
+  descriptor format) and `wDev_ProcessRxSucData` runs on it with the right length.
+- `wDev_ProcessRxSucData` calls `wDev_IndicateFrame` for the auth with the same arguments as for a
+  beacon that *is* processed — but the auth (a small, unicast frame) is **not propagated to
+  `ppRxPkt`/`sta_input`**, so the 802.11 stack never sees it; `cnx_auth_timeout` fires 1 s later.
+- The difference is inside the ROM's RX-block/bank management: `wDev_IndicateFrame` copies the DMA
+  frame into managed "rx blocks" (the `wdev` bank structure at `0x3fcef944`, allocator/copy via
+  offsets `0x188`/`0x1d0`/`0x1cc`/`0x1f8`), and `wDev_AppendRxBlocks` walks a descriptor chain,
+  writes `0xdeadbeef` free-markers, and re-arms via `WIFI_MAC_BITMASK_084` (`0x60033084`) bit 0.
+  The batch "block count" passed down (`a3`) is the number of ring descriptors filled since the last
+  pass; my delivery advances the ring pointers in a way that mishandles a small frame arriving amid
+  the beacon/probe traffic.
+
+Modelling this ROM block/bank batch path faithfully — how it links descriptors into a frame, marks
+EOF, counts blocks, and recycles — is the remaining reverse-engineering. It is the minimal AP-side
+work that cannot be skipped for unmodified firmware (the app only advances on
+`WIFI_EVENT_STA_CONNECTED`, which the blob posts after auth+assoc). Realistically a multi-day effort;
+the hardware oracle (JTAG on the Atech board) can dump the real descriptor chain and bank state for a
+received unicast frame to nail the exact linkage.
 
 ## Scope: what is and isn't needed
 

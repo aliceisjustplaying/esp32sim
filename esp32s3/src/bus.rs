@@ -278,7 +278,12 @@ impl SocBus {
         // rx_ctrl word 0 (silicon: a real broadcast beacon reads 0x111b20ad — bit 28 set, signed rssi in the low
         // byte). The MAC has already address-filtered, so every delivered frame is "for us"; use the same flags
         // for unicast and broadcast (an invented "filter_match" nibble made the blob discard unicast frames).
-        let w0: u32 = 0x1000_0000 | (0xd8u32 & 0xff);   // rssi -40 dBm, 1 Mbps, legacy, filtered-match
+        // filter-match nibble (silicon: broadcast beacon reads bit 28). A frame the hardware accepted because
+        // addr1 is our unicast MAC must carry the unicast-match bit (29), not the broadcast bit (28), or
+        // wDev_IndicateFrame drops it as "not for me".
+        let bcast = frame.len() >= 5 && frame[4] & 1 == 1;
+        let fm = if bcast { 1u32 << 28 } else { 1u32 << 29 };
+        let w0: u32 = fm | (0xd8u32 & 0xff);   // rssi -40 dBm, 1 Mbps, legacy
         let w2: u32 = (chan << 16) | (chan << 20);                                        // channel, secondary
         let w5: u32 = 0xa6;                                                                // noise floor -90
         let w11: u32 = ((frame.len() + 4) as u32 & 0xfff) | (0 << 24);                    // sig_len (incl. FCS), rx_state OK
