@@ -1,0 +1,97 @@
+# Architecture
+
+esp32sim is an instruction-level emulator of the ESP32-S3: it executes the real mask ROM, the
+real second-stage bootloader and an unmodified application image on two emulated Xtensa LX7
+cores, with the SoC peripherals modelled at the register level and the board (what hangs off
+the pins) modelled as devices that interpret pin-level events. It is written in Rust, MIT
+licensed, and contains no third-party emulator code (QEMU was consulted for instruction
+*semantics* only).
+
+```
+cli/          esp32sim binary: argument parsing, image loading, run loop, reports
+esp32s3/      the SoC and boards
+  machine.rs  Machine: two Cpus + SocBus, scheduler, scripts, web push/poll, reboot, WAV/PNG
+  bus.rs      SocBus: memory map, cache MMU, peripheral dispatch, DMA pumps (I2S, camera)
+  periph.rs   register models (UART, USB-Serial/JTAG, systimer, TIMG, interrupt matrix, GPIO,
+              RTC_CNTL + WDT, efuse, SPI0/1 flash + PSRAM, SHA, RNG, regi2c, GDMA, I2S, RMT, LCD_CAM)
+  i2c.rs      I2C master controller + bus devices (CH32V003, OV5640, ES8311/ES7210)
+  board.rs    BoardModel trait; Atech14, WaveshareCam, NoBoard; ST7735 and WS2812 decoders
+  web.rs      dependency-free HTTP + WebSocket server
+  elf.rs / image.rs / picture.rs   loaders (ELF symbols/segments, ESP app images, BMP/PPM)
+xtensa-lx7/   the core
+  decode.rs   instruction decoder (24/16-bit base ISA, FPU, MAC16, booleans) -> Insn
+  pie.rs      PIE SIMD (ee.*) decode/format/execute; pie_table.rs is generated from the TRM
+  exec.rs     interpreter: windowed registers, loops, XEA2 exceptions/interrupts, CP enable
+  state.rs    Cpu: registers, special registers, user registers (ACCX/QACC/…), interrupt levels
+  disasm.rs   objdump-compatible formatter (used by the differential decoder test)
+web/          index.html: board drawing, console, WebAudio, camera panel (no build step)
+```
+
+## CPU core (`xtensa-lx7`)
+
+- **Decoder**: `decode(pc, bytes) -> Insn` with fields `op, r, s, t, imm, imm2, len, raw`.
+  Verified against `xtensa-esp32s3-elf-objdump` over the Pocket Synth app, the mask ROM, the
+  IDF 5.5 bootloader, `hello_world` and the autopling image (977 544 instructions, 0
+  mismatches, `xtensa-lx7/tests/objdump_diff.rs`).
+- **PIE**: all 217 `ee.*` encodings come from the TRM chapter-1 "Instruction Word" layouts
+  (`tools/gen_pie_table.py` + `tools/pie_trm.json` → `pie_table.rs`), cross-checked against
+  the ESP-IDF 5.5 assembler. Execution follows the TRM "Operation" pseudo-code; PIE is
+  coprocessor 3, so `CPENABLE[3]` gates it and FreeRTOS's lazy save/restore works unchanged.
+- **Interpreter**: one instruction per call to `step()`. Register windows are modelled with the
+  64-entry physical file and WindowBase/WindowStart, including overflow/underflow exceptions
+  raised at the *instruction that would touch* the missing window (see decisions.md).
+  Timing is 1 instruction = 1 cycle; CCOUNT advances per step.
+- **Decoded-instruction cache**: a 64K-entry direct-mapped cache in `Cpu`, keyed by PC and
+  validated by the raw fetch bytes, so self-modifying/reloaded code is always correct.
+- **Traps**: `Exception(cause)`, `Interrupt(n)`, `Unimplemented(pc, raw)`, `Simcall`. The
+  machine counts them; `--stop-after-exceptions` and unimplemented instructions stop the run.
+
+## SoC (`esp32s3`)
+
+- **Memory map** (`bus.rs`): SRAM (IRAM `0x4037_0000`, DRAM `0x3FC8_8000` aliases of one
+  buffer), mask ROM (`0x4000_0000` I / `0x3FF0_0000` D), RTC fast/slow RAM, the flash/PSRAM
+  cache windows (`0x3C00_0000` D-bus, `0x4200_0000` I-bus) translated by the 512-entry MMU
+  table at `0x600C_5000` (flash pages or PSRAM pages), peripherals `0x6000_0000–0x600D_0000`.
+  Cache timing is not modelled; XIP from flash or PSRAM is a table lookup.
+- **Peripheral dispatch**: address bits 12–19 select a block; unknown registers land in a
+  generic register RAM and are logged on first touch with `--log-periph`.
+- **Interrupts**: every source has a level computed by its model (`Peripherals::source_status`);
+  the per-core interrupt matrix maps sources to the 32 Xtensa interrupt lines. Lines are
+  recomputed when a register write flags `irq_dirty` or every 32 cycles, then written into
+  `cpu.interrupt` so the next `step()` sees them.
+- **DMA**: GDMA out-channels feed I2S0/I2S1 (audio → `pcm` samples at the configured rate),
+  in-channels are fed by the LCD_CAM camera engine (one frame per sensor period). Descriptor
+  chains are walked in guest memory exactly as the driver builds them.
+- **Reset**: `Machine::reboot()` re-creates the digital peripherals, keeps SRAM, RTC memories,
+  efuses and the captured audio, sets `RESET_CAUSE`, and restarts both cores at the ROM reset
+  vector — the path used by `esp_restart()` (RTC watchdog) and `SW_PROCPU_RST`.
+
+## Scheduling and time
+
+`Machine::run` interleaves the cores in quanta of 32 instructions. A core sitting in `waiti`
+with nothing pending costs nothing; when both cores are idle time advances in 256-cycle
+chunks until a timer or DMA event is due. Peripheral clocks (APB 80 MHz, systimer 16 MHz,
+RTC slow 150 kHz) are derived from the 240 MHz cycle counter with delivered-tick accounting.
+With `--web` the machine is paced to wall time (sleeping when ahead, resynchronising rather
+than bursting if it falls > 0.5 s behind).
+
+## Boards
+
+`BoardModel` (board.rs) receives GPIO output edges, decoded RMT frames, owns the I2C devices
+and the camera source, and exposes optional display/ring/camera state for the UI. The SoC
+never knows what board it is on; `--board` selects the implementation. See boards.md.
+
+## Web UI
+
+`web.rs` serves `web/index.html` and one WebSocket per tab. The machine pushes state 50 times
+per emulated second (console text, display frames, audio, ring colours, statistics) and polls
+inputs (buttons, encoder, serial lines, camera pictures). Protocol in web-ui.md.
+
+## Provenance and verification
+
+- Instruction semantics: Xtensa ISA reference + ESP32-S3 TRM; PIE from the TRM only.
+- Peripherals: ESP32-S3 TRM register maps and the ESP-IDF `hal/*_ll.h` drivers as the
+  "what does software expect" reference.
+- Ground truth: `hw/difftest*.sh` single-step a real ESP32-S3 over USB-JTAG (openocd + gdb)
+  and compare PC/registers with the emulator running the same flash image — zero divergence
+  over the ROM reset path and the bootloader.

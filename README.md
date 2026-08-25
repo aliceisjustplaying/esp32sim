@@ -86,17 +86,12 @@ ROM with the right reset cause; `--no-reboot` stops at the first reset instead.
 unknown register), `--stop-after-exceptions N`, `--gram-png` (raw ST7735 GRAM).
 Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`.
 
-## Status / not yet modelled
+## Documentation
 
-RX paths of I2S/RMT, WiFi/BLE (never: closed RF blob — `esp_wifi_start` spins in PHY calibration),
-LEDC, PCNT, ADC, SPI2/3 masters, cache timing, the FFT/GPIO/s32 corners of PIE.
-Modelled: I2C master (`esp32s3/src/i2c.rs`, `ESP_EMU_DEBUG_I2C=1` traces the bus), octal PSRAM on SPI1
-CS1, I2S0/I2S1, RTC watchdog, LCD_CAM camera engine + GDMA RX, and the **PIE SIMD unit**
-(`xtensa-lx7/src/pie.rs`): all 217 instruction encodings are generated from the TRM's own
-"Instruction Word" layouts (`tools/gen_pie_table.py`, `tools/pie_trm.json`) and cross-checked against
-the ESP-IDF 5.5 assembler; semantics follow the TRM "Operation" pseudo-code for the ~170 ops
-esp-dl/esp-dsp use (Q registers, ACCX, QACC_H/L, SAR_BYTE unaligned pipeline, CP3 lazy save). The FP divide/sqrt helper ops follow
-QEMU's scheme (exact result at `mkdadj.s`/`mksadj.s`). Timing is 1 instruction = 1 cycle. Decoder coverage is checked against objdump over the app, the mask ROM, the IDF 5.5 bootloader and hello_world (0 mismatches, incl. the newer toolchain's `salt/saltu`, `s32nb`, MAC16 `.ad/.da` forms).
+`docs/` — [architecture](docs/architecture.md), [peripheral coverage](docs/peripherals.md),
+[boards](docs/boards.md), [CLI reference](docs/cli.md), [web UI protocol](docs/web-ui.md),
+[design decisions & gotchas](docs/decisions.md), [roadmap](docs/roadmap.md), and the
+[networking](docs/networking-plan.md) and [testing](docs/testing-plan.md) plans.
 
 ## Provenance
 
