@@ -54,10 +54,23 @@ MAC register file at **`0x60033000`** (block 0x33) / `0x60034000` (0x34), WDEV a
 | WDEV `0x0c/0x10/0x14/0x18/0x1c` | TSF counter: latch/load and the 64-bit value |
 | WDEV `0x118/0x11c` | power interrupt events / clear |
 
-DMA descriptor (esp32-open-mac `dma_list_item`): `size:12 length:12 _:6 has_data:1 owner:1`, then
-`packet` and `next` pointers. RX buffer = a 48-byte `wifi_pkt_rx_ctrl` header (rssi, rate, channel,
+DMA descriptor (esp32-open-mac `dma_list_item`, **confirmed on silicon 2026-08-25** via JTAG on the
+Atech board running this specimen): `size:12 length:12 _:6 has_data:1 owner:1`, then `packet` and
+`next` pointers. A filled RX descriptor reads `dw0=0xc0..` — the hardware sets has_data (bit 30) and
+**leaves owner (bit 31) set**; the register pointers (`0x088/8c/90`) hold the low 20 bits over
+`0x3FC0_0000`, while the in-descriptor `packet`/`next` are full addresses. `rx_last` carries a `0x01`
+prefix (bit 24). The 48-byte `rx_ctrl` header begins with the signed RSSI in the low byte of word 0. RX buffer = a 48-byte `wifi_pkt_rx_ctrl` header (rssi, rate, channel,
 timestamp, `sig_len`, `rx_state`) + the 802.11 frame + 4-byte FCS; word 0 top bits are the
 frame-valid / filter-match flags `wDev_ProcessRxSucData` gates on.
+
+## Hardware ground truth
+
+The real Atech board (ESP32-S3, same silicon) is used as the oracle: flash this specimen, let it
+receive real beacons off the air, then over the built-in USB-JTAG (`openocd-esp32` + gdb) `halt` and
+read the live WiFi MAC registers and RX descriptor ring — `hw/difftest*.sh` show the openocd/gdb
+setup. This confirmed the descriptor bit layout (owner stays set), the masked register-pointer format,
+and the 48-byte `rx_ctrl` header. Reflashing is reversible: `boards/atech14/` rebuilds the synth,
+or `esptool write_flash 0 hw/atech/flash-8M.bin` restores the original dump byte-for-byte.
 
 ## Tools added for this work
 

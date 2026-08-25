@@ -452,7 +452,7 @@ impl WifiMac {
         let v = match (block, off) {
             (0x33, 0xd14) => self.ram.read(off) | 1,                 // hal_init: writes bit 1, waits for bit 0
             (0x33, 0xc3c) => self.events,
-            (0x33, 0x088) => self.rx_base, (0x33, 0x08c) => self.rx_next, (0x33, 0x090) => self.rx_last,
+            (0x33, 0x088) => self.rx_base & 0xf_ffff, (0x33, 0x08c) => self.rx_next & 0xf_ffff, (0x33, 0x090) => self.rx_last,
             (0x33, 0xca8) => (self.txq_error & 0x7ff),                 // txq state types 0/1 (errors/collisions)
             (0x33, 0xcb0) => self.txq_complete & 0xf,                    // txq state type 2: completed queues
             (0x35, 0x118) => self.pwr_events,
@@ -469,7 +469,7 @@ impl WifiMac {
         if self.log { eprintln!("[wifi] wr {:#x}+{:#05x} <- {:#010x}", block, off, v); }
         match (block, off) {
             (0x33, 0xc40) => { self.events &= !v; }
-            (0x33, 0x088) => { self.rx_base = v; self.rx_next = v; self.ram.write(off, v); }   // the hardware fetches from the base right away
+            (0x33, 0x088) => { self.rx_base = DMA_ADDR_BASE | (v & 0xf_ffff); self.rx_next = self.rx_base; self.ram.write(off, v); }   // registers hold masked descriptor addresses
             (0x33, 0x084) => { if v & 1 != 0 { self.rx_next = self.rx_base; } self.ram.write(off, v & !1); }   // DSCR_RELOAD: restart at base
             (0x35, 0x11c) => { self.pwr_events &= !v; }
             (0x35, 0x0c) => {

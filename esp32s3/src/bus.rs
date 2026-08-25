@@ -267,7 +267,7 @@ impl SocBus {
 
     /// Write one received frame into the next RX descriptor (rx_ctrl header + frame + FCS) and raise the RX event.
     fn wifi_rx_deliver(&mut self, frame: &[u8], now_us: u64) {
-        let desc = self.periph.wifi.rx_next;
+        let desc = self.periph.wifi.rx_next | crate::periph::DMA_ADDR_BASE;
         if desc == 0 { self.periph.wifi.rx_dropped += 1; return; }
         let dw0 = self.read32(desc).unwrap_or(0); let buf = self.read32(desc + 4).unwrap_or(0); let next = self.read32(desc + 8).unwrap_or(0);
         let size = (dw0 & 0xfff) as usize;
@@ -285,10 +285,10 @@ impl SocBus {
         let mut i = 0usize;
         while i + 4 <= b.len() { let v = u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]); let _ = self.write32(buf + i as u32, v); i += 4; }
         while i < b.len() { let _ = self.write8(buf + i as u32, b[i]); i += 1; }
-        let ndw0 = (dw0 & !(0xfff << 12) & !(1 << 31)) | ((total as u32) << 12) | (1 << 30);   // length, owner=cpu, has_data
+        let ndw0 = (dw0 & !(0xfff << 12)) | ((total as u32) << 12) | (1 << 30) | (1 << 31);   // length; owner AND has_data set (verified on silicon 2026-08-25: dw0=0xc0..)
         let _ = self.write32(desc, ndw0);
         let w = &mut self.periph.wifi;
-        w.rx_last = desc; w.rx_next = next; w.rx_frames += 1; w.events |= 1 << 14;   // libpp wDev_ProcessFiq: bits 14/24 -> lmacProcessRxSucData
+        w.rx_last = (desc & 0xf_ffff) | (1 << 24); w.rx_next = next & 0xf_ffff; w.rx_frames += 1; w.events |= 1 << 14;   // registers hold masked descriptor addrs; rx_last has a 0x01 prefix (silicon)
         if log { eprintln!("[wifi] RX -> desc {:#010x} {}", desc, crate::wifi::describe(frame)); }
         self.irq_dirty = true;
     }
