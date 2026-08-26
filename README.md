@@ -23,7 +23,7 @@ esp32sim/
   examples/       hello_world (IDF), waveshare-cam (autopling run script + test photo)
   boards/atech14/ the Atech Pocket Synth: firmware (PlatformIO), hostsim, Wokwi
                   scenarios, regression.wav, script1.txt
-  tools/          PIE table generator (TRM-derived)
+  tools/          PIE table generator (TRM-derived); bench.py: interleaved A/B benchmark of builds
 ```
 
 ## Boards
