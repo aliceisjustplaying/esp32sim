@@ -1078,6 +1078,38 @@ impl Peripherals {
     pub fn audio(&self) -> &I2s { if self.i2s1.frames_out > self.i2s0.frames_out { &self.i2s1 } else { &self.i2s0 } }
 
     /// True if the raw source status changed since the last `cpu_lines_both` (cheap check).
+    /// Cycles until the next systimer or timer-group alarm can fire — the only device events
+    /// firmware times precisely. Slightly conservative (one device tick early), never late.
+    pub fn cycles_until_timer(&self) -> u32 {
+        let mut best = u64::MAX;
+        let st = &self.systimer;
+        for t in 0..3 {
+            if st.conf & (1 << (24 + t as u32)) == 0 { continue; }
+            let unit = ((st.target_conf[t] >> 31) & 1) as usize;
+            if st.conf & (1 << (30 - unit as u32)) == 0 { continue; }              // unit stopped: never fires
+            let now = st.unit[unit];
+            let ticks = if st.target_conf[t] & (1 << 30) != 0 {
+                let period = (st.target_conf[t] & 0x03ff_ffff) as u64;
+                if period == 0 { continue; }
+                let elapsed = now.wrapping_sub(st.period_start[t]);
+                if elapsed >= period { 0 } else { period - elapsed }
+            } else if st.armed[t] { st.target[t].saturating_sub(now) } else { continue };
+            best = best.min(ticks.saturating_sub(1) * 15);                          // 16 MHz = CPU/15
+        }
+        for g in &self.timg {
+            for t in &g.t {
+                if t.config & (1 << 31) == 0 || t.config & (1 << 10) == 0 { continue; }
+                let div = ((t.config >> 13) & 0xffff) as u64;
+                let div = if div == 0 { 65536 } else { div };
+                let steps = if t.config & (1 << 30) != 0 {
+                    if t.count >= t.alarm { continue } else { t.alarm - t.count }
+                } else if t.count <= t.alarm { continue } else { t.count - t.alarm };
+                let apb = (steps * div).saturating_sub(t.prescale_acc);
+                best = best.min(apb.saturating_sub(1) * 3);                          // APB 80 MHz = CPU/3
+            }
+        }
+        best.min(u32::MAX as u64) as u32
+    }
     pub fn lines_dirty(&mut self) -> bool { let st = self.source_status(); if st != self.last_status { self.last_status = st; true } else { false } }
     /// Interrupt lines for both cores in one pass over the sources that are active.
     pub fn cpu_lines_both(&self) -> (u32, u32) {
@@ -1111,6 +1143,8 @@ impl Peripherals {
 // ------------------------------------------------------------------ SPI flash controller (SPI_MEM: SPI1 = command engine, SPI0 = cache path)
 pub struct SpiMem {
     pub regs: RegRam,
+    /// (buffer, offset, len) ranges the last command wrote, for the bus's page versions
+    pub dirty: Vec<(u8, usize, usize)>,
     pub w: [u32; 16],
     pub pending_cmd: u32,
     pub status: u32,
@@ -1121,7 +1155,7 @@ pub struct SpiMem {
     pub psram_mr: [u8; 9],
 }
 impl SpiMem {
-    pub fn new(is_spi1: bool) -> Self { SpiMem { regs: RegRam::new(), w: [0; 16], pending_cmd: 0, status: 0x200, jedec: [0x20, 0x40, 0x17], is_spi1, log: false , psram_mr: [0x09, 0x0d, 0x8b, 0x00, 0x20, 0, 0, 0, 0x03] } }
+    pub fn new(is_spi1: bool) -> Self { SpiMem { regs: RegRam::new(), dirty: Vec::new(), w: [0; 16], pending_cmd: 0, status: 0x200, jedec: [0x20, 0x40, 0x17], is_spi1, log: false , psram_mr: [0x09, 0x0d, 0x8b, 0x00, 0x20, 0, 0, 0, 0x03] } }
     pub fn read(&self, off: u32) -> u32 {
         match off {
             0x0 => 0,                                   // CMD: always idle after execution
@@ -1165,7 +1199,7 @@ impl SpiMem {
             match c16 {
                 0x4040 => { let i = (addr & 0xf) as usize; let d: Vec<u8> = (0..miso_bytes).map(|k| *self.psram_mr.get(i + k).unwrap_or(&0)).collect(); self.set_w_bytes(&d); }   // mode register read
                 0xC0C0 => { let d = self.w_bytes(mosi_bytes); let i = (addr & 0xf) as usize; for (k, b) in d.iter().enumerate() { if i + k == 0 || i + k == 8 { self.psram_mr[i + k] = *b; } } }   // mode register write (MR0/MR8 writable)
-                0x8080 => { let d = self.w_bytes(mosi_bytes); for (k, b) in d.iter().enumerate() { let x = addr as usize + k; if x < psize { psram[x] = *b; } } }   // sync write
+                0x8080 => { let d = self.w_bytes(mosi_bytes); self.dirty.push((crate::bus::SRC_PSRAM, addr as usize, d.len())); for (k, b) in d.iter().enumerate() { let x = addr as usize + k; if x < psize { psram[x] = *b; } } }   // sync write
                 0x0000 => { let d: Vec<u8> = (0..miso_bytes).map(|k| { let x = addr as usize + k; if x < psize { psram[x] } else { 0 } }).collect(); self.set_w_bytes(&d); }   // sync read
                 _ => { if has_miso { self.set_w_bytes(&vec![0u8; miso_bytes]); } }
             }
@@ -1186,11 +1220,11 @@ impl SpiMem {
                 0x04 => self.status &= !0x02,                      // WRDI
                 0x01 | 0x31 | 0x11 => self.status &= !0x02,        // WRSR*: latch consumed (keep QE set)
                 0x15 => self.set_w_bytes(&[0x00]),
-                0x02 | 0x32 | 0x38 => { let d = self.w_bytes(mosi_bytes); for (i, b) in d.iter().enumerate() { let x = addr as usize + i; if x < fsize { flash[x] &= *b; } } self.status &= !0x02; }
-                0x20 => { let a = (addr as usize) & !0xfff; for x in a..(a + 0x1000).min(fsize) { flash[x] = 0xff; } self.status &= !0x02; }
-                0x52 => { let a = (addr as usize) & !0x7fff; for x in a..(a + 0x8000).min(fsize) { flash[x] = 0xff; } self.status &= !0x02; }
-                0xd8 => { let a = (addr as usize) & !0xffff; for x in a..(a + 0x10000).min(fsize) { flash[x] = 0xff; } self.status &= !0x02; }
-                0xc7 | 0x60 => { for b in flash.iter_mut() { *b = 0xff; } self.status &= !0x02; }
+                0x02 | 0x32 | 0x38 => { let d = self.w_bytes(mosi_bytes); for (i, b) in d.iter().enumerate() { let x = addr as usize + i; if x < fsize { flash[x] &= *b; } } self.dirty.push((crate::bus::SRC_FLASH, addr as usize, d.len())); self.status &= !0x02; }
+                0x20 => { let a = (addr as usize) & !0xfff; for x in a..(a + 0x1000).min(fsize) { flash[x] = 0xff; } self.dirty.push((crate::bus::SRC_FLASH, a, 0x1000)); self.status &= !0x02; }
+                0x52 => { let a = (addr as usize) & !0x7fff; for x in a..(a + 0x8000).min(fsize) { flash[x] = 0xff; } self.dirty.push((crate::bus::SRC_FLASH, a, 0x8000)); self.status &= !0x02; }
+                0xd8 => { let a = (addr as usize) & !0xffff; for x in a..(a + 0x10000).min(fsize) { flash[x] = 0xff; } self.dirty.push((crate::bus::SRC_FLASH, a, 0x10000)); self.status &= !0x02; }
+                0xc7 | 0x60 => { for b in flash.iter_mut() { *b = 0xff; } self.dirty.push((crate::bus::SRC_FLASH, 0, fsize)); self.status &= !0x02; }
                 _ => { if has_miso { self.set_w_bytes(&vec![0u8; miso_bytes]); } }
             }
             return;
@@ -1205,11 +1239,12 @@ impl SpiMem {
             let n = if addr_reg >> 24 != 0 { (addr_reg >> 24) as usize } else { mosi_bytes };
             let d = self.w_bytes(n);
             for (i, b) in d.iter().enumerate() { let x = (addr & 0xff_ffff) as usize + i; if x < fsize { flash[x] &= *b; } }
+            self.dirty.push((crate::bus::SRC_FLASH, (addr & 0xff_ffff) as usize, d.len()));
             self.status &= !0x02;
         }
-        if cmd & (1 << 24) != 0 { let a = (addr as usize) & !0xfff; for x in a..(a + 0x1000).min(fsize) { flash[x] = 0xff; } self.status &= !0x02; }      // SE
-        if cmd & (1 << 23) != 0 { let a = (addr as usize) & !0xffff; for x in a..(a + 0x10000).min(fsize) { flash[x] = 0xff; } }    // BE
-        if cmd & (1 << 22) != 0 { for b in flash.iter_mut() { *b = 0xff; } }                                                          // CE
+        if cmd & (1 << 24) != 0 { let a = (addr as usize) & !0xfff; for x in a..(a + 0x1000).min(fsize) { flash[x] = 0xff; } self.dirty.push((crate::bus::SRC_FLASH, a, 0x1000)); self.status &= !0x02; }      // SE
+        if cmd & (1 << 23) != 0 { let a = (addr as usize) & !0xffff; for x in a..(a + 0x10000).min(fsize) { flash[x] = 0xff; } self.dirty.push((crate::bus::SRC_FLASH, a, 0x10000)); }    // BE
+        if cmd & (1 << 22) != 0 { for b in flash.iter_mut() { *b = 0xff; } self.dirty.push((crate::bus::SRC_FLASH, 0, fsize)); }                          // CE
     }
 }
 

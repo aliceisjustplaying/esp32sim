@@ -42,76 +42,136 @@ pub struct SocBus {
     pub last_fault: Option<(u32, bool)>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
-    /// cached instruction-fetch mapping: [fetch_lo, fetch_hi) lives at `fetch_off` in buffer
-    /// `fetch_src`. Saves walking the address ranges and the flash MMU on every instruction.
-    fetch_lo: u32, fetch_hi: u32, fetch_off: usize, fetch_src: u8,
+    /// Software TLB: the last resolved mapping per 64 KiB page, so loads, stores and fetches skip
+    /// the address-range walk and the flash MMU. Cleared whenever the MMU changes.
+    tlb: Vec<Tlb>,
+    /// One version counter per 4 KiB page of every buffer, bumped by each write there. The decode
+    /// cache stores the version an instruction was decoded under, so a stale decode can never run.
+    page_ver: Vec<u32>,
+    /// first `page_ver` index of each buffer, by `SRC_*`
+    ver_base: [u32; 7],
+    /// Device time is advanced lazily: cycles accumulate here and the devices see them in one
+    /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
+    /// have passed — so guest-visible time is exact while idle rounds cost nothing.
+    tick_pending: u32, tick_budget: u32,
 }
+
+/// Longest stretch of cycles device models may go without seeing time advance. Bounds the
+/// latency of everything that has no computed deadline (DMA, USB, LCD, WiFi).
+const MAX_TICK_DEFER: u32 = 256;
+
+/// Buffer identifiers for resolved addresses.
+pub const SRC_SRAM: u8 = 0; pub const SRC_IROM: u8 = 1; pub const SRC_FLASH: u8 = 2; pub const SRC_PSRAM: u8 = 3;
+pub const SRC_DROM: u8 = 4; pub const SRC_RTC_FAST: u8 = 5; pub const SRC_RTC_SLOW: u8 = 6;
+const TLB_SIZE: usize = 512;
+/// A resolved mapping: guest [lo, hi) is buffer `src` from offset `off`; `vbase` is the
+/// `page_ver` index of `lo`. Regions are at most 64 KiB so one entry never spans MMU pages.
+#[derive(Clone, Copy)]
+struct Tlb { lo: u32, hi: u32, off: usize, vbase: u32, src: u8, writable: bool }
+impl Tlb { const EMPTY: Tlb = Tlb { lo: 1, hi: 0, off: 0, vbase: 0, src: 0, writable: false }; }
+#[inline(always)]
+fn tlb_idx(addr: u32) -> usize { (((addr >> 16) ^ (addr >> 24)) as usize) & (TLB_SIZE - 1) }
 
 impl SocBus {
     pub fn new(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self { Self::with_sizes(flash_size, psram_size, mac) }
     pub fn with_sizes(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self {
-        SocBus {
+        let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false,
-            fetch_lo: 0, fetch_hi: 0, fetch_off: 0, fetch_src: 0,
-        }
-    }
-
-    /// Resolve an address to (buffer, offset, writable). Cache-mapped regions go through the MMU.
-    #[inline]
-    /// Drop the cached fetch mapping. Anything that re-points the flash MMU must call this.
-    pub fn invalidate_fetch_cache(&mut self) { self.fetch_hi = 0; }
-
-    /// Which buffer a cached fetch mapping points into.
-    fn fetch_buf(&self, which: u8) -> &Vec<u8> {
-        match which { 0 => &self.sram, 1 => &self.irom, 2 => &self.flash, _ => &self.psram }
-    }
-
-    /// Remember the mapping that covers `pc` so the next fetch in the same page is a bounds check
-    /// and an index. Only the *mapping* is cached, never instruction bytes, so code that is
-    /// rewritten in place still fetches fresh — but a new MMU entry must invalidate this.
-    fn cache_fetch_page(&mut self, pc: u32) {
-        let (lo, hi, which, off) = match pc {
-            IRAM_LOW..=0x403D_FFFF => (IRAM_LOW, 0x403E_0000, 0u8, (IRAM_LOW - IRAM_LOW) as usize),
-            IROM_MASK_LOW..=0x4005_FFFF => (IROM_MASK_LOW, 0x4006_0000, 1u8, 0usize),
-            IBUS_LOW..=0x43FF_FFFF => {
-                let linear = pc & 0x1FF_FFFF;
-                let entry = self.mmu[(linear >> 16) as usize];
-                if entry & MMU_INVALID != 0 { self.fetch_hi = 0; return; }
-                let page = (entry & 0x3fff) as usize;
-                let base = pc & !0xffff;
-                let off = page * PAGE as usize;
-                let which = if entry & MMU_SPIRAM != 0 { 3u8 } else { 2u8 };
-                if off + PAGE as usize > self.fetch_buf(which).len() { self.fetch_hi = 0; return; }
-                (base, base.wrapping_add(0x10000), which, off)
-            }
-            _ => { self.fetch_hi = 0; return; }
+            tlb: vec![Tlb::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
-        if which == 0 { self.fetch_off = 0; } else { self.fetch_off = off; }
-        self.fetch_lo = lo; self.fetch_hi = hi; self.fetch_src = which;
-        if which == 0 { self.fetch_off = 0; }
+        let mut b = bus_uninit;
+        b.rebuild_page_table();
+        b
     }
 
-    fn resolve(&mut self, addr: u32) -> Option<(&mut Vec<u8>, usize, bool)> {
-        match addr {
-            DRAM_LOW..=0x3FCF_FFFF => Some((&mut self.sram, (addr - DRAM_LOW + 0x8000) as usize, true)),
-            IRAM_LOW..=0x403D_FFFF => Some((&mut self.sram, (addr - IRAM_LOW) as usize, true)),
-            IROM_MASK_LOW..=0x4005_FFFF => Some((&mut self.irom, (addr - IROM_MASK_LOW) as usize, false)),
-            DROM_MASK_LOW..=0x3FF1_FFFF => Some((&mut self.drom, (addr - DROM_MASK_LOW) as usize, false)),
-            RTC_FAST_LOW..=0x600F_FFFF => Some((&mut self.rtc_fast, (addr - RTC_FAST_LOW) as usize, true)),
-            RTC_SLOW_LOW..=0x5000_1FFF => Some((&mut self.rtc_slow, (addr - RTC_SLOW_LOW) as usize, true)),
+    /// Size the per-page version table to the buffers. Call after replacing `flash` or `psram`.
+    pub fn rebuild_page_table(&mut self) {
+        let sizes = [self.sram.len(), self.irom.len(), self.flash.len(), self.psram.len(), self.drom.len(), self.rtc_fast.len(), self.rtc_slow.len()];
+        let mut base = 0u32;
+        for (i, n) in sizes.iter().enumerate() { self.ver_base[i] = base; base += ((n + 0xfff) >> 12) as u32; }
+        self.page_ver = vec![0; base as usize + 1];
+        self.invalidate_tlb();
+    }
+
+    /// Forget every cached mapping. Anything that re-points the flash MMU must call this.
+    pub fn invalidate_tlb(&mut self) { for e in self.tlb.iter_mut() { *e = Tlb::EMPTY; } }
+
+    #[inline(always)]
+    fn buf(&self, src: u8) -> &Vec<u8> {
+        match src { SRC_SRAM => &self.sram, SRC_IROM => &self.irom, SRC_FLASH => &self.flash, SRC_PSRAM => &self.psram,
+                    SRC_DROM => &self.drom, SRC_RTC_FAST => &self.rtc_fast, _ => &self.rtc_slow }
+    }
+    #[inline(always)]
+    fn buf_mut(&mut self, src: u8) -> &mut Vec<u8> {
+        match src { SRC_SRAM => &mut self.sram, SRC_IROM => &mut self.irom, SRC_FLASH => &mut self.flash, SRC_PSRAM => &mut self.psram,
+                    SRC_DROM => &mut self.drom, SRC_RTC_FAST => &mut self.rtc_fast, _ => &mut self.rtc_slow }
+    }
+
+    /// The mapping covering `addr`, from the TLB or by walking the address map.
+    #[inline(always)]
+    fn lookup(&mut self, addr: u32) -> Option<Tlb> {
+        let e = self.tlb[tlb_idx(addr)];
+        if addr >= e.lo && addr < e.hi { Some(e) } else { self.tlb_fill(addr) }
+    }
+
+    /// Walk the address map for the 64 KiB page holding `addr` and remember it.
+    fn tlb_fill(&mut self, addr: u32) -> Option<Tlb> {
+        let page = addr & !0xffff;
+        let region = |lo: u32, hi: u32, src: u8, w: bool| -> Tlb {
+            let lo_ = page.max(lo); let hi_ = (page + 0x10000).min(hi);
+            Tlb { lo: lo_, hi: hi_, off: (lo_ - lo) as usize, vbase: 0, src, writable: w }
+        };
+        let mut e = match addr {
+            DRAM_LOW..=0x3FCF_FFFF => { let mut e = region(DRAM_LOW, 0x3FD0_0000, SRC_SRAM, true); e.off += 0x8000; e }
+            IRAM_LOW..=0x403D_FFFF => region(IRAM_LOW, 0x403E_0000, SRC_SRAM, true),
+            IROM_MASK_LOW..=0x4005_FFFF => region(IROM_MASK_LOW, 0x4006_0000, SRC_IROM, false),
+            DROM_MASK_LOW..=0x3FF1_FFFF => region(DROM_MASK_LOW, 0x3FF2_0000, SRC_DROM, false),
+            RTC_FAST_LOW..=0x600F_FFFF => region(RTC_FAST_LOW, 0x6010_0000, SRC_RTC_FAST, true),
+            RTC_SLOW_LOW..=0x5000_1FFF => region(RTC_SLOW_LOW, 0x5000_2000, SRC_RTC_SLOW, true),
             DBUS_LOW..=0x3DFF_FFFF | IBUS_LOW..=0x43FF_FFFF => {
                 let linear = addr & 0x1FF_FFFF;
                 let entry = self.mmu[(linear >> 16) as usize];
                 if entry & MMU_INVALID != 0 { return None; }
-                let page = (entry & 0x3fff) as usize;
-                let off = page * PAGE as usize + (linear & 0xffff) as usize;
-                if entry & MMU_SPIRAM != 0 { if off < self.psram.len() { Some((&mut self.psram, off, true)) } else { None } }
-                else if off < self.flash.len() { Some((&mut self.flash, off, false)) } else { None }
+                let off = (entry & 0x3fff) as usize * PAGE as usize;
+                let (src, w) = if entry & MMU_SPIRAM != 0 { (SRC_PSRAM, true) } else { (SRC_FLASH, false) };
+                if off + PAGE as usize > self.buf(src).len() { return None; }
+                Tlb { lo: page, hi: page + 0x10000, off, vbase: 0, src, writable: w }
             }
-            _ => None,
-        }
+            _ => return None,
+        };
+        e.vbase = self.ver_base[e.src as usize] + (e.off >> 12) as u32;
+        self.tlb[tlb_idx(addr)] = e;
+        Some(e)
+    }
+
+    /// Resolve an address to (buffer, offset, writable) — the slow path, for loaders.
+    fn resolve(&mut self, addr: u32) -> Option<(&mut Vec<u8>, usize, bool)> {
+        let e = self.lookup(addr)?;
+        let o = e.off + (addr - e.lo) as usize;
+        Some((self.buf_mut(e.src), o, e.writable))
+    }
+
+    /// Record that `len` bytes at `off` of the page group starting at `vbase` changed. An
+    /// instruction can begin up to two bytes before a page boundary, so the previous page is
+    /// bumped too when the write touches the first bytes of one.
+    #[inline(always)]
+    fn bump(&mut self, vbase: u32, off: usize, len: usize) {
+        let p = vbase as usize + (off >> 12);
+        self.page_ver[p] = self.page_ver[p].wrapping_add(1);
+        let last = vbase as usize + ((off + len - 1) >> 12);
+        if last != p { self.page_ver[last] = self.page_ver[last].wrapping_add(1); }
+        if off & 0xfff < 3 && p > 0 { self.page_ver[p - 1] = self.page_ver[p - 1].wrapping_add(1); }
+    }
+
+    /// Record a write done behind the bus's back (image loaders, the SPI flash controller).
+    pub fn note_written(&mut self, src: u8, off: usize, len: usize) {
+        if len == 0 { return; }
+        let vbase = self.ver_base[src as usize];
+        let (first, last) = (off >> 12, (off + len - 1) >> 12);
+        for p in first..=last { let i = vbase as usize + p; if i < self.page_ver.len() { self.page_ver[i] = self.page_ver[i].wrapping_add(1); } }
+        if off & 0xfff < 3 && first > 0 { let i = vbase as usize + first - 1; self.page_ver[i] = self.page_ver[i].wrapping_add(1); }
     }
 
     #[inline]
@@ -121,15 +181,21 @@ impl SocBus {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
             return self.mmu[((addr - MMU_TABLE) >> 2) as usize];
         }
+        self.flush_ticks();                                         // registers must show exact time
         let w = self.periph.read32(addr & !3);
         match size { 1 => (w >> ((addr & 3) * 8)) & 0xff, 2 => (w >> ((addr & 2) * 8)) & 0xffff, _ => w }
     }
     fn periph_write(&mut self, addr: u32, v: u32, size: u32) {
+        self.periph_write_inner(addr, v, size);
+        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);   // the write may have armed something
+    }
+    fn periph_write_inner(&mut self, addr: u32, v: u32, size: u32) {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
-            self.mmu[((addr - MMU_TABLE) >> 2) as usize] = v & 0xffff;
-            self.fetch_hi = 0;                                   // the cached fetch mapping may be stale
+            let i = ((addr - MMU_TABLE) >> 2) as usize;
+            if self.mmu[i] != v & 0xffff { self.mmu[i] = v & 0xffff; self.invalidate_tlb(); }
             return;
         }
+        self.flush_ticks();
         let a = addr & !3;
         let w = match size {
             4 => v,
@@ -140,7 +206,11 @@ impl SocBus {
         // GPIO output registers (OUT/W1TS/W1TC/OUT1...) are hammered by bit-banged SPI and never change an
         // interrupt line directly; the periodic 32-cycle poll still sees any indirect effect
         if !(0x6000_4004..=0x6000_4018).contains(&a) { self.irq_dirty = true; }
-        if self.periph.spi_exec { self.periph.spi_exec = false; self.periph.spi1.execute(&mut self.flash, &mut self.psram); }
+        if self.periph.spi_exec {
+            self.periph.spi_exec = false;
+            self.periph.spi1.execute(&mut self.flash, &mut self.psram);
+            for (src, off, len) in std::mem::take(&mut self.periph.spi1.dirty) { self.note_written(src, off, len); }
+        }
     }
 
     /// Move I2S TX data out of DMA descriptors at the sample rate.
@@ -470,7 +540,10 @@ impl SocBus {
     pub fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> {
         for (i, b) in data.iter().enumerate() {
             let a = addr.wrapping_add(i as u32);
-            match self.resolve(a) { Some((buf, off, _)) => buf[off] = *b, None => return Err(format!("load: address {:#010x} not mapped", a)) }
+            let Some(e) = self.lookup(a) else { return Err(format!("load: address {:#010x} not mapped", a)) };
+            let o = e.off + (a - e.lo) as usize;
+            self.buf_mut(e.src)[o] = *b;
+            self.bump(e.vbase, o - e.off, 1);
         }
         Ok(())
     }
@@ -479,50 +552,83 @@ impl SocBus {
 impl Bus for SocBus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 1) as u8); }
-        match self.resolve(addr) { Some((b, o, _)) => Ok(b[o]), None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) } }
+        let Some(e) = self.lookup(addr) else { self.last_fault = Some((addr, false)); return Err(Fault::Unmapped) };
+        Ok(self.buf(e.src)[e.off + (addr - e.lo) as usize])
     }
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 2) as u16); }
-        match self.resolve(addr) { Some((b, o, _)) if o + 2 <= b.len() => Ok(u16::from_le_bytes([b[o], b[o + 1]])), _ => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) } }
+        match self.lookup(addr) {
+            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src)[o..o + 2].try_into().unwrap())) }
+            Some(_) => Ok(u16::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?])),       // straddles a page
+            None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
+        }
     }
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 4)); }
-        match self.resolve(addr) { Some((b, o, _)) if o + 4 <= b.len() => Ok(u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])), _ => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) } }
+        match self.lookup(addr) {
+            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src)[o..o + 4].try_into().unwrap())) }
+            Some(_) => Ok(u32::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?, self.read8(addr + 2)?, self.read8(addr + 3)?])),
+            None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
+        }
     }
     fn write8(&mut self, addr: u32, v: u8) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v as u32, 1); return Ok(()); }
-        match self.resolve(addr) { Some((b, o, true)) => { b[o] = v; Ok(()) } _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) } }
+        match self.lookup(addr) {
+            Some(e) if e.writable => { let rel = (addr - e.lo) as usize; self.buf_mut(e.src)[e.off + rel] = v; self.bump(e.vbase, rel, 1); Ok(()) }
+            _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
+        }
     }
     fn write16(&mut self, addr: u32, v: u16) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v as u32, 2); return Ok(()); }
-        match self.resolve(addr) { Some((b, o, true)) if o + 2 <= b.len() => { b[o..o + 2].copy_from_slice(&v.to_le_bytes()); Ok(()) } _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) } }
+        match self.lookup(addr) {
+            Some(e) if e.writable && addr.wrapping_add(2) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off + rel; self.buf_mut(e.src)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
+            Some(e) if e.writable => { let b = v.to_le_bytes(); self.write8(addr, b[0])?; self.write8(addr + 1, b[1]) }
+            _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
+        }
     }
     fn write32(&mut self, addr: u32, v: u32) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v, 4); return Ok(()); }
-        match self.resolve(addr) { Some((b, o, true)) if o + 4 <= b.len() => { b[o..o + 4].copy_from_slice(&v.to_le_bytes()); Ok(()) } _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) } }
+        match self.lookup(addr) {
+            Some(e) if e.writable && addr.wrapping_add(4) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off + rel; self.buf_mut(e.src)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
+            Some(e) if e.writable => { let b = v.to_le_bytes(); for i in 0..4 { self.write8(addr + i, b[i as usize])?; } Ok(()) }
+            _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
+        }
     }
     fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
-        if pc >= self.fetch_lo && pc.wrapping_add(4) <= self.fetch_hi {
-            let off = self.fetch_off + (pc - self.fetch_lo) as usize;
-            let b = self.fetch_buf(self.fetch_src);
-            if let Some(w) = b.get(off..off + 4) { return Ok([w[0], w[1], w[2], w[3]]); }
-        }
-        let r = self.fetch_slow(pc);
-        if r.is_ok() { self.cache_fetch_page(pc); }
-        r
+        let Some(e) = self.lookup(pc) else { self.last_fault = Some((pc, false)); return Err(Fault::Unmapped) };
+        let o = e.off + (pc - e.lo) as usize;
+        let b = self.buf(e.src);
+        if let Some(w) = b.get(o..o + 4) { return Ok(w.try_into().unwrap()); }
+        // last bytes of a buffer (or of a mapped page): what physical memory has, zero beyond
+        let mut r = [0u8; 4];
+        for i in 0..4 { if let Some(x) = b.get(o + i) { r[i] = *x; } }
+        Ok(r)
     }
-    fn tick(&mut self, cycles: u32) -> u32 { self.tick_impl(cycles) }
+    #[inline(always)]
+    fn page_versions(&self) -> &[u32] { &self.page_ver }
+    fn code_page(&mut self, pc: u32) -> u32 {
+        match self.lookup(pc) { Some(e) => e.vbase + ((pc - e.lo) >> 12), None => self.page_ver.len() as u32 - 1 }
+    }
+    /// Returns 1 when device models actually ran (so interrupt lines may have changed), else 0.
+    fn tick(&mut self, cycles: u32) -> u32 {
+        self.cycles += cycles as u64;
+        self.tick_pending += cycles;
+        if self.tick_pending < self.tick_budget { return 0; }
+        self.flush_ticks();
+        1
+    }
 }
 
 impl SocBus {
-    fn fetch_slow(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
-        match self.resolve(pc) {
-            Some((b, o, _)) => { if let Some(w) = b.get(o..o + 4) { Ok([w[0], w[1], w[2], w[3]]) } else { let mut r = [0u8; 4]; for i in 0..4 { if o + i < b.len() { r[i] = b[o + i]; } } Ok(r) } }
-            None => { self.last_fault = Some((pc, false)); Err(Fault::Unmapped) }
-        }
+    /// Deliver the deferred cycles to the device models now.
+    pub fn flush_ticks(&mut self) {
+        let c = std::mem::take(&mut self.tick_pending);
+        if c == 0 { return; }
+        self.tick_impl(c);
+        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
     }
+
     fn tick_impl(&mut self, cycles: u32) -> u32 {
-        self.cycles += cycles as u64;
         self.periph.tick(cycles as u64);
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);

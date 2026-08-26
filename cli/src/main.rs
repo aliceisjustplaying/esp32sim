@@ -102,6 +102,7 @@ fn main() {
     m.bus.periph.lcd_cam.frame_cycles = (esp32s3::periph::CPU_HZ as f64 / cam_fps) as u64;
     if flash_mb != 8 { m.bus.flash = vec![0xff; flash_mb * 1024 * 1024]; let cap = (flash_mb * 1024 * 1024).trailing_zeros() as u8; m.bus.periph.spi1.jedec[2] = cap; m.bus.periph.spi0.jedec[2] = cap; }
     if psram_mb != 2 { m.bus.psram = vec![0; psram_mb * 1024 * 1024]; }
+    m.bus.rebuild_page_table();
     if let Some(p) = &flash_image { m.write_flash(0, &std::fs::read(p).expect("flash image")).unwrap(); }
     m.trace = trace; m.trace_from = trace_from; m.breakpoints = breaks; m.bus.periph.log_unknown = log_periph;
     if let Some(r) = &rom { match std::fs::read(r) { Ok(d) => { m.load_rom(&d).expect("rom"); eprintln!("[emu] ROM loaded from {}", r.display()); } Err(e) => eprintln!("[emu] no ROM ({}): {}", r.display(), e) } }

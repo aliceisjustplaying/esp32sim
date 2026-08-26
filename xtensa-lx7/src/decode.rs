@@ -86,9 +86,9 @@ impl Insn {
 /// instruction (an `Op::Ill` of the right length for reserved encodings).
 pub const ICACHE_SIZE: usize = 1 << 16;
 #[derive(Clone, Copy)]
-pub struct CacheEntry { pub pc: u32, pub bytes: [u8; 4], pub insn: Insn, pub max_ar: u8 }
+pub struct CacheEntry { pub pc: u32, pub ver: u32, pub vidx: u32, pub insn: Insn, pub max_ar: u8 }
 impl CacheEntry {
-    pub const EMPTY: CacheEntry = CacheEntry { pc: 1, bytes: [0; 4], insn: Insn { op: Op::Ill, r: 0, s: 0, t: 0, imm: 0, imm2: 0, len: 0, raw: 0 }, max_ar: 0 };
+    pub const EMPTY: CacheEntry = CacheEntry { pc: 1, ver: 0, vidx: 0, insn: Insn { op: Op::Ill, r: 0, s: 0, t: 0, imm: 0, imm2: 0, len: 0, raw: 0 }, max_ar: 0 };
 }
 #[inline(always)]
 pub fn icache_index(pc: u32) -> usize { ((pc >> 1) ^ (pc >> 17)) as usize & (ICACHE_SIZE - 1) }

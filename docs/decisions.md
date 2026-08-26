@@ -113,6 +113,11 @@ Things that cost real time to find out, recorded so they do not have to be found
   bugs above would otherwise have looked like "the network is broken".
 
 ## Performance
+- **Benchmark interleaved, never sequentially.** `tools/bench.py` runs several binaries in turn
+  for N rounds and reports best and median wall time. Background load on this machine drifts by
+  10 % over minutes; quick A-then-B comparisons produced "wins" of that size that vanished under
+  interleaving (the first ablation figures for the fetch cache and the version check were both
+  inflated this way). It also checks the guest instruction counts agree.
 - **A host syscall in the tick costs more than emulating the CPU.** The NAT polled its sockets every
   scheduling round — ~7.5 M `recvfrom` calls per emulated second — which put 69 % of run time in the
   kernel and only 26 % in the interpreter. Polling on an emulated-time cadence (500 µs, far below
@@ -120,19 +125,44 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Nothing per-instruction may hash.** `--stub` and `--trace-fn` looked their PC up in a `HashMap`
   on every instruction; SipHash alone was 16 % of run time. A 64-bit bloom bit (`1 << ((pc >> 2) & 63)`)
   in front of the map removes it, and the map stays the authority.
-- **Cache the instruction-fetch *mapping*, never the bytes.** Every fetch walked the address ranges
-  and, for XIP code, the flash MMU — 13 % of run time. Remembering which buffer and offset the
-  current 64 KiB page resolves to makes the common fetch a bounds check and an index; because only
-  the mapping is cached, code rewritten in place still fetches fresh bytes, and the icache's
-  byte-compare still decides whether to re-decode. Anything that re-points the MMU (register writes,
-  the image loader) must call `invalidate_fetch_cache()`.
+- **Software TLB + per-page write versions** (`SocBus::lookup`, `page_ver`). Loads, stores and
+  fetches resolve through a 512-entry direct-mapped table of 64 KiB pages instead of walking the
+  address ranges and the flash MMU; every write bumps a version counter for its 4 KiB page, and a
+  decode-cache entry stores the version it was decoded under, so the cache is validated by one
+  indexed load instead of re-fetching and comparing the bytes. Anything that writes guest memory
+  behind the bus's back (image loaders, the SPI flash controller) reports it with `note_written`,
+  and anything that re-points the MMU calls `invalidate_tlb`. Measured: +4 % on the SID player,
+  +2 % on the detector, nothing on the (mostly idle) panel. Two variants that did **not** help:
+  a raw base pointer in the entry instead of a `match` on the buffer, and a version-index in the
+  cache entry instead of a lookup — both within noise, so the safe/simple forms stayed.
+- **Device time is lazy but exact.** Cycles accumulate in the bus and the device models see them
+  in one batch when a systimer/TIMG alarm is due (`Peripherals::cycles_until_timer`, conservative
+  by one device tick), when a peripheral register is read or written (flushed first, so registers
+  always show exact time and a write that arms an alarm re-plans immediately), or after
+  `MAX_TICK_DEFER` = 256 cycles for everything without a computed deadline. Interrupt lines are
+  re-derived only after a flush or a register write, never on a cadence. +3 % on SID; the panel
+  is idle most of the time and already ticked in 512-cycle chunks.
+- **Timing granularity changes shift phases, not content.** Deferring device events by up to
+  256 cycles moved the moment LVGL's 30 ms touch poll saw the play tap by 16 ms; the SID audio
+  after that point is sample-identical. The Atech WAV, whose script is what the regression
+  checks, is bit-identical. Lengthening the *idle* step from 512 to 2048 cycles (+3 %) did change
+  the Atech WAV, so it was rejected: bit-identical regression output is the bar.
+- **Cache the instruction-fetch *mapping*, never the bytes.** Superseded by the TLB above, but the
+  rule stands: code rewritten in place must fetch fresh, and every MMU change must invalidate.
 - **`lto = "fat"`, `codegen-units = 1`**: 11 % for a 7-second build. `-C target-cpu=native` gains
   nothing on Apple Silicon, where the default target already is the host.
 - **Scheduling quantum 64**, not 32: half the device-tick overhead for ~9 % more throughput, and the
   Atech WAV regression stays bit-identical. 128 gains almost nothing and costs interrupt latency.
+- **Free things, measured so nobody removes them for speed**: the three `ccompare` checks in
+  `advance_ccount`, the per-instruction stub/probe/breakpoint/trace checks in `step_core`, and the
+  decode-cache size (32 K, 64 K and 128 K entries all perform the same — it could shrink).
+- **What is left is structural.** After the above, the SID workload runs ~96 Minsn/s and profiles as
+  ~35 % `exec_insn`, ~35 % per-instruction step scaffolding (interrupt check, cache probe, window
+  check, counters) and ~10 % memory access. No single item in the scaffolding is removable; a
+  basic-block interpreter amortises all of it per block, which is why it is the next step.
 - **Profile the emulator, not just the guest.** `--profile` reports guest PCs and disables idle
   skipping, so an idle core shows up as a hot `waiti` — an artefact, not work. For emulator-side
-  cost use `sample <pid>` (macOS) against a normal run.
+  cost use `sample <pid>` (macOS) against a normal run, and confirm with an ablation build.
 - **Check for leftover runs before benchmarking.** A background emulator from an earlier session at
   100 % CPU is indistinguishable from "the emulator got slower".
 

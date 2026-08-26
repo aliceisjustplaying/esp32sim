@@ -57,7 +57,9 @@ web/          index.html: board drawing, console, WebAudio, camera panel (no bui
   buffer), mask ROM (`0x4000_0000` I / `0x3FF0_0000` D), RTC fast/slow RAM, the flash/PSRAM
   cache windows (`0x3C00_0000` D-bus, `0x4200_0000` I-bus) translated by the 512-entry MMU
   table at `0x600C_5000` (flash pages or PSRAM pages), peripherals `0x6000_0000–0x600D_0000`.
-  Cache timing is not modelled; XIP from flash or PSRAM is a table lookup.
+  Cache timing is not modelled; XIP from flash or PSRAM is a table lookup. A software TLB
+  (512 entries of 64 KiB) caches resolved mappings for loads, stores and fetches, and a
+  per-4 KiB-page write version lets the CPU's decode cache skip re-fetching instruction bytes.
 - **Peripheral dispatch**: address bits 12–19 select a block; unknown registers land in a
   generic register RAM and are logged on first touch with `--log-periph`.
 - **Interrupts**: every source has a level computed by its model (`Peripherals::source_status`);
@@ -74,8 +76,10 @@ web/          index.html: board drawing, console, WebAudio, camera panel (no bui
 ## Scheduling and time
 
 `Machine::run` interleaves the cores in quanta of 64 instructions. A core sitting in `waiti`
-with nothing pending costs nothing; when both cores are idle time advances in 256-cycle
-chunks until a timer or DMA event is due. Peripheral clocks (APB 80 MHz, systimer 16 MHz,
+with nothing pending costs nothing; when both cores are idle time advances in 512-cycle
+chunks. Device models see time lazily: cycles accumulate in the bus and are delivered in one
+batch when a timer alarm is due, when a peripheral register is accessed (so registers always
+read exact time), or after 256 cycles at most. Peripheral clocks (APB 80 MHz, systimer 16 MHz,
 RTC slow 150 kHz) are derived from the 240 MHz cycle counter with delivered-tick accounting.
 With `--web` the machine is paced to wall time (sleeping when ahead, resynchronising rather
 than bursting if it falls > 0.5 s behind). Work that costs host syscalls — reading the NAT's

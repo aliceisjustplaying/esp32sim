@@ -130,6 +130,7 @@ impl Machine {
     pub fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String> {
         if offset + data.len() > self.bus.flash.len() { return Err("flash image too large".into()); }
         self.bus.flash[offset..offset + data.len()].copy_from_slice(data);
+        self.bus.note_written(crate::bus::SRC_FLASH, offset, data.len());
         Ok(())
     }
 
@@ -153,7 +154,7 @@ impl Machine {
                     let vpage = (((s.load_addr & 0x1FF_FFFF) >> 16) + i) as usize;
                     self.bus.mmu[vpage] = first_page + i;
                 }
-                self.bus.invalidate_fetch_cache();
+                self.bus.invalidate_tlb();
             } else {
                 let data = self.bus.flash[start..end].to_vec();
                 self.bus.load_bytes(s.load_addr, &data)?;
@@ -188,6 +189,7 @@ impl Machine {
         p.rtc.ram.write(0x98, 0);                       // watchdog disarmed by the reset; the ROM re-arms it
         p.i2s0.pcm = old.i2s0.pcm; p.i2s0.frames_out = old.i2s0.frames_out; p.i2s1.pcm = old.i2s1.pcm; p.i2s1.frames_out = old.i2s1.frames_out;   // keep the captured audio continuous
         self.bus.mmu = [crate::bus::MMU_INVALID; crate::bus::MMU_ENTRIES];
+        self.bus.invalidate_tlb();
         self.bus.irq_dirty = true;
         self.cpu.reset(); self.cpu1.reset(); self.cpu1.prid = 0xABAB; self.core1_was_reset = true;
         self.reboots += 1;
@@ -338,11 +340,12 @@ impl Machine {
     /// Device time, interrupt lines, scripts, web, real-time pacing after a scheduling round.
     #[inline]
     fn after_round(&mut self, cycles: u64) {
-        let _ = self.bus.tick(cycles as u32);
-        self.irq_poll += cycles;
-        if self.bus.irq_dirty || self.irq_poll >= 32 {
+        // device models only change state when they run, so the lines are re-derived after a
+        // flush or a register write and never on a fixed cadence
+        let ticked = self.bus.tick(cycles as u32) != 0;
+        if self.bus.irq_dirty || ticked {
             let dirty = self.bus.periph.lines_dirty() || self.bus.periph.intmatrix_dirty;
-            self.irq_poll = 0; self.bus.irq_dirty = false; self.bus.periph.intmatrix_dirty = false;
+            self.irq_poll += 1; self.bus.irq_dirty = false; self.bus.periph.intmatrix_dirty = false;
             if dirty {
             let (l0, l1) = self.bus.periph.cpu_lines_both();
             self.cpu.interrupt = (self.cpu.interrupt & !INTTYPE_LEVEL) | (l0 & INTTYPE_LEVEL);

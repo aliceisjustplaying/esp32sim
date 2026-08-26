@@ -229,12 +229,14 @@ pub fn step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(), Trap> {
     if cpu.waiting { cpu.advance_ccount(1); return Ok(()); }
 
     let pc = cpu.pc;
-    let bytes = match bus.fetch(pc) { Ok(b) => b, Err(_) => return Err(cpu.raise_mem(exc::IFETCH_ERROR, pc)) };
     let idx = crate::decode::icache_index(pc);
     let e = &cpu.icache[idx];
-    let (i, mar) = if e.pc == pc && e.bytes == bytes { (e.insn, e.max_ar) } else {
+    let (i, mar) = if e.pc == pc && bus.page_versions().get(e.vidx as usize).copied().unwrap_or(0) == e.ver { (e.insn, e.max_ar) } else {
+        let bytes = match bus.fetch(pc) { Ok(b) => b, Err(_) => return Err(cpu.raise_mem(exc::IFETCH_ERROR, pc)) };
+        let vidx = bus.code_page(pc);
+        let ver = bus.page_versions().get(vidx as usize).copied().unwrap_or(0);
         let i = decode(pc, bytes); let m = max_ar(&i);
-        cpu.icache[idx] = crate::decode::CacheEntry { pc, bytes, insn: i, max_ar: m };
+        cpu.icache[idx] = crate::decode::CacheEntry { pc, ver, vidx, insn: i, max_ar: m };
         (i, m)
     };
     if let Some(t) = cpu.check_overflow(mar) { return Err(t); }
