@@ -12,11 +12,10 @@ Ordered by value; each item links to its plan where one exists.
    parser robustness) first.
 3. **Firmware upload from the browser** — drop a `firmware.bin` on the page → written to
    flash at 0x10000 → `Machine::reboot()`. Pieces exist; ~an hour.
-4. **Interpreter speed** — a basic-block / threaded interpreter. Everything cheaper has been done
-   and measured (decisions.md, Performance): the SID player runs ~96 Minsn/s, the panel ~80, and
-   the profile is ~35 % `exec_insn`, ~35 % per-instruction step scaffolding, ~10 % memory. Only a
-   block interpreter amortises the scaffolding; it is also what bit-banged display redraws need,
-   and it carries over unchanged to a WebAssembly build. `tools/bench.py` is the yardstick.
+4. **Interpreter speed** — see [speed-plan.md](speed-plan.md): NEON for PIE, then the
+   basic-block interpreter (1.4–1.8×, portable to WASM, what bit-banged redraws need), then a
+   JIT with one block IR and wasm + aarch64 backends (3–4×). Baselines, profiles and the
+   rejected ideas are all in the plan; `tools/bench.py` is the yardstick.
 5. **More boards** — Touch-LCD-4B done (`waveshare-lcd4b`: LVGL panel, touch/swipe, SID player audio).
    Next candidates as firmware needs them; `--board waveshare-*` variants share the codec/PSRAM/I2C work.
 6. **Peripherals on demand** — LEDC, PCNT, ADC, SPI2/3 masters, RX sides of I2S/RMT/UART DMA,
