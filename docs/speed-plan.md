@@ -19,10 +19,18 @@ The negative results are listed too, so nobody re-spends the time.
 
 Profile of the SID workload with the JIT (shares of total run time):
 
-| ~60 % | generated code (ALU, branches, register access, inline TLB loads/stores, bookkeeping) |
-| ~12 % | interpreter fallbacks (calls/returns/`entry`, special registers, FPU/PIE/MAC16) |
-| ~10 % | slow-path memory helpers (TLB misses, peripheral registers) |
-| ~5 %  | device time, IRQ derivation |
+| ~36 % | generated code (ALU, branches, register access, inline TLB loads/stores, prologue/epilogue) |
+| ~29 % | block dispatch: `run_block` inlined into `step_blocks` — cache lookup and validation, resume check, budget and timer bound, the call itself |
+| ~9 %  | slow-path memory helpers (peripheral registers, TLB misses) |
+| ~6 %  | interpreter fallbacks (calls/returns/`entry`, special registers, FPU/PIE/MAC16) |
+| ~4 %  | peripheral models |
+| ~22 % | unattributed leaf frames (inlined code without symbols) |
+
+The dispatch share is now the striking number: every block returns to Rust, which re-checks
+interrupts, re-validates the cache entry, re-derives the timer bound and re-enters through a
+12-register prologue. **Direct block chaining** — jumping from one compiled block to the
+next when the successor is compiled and no check is due, with the checks folded into the
+generated code — is the classic answer and the next structural step.
 
 Before blocks the per-instruction scaffolding was ~35 % and **no single piece of it was
 removable** — each ablated to ≈0 %. Executing blocks reclaimed it; the JIT then removed the
@@ -94,6 +102,7 @@ fallbacks): generated code probes the shared `TlbEntry` table directly and calls
 only on a miss, a non-writable page, or a store whose version bump would touch a page edge.
 
 Next inside the JIT, in order of measured value:
+0. **Direct block chaining** — see the profile above; ~29 % of time is between blocks.
 1. **Register caching within a block** — every guest register access is index arithmetic plus
    a memory access; keeping the most-used registers in host registers between instructions
    removes most of it. Needs spills before helpers and at exits.

@@ -193,8 +193,10 @@ Things that cost real time to find out, recorded so they do not have to be found
   only when the bump touches a single page away from its first three bytes — the edge cases go
   through the helper, which keeps one implementation of the straddle rules. Worth 1.1–1.2× on
   everything except PIE-heavy code, whose memory traffic sits inside fallback instructions.
-- **What is left**: ~60 % generated code, ~12 % fallbacks (`call8`/`entry`/`retw` dominate),
-  ~10 % slow-path memory. Register caching and inlining the call sequence are next.
+- **What is left** (exclusive time, SID): ~36 % generated code, ~29 % the dispatch between
+  blocks (lookup, validation, bounds, prologue/epilogue), ~9 % slow-path memory, ~6 %
+  fallbacks. Direct block chaining is next; register caching and inlining `call8`/`entry`/
+  `retw` after that.
 - **Profile the emulator, not just the guest.** `--profile` reports guest PCs and disables idle
   skipping, so an idle core shows up as a hot `waiti` — an artefact, not work. For emulator-side
   cost use `sample <pid>` (macOS) against a normal run, and confirm with an ablation build.
