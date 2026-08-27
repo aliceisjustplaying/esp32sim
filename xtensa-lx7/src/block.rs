@@ -138,10 +138,11 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
     let ver = [pv.get(vidx0 as usize).copied().unwrap_or(0), pv.get(vidx1 as usize).copied().unwrap_or(0)];
     let ei = BlockCache::index(pc0);
     let mut code = crate::jit::NONE;
+    let fast = bus.fast_mem().is_some();
     if cpu.blocks.jit_active() {
         let b = &mut cpu.blocks;
         let (s, e) = (start as usize, start as usize + n as usize);
-        if let Some(c) = crate::jit::compile(b.code.as_mut().unwrap(), &mut b.arena[s..e], pc0) { code = c; b.compiled += 1; }
+        if let Some(c) = crate::jit::compile(b.code.as_mut().unwrap(), &mut b.arena[s..e], pc0, fast) { code = c; b.compiled += 1; }
     }
     cpu.blocks.entries[ei] = Entry { pc: pc0, start, n, vidx: [vidx0, vidx1], ver, code };
     cpu.blocks.builds += 1;
@@ -181,7 +182,8 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
         let entry = cpu.blocks.arena[k as usize].off;
         let r = unsafe {
             let b = &*(&cpu.blocks as *const BlockCache);          // the code reads nothing from the cache itself
-            crate::jit::run(b.code.as_ref().unwrap(), code, cpu, bus, b.helpers.as_ref().unwrap(), limit, entry)
+            let fm = bus.fast_mem();
+            crate::jit::run(b.code.as_ref().unwrap(), code, cpu, bus, b.helpers.as_ref().unwrap(), limit, entry, fm)
         };
         let (done, exit) = (r & 0xffff, r >> 16);
         cpu.insn_count += done as u64;

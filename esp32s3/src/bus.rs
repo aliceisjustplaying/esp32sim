@@ -44,7 +44,7 @@ pub struct SocBus {
     pub irq_dirty: bool,
     /// Software TLB: the last resolved mapping per 64 KiB page, so loads, stores and fetches skip
     /// the address-range walk and the flash MMU. Cleared whenever the MMU changes.
-    tlb: Vec<Tlb>,
+    tlb: Vec<TlbEntry>,
     /// One version counter per `VPAGE`-byte page of every buffer, bumped by each write there. The
     /// decode and block caches store the versions they were built under, so a stale decode can
     /// never run. 256 bytes rather than 4 KiB because IRAM and DRAM are one SRAM: on the S3 the
@@ -66,17 +66,13 @@ const MAX_TICK_DEFER: u32 = 256;
 /// Buffer identifiers for resolved addresses.
 pub const SRC_SRAM: u8 = 0; pub const SRC_IROM: u8 = 1; pub const SRC_FLASH: u8 = 2; pub const SRC_PSRAM: u8 = 3;
 pub const SRC_DROM: u8 = 4; pub const SRC_RTC_FAST: u8 = 5; pub const SRC_RTC_SLOW: u8 = 6;
-const TLB_SIZE: usize = 512;
+const TLB_SIZE: usize = xtensa_lx7::bus::TLB_ENTRIES;
 /// Granularity of the write-version counters. Must exceed the longest block (`block::MAX_LEN` × 3 bytes).
-const VPAGE_SHIFT: usize = 8;
+const VPAGE_SHIFT: usize = xtensa_lx7::bus::VPAGE_SHIFT as usize;
 const VPAGE_MASK: usize = (1 << VPAGE_SHIFT) - 1;
-/// A resolved mapping: guest [lo, hi) is buffer `src` from offset `off`; `vbase` is the
-/// `page_ver` index of `lo`. Regions are at most 64 KiB so one entry never spans MMU pages.
-#[derive(Clone, Copy)]
-struct Tlb { lo: u32, hi: u32, off: usize, vbase: u32, src: u8, writable: bool }
-impl Tlb { const EMPTY: Tlb = Tlb { lo: 1, hi: 0, off: 0, vbase: 0, src: 0, writable: false }; }
+use xtensa_lx7::bus::{FastMem, TlbEntry};
 #[inline(always)]
-fn tlb_idx(addr: u32) -> usize { (((addr >> 16) ^ (addr >> 24)) as usize) & (TLB_SIZE - 1) }
+fn tlb_idx(addr: u32) -> usize { xtensa_lx7::bus::tlb_index(addr) }
 
 impl SocBus {
     pub fn new(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self { Self::with_sizes(flash_size, psram_size, mac) }
@@ -85,7 +81,7 @@ impl SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false,
-            tlb: vec![Tlb::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
+            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -106,7 +102,7 @@ impl SocBus {
     /// the flash and PSRAM page versions are bumped too: that is what invalidates decoded
     /// instructions and blocks that were built through the old mapping.
     pub fn invalidate_tlb(&mut self) {
-        for e in self.tlb.iter_mut() { *e = Tlb::EMPTY; }
+        for e in self.tlb.iter_mut() { *e = TlbEntry::EMPTY; }
         let (a, b) = (self.ver_base[SRC_FLASH as usize] as usize, self.ver_base[SRC_DROM as usize] as usize);
         for v in &mut self.page_ver[a..b] { *v = v.wrapping_add(1); }          // flash then psram
     }
@@ -124,17 +120,17 @@ impl SocBus {
 
     /// The mapping covering `addr`, from the TLB or by walking the address map.
     #[inline(always)]
-    fn lookup(&mut self, addr: u32) -> Option<Tlb> {
+    fn lookup(&mut self, addr: u32) -> Option<TlbEntry> {
         let e = self.tlb[tlb_idx(addr)];
         if addr >= e.lo && addr < e.hi { Some(e) } else { self.tlb_fill(addr) }
     }
 
     /// Walk the address map for the 64 KiB page holding `addr` and remember it.
-    fn tlb_fill(&mut self, addr: u32) -> Option<Tlb> {
+    fn tlb_fill(&mut self, addr: u32) -> Option<TlbEntry> {
         let page = addr & !0xffff;
-        let region = |lo: u32, hi: u32, src: u8, w: bool| -> Tlb {
+        let region = |lo: u32, hi: u32, src: u8, w: bool| -> TlbEntry {
             let lo_ = page.max(lo); let hi_ = (page + 0x10000).min(hi);
-            Tlb { lo: lo_, hi: hi_, off: (lo_ - lo) as usize, vbase: 0, src, writable: w }
+            TlbEntry { lo: lo_, hi: hi_, base: std::ptr::null_mut(), off: lo_ - lo, vbase: 0, src: src as u32, writable: w as u32 }
         };
         let mut e = match addr {
             DRAM_LOW..=0x3FCF_FFFF => { let mut e = region(DRAM_LOW, 0x3FD0_0000, SRC_SRAM, true); e.off += 0x8000; e }
@@ -150,11 +146,13 @@ impl SocBus {
                 let off = (entry & 0x3fff) as usize * PAGE as usize;
                 let (src, w) = if entry & MMU_SPIRAM != 0 { (SRC_PSRAM, true) } else { (SRC_FLASH, false) };
                 if off + PAGE as usize > self.buf(src).len() { return None; }
-                Tlb { lo: page, hi: page + 0x10000, off, vbase: 0, src, writable: w }
+                TlbEntry { lo: page, hi: page + 0x10000, base: std::ptr::null_mut(), off: off as u32, vbase: 0, src: src as u32, writable: w as u32 }
             }
             _ => return None,
         };
-        e.vbase = self.ver_base[e.src as usize] + (e.off >> VPAGE_SHIFT) as u32;
+        e.vbase = self.ver_base[e.src as usize] + (e.off as usize >> VPAGE_SHIFT) as u32;
+        let off = e.off as usize;
+        e.base = unsafe { self.buf_mut(e.src as u8).as_mut_ptr().add(off) };
         self.tlb[tlb_idx(addr)] = e;
         Some(e)
     }
@@ -162,8 +160,8 @@ impl SocBus {
     /// Resolve an address to (buffer, offset, writable) — the slow path, for loaders.
     fn resolve(&mut self, addr: u32) -> Option<(&mut Vec<u8>, usize, bool)> {
         let e = self.lookup(addr)?;
-        let o = e.off + (addr - e.lo) as usize;
-        Some((self.buf_mut(e.src), o, e.writable))
+        let o = e.off as usize + (addr - e.lo) as usize;
+        Some((self.buf_mut(e.src as u8), o, e.writable != 0))
     }
 
     /// Record that `len` bytes at `off` of the page group starting at `vbase` changed. An
@@ -554,9 +552,9 @@ impl SocBus {
         for (i, b) in data.iter().enumerate() {
             let a = addr.wrapping_add(i as u32);
             let Some(e) = self.lookup(a) else { return Err(format!("load: address {:#010x} not mapped", a)) };
-            let o = e.off + (a - e.lo) as usize;
-            self.buf_mut(e.src)[o] = *b;
-            self.bump(e.vbase, o - e.off, 1);
+            let o = e.off as usize + (a - e.lo) as usize;
+            self.buf_mut(e.src as u8)[o] = *b;
+            self.bump(e.vbase, o - e.off as usize, 1);
         }
         Ok(())
     }
@@ -566,12 +564,12 @@ impl Bus for SocBus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 1) as u8); }
         let Some(e) = self.lookup(addr) else { self.last_fault = Some((addr, false)); return Err(Fault::Unmapped) };
-        Ok(self.buf(e.src)[e.off + (addr - e.lo) as usize])
+        Ok(self.buf(e.src as u8)[e.off as usize + (addr - e.lo) as usize])
     }
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 2) as u16); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src)[o..o + 2].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
             Some(_) => Ok(u16::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?])),       // straddles a page
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -579,7 +577,7 @@ impl Bus for SocBus {
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 4)); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src)[o..o + 4].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
             Some(_) => Ok(u32::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?, self.read8(addr + 2)?, self.read8(addr + 3)?])),
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -587,30 +585,30 @@ impl Bus for SocBus {
     fn write8(&mut self, addr: u32, v: u8) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v as u32, 1); return Ok(()); }
         match self.lookup(addr) {
-            Some(e) if e.writable => { let rel = (addr - e.lo) as usize; self.buf_mut(e.src)[e.off + rel] = v; self.bump(e.vbase, rel, 1); Ok(()) }
+            Some(e) if e.writable != 0 => { let rel = (addr - e.lo) as usize; self.buf_mut(e.src as u8)[e.off as usize + rel] = v; self.bump(e.vbase, rel, 1); Ok(()) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
     }
     fn write16(&mut self, addr: u32, v: u16) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v as u32, 2); return Ok(()); }
         match self.lookup(addr) {
-            Some(e) if e.writable && addr.wrapping_add(2) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off + rel; self.buf_mut(e.src)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
-            Some(e) if e.writable => { let b = v.to_le_bytes(); self.write8(addr, b[0])?; self.write8(addr + 1, b[1]) }
+            Some(e) if e.writable != 0 && addr.wrapping_add(2) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
+            Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); self.write8(addr, b[0])?; self.write8(addr + 1, b[1]) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
     }
     fn write32(&mut self, addr: u32, v: u32) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v, 4); return Ok(()); }
         match self.lookup(addr) {
-            Some(e) if e.writable && addr.wrapping_add(4) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off + rel; self.buf_mut(e.src)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
-            Some(e) if e.writable => { let b = v.to_le_bytes(); for i in 0..4 { self.write8(addr + i, b[i as usize])?; } Ok(()) }
+            Some(e) if e.writable != 0 && addr.wrapping_add(4) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
+            Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); for i in 0..4 { self.write8(addr + i, b[i as usize])?; } Ok(()) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
     }
     fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
         let Some(e) = self.lookup(pc) else { self.last_fault = Some((pc, false)); return Err(Fault::Unmapped) };
-        let o = e.off + (pc - e.lo) as usize;
-        let b = self.buf(e.src);
+        let o = e.off as usize + (pc - e.lo) as usize;
+        let b = self.buf(e.src as u8);
         if let Some(w) = b.get(o..o + 4) { return Ok(w.try_into().unwrap()); }
         // last bytes of a buffer (or of a mapped page): what physical memory has, zero beyond
         let mut r = [0u8; 4];
@@ -621,6 +619,7 @@ impl Bus for SocBus {
     fn page_versions(&self) -> &[u32] { &self.page_ver }
     #[inline(always)]
     fn note_pc(&mut self, pc: u32) { self.periph.cur_pc = pc; }
+    fn fast_mem(&mut self) -> Option<FastMem> { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) }
     #[inline(always)]
     fn block_break(&self) -> bool { self.irq_dirty }
     fn code_page(&mut self, pc: u32) -> u32 {

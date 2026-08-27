@@ -10,19 +10,19 @@ The negative results are listed too, so nobody re-spends the time.
 
 | workload | before blocks (`288a91e`) | block interpreter | **JIT** | vs real time now |
 | --- | --- | --- | --- | --- |
-| energy panel (LVGL, mostly idle) | 77 Minsn/s | 104 | **128** | ~3.5× |
-| panel + WiFi + HTTPS (20 s) | 9.1 s wall | 8.6 s | **5.6 s** | 3.6× |
-| SID player (panel, tune playing) | 93 Minsn/s | 133 | **193** | 2.1× |
-| autopling detector (PIE-heavy) | 63 Minsn/s | 78 | **101** | ~real time |
-| Atech synth (5 s scenario) | 113 Minsn/s | 153 | **210** | — |
-| Atech ST7735 full redraw | needs ~240 Minsn/s | | | close |
+| energy panel (LVGL, mostly idle) | 77 Minsn/s | 104 | **154** | ~4× |
+| panel + WiFi + HTTPS (20 s) | 9.1 s wall | 8.6 s | **4.6 s** | 4.3× |
+| SID player (panel, tune playing) | 93 Minsn/s | 133 | **241** | 2.7× |
+| autopling detector (PIE-heavy) | 63 Minsn/s | 78 | **102** | ~real time |
+| Atech synth (5 s scenario) | 113 Minsn/s | 153 | **233** | — |
+| Atech ST7735 full redraw | needs ~240 Minsn/s | | | at the threshold |
 
 Profile of the SID workload with the JIT (shares of total run time):
 
-| ~46 % | generated code (ALU, branches, register access, block bookkeeping) |
-| ~35 % | load/store helpers: the Rust TLB path, called per access |
-| ~8 %  | interpreter fallbacks (calls/returns/`entry`, special registers, FPU/PIE/MAC16) |
-| ~3 %  | device time, IRQ derivation |
+| ~60 % | generated code (ALU, branches, register access, inline TLB loads/stores, bookkeeping) |
+| ~12 % | interpreter fallbacks (calls/returns/`entry`, special registers, FPU/PIE/MAC16) |
+| ~10 % | slow-path memory helpers (TLB misses, peripheral registers) |
+| ~5 %  | device time, IRQ derivation |
 
 Before blocks the per-instruction scaffolding was ~35 % and **no single piece of it was
 removable** — each ablated to ≈0 %. Executing blocks reclaimed it; the JIT then removed the
@@ -88,14 +88,17 @@ for loads and stores, and calls `exec_insn` for everything else. Native went fir
 it is the machine the work is measured on, and the block model, invalidation and the helper
 protocol are what a wasm backend will reuse.
 
+The inline TLB fast path followed (SID 200 → 241, panel 132 → 154, Atech 212 → 233; the
+detector is unchanged because its memory traffic is inside PIE instructions, which are still
+fallbacks): generated code probes the shared `TlbEntry` table directly and calls the helper
+only on a miss, a non-writable page, or a store whose version bump would touch a page edge.
+
 Next inside the JIT, in order of measured value:
-1. **Inline TLB fast path for loads/stores** — 35 % of SID time is in the helpers. Emit the
-   direct-mapped TLB probe (index, compare, base+offset load) inline and call the helper only
-   on a miss or a peripheral address; stores must still bump the page version (or call out).
-2. **Register caching within a block** — every guest register access is index arithmetic plus
+1. **Register caching within a block** — every guest register access is index arithmetic plus
    a memory access; keeping the most-used registers in host registers between instructions
    removes most of it. Needs spills before helpers and at exits.
-3. **Inline the common fallbacks**: `call8`/`entry`/`retw` are the most frequent helper calls.
+2. **Inline the common fallbacks**: `call8`/`entry`/`retw` are the most frequent helper calls.
+3. **PIE in generated code or NEON in the interpreter** — the detector's remaining cost.
 
 ## Phase 2b — the wasm backend (open)
 

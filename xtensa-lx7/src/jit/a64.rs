@@ -88,6 +88,9 @@ impl Asm {
     pub fn add(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x0b00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn add_x(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x8b00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn add_lsl(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x0b00_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
+    pub fn add_lsr(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x0b40_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
+    pub fn add_x_lsl(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x8b00_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
+    pub fn eor_lsr(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x4a40_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
     pub fn sub(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x4b00_0000 | rm << 16 | rn << 5 | rd); }
     pub fn sub_lsl(&mut self, rd: Reg, rn: Reg, rm: Reg, sh: u32) { self.e(0x4b00_0000 | rm << 16 | sh << 10 | rn << 5 | rd); }
     pub fn subs(&mut self, rd: Reg, rn: Reg, rm: Reg) { self.e(0x6b00_0000 | rm << 16 | rn << 5 | rd); }
@@ -143,6 +146,14 @@ impl Asm {
     pub fn ldr_idx(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0xb860_0800 | wm << 16 | 0b010 << 13 | 1 << 12 | rn << 5 | rt); }
     /// `str wt, [xn, wm, uxtw #2]`
     pub fn str_idx(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0xb820_0800 | wm << 16 | 0b010 << 13 | 1 << 12 | rn << 5 | rt); }
+    /// Byte-offset register forms `[xn, wm, uxtw]` (no scaling): loads zero-extend, `ldrsh`/`ldrsb` sign-extend to 32 bits.
+    pub fn ldr_u(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0xb860_4800 | wm << 16 | rn << 5 | rt); }
+    pub fn ldrh_u(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0x7860_4800 | wm << 16 | rn << 5 | rt); }
+    pub fn ldrb_u(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0x3860_4800 | wm << 16 | rn << 5 | rt); }
+    pub fn ldrsh_u(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0x78e0_4800 | wm << 16 | rn << 5 | rt); }
+    pub fn str_u(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0xb820_4800 | wm << 16 | rn << 5 | rt); }
+    pub fn strh_u(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0x7820_4800 | wm << 16 | rn << 5 | rt); }
+    pub fn strb_u(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0x3820_4800 | wm << 16 | rn << 5 | rt); }
     /// `stp xt1, xt2, [sp, #-imm]!`
     pub fn stp_pre(&mut self, rt1: Reg, rt2: Reg, rn: Reg, off: i32) { self.e(0xa980_0000 | (((off / 8) as u32) & 0x7f) << 15 | rt2 << 10 | rn << 5 | rt1); }
     pub fn stp(&mut self, rt1: Reg, rt2: Reg, rn: Reg, off: i32) { self.e(0xa900_0000 | (((off / 8) as u32) & 0x7f) << 15 | rt2 << 10 | rn << 5 | rt1); }
@@ -196,6 +207,9 @@ mod tests {
         t!("add w9, w10, w11", a.add(9, 10, 11));
         t!("add x9, x10, x11", a.add_x(9, 10, 11));
         t!("add w9, w10, w11, lsl #3", a.add_lsl(9, 10, 11, 3));
+        t!("add w9, w10, w11, lsr #8", a.add_lsr(9, 10, 11, 8));
+        t!("add x9, x24, x9, lsl #5", a.add_x_lsl(9, 24, 9, 5));
+        t!("eor w9, w9, w1, lsr #24", a.eor_lsr(9, 9, 1, 24));
         t!("sub w9, w10, w11", a.sub(9, 10, 11));
         t!("sub w9, w10, w11, lsl #2", a.sub_lsl(9, 10, 11, 2));
         t!("cmp w9, w10", a.cmp(9, 10));
@@ -242,6 +256,15 @@ mod tests {
         t!("str x9, [x25, #8]", a.str_x(9, 25, 8));
         t!("ldr w10, [x21, w9, uxtw #2]", a.ldr_idx(10, 21, 9));
         t!("str w10, [x21, w9, uxtw #2]", a.str_idx(10, 21, 9));
+        t!("ldr w0, [x12, w10, uxtw]", a.ldr_u(0, 12, 10));
+        t!("ldrh w0, [x12, w10, uxtw]", a.ldrh_u(0, 12, 10));
+        t!("ldrb w0, [x12, w10, uxtw]", a.ldrb_u(0, 12, 10));
+        t!("ldrsh w0, [x12, w10, uxtw]", a.ldrsh_u(0, 12, 10));
+        t!("str w2, [x12, w10, uxtw]", a.str_u(2, 12, 10));
+        t!("strh w2, [x12, w10, uxtw]", a.strh_u(2, 12, 10));
+        t!("strb w2, [x12, w10, uxtw]", a.strb_u(2, 12, 10));
+        t!("str w3, [sp, #96]", a.str(3, SP, 96));
+        t!("ldr w9, [sp, #96]", a.ldr(9, SP, 96));
         t!("stp x29, x30, [sp, #-96]!", a.stp_pre(29, 30, SP, -96));
         t!("stp x19, x20, [sp, #16]", a.stp(19, 20, SP, 16));
         t!("ldp x19, x20, [sp, #16]", a.ldp(19, 20, SP, 16));

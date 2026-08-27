@@ -60,8 +60,8 @@ web/          index.html: board drawing, console, WebAudio, camera panel (no bui
   for tracing, profiling, breakpoints and watchpoints.
 - **JIT** (`jit/`, AArch64 on macOS/Linux): every block is also compiled to native code with the
   same exit rules, so the interpreter is the oracle (`--no-jit` must give identical output).
-  ALU, shifts, moves, compares and all branches are inline; loads and stores call small bus
-  helpers; everything else (calls, returns, `entry`, special registers, FPU, PIE, MAC16) calls
+  ALU, shifts, moves, compares, all branches, and loads/stores through an inline probe of the
+  bus's TLB (`Bus::fast_mem`) are native; misses and peripheral addresses call bus helpers; everything else (calls, returns, `entry`, special registers, FPU, PIE, MAC16) calls
   back into `exec_insn` for that one instruction and continues natively. Guest registers are
   addressed as `ar[(windowbase*4 + n) & 63]` from the window base cached at block entry;
   the window-overflow pre-check is emitted once per frame count per block. `jit/a64.rs` is a

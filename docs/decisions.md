@@ -187,9 +187,14 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Free things, measured so nobody removes them for speed**: the three `ccompare` checks in
   `advance_ccount`, the per-instruction stub/probe/breakpoint/trace checks in `step_core`, and the
   decode-cache size (32 K, 64 K and 128 K entries all perform the same — it could shrink).
-- **What is left is memory access.** With the JIT, the SID workload profiles as ~46 % generated
-  code, ~35 % load/store helpers (the Rust TLB path), ~8 % interpreter fallbacks, the rest
-  devices. An inline TLB fast path in generated code is the next step (speed-plan.md).
+- **Generated code probes the TLB itself.** The `TlbEntry` layout is `#[repr(C)]` in the core
+  crate and the bus hands the JIT its table and write-version pointers (`Bus::fast_mem`), so a
+  load is index, two compares and one host load. Stores also bump the page version inline, but
+  only when the bump touches a single page away from its first three bytes — the edge cases go
+  through the helper, which keeps one implementation of the straddle rules. Worth 1.1–1.2× on
+  everything except PIE-heavy code, whose memory traffic sits inside fallback instructions.
+- **What is left**: ~60 % generated code, ~12 % fallbacks (`call8`/`entry`/`retw` dominate),
+  ~10 % slow-path memory. Register caching and inlining the call sequence are next.
 - **Profile the emulator, not just the guest.** `--profile` reports guest PCs and disables idle
   skipping, so an idle core shows up as a hot `waiti` — an artefact, not work. For emulator-side
   cost use `sample <pid>` (macOS) against a normal run, and confirm with an ablation build.

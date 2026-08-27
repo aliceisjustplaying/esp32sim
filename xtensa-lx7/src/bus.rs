@@ -8,6 +8,28 @@ pub enum Fault {
     Prohibited,
 }
 
+/// Number of entries in a bus's software TLB and the write-version page size, fixed here
+/// because generated code indexes both directly.
+pub const TLB_ENTRIES: usize = 512;
+pub const VPAGE_SHIFT: u32 = 8;
+#[inline(always)]
+pub fn tlb_index(addr: u32) -> usize { (((addr >> 16) ^ (addr >> 24)) as usize) & (TLB_ENTRIES - 1) }
+
+/// One software-TLB entry: guest `[lo, hi)` is host memory starting at `base`; `vbase` is the
+/// write-version index of `lo`. Layout is fixed (32 bytes) because the JIT reads it.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TlbEntry { pub lo: u32, pub hi: u32, pub base: *mut u8, pub vbase: u32, pub writable: u32, pub off: u32, pub src: u32 }
+impl TlbEntry { pub const EMPTY: TlbEntry = TlbEntry { lo: 1, hi: 0, base: std::ptr::null_mut(), vbase: 0, writable: 0, off: 0, src: 0 }; }
+// Entries only ever point into the owning bus's buffers, which live as long as the bus.
+unsafe impl Send for TlbEntry {}
+unsafe impl Sync for TlbEntry {}
+
+/// What generated code needs to access memory without calling back: the TLB and the
+/// write-version counters. Both pointers must stay valid while the bus exists.
+#[derive(Clone, Copy)]
+pub struct FastMem { pub tlb: *const TlbEntry, pub page_ver: *mut u32 }
+
 pub trait Bus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault>;
     fn read16(&mut self, addr: u32) -> Result<u16, Fault>;
@@ -33,6 +55,8 @@ pub trait Bus {
     /// and let the machine re-derive the CPU's interrupt inputs before the next instruction.
     #[inline(always)]
     fn block_break(&self) -> bool { false }
+    /// Direct memory access for generated code, if the bus has a `TlbEntry` table.
+    fn fast_mem(&mut self) -> Option<FastMem> { None }
     /// Called after every executed instruction with the cycle estimate; lets the
     /// SoC advance timers and DMA. Return pending external level-interrupt lines.
     fn tick(&mut self, cycles: u32) -> u32 { let _ = cycles; 0 }

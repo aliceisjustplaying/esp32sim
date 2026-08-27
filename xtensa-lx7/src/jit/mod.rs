@@ -6,8 +6,9 @@
 //!
 //! Register plan inside generated code (AAPCS64 callee-saved, so helpers may be called freely):
 //!   x19 = &Cpu, x20 = &Bus, x21 = &cpu.ar[0], w22 = windowbase*4, w23 = instructions left,
-//!   w24 = initial budget, x25 = &Helpers, w26 = cpu.lend, w27 = address of the current load/store,
-//!   w28 = lend − block start, so the loop-end test is a compare with an immediate.
+//!   x24 = TLB entries, x25 = &Helpers, w26 = cpu.lend, x27 = write-version counters,
+//!   w28 = lend − block start, so the loop-end test is a compare with an immediate. The initial
+//!   budget is kept in the frame at [sp, #96].
 //! Guest register `n` lives at `ar[(w22 + n) & 63]`. Anything the fast path does not implement
 //! is executed by calling back into `exec_insn` through `Helpers::exec`.
 #![allow(clippy::too_many_arguments)]
@@ -19,7 +20,7 @@ pub mod a64;
 mod native {
     use super::a64::{Asm, Cond, Label, Reg, SP, ZR};
     use crate::block::BlockInsn;
-    use crate::bus::Bus;
+    use crate::bus::{Bus, FastMem, TLB_ENTRIES};
     use crate::decode::Op;
     use crate::exec::{exec_insn, Trap};
     use crate::state::{exc, Cpu};
@@ -145,7 +146,8 @@ mod native {
     const OFF_BR: u32 = std::mem::offset_of!(Cpu, br) as u32;
 
     const CPU: Reg = 19; const BUS: Reg = 20; const AR: Reg = 21; const WB4: Reg = 22; const LEFT: Reg = 23;
-    const BUDGET: Reg = 24; const HELP: Reg = 25; const LEND: Reg = 26; const ADDR: Reg = 27; const LOFF: Reg = 28;
+    const TLB: Reg = 24; const HELP: Reg = 25; const LEND: Reg = 26; const PVER: Reg = 27; const LOFF: Reg = 28;
+    const FRAME: i32 = 112; const BUDGET_SLOT: u32 = 96;
     const IDX: Reg = 17;
     const EXIT_END: u32 = 0; const EXIT_LEFT: u32 = 1; const EXIT_TRAP: u32 = 2; const EXIT_CUT: u32 = 3; const EXIT_TRAP_PRE: u32 = 4;
     /// Most code one block can need, with slack; the cache is flushed when less than this is free.
@@ -179,20 +181,33 @@ mod native {
             l
         }
         fn load_loff(&mut self) { self.a.mov32(9, self.pc0); self.a.sub(LOFF, LEND, 9); }
+        /// Probe the software TLB for `size` bytes at `w_addr`. On a hit: x9 = &entry,
+        /// x12 = host base of the entry, w10 = offset of the access within it. Otherwise jumps to `slow`.
+        fn tlb_probe(&mut self, addr: Reg, size: u32, slow: Label) {
+            let _ = TLB_ENTRIES;                                                  // index() below assumes 512
+            self.a.lsr_imm(9, addr, 16); self.a.eor_lsr(9, 9, addr, 24); self.a.and_mask(9, 9, 9, 0);
+            self.a.add_x_lsl(9, TLB, 9, 5);                                       // 32-byte entries
+            self.a.ldr(10, 9, 0); self.a.ldr(11, 9, 4);                           // lo, hi
+            self.a.cmp(addr, 10); self.a.b_cond(Cond::Lo, slow);
+            self.a.add_imm(13, addr, size); self.a.cmp(13, 11); self.a.b_cond(Cond::Hi, slow);
+            self.a.sub(10, addr, 10);                                             // offset
+            self.a.ldr_x(12, 9, 8);                                               // base
+        }
         fn reload_after_helper(&mut self) { self.a.ldr(WB4, CPU, OFF_WB); self.a.lsl_imm(WB4, WB4, 2); self.a.ldr(LEND, CPU, OFF_LEND); self.load_loff(); }
     }
 
     /// Compile one block. Fills `insns[i].off` with each instruction's byte offset from the body
     /// start (the entry-point argument of `run`) and returns the code's offset in the cache.
-    pub fn compile(cc: &mut CodeCache, insns: &mut [BlockInsn], pc0: u32) -> Option<u32> {
+    pub fn compile(cc: &mut CodeCache, insns: &mut [BlockInsn], pc0: u32, fast: bool) -> Option<u32> {
         if cc.remaining() < MAX_BLOCK_CODE { return None; }
         let mut a = Asm::new();
         let (exit, exit_trap, exit_trap_pre, exit_left) = (a.label(), a.label(), a.label(), a.label());
         let body = a.label();
         // prologue
-        a.stp_pre(29, 30, SP, -96);
+        a.stp_pre(29, 30, SP, -FRAME);
         a.stp(19, 20, SP, 16); a.stp(21, 22, SP, 32); a.stp(23, 24, SP, 48); a.stp(25, 26, SP, 64); a.stp(27, 28, SP, 80);
-        a.mov_x(CPU, 0); a.mov_x(BUS, 1); a.mov_x(HELP, 2); a.mov(LEFT, 3); a.mov(BUDGET, 3);
+        a.mov_x(CPU, 0); a.mov_x(BUS, 1); a.mov_x(HELP, 2); a.mov(LEFT, 3); a.str(3, SP, BUDGET_SLOT);
+        a.mov_x(TLB, 5); a.mov_x(PVER, 6);
         a.add_imm_x(AR, CPU, OFF_AR);
         a.ldr(WB4, CPU, OFF_WB); a.lsl_imm(WB4, WB4, 2);
         a.ldr(LEND, CPU, OFF_LEND);
@@ -303,38 +318,72 @@ mod native {
 
                 // ---- loads and stores through the bus helpers
                 L8ui | L16ui | L16si | L32i | L32iN | L32ai | L32r => {
-                    let h = match i.op { L8ui => H_READ8, L16ui | L16si => H_READ16, _ => H_READ32 };
-                    g.a.mov_x(0, BUS);
+                    let (h, size) = match i.op { L8ui => (H_READ8, 1), L16ui | L16si => (H_READ16, 2), _ => (H_READ32, 4) };
+                    // address in w1 (kept intact for the slow path)
                     if i.op == L32r { g.a.mov32(1, immu); } else { g.ld_ar(1, s); g.a.add_imm32(1, 1, immu, 9); }
-                    g.a.mov(ADDR, 1); g.a.mov32(2, pc);
-                    g.call(h);
-                    let fault = g.a.label();
-                    g.a.tbnz(0, 32, fault);
-                    g.a.lsr_imm_x(12, 0, 33);
-                    if i.op == L16si { g.a.sxth(0, 0); }
-                    g.st_ar(t, 0);
+                    let (slow, done) = (g.a.label(), g.a.label());
+                    if fast {
+                        g.tlb_probe(1, size, slow);                               // x12 = entry base, w10 = offset
+                        match i.op { L8ui => g.a.ldrb_u(0, 12, 10), L16ui => g.a.ldrh_u(0, 12, 10), L16si => g.a.ldrsh_u(0, 12, 10), _ => g.a.ldr_u(0, 12, 10) }
+                        g.st_ar(t, 0);
+                        g.a.movz(12, 0, 0);
+                        g.a.b(done);
+                    } else { g.a.b(slow); }
                     flag = Some(12);
-                    let tr = g.exit_trap;
+                    let (tr, op) = (g.exit_trap, i.op);
                     g.stubs.push(Box::new(move |a: &mut Asm| {
-                        a.bind(fault); a.mov_x(0, CPU); a.mov32(1, exc::LOAD_PROHIBITED); a.mov(2, ADDR); a.mov32(3, pc);
+                        a.bind(slow);
+                        a.mov_x(0, BUS); a.mov32(2, pc);
+                        a.ldr_x(9, HELP, h); a.blr(9);
+                        let fault = a.label();
+                        a.tbnz(0, 32, fault);
+                        a.lsr_imm_x(12, 0, 33);
+                        if op == Op::L16si { a.sxth(0, 0); }
+                        // st_ar(t, w0)
+                        a.add_imm(IDX, WB4, t as u32); a.and_mask(IDX, IDX, 6, 0); a.str_idx(0, AR, IDX);
+                        a.b(done);
+                        a.bind(fault);                                          // recompute the address: nothing changed
+                        a.mov_x(0, CPU); a.mov32(1, exc::LOAD_PROHIBITED);
+                        if op == Op::L32r { a.mov32(2, immu); } else { a.add_imm(IDX, WB4, s as u32); a.and_mask(IDX, IDX, 6, 0); a.ldr_idx(2, AR, IDX); a.add_imm32(2, 2, immu, 9); }
+                        a.mov32(3, pc);
                         a.ldr_x(9, HELP, H_RAISE_MEM); a.blr(9); a.b(tr);
                     }));
+                    g.a.bind(done);
                 }
                 S8i | S16i | S32i | S32iN | S32ri => {
-                    let h = match i.op { S8i => H_WRITE8, S16i => H_WRITE16, _ => H_WRITE32 };
-                    g.a.mov_x(0, BUS);
-                    g.ld_ar(1, s); g.a.add_imm32(1, 1, immu, 9); g.a.mov(ADDR, 1);
-                    g.ld_ar(2, t); g.a.mov32(3, pc);
-                    g.call(h);
-                    let fault = g.a.label();
-                    g.a.tbnz(0, 0, fault);
-                    g.a.lsr_imm(12, 0, 1);
+                    let (h, size) = match i.op { S8i => (H_WRITE8, 1), S16i => (H_WRITE16, 2), _ => (H_WRITE32, 4) };
+                    g.ld_ar(1, s); g.a.add_imm32(1, 1, immu, 9);              // w1 = address, w2 = value
+                    g.ld_ar(2, t);
+                    let (slow, done) = (g.a.label(), g.a.label());
+                    if fast {
+                        g.tlb_probe(1, size, slow);                               // x12 = entry base, w10 = offset, x9 = entry
+                        g.a.ldr(11, 9, 20); g.a.cbz(11, slow);                    // writable?
+                        // stay on the fast path only when the write-version bump touches one page
+                        // and not its first three bytes (an instruction may straddle into it)
+                        g.a.and_mask(13, 10, 8, 0); g.a.sub_imm(13, 13, 3); g.a.cmp_imm(13, 253 - size); g.a.b_cond(Cond::Hi, slow);
+                        match i.op { S8i => g.a.strb_u(2, 12, 10), S16i => g.a.strh_u(2, 12, 10), _ => g.a.str_u(2, 12, 10) }
+                        g.a.ldr(11, 9, 16); g.a.add_lsr(11, 11, 10, 8);           // vbase + (offset >> 8)
+                        g.a.ldr_idx(13, PVER, 11); g.a.add_imm(13, 13, 1); g.a.str_idx(13, PVER, 11);
+                        g.a.movz(12, 0, 0);
+                        g.a.b(done);
+                    } else { g.a.b(slow); }
                     flag = Some(12);
                     let tr = g.exit_trap;
                     g.stubs.push(Box::new(move |a: &mut Asm| {
-                        a.bind(fault); a.mov_x(0, CPU); a.mov32(1, exc::STORE_PROHIBITED); a.mov(2, ADDR); a.mov32(3, pc);
+                        a.bind(slow);
+                        a.mov_x(0, BUS); a.mov32(3, pc);
+                        a.ldr_x(9, HELP, h); a.blr(9);
+                        let fault = a.label();
+                        a.tbnz(0, 0, fault);
+                        a.lsr_imm(12, 0, 1);
+                        a.b(done);
+                        a.bind(fault);
+                        a.mov_x(0, CPU); a.mov32(1, exc::STORE_PROHIBITED);
+                        a.add_imm(IDX, WB4, s as u32); a.and_mask(IDX, IDX, 6, 0); a.ldr_idx(2, AR, IDX); a.add_imm32(2, 2, immu, 9);
+                        a.mov32(3, pc);
                         a.ldr_x(9, HELP, H_RAISE_MEM); a.blr(9); a.b(tr);
                     }));
+                    g.a.bind(done);
                 }
 
                 // ---- control transfers
@@ -406,9 +455,9 @@ mod native {
         g.a.bind(left_w9); g.a.str(9, CPU, OFF_PC); g.a.movz(0, EXIT_LEFT, 0); g.a.b(exit);
         g.a.bind(cut_w9); g.a.str(9, CPU, OFF_PC); g.a.movz(0, EXIT_CUT, 0); g.a.b(exit);
         g.a.bind(exit);
-        g.a.sub(9, BUDGET, LEFT); g.a.orr_lsl(0, 9, 0, 16);
+        g.a.ldr(9, SP, BUDGET_SLOT); g.a.sub(9, 9, LEFT); g.a.orr_lsl(0, 9, 0, 16);
         g.a.ldp(27, 28, SP, 80); g.a.ldp(25, 26, SP, 64); g.a.ldp(23, 24, SP, 48); g.a.ldp(21, 22, SP, 32); g.a.ldp(19, 20, SP, 16);
-        g.a.ldp_post(29, 30, SP, 96);
+        g.a.ldp_post(29, 30, SP, FRAME);
         g.a.ret();
         for s in std::mem::take(&mut g.stubs) { s(&mut g.a); }
         let words = g.a.finish();
@@ -416,9 +465,10 @@ mod native {
     }
 
     /// Run compiled code. Returns `done | code << 16`; see the EXIT_* codes.
-    pub unsafe fn run<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: &mut B, h: &Helpers, budget: u32, entry: u32) -> u32 {
-        let f: extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32) -> u32 = std::mem::transmute(cc.ptr(code));
-        f(cpu, bus, h, budget, entry)
+    pub unsafe fn run<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: &mut B, h: &Helpers, budget: u32, entry: u32, fm: Option<FastMem>) -> u32 {
+        let f: extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32, *const crate::bus::TlbEntry, *mut u32) -> u32 = std::mem::transmute(cc.ptr(code));
+        let (tlb, pv) = match fm { Some(m) => (m.tlb, m.page_ver), None => (std::ptr::null(), std::ptr::null_mut()) };
+        f(cpu, bus, h, budget, entry, tlb, pv)
     }
     pub const CODE_END: u32 = EXIT_END; pub const CODE_LEFT: u32 = EXIT_LEFT; pub const CODE_TRAP: u32 = EXIT_TRAP;
     pub const CODE_CUT: u32 = EXIT_CUT; pub const CODE_TRAP_PRE: u32 = EXIT_TRAP_PRE;
@@ -437,8 +487,8 @@ mod native {
     impl CodeCache { pub fn new(_: usize) -> Option<CodeCache> { None } pub fn remaining(&self) -> usize { 0 } pub fn used(&self) -> usize { 0 } pub fn reset(&mut self) {} }
     pub struct Helpers;
     impl Helpers { pub fn new<B: Bus>() -> Helpers { Helpers } }
-    pub fn compile(_: &mut CodeCache, _: &mut [BlockInsn], _: u32) -> Option<u32> { None }
-    pub unsafe fn run<B: Bus>(_: &CodeCache, _: u32, _: &mut Cpu, _: &mut B, _: &Helpers, _: u32, _: u32) -> u32 { 0 }
+    pub fn compile(_: &mut CodeCache, _: &mut [BlockInsn], _: u32, _: bool) -> Option<u32> { None }
+    pub unsafe fn run<B: Bus>(_: &CodeCache, _: u32, _: &mut Cpu, _: &mut B, _: &Helpers, _: u32, _: u32, _: Option<crate::bus::FastMem>) -> u32 { 0 }
     pub const CODE_END: u32 = 0; pub const CODE_LEFT: u32 = 1; pub const CODE_TRAP: u32 = 2; pub const CODE_CUT: u32 = 3; pub const CODE_TRAP_PRE: u32 = 4;
 }
 
