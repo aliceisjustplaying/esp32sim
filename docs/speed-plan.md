@@ -4,27 +4,30 @@ Every number here was measured in this repo with `tools/bench.py` (interleaved r
 median wall time, guest instruction counts cross-checked) or `sample(1)` against a normal run.
 The negative results are listed too, so nobody re-spends the time.
 
-## Where we are (tree at `288a91e`, M-series Mac, `lto = "fat"`)
+**Status:** Phase 1 (the basic-block interpreter) landed; Phase 0's NEON work and the JIT are open.
 
-| workload | throughput | vs real time | what limits it |
+## Where we are (M-series Mac, `lto = "fat"`, `tools/bench.py`)
+
+| workload | before blocks (`288a91e`) | with blocks | vs real time now |
 | --- | --- | --- | --- |
-| energy panel (LVGL, mostly idle) | ~80 Minsn/s | 2.1× | interpreter |
-| panel + WiFi + HTTPS | ~80 Minsn/s | 2.1× | interpreter (NAT/crypto now cheap) |
-| SID player (panel, tune playing) | ~96 Minsn/s | ~1.05× | interpreter |
-| autopling detector (PIE-heavy) | ~63 Minsn/s | below | PIE scalar lanes + loads/stores |
-| Atech synth, ST7735 full redraw | — | ~0.3 s lag per redraw | needs ~240 Minsn/s |
+| energy panel (LVGL, mostly idle) | 77 Minsn/s | **104** (1.34×) | ~2.9× |
+| panel + WiFi + HTTPS (20 s) | 9.1 s wall | **8.6 s** | 2.3× |
+| SID player (panel, tune playing) | 93 Minsn/s | **133** (1.42×) | 1.5× |
+| autopling detector (PIE-heavy) | 63 Minsn/s | **78** (1.24×) | below |
+| Atech synth (5 s scenario) | 113 Minsn/s | **153** | — |
+| Atech ST7735 full redraw | needs ~240 Minsn/s | | still short |
 
-Profile of the SID workload (shares of total run time):
+Profile of the SID workload with blocks (shares of total run time):
 
-| ~35 % | `exec_insn`: operand unpack + 245-way dispatch + semantics |
-| ~35 % | per-instruction step scaffolding: interrupt check, decode-cache probe, window-overflow check, `ccount`, counters |
-| ~10 % | loads/stores (through the software TLB) |
-| ~9 %  | fetch + decode-cache validation (page write-versions) |
-| ~7 %  | device time, IRQ derivation, DMA (already lazy/deadline-driven) |
+| ~44 % | `exec_insn`: operand unpack + 245-way dispatch + semantics |
+| ~19 % | loads/stores (through the software TLB) |
+| ~14 % | block loop: window-overflow check, pc compare, entry copy, per-block accounting |
+| ~0 %  | fetch, decode, cache validation — gone |
+| ~7 %  | device time, IRQ derivation, DMA |
 
-The key structural fact: **no single piece of the 35 % scaffolding is removable** — each was
-ablated individually and measured at ≈0 %. It is the *per-instruction granularity* that costs,
-so only executing more than one instruction per "step" can reclaim it.
+Before blocks the per-instruction scaffolding was ~35 % and **no single piece of it was
+removable** — each ablated to ≈0 %. Executing blocks reclaimed it; what remains is the work of
+the instructions themselves, which only code generation reduces further.
 
 ## Phase 0 — small, independent, do anytime
 
@@ -40,13 +43,16 @@ so only executing more than one instruction per "step" can reclaim it.
   pointers in TLB entries, 2048-cycle idle steps (changed the Atech WAV — the regression bar
   is bit-identical output).
 
-## Phase 1 — basic-block interpreter (the big one)
+## Phase 1 — basic-block interpreter — DONE
 
-**Goal: 1.4–1.8× on everything, portable to the WASM build unchanged.** This is the only step
-that touches the 35 % scaffolding, and it is what ST7735 redraws and the browser SID player
-both need.
+**Measured: 1.24–1.42× across the workloads, every regression output bit-identical**, landed
+in `xtensa-lx7/src/block.rs`. It is host-API-free like the rest of the core, so it carries over
+to the WASM build unchanged. Two things the implementation taught that the design below did not
+anticipate: IRAM/DRAM aliasing put `.dram0.data` in the same 4 KiB version page as the hottest
+ISR code (version pages are now 256 bytes), and a block cut by the scheduling quantum has to
+resume in place rather than start a new block at the cut, or the cache fills with fragments.
 
-Design:
+Design as built:
 
 - **Block = straight-line run of decoded instructions** ending at a control transfer (`j`,
   `jx`, `call*`, `ret*`, branches, `loop*`), a `waiti`/`rsil`/`syscall`-class instruction, or
@@ -60,7 +66,8 @@ Design:
   the next `cycles_until_timer()` deadline — same trick the lazy device tick already uses, so
   `ccompare`/systimer alarms still land on the exact instruction.
 - **Invalidation is already built**: a block caches the `page_ver` values of the (at most two)
-  4 KiB pages it spans; validation is two indexed loads. Self-modifying code, the SPI flash
+  256-byte pages it spans; validation is two indexed loads. MMU remaps bump all flash/PSRAM
+  versions. Self-modifying code, the SPI flash
   controller and the image loaders all bump versions today (`note_written`), and MMU changes
   invalidate the TLB. Zero-overhead loops (`lbeg`/`lend`/`lcount`) fall out naturally: the
   loop body is a block, the loop-back edge re-enters it.
@@ -69,10 +76,10 @@ Design:
 - Acceptance: Atech WAV bit-identical, SID capture sample-identical after alignment, full
   regression sweep, and `tools/bench.py` on the three standard workloads.
 
-Estimated effort 1–2 weeks. Expected landing zone: SID ~130–150 Minsn/s (comfortably real
-time), detector ~90–100, panel + WiFi ~110–130.
+Landed at SID 133 Minsn/s, detector 78, panel 104 — the estimate held for SID and the panel;
+the detector gained less because its time is in PIE lanes and loads/stores, not scaffolding.
 
-## Phase 2 — JIT (only after Phase 1, and probably WASM-first)
+## Phase 2 — JIT (next; probably WASM-first)
 
 **Goal: 3–4× over today.** One block IR, two backends:
 

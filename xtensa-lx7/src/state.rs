@@ -131,8 +131,12 @@ pub struct Cpu {
     /// external interrupt lines currently asserted (level-triggered sources)
     pub ext_level_lines: u32,
     pub insn_count: u64,
-    /// decoded-instruction cache: direct-mapped on pc, validated by the raw fetch bytes
+    /// decoded-instruction cache: direct-mapped on pc, validated by the page write-version
     pub icache: Vec<crate::decode::CacheEntry>,
+    /// basic-block cache used by `block::run_block` (the fast path)
+    pub blocks: crate::block::BlockCache,
+    /// pcs that must start a block (the machine's stubs and probes), as a bloom over `block::pc_bit`
+    pub boundary_bloom: u64,
 }
 
 impl Default for Cpu {
@@ -153,6 +157,7 @@ impl Cpu {
             qr: [0; 8], accx: [0; 2], qacc_h: [0; 5], qacc_l: [0; 5], sar_byte: 0, fft_bit_width: 0, ua_state: [0; 4], gpio_out: 0,
             waiting: false, ext_level_lines: 0, insn_count: 0,
             icache: vec![crate::decode::CacheEntry::EMPTY; crate::decode::ICACHE_SIZE],
+            blocks: crate::block::BlockCache::new(), boundary_bloom: 0,
         };
         c.reset();
         c

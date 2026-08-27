@@ -74,9 +74,7 @@ pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bo
 #[derive(Debug)]
 pub enum Stop { MaxInsns, Breakpoint(u32), Unimplemented(u32, u32), SwReset, Halted, Simcall(u32), Watch(u32, u32, u32), Exceptions(u64) }
 
-/// Bloom bit for a PC, used to skip the stub/probe maps on the hot path.
-#[inline(always)]
-fn pc_bit(pc: u32) -> u64 { 1u64 << ((pc >> 2) & 63) }
+use xtensa_lx7::block::pc_bit;
 
 impl Machine {
     pub fn new(mac: [u8; 6]) -> Self {
@@ -229,6 +227,46 @@ impl Machine {
         }
     }
 
+    /// Execute up to `budget` instructions on `core` through the block interpreter. Returns the
+    /// iterations consumed (as `step_core` would have counted them) and a stop, if any.
+    #[inline]
+    fn step_blocks(&mut self, core: usize, budget: u32) -> (u32, Option<Stop>) {
+        let (cpu, bus) = if core == 0 { (&mut self.cpu, &mut self.bus) } else { (&mut self.cpu1, &mut self.bus) };
+        let pc = cpu.pc;
+        // stubs and probes are block boundaries, so testing them at block start is exact
+        if (self.stub_bloom | self.probe_bloom) & pc_bit(pc) != 0 && !cpu.waiting {
+            if let Some(name) = self.fn_probes.get(&pc) {
+                eprintln!("[fn] i={} t={:.4}s c{} {}(a2={:#x} a3={:#x} a4={:#x}) ret={:#x}", cpu.insn_count, bus.cycles as f64 / crate::periph::CPU_HZ as f64, core, name, cpu.get_ar(2), cpu.get_ar(3), cpu.get_ar(4), cpu.get_ar(0) & 0x3fff_ffff | 0x4000_0000);
+            }
+            if let Some(&ret) = self.stubs.get(&pc) {
+                let a0 = cpu.get_ar(0);
+                cpu.set_ar(2, ret);
+                cpu.pc = (a0 & 0x3fff_ffff) | (pc & 0xc000_0000);
+                cpu.insn_count += 1; cpu.advance_ccount(1); self.stub_hits += 1;
+                return (1, None);
+            }
+        }
+        let (used, trap) = xtensa_lx7::block::run_block(cpu, bus, budget);
+        match trap {
+            None => {}
+            Some(Trap::Exception(_)) => { self.exceptions += 1; }
+            Some(Trap::Interrupt(irq)) => { self.interrupts += 1; self.irq_hist[core][irq as usize] += 1; }
+            Some(Trap::Unimplemented(p, raw)) => { if self.stop_on_unimplemented { return (used, Some(Stop::Unimplemented(p, raw))); } }
+            Some(Trap::Simcall) => return (used, Some(Stop::Simcall(pc))),
+        }
+        if bus.irq_dirty {
+            bus.irq_dirty = false;
+            if bus.periph.lines_dirty() || bus.periph.intmatrix_dirty {
+                bus.periph.intmatrix_dirty = false;
+                let (l0, l1) = bus.periph.cpu_lines_both();
+                self.cpu.interrupt = (self.cpu.interrupt & !INTTYPE_LEVEL) | (l0 & INTTYPE_LEVEL);
+                self.cpu1.interrupt = (self.cpu1.interrupt & !INTTYPE_LEVEL) | (l1 & INTTYPE_LEVEL);
+            }
+        }
+        if self.exceptions >= self.stop_after_exceptions { return (used, Some(Stop::Exceptions(self.exceptions))); }
+        (used, None)
+    }
+
     /// Execute one instruction on `core`; returns Some(stop) if the run must end.
     #[inline]
     fn step_core(&mut self, core: usize) -> Option<Stop> {
@@ -299,6 +337,9 @@ impl Machine {
         const QUANTUM: u64 = 64;
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
+        for c in [&mut self.cpu, &mut self.cpu1] { c.boundary_bloom = self.stub_bloom | self.probe_bloom; c.blocks.flush(); }
+        // the block interpreter cannot honour per-instruction observers; those runs single-step
+        let blocks = !(self.trace || self.profile.is_some() || self.regtrace.is_some() || self.watch.is_some() || !self.breakpoints.is_empty());
         let mut n = 0u64;
         loop {
             if n >= max_insns { self.drain_console(); return Stop::MaxInsns; }
@@ -321,12 +362,18 @@ impl Machine {
                 if n & 0xffff < chunk { self.drain_console(); }
                 continue;
             }
-            if c0_idle && !slow_path { self.cpu.advance_ccount(QUANTUM as u32); } else {
+            if c0_idle && !slow_path { self.cpu.advance_ccount(QUANTUM as u32); } else if blocks {
+                let mut left = QUANTUM as u32;
+                while left > 0 { let (used, stop) = self.step_blocks(0, left); if let Some(stop) = stop { self.drain_console(); return stop; } left -= used.min(left); }
+            } else {
                 for _ in 0..QUANTUM { if let Some(stop) = self.step_core(0) { self.drain_console(); return stop; } }
             }
             n += QUANTUM;
             if core1_on {
-                if c1_idle && !slow_path { self.cpu1.advance_ccount(QUANTUM as u32); } else {
+                if c1_idle && !slow_path { self.cpu1.advance_ccount(QUANTUM as u32); } else if blocks {
+                    let mut left = QUANTUM as u32;
+                    while left > 0 { let (used, stop) = self.step_blocks(1, left); if let Some(stop) = stop { self.drain_console(); return stop; } left -= used.min(left); }
+                } else {
                     for _ in 0..QUANTUM { if let Some(stop) = self.step_core(1) { self.drain_console(); return stop; } }
                 }
             }

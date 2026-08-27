@@ -92,7 +92,7 @@ impl Cpu {
     }
 
     /// Window overflow check for an instruction touching AR[0..=max_ar].
-    fn check_overflow(&mut self, max_ar: u8) -> Option<Trap> {
+    pub(crate) fn check_overflow(&mut self, max_ar: u8) -> Option<Trap> {
         if max_ar < 4 || !self.woe() || self.excm() { return None; }
         let w = (max_ar / 4) as u32;
         for n in 1..=w {
@@ -186,7 +186,7 @@ impl Cpu {
 }
 
 /// Highest AR index an instruction touches (for the window-overflow check).
-fn max_ar(i: &Insn) -> u8 {
+pub(crate) fn max_ar(i: &Insn) -> u8 {
     use Op::*;
     let (r, s, t) = (i.r, i.s, i.t);
     match i.op {
@@ -258,7 +258,7 @@ macro_rules! st {
     };
 }
 
-fn exec_insn<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
+pub(crate) fn exec_insn<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
     use Op::*;
     let pc = cpu.pc;
     let next = pc.wrapping_add(i.len as u32);

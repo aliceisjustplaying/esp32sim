@@ -22,8 +22,17 @@ pub trait Bus {
     /// changes whenever a write could have altered an instruction at `pc`. A decode-cache entry
     /// remembers its page index and the version it saw, so the common path is one indexed load
     /// instead of re-fetching and comparing the bytes; `code_page` is only called on a miss.
+    /// Pages must be at least 128 bytes: a block (`block::MAX_LEN` instructions) records the
+    /// versions of the pages holding its first and last byte and assumes there is no third.
     fn page_versions(&self) -> &[u32] { &[] }
     fn code_page(&mut self, pc: u32) -> u32 { let _ = pc; 0 }
+    /// The pc of the instruction about to execute, for buses that attribute accesses to code.
+    #[inline(always)]
+    fn note_pc(&mut self, pc: u32) { let _ = pc; }
+    /// True when the last instruction may have changed an interrupt line, so a block must end
+    /// and let the machine re-derive the CPU's interrupt inputs before the next instruction.
+    #[inline(always)]
+    fn block_break(&self) -> bool { false }
     /// Called after every executed instruction with the cycle estimate; lets the
     /// SoC advance timers and DMA. Return pending external level-interrupt lines.
     fn tick(&mut self, cycles: u32) -> u32 { let _ = cycles; 0 }

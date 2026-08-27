@@ -45,8 +45,11 @@ pub struct SocBus {
     /// Software TLB: the last resolved mapping per 64 KiB page, so loads, stores and fetches skip
     /// the address-range walk and the flash MMU. Cleared whenever the MMU changes.
     tlb: Vec<Tlb>,
-    /// One version counter per 4 KiB page of every buffer, bumped by each write there. The decode
-    /// cache stores the version an instruction was decoded under, so a stale decode can never run.
+    /// One version counter per `VPAGE`-byte page of every buffer, bumped by each write there. The
+    /// decode and block caches store the versions they were built under, so a stale decode can
+    /// never run. 256 bytes rather than 4 KiB because IRAM and DRAM are one SRAM: on the S3 the
+    /// app's `.dram0.data` begins in the same 4 KiB as the end of IRAM text, and every global
+    /// write was invalidating `_xt_context_save`.
     page_ver: Vec<u32>,
     /// first `page_ver` index of each buffer, by `SRC_*`
     ver_base: [u32; 7],
@@ -64,6 +67,9 @@ const MAX_TICK_DEFER: u32 = 256;
 pub const SRC_SRAM: u8 = 0; pub const SRC_IROM: u8 = 1; pub const SRC_FLASH: u8 = 2; pub const SRC_PSRAM: u8 = 3;
 pub const SRC_DROM: u8 = 4; pub const SRC_RTC_FAST: u8 = 5; pub const SRC_RTC_SLOW: u8 = 6;
 const TLB_SIZE: usize = 512;
+/// Granularity of the write-version counters. Must exceed the longest block (`block::MAX_LEN` × 3 bytes).
+const VPAGE_SHIFT: usize = 8;
+const VPAGE_MASK: usize = (1 << VPAGE_SHIFT) - 1;
 /// A resolved mapping: guest [lo, hi) is buffer `src` from offset `off`; `vbase` is the
 /// `page_ver` index of `lo`. Regions are at most 64 KiB so one entry never spans MMU pages.
 #[derive(Clone, Copy)]
@@ -90,13 +96,20 @@ impl SocBus {
     pub fn rebuild_page_table(&mut self) {
         let sizes = [self.sram.len(), self.irom.len(), self.flash.len(), self.psram.len(), self.drom.len(), self.rtc_fast.len(), self.rtc_slow.len()];
         let mut base = 0u32;
-        for (i, n) in sizes.iter().enumerate() { self.ver_base[i] = base; base += ((n + 0xfff) >> 12) as u32; }
+        for (i, n) in sizes.iter().enumerate() { self.ver_base[i] = base; base += ((n + VPAGE_MASK) >> VPAGE_SHIFT) as u32; }
         self.page_ver = vec![0; base as usize + 1];
         self.invalidate_tlb();
     }
 
     /// Forget every cached mapping. Anything that re-points the flash MMU must call this.
-    pub fn invalidate_tlb(&mut self) { for e in self.tlb.iter_mut() { *e = Tlb::EMPTY; } }
+    /// A remap changes which bytes a cache-window pc refers to without any write happening, so
+    /// the flash and PSRAM page versions are bumped too: that is what invalidates decoded
+    /// instructions and blocks that were built through the old mapping.
+    pub fn invalidate_tlb(&mut self) {
+        for e in self.tlb.iter_mut() { *e = Tlb::EMPTY; }
+        let (a, b) = (self.ver_base[SRC_FLASH as usize] as usize, self.ver_base[SRC_DROM as usize] as usize);
+        for v in &mut self.page_ver[a..b] { *v = v.wrapping_add(1); }          // flash then psram
+    }
 
     #[inline(always)]
     fn buf(&self, src: u8) -> &Vec<u8> {
@@ -141,7 +154,7 @@ impl SocBus {
             }
             _ => return None,
         };
-        e.vbase = self.ver_base[e.src as usize] + (e.off >> 12) as u32;
+        e.vbase = self.ver_base[e.src as usize] + (e.off >> VPAGE_SHIFT) as u32;
         self.tlb[tlb_idx(addr)] = e;
         Some(e)
     }
@@ -158,20 +171,20 @@ impl SocBus {
     /// bumped too when the write touches the first bytes of one.
     #[inline(always)]
     fn bump(&mut self, vbase: u32, off: usize, len: usize) {
-        let p = vbase as usize + (off >> 12);
+        let p = vbase as usize + (off >> VPAGE_SHIFT);
         self.page_ver[p] = self.page_ver[p].wrapping_add(1);
-        let last = vbase as usize + ((off + len - 1) >> 12);
+        let last = vbase as usize + ((off + len - 1) >> VPAGE_SHIFT);
         if last != p { self.page_ver[last] = self.page_ver[last].wrapping_add(1); }
-        if off & 0xfff < 3 && p > 0 { self.page_ver[p - 1] = self.page_ver[p - 1].wrapping_add(1); }
+        if off & VPAGE_MASK < 3 && p > 0 { self.page_ver[p - 1] = self.page_ver[p - 1].wrapping_add(1); }
     }
 
     /// Record a write done behind the bus's back (image loaders, the SPI flash controller).
     pub fn note_written(&mut self, src: u8, off: usize, len: usize) {
         if len == 0 { return; }
         let vbase = self.ver_base[src as usize];
-        let (first, last) = (off >> 12, (off + len - 1) >> 12);
+        let (first, last) = (off >> VPAGE_SHIFT, (off + len - 1) >> VPAGE_SHIFT);
         for p in first..=last { let i = vbase as usize + p; if i < self.page_ver.len() { self.page_ver[i] = self.page_ver[i].wrapping_add(1); } }
-        if off & 0xfff < 3 && first > 0 { let i = vbase as usize + first - 1; self.page_ver[i] = self.page_ver[i].wrapping_add(1); }
+        if off & VPAGE_MASK < 3 && first > 0 { let i = vbase as usize + first - 1; self.page_ver[i] = self.page_ver[i].wrapping_add(1); }
     }
 
     #[inline]
@@ -606,8 +619,12 @@ impl Bus for SocBus {
     }
     #[inline(always)]
     fn page_versions(&self) -> &[u32] { &self.page_ver }
+    #[inline(always)]
+    fn note_pc(&mut self, pc: u32) { self.periph.cur_pc = pc; }
+    #[inline(always)]
+    fn block_break(&self) -> bool { self.irq_dirty }
     fn code_page(&mut self, pc: u32) -> u32 {
-        match self.lookup(pc) { Some(e) => e.vbase + ((pc - e.lo) >> 12), None => self.page_ver.len() as u32 - 1 }
+        match self.lookup(pc) { Some(e) => e.vbase + ((pc - e.lo) >> VPAGE_SHIFT), None => self.page_ver.len() as u32 - 1 }
     }
     /// Returns 1 when device models actually ran (so interrupt lines may have changed), else 0.
     fn tick(&mut self, cycles: u32) -> u32 {

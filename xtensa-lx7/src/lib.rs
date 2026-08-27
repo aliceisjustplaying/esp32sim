@@ -8,6 +8,7 @@ pub mod state;
 pub mod pie;
 pub mod pie_table;
 
+pub mod block;
 pub use bus::{Bus, Fault, FlatRam};
 pub use decode::{decode, Insn, Op};
 pub use exec::{step, Trap};

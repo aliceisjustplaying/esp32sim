@@ -210,6 +210,8 @@ fn main() {
         if let Some(t) = &n.nat { eprintln!("[emu] nat: {} TCP connections ({} failed), {} UDP flows, {} bytes out, {} bytes in", t.tcp_opened, t.tcp_refused, t.udp_flows, t.bytes_to_host, t.bytes_to_guest); } } }
     { let (a, sh, r) = (&m.bus.periph.aes, &m.bus.periph.sha, &m.bus.periph.rsa);
       if a.blocks + sh.blocks + r.ops > 0 { eprintln!("[emu] crypto: {} AES blocks, {} SHA blocks, {} RSA/MPI operations", a.blocks, sh.blocks, r.ops); } }
+    { let (b0, b1) = (&m.cpu.blocks, &m.cpu1.blocks);
+      if b0.builds + b1.builds > 0 { eprintln!("[emu] blocks: {} built ({} cache flushes) core0, {} ({}) core1", b0.builds, b0.flushes, b1.builds, b1.flushes); } }
     if m.stub_hits > 0 { eprintln!("[emu] stubs hit {} times", m.stub_hits); }
     if m.bus.periph.lcd_cam.lcd_frames > 0 { eprintln!("[emu] lcd: {} RGB frames", m.bus.periph.lcd_cam.lcd_frames); }
     if m.bus.periph.lcd_cam.frames + m.bus.periph.lcd_cam.dropped > 0 { eprintln!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)", m.bus.periph.lcd_cam.frames, m.bus.periph.lcd_cam.dropped); }

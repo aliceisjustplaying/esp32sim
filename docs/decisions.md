@@ -127,7 +127,7 @@ Things that cost real time to find out, recorded so they do not have to be found
   in front of the map removes it, and the map stays the authority.
 - **Software TLB + per-page write versions** (`SocBus::lookup`, `page_ver`). Loads, stores and
   fetches resolve through a 512-entry direct-mapped table of 64 KiB pages instead of walking the
-  address ranges and the flash MMU; every write bumps a version counter for its 4 KiB page, and a
+  address ranges and the flash MMU; every write bumps a version counter for its page, and a
   decode-cache entry stores the version it was decoded under, so the cache is validated by one
   indexed load instead of re-fetching and comparing the bytes. Anything that writes guest memory
   behind the bus's back (image loaders, the SPI flash controller) reports it with `note_written`,
@@ -135,6 +135,23 @@ Things that cost real time to find out, recorded so they do not have to be found
   +2 % on the detector, nothing on the (mostly idle) panel. Two variants that did **not** help:
   a raw base pointer in the entry instead of a `match` on the buffer, and a version-index in the
   cache entry instead of a lookup — both within noise, so the safe/simple forms stayed.
+- **The basic-block interpreter** (`xtensa-lx7/src/block.rs`) is what finally reclaimed the
+  per-instruction scaffolding: SID player 93 → 133 Minsn/s (1.42×), panel 77 → 104 (1.34×),
+  detector 63 → 78 (1.24×), Atech 113 → 153, with every regression output bit-identical — the
+  SID capture is sample-for-sample the same. The rules that keep it exact are in the module
+  doc; the ones that were not obvious: a block must never run past a `CCOMPARE` match (bound
+  the length by the distance), `rsr/wsr CCOUNT` must be block-first so time is exact, and a
+  block cut by the scheduling quantum must *resume* rather than spawn a new block at the cut
+  point, or the cache fills with fragments.
+- **IRAM and DRAM are one SRAM, so code and data share version pages.** With 4 KiB pages the
+  app's `.dram0.data` (starting at `0x3FC9C300`) sat in the same page as the end of IRAM text
+  (`0x4038c300`), and every global-variable write invalidated `_xt_context_save` — 1.9 M block
+  rebuilds in 12 s. 256-byte pages cut that 9×. Any scheme that keys on address ranges must
+  remember that `0x4037_0000 + x` and `0x3FC8_8000 + x − 0x8000` are the same byte.
+- **MMU remaps must invalidate decodes.** Page versions only change on writes; re-pointing a
+  cache-window pc at different flash bytes is not a write. `invalidate_tlb()` therefore bumps
+  every flash and PSRAM page version — cheap, and it makes the decode and block caches correct
+  across the bootloader → app handover without a separate epoch.
 - **Device time is lazy but exact.** Cycles accumulate in the bus and the device models see them
   in one batch when a systimer/TIMG alarm is due (`Peripherals::cycles_until_timer`, conservative
   by one device tick), when a peripheral register is read or written (flushed first, so registers
@@ -156,10 +173,10 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Free things, measured so nobody removes them for speed**: the three `ccompare` checks in
   `advance_ccount`, the per-instruction stub/probe/breakpoint/trace checks in `step_core`, and the
   decode-cache size (32 K, 64 K and 128 K entries all perform the same — it could shrink).
-- **What is left is structural.** After the above, the SID workload runs ~96 Minsn/s and profiles as
-  ~35 % `exec_insn`, ~35 % per-instruction step scaffolding (interrupt check, cache probe, window
-  check, counters) and ~10 % memory access. No single item in the scaffolding is removable; a
-  basic-block interpreter amortises all of it per block, which is why it is the next step.
+- **What is left is inside the instructions.** With blocks, the SID workload profiles as ~44 %
+  `exec_insn`, ~19 % loads/stores, ~14 % block loop (window check, pc compare, entry copy) and
+  the rest devices. Fetch and decode have vanished. Going further means generating code — the
+  JIT in speed-plan.md.
 - **Profile the emulator, not just the guest.** `--profile` reports guest PCs and disables idle
   skipping, so an idle core shows up as a hot `waiti` — an artefact, not work. For emulator-side
   cost use `sample <pid>` (macOS) against a normal run, and confirm with an ablation build.

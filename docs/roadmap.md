@@ -12,10 +12,10 @@ Ordered by value; each item links to its plan where one exists.
    parser robustness) first.
 3. **Firmware upload from the browser** — drop a `firmware.bin` on the page → written to
    flash at 0x10000 → `Machine::reboot()`. Pieces exist; ~an hour.
-4. **Interpreter speed** — see [speed-plan.md](speed-plan.md): NEON for PIE, then the
-   basic-block interpreter (1.4–1.8×, portable to WASM, what bit-banged redraws need), then a
-   JIT with one block IR and wasm + aarch64 backends (3–4×). Baselines, profiles and the
-   rejected ideas are all in the plan; `tools/bench.py` is the yardstick.
+4. **Interpreter speed** — see [speed-plan.md](speed-plan.md). The basic-block interpreter is
+   in (1.24–1.42× measured, SID player at 1.5× real time, outputs bit-identical). Left: NEON for
+   the PIE lanes (detector), and the JIT with one block IR and wasm + aarch64 backends, which is
+   what the ST7735 redraws and the browser build still need. `tools/bench.py` is the yardstick.
 5. **More boards** — Touch-LCD-4B done (`waveshare-lcd4b`: LVGL panel, touch/swipe, SID player audio).
    Next candidates as firmware needs them; `--board waveshare-*` variants share the codec/PSRAM/I2C work.
 6. **Peripherals on demand** — LEDC, PCNT, ADC, SPI2/3 masters, RX sides of I2S/RMT/UART DMA,

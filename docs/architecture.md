@@ -42,12 +42,20 @@ web/          index.html: board drawing, console, WebAudio, camera panel (no bui
   (`tools/gen_pie_table.py` + `tools/pie_trm.json` → `pie_table.rs`), cross-checked against
   the ESP-IDF 5.5 assembler. Execution follows the TRM "Operation" pseudo-code; PIE is
   coprocessor 3, so `CPENABLE[3]` gates it and FreeRTOS's lazy save/restore works unchanged.
-- **Interpreter**: one instruction per call to `step()`. Register windows are modelled with the
-  64-entry physical file and WindowBase/WindowStart, including overflow/underflow exceptions
-  raised at the *instruction that would touch* the missing window (see decisions.md).
-  Timing is 1 instruction = 1 cycle; CCOUNT advances per step.
-- **Decoded-instruction cache**: a 64K-entry direct-mapped cache in `Cpu`, keyed by PC and
-  validated by the raw fetch bytes, so self-modifying/reloaded code is always correct.
+- **Interpreter**: `exec_insn` executes one decoded instruction. Register windows are modelled
+  with the 64-entry physical file and WindowBase/WindowStart, including overflow/underflow
+  exceptions raised at the *instruction that would touch* the missing window (see
+  decisions.md). Timing is 1 instruction = 1 cycle.
+- **Basic-block interpreter** (`block.rs`, the normal path): a block is a straight-line run of
+  up to 32 pre-decoded instructions ending at a control transfer or at anything that changes
+  interrupt, timer or window state. The interrupt check, cache validation and CCOUNT/insn
+  accounting happen once per block; window-overflow checks stay per instruction. Exactness is
+  kept by bounding a block at the next CCOMPARE match, forcing CCOUNT/CCOMPARE/PS/INTENABLE
+  accesses to start a block, ending a block when the bus reports an interrupt-line change, and
+  comparing the actual `pc` with the fall-through address after every instruction. Blocks are
+  validated by the write-versions of the pages they were decoded from (256-byte pages, see
+  decisions.md). `step()` — one instruction per call, with a 16K-entry decode cache — remains
+  for tracing, profiling, breakpoints and watchpoints.
 - **Traps**: `Exception(cause)`, `Interrupt(n)`, `Unimplemented(pc, raw)`, `Simcall`. The
   machine counts them; `--stop-after-exceptions` and unimplemented instructions stop the run.
 
@@ -59,7 +67,9 @@ web/          index.html: board drawing, console, WebAudio, camera panel (no bui
   table at `0x600C_5000` (flash pages or PSRAM pages), peripherals `0x6000_0000–0x600D_0000`.
   Cache timing is not modelled; XIP from flash or PSRAM is a table lookup. A software TLB
   (512 entries of 64 KiB) caches resolved mappings for loads, stores and fetches, and a
-  per-4 KiB-page write version lets the CPU's decode cache skip re-fetching instruction bytes.
+  per-256-byte-page write version lets the CPU's block and decode caches skip re-fetching
+  instruction bytes; MMU remaps bump the flash/PSRAM versions so decodes built through the old
+  mapping cannot run.
 - **Peripheral dispatch**: address bits 12–19 select a block; unknown registers land in a
   generic register RAM and are logged on first touch with `--log-periph`.
 - **Interrupts**: every source has a level computed by its model (`Peripherals::source_status`);

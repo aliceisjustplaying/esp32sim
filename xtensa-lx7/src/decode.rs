@@ -84,7 +84,7 @@ impl Insn {
 
 /// Decode the instruction at `pc` from up to 4 bytes. Returns the decoded
 /// instruction (an `Op::Ill` of the right length for reserved encodings).
-pub const ICACHE_SIZE: usize = 1 << 16;
+pub const ICACHE_SIZE: usize = 1 << 14;
 #[derive(Clone, Copy)]
 pub struct CacheEntry { pub pc: u32, pub ver: u32, pub vidx: u32, pub insn: Insn, pub max_ar: u8 }
 impl CacheEntry {
