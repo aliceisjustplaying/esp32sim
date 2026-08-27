@@ -4,30 +4,29 @@ Every number here was measured in this repo with `tools/bench.py` (interleaved r
 median wall time, guest instruction counts cross-checked) or `sample(1)` against a normal run.
 The negative results are listed too, so nobody re-spends the time.
 
-**Status:** Phase 1 (the basic-block interpreter) landed; Phase 0's NEON work and the JIT are open.
+**Status:** Phase 1 (block interpreter) and the first cut of Phase 2 (AArch64 JIT) have landed; Phase 0's NEON work and the JIT's inline memory path are open.
 
 ## Where we are (M-series Mac, `lto = "fat"`, `tools/bench.py`)
 
-| workload | before blocks (`288a91e`) | with blocks | vs real time now |
-| --- | --- | --- | --- |
-| energy panel (LVGL, mostly idle) | 77 Minsn/s | **104** (1.34×) | ~2.9× |
-| panel + WiFi + HTTPS (20 s) | 9.1 s wall | **8.6 s** | 2.3× |
-| SID player (panel, tune playing) | 93 Minsn/s | **133** (1.42×) | 1.5× |
-| autopling detector (PIE-heavy) | 63 Minsn/s | **78** (1.24×) | below |
-| Atech synth (5 s scenario) | 113 Minsn/s | **153** | — |
-| Atech ST7735 full redraw | needs ~240 Minsn/s | | still short |
+| workload | before blocks (`288a91e`) | block interpreter | **JIT** | vs real time now |
+| --- | --- | --- | --- | --- |
+| energy panel (LVGL, mostly idle) | 77 Minsn/s | 104 | **128** | ~3.5× |
+| panel + WiFi + HTTPS (20 s) | 9.1 s wall | 8.6 s | **5.6 s** | 3.6× |
+| SID player (panel, tune playing) | 93 Minsn/s | 133 | **193** | 2.1× |
+| autopling detector (PIE-heavy) | 63 Minsn/s | 78 | **101** | ~real time |
+| Atech synth (5 s scenario) | 113 Minsn/s | 153 | **210** | — |
+| Atech ST7735 full redraw | needs ~240 Minsn/s | | | close |
 
-Profile of the SID workload with blocks (shares of total run time):
+Profile of the SID workload with the JIT (shares of total run time):
 
-| ~44 % | `exec_insn`: operand unpack + 245-way dispatch + semantics |
-| ~19 % | loads/stores (through the software TLB) |
-| ~14 % | block loop: window-overflow check, pc compare, entry copy, per-block accounting |
-| ~0 %  | fetch, decode, cache validation — gone |
-| ~7 %  | device time, IRQ derivation, DMA |
+| ~46 % | generated code (ALU, branches, register access, block bookkeeping) |
+| ~35 % | load/store helpers: the Rust TLB path, called per access |
+| ~8 %  | interpreter fallbacks (calls/returns/`entry`, special registers, FPU/PIE/MAC16) |
+| ~3 %  | device time, IRQ derivation |
 
 Before blocks the per-instruction scaffolding was ~35 % and **no single piece of it was
-removable** — each ablated to ≈0 %. Executing blocks reclaimed it; what remains is the work of
-the instructions themselves, which only code generation reduces further.
+removable** — each ablated to ≈0 %. Executing blocks reclaimed it; the JIT then removed the
+dispatch and operand unpacking. What remains is memory access.
 
 ## Phase 0 — small, independent, do anytime
 
@@ -79,9 +78,28 @@ Design as built:
 Landed at SID 133 Minsn/s, detector 78, panel 104 — the estimate held for SID and the panel;
 the detector gained less because its time is in PIE lanes and loads/stores, not scaffolding.
 
-## Phase 2 — JIT (next; probably WASM-first)
+## Phase 2 — JIT — first cut DONE (AArch64)
 
-**Goal: 3–4× over today.** One block IR, two backends:
+**Measured on top of the block interpreter: 1.23–1.46×; cumulative since `288a91e`: SID 2.07×,
+Atech 1.86×, panel 1.66×, detector 1.60× — every output bit-identical with `--no-jit`.**
+`xtensa-lx7/src/jit/`: a hand-written encoder (`a64.rs`, checked against clang) and a block
+compiler (`mod.rs`) that inlines ALU/shift/move/compare ops and all branches, calls bus helpers
+for loads and stores, and calls `exec_insn` for everything else. Native went first after all:
+it is the machine the work is measured on, and the block model, invalidation and the helper
+protocol are what a wasm backend will reuse.
+
+Next inside the JIT, in order of measured value:
+1. **Inline TLB fast path for loads/stores** — 35 % of SID time is in the helpers. Emit the
+   direct-mapped TLB probe (index, compare, base+offset load) inline and call the helper only
+   on a miss or a peripheral address; stores must still bump the page version (or call out).
+2. **Register caching within a block** — every guest register access is index arithmetic plus
+   a memory access; keeping the most-used registers in host registers between instructions
+   removes most of it. Needs spills before helpers and at exits.
+3. **Inline the common fallbacks**: `call8`/`entry`/`retw` are the most frequent helper calls.
+
+## Phase 2b — the wasm backend (open)
+
+One block IR, two backends — the native one exists; for the browser build:
 
 - **wasm backend**: emit a wasm module per batch of hot blocks. Measured with a spike:
   compile+instantiate costs **~0.3 µs per block** when batched (64+ blocks/module) and

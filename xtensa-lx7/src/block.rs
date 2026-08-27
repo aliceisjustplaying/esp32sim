@@ -34,19 +34,22 @@ use crate::state::{sr, Cpu};
 pub fn pc_bit(pc: u32) -> u64 { 1u64 << ((pc >> 2) & 63) }
 
 #[derive(Clone, Copy)]
-pub struct BlockInsn { pub insn: Insn, pub max_ar: u8 }
+pub struct BlockInsn { pub insn: Insn, pub max_ar: u8, /// byte offset of this instruction's native code from the block body start
+ pub off: u32 }
 
 #[derive(Clone, Copy)]
-struct Entry { pc: u32, start: u32, n: u16, vidx: [u32; 2], ver: [u32; 2] }
-impl Entry { const EMPTY: Entry = Entry { pc: 1, start: 0, n: 0, vidx: [0; 2], ver: [0; 2] }; }
+struct Entry { pc: u32, start: u32, n: u16, vidx: [u32; 2], ver: [u32; 2], code: u32 }
+impl Entry { const EMPTY: Entry = Entry { pc: 1, start: 0, n: 0, vidx: [0; 2], ver: [0; 2], code: crate::jit::NONE }; }
 
-const ENTRIES: usize = 1 << 15;
+const ENTRIES: usize = 1 << 17;
 /// Instructions per block. At most 3 bytes each, so a block spans at most two version pages.
 pub const MAX_LEN: usize = 32;
-/// Arena size at which everything is thrown away and rebuilt (bounded memory, no eviction bookkeeping).
+/// Arena size at which everything is thrown away and rebuilt (bounded memory, no eviction
+/// bookkeeping). The arena never reallocates — compiled code holds pointers into it.
 const ARENA_MAX: usize = 1 << 20;
+/// Native code cache size; flushed together with the blocks when full.
+const CODE_SIZE: usize = 256 << 20;   // address space; pages are only committed as code is written
 
-#[derive(Clone)]
 pub struct BlockCache {
     entries: Vec<Entry>,
     arena: Vec<BlockInsn>,
@@ -55,11 +58,26 @@ pub struct BlockCache {
     resume: (u32, u32, u32),
     pub builds: u64,
     pub flushes: u64,
+    /// native code for blocks, when the host supports it and `jit_enabled`
+    code: Option<crate::jit::CodeCache>,
+    helpers: Option<crate::jit::Helpers>,
+    pub jit_enabled: bool,
+    pub compiled: u64,
 }
 
 impl BlockCache {
-    pub fn new() -> Self { BlockCache { entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(1 << 16), resume: (0, 0, 1), builds: 0, flushes: 0 } }
-    pub fn flush(&mut self) { for e in self.entries.iter_mut() { *e = Entry::EMPTY; } self.arena.clear(); self.resume = (0, 0, 1); self.flushes += 1; }
+    pub fn new() -> Self {
+        BlockCache { entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
+                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, compiled: 0 }
+    }
+    pub fn flush(&mut self) {
+        for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
+        self.arena.clear(); self.resume = (0, 0, 1); self.flushes += 1;
+        if let Some(c) = &mut self.code { c.reset(); }
+    }
+    /// Bytes of native code currently in use.
+    pub fn code_bytes(&self) -> usize { self.code.as_ref().map(|c| c.used()).unwrap_or(0) }
+    pub fn jit_active(&self) -> bool { self.jit_enabled && self.code.is_some() }
     #[inline(always)]
     fn index(pc: u32) -> usize { ((pc >> 1) ^ (pc >> 16)) as usize & (ENTRIES - 1) }
     #[inline(always)]
@@ -69,6 +87,8 @@ impl BlockCache {
 }
 
 impl Default for BlockCache { fn default() -> Self { Self::new() } }
+/// A clone of a CPU starts with an empty cache; compiled code is tied to the original's arena.
+impl Clone for BlockCache { fn clone(&self) -> Self { let mut b = Self::new(); b.jit_enabled = self.jit_enabled; b } }
 
 /// The instruction ends a block: control transfer, or a change to interrupt/timer/window state
 /// that the per-block checks depend on.
@@ -95,7 +115,8 @@ fn must_start_block(i: &Insn) -> bool {
 /// Decode a block starting at `pc0` and register it. Only the first fetch can fault: a later
 /// unmapped instruction simply ends the block and faults when it is reached as a block start.
 fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16), Trap> {
-    if cpu.blocks.arena.len() + MAX_LEN > ARENA_MAX { cpu.blocks.flush(); }
+    let code_short = cpu.blocks.jit_active() && cpu.blocks.code.as_ref().unwrap().remaining() < crate::jit::MAX_BLOCK_CODE;
+    if cpu.blocks.arena.len() + MAX_LEN > ARENA_MAX || code_short { cpu.blocks.flush(); }
     let start = cpu.blocks.arena.len() as u32;
     let (mut pc, mut n, mut last) = (pc0, 0u16, pc0);
     loop {
@@ -105,7 +126,7 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
         };
         let i = decode(pc, bytes);
         if n > 0 && (must_start_block(&i) || cpu.boundary_bloom & pc_bit(pc) != 0) { break; }
-        cpu.blocks.arena.push(BlockInsn { insn: i, max_ar: max_ar(&i) });
+        cpu.blocks.arena.push(BlockInsn { insn: i, max_ar: max_ar(&i), off: 0 });
         n += 1; last = pc;
         pc = pc.wrapping_add(i.len as u32);
         if ends_block(&i) || n as usize == MAX_LEN { break; }
@@ -116,7 +137,13 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
     let pv = bus.page_versions();
     let ver = [pv.get(vidx0 as usize).copied().unwrap_or(0), pv.get(vidx1 as usize).copied().unwrap_or(0)];
     let ei = BlockCache::index(pc0);
-    cpu.blocks.entries[ei] = Entry { pc: pc0, start, n, vidx: [vidx0, vidx1], ver };
+    let mut code = crate::jit::NONE;
+    if cpu.blocks.jit_active() {
+        let b = &mut cpu.blocks;
+        let (s, e) = (start as usize, start as usize + n as usize);
+        if let Some(c) = crate::jit::compile(b.code.as_mut().unwrap(), &mut b.arena[s..e], pc0) { code = c; b.compiled += 1; }
+    }
+    cpu.blocks.entries[ei] = Entry { pc: pc0, start, n, vidx: [vidx0, vidx1], ver, code };
     cpu.blocks.builds += 1;
     Ok((ei as u32, start, n))
 }
@@ -147,6 +174,25 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
     // never run past a CCOMPARE match: the timer interrupt must land on the same instruction
     let mut limit = (end - k).min(budget);
     for i in 0..3 { let d = cpu.ccompare[i].wrapping_sub(cpu.ccount); if d != 0 && d < limit { limit = d; } }
+
+    let code = cpu.blocks.entries[ei as usize].code;
+    if code != crate::jit::NONE && cpu.blocks.jit_enabled {
+        if cpu.blocks.helpers.is_none() { cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>()); }
+        let entry = cpu.blocks.arena[k as usize].off;
+        let r = unsafe {
+            let b = &*(&cpu.blocks as *const BlockCache);          // the code reads nothing from the cache itself
+            crate::jit::run(b.code.as_ref().unwrap(), code, cpu, bus, b.helpers.as_ref().unwrap(), limit, entry)
+        };
+        let (done, exit) = (r & 0xffff, r >> 16);
+        cpu.insn_count += done as u64;
+        cpu.advance_ccount(done);
+        return match exit {
+            crate::jit::CODE_TRAP => (done, cpu.jit_trap.take()),
+            crate::jit::CODE_TRAP_PRE => (done + 1, cpu.jit_trap.take()),
+            crate::jit::CODE_CUT => { if k + done < end { cpu.blocks.resume = (ei, k + done, cpu.pc); } (done, None) }
+            _ => (done, None),
+        };
+    }
 
     let (mut done, mut trap, mut pre, mut broke) = (0u32, None, false, false);
     while done < limit {

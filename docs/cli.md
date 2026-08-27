@@ -49,6 +49,7 @@ esp32sim --flash-image flash.bin --boot rom ...
 | `--peek ADDR,N`, `--disasm ADDR,N` | dump memory / disassemble at exit |
 | `--profile` | top PCs by instruction count |
 | `--log-periph` | log the first access to every unknown peripheral register |
+| `--no-jit` | run blocks through the interpreter instead of native code (aarch64 hosts compile blocks to machine code by default); the two must produce identical results, so this is the oracle when something looks wrong |
 | `--stop-after-exceptions N` | stop after N exceptions |
 | `--regtrace F`, `--regtrace-from-pc PC`, `--regtrace-max N` | register trace file for `hw/compare.py` |
 

@@ -27,6 +27,8 @@ xtensa-lx7/   the core
   decode.rs   instruction decoder (24/16-bit base ISA, FPU, MAC16, booleans) -> Insn
   pie.rs      PIE SIMD (ee.*) decode/format/execute; pie_table.rs is generated from the TRM
   exec.rs     interpreter: windowed registers, loops, XEA2 exceptions/interrupts, CP enable
+  block.rs    basic-block cache and block interpreter (the normal execution path)
+  jit/        native code generation for blocks: mod.rs compiler + helpers, a64.rs encoder
   state.rs    Cpu: registers, special registers, user registers (ACCX/QACC/…), interrupt levels
   disasm.rs   objdump-compatible formatter (used by the differential decoder test)
 web/          index.html: board drawing, console, WebAudio, camera panel (no build step)
@@ -56,6 +58,14 @@ web/          index.html: board drawing, console, WebAudio, camera panel (no bui
   validated by the write-versions of the pages they were decoded from (256-byte pages, see
   decisions.md). `step()` — one instruction per call, with a 16K-entry decode cache — remains
   for tracing, profiling, breakpoints and watchpoints.
+- **JIT** (`jit/`, AArch64 on macOS/Linux): every block is also compiled to native code with the
+  same exit rules, so the interpreter is the oracle (`--no-jit` must give identical output).
+  ALU, shifts, moves, compares and all branches are inline; loads and stores call small bus
+  helpers; everything else (calls, returns, `entry`, special registers, FPU, PIE, MAC16) calls
+  back into `exec_insn` for that one instruction and continues natively. Guest registers are
+  addressed as `ar[(windowbase*4 + n) & 63]` from the window base cached at block entry;
+  the window-overflow pre-check is emitted once per frame count per block. `jit/a64.rs` is a
+  ~90-instruction encoder checked against clang's assembler; code lives in a `MAP_JIT` region.
 - **Traps**: `Exception(cause)`, `Interrupt(n)`, `Unimplemented(pc, raw)`, `Simcall`. The
   machine counts them; `--stop-after-exceptions` and unimplemented instructions stop the run.
 

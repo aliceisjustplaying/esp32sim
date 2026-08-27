@@ -106,7 +106,8 @@ describe how the MAC model and the packet path work.
 
 `--trace [--trace-from N]`, `--break ADDR`, `--watch ADDR` (stop when a word changes),
 `--peek ADDR[,N]`, `--profile` (pc histogram), `--log-periph` (first touch of every
-unknown register), `--stop-after-exceptions N`, `--gram-png` (raw ST7735 GRAM).
+unknown register), `--stop-after-exceptions N`, `--gram-png` (raw ST7735 GRAM), `--no-jit`
+(interpret instead of running native code — must give identical results).
 Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`, `ESP_EMU_DEBUG_WIFI[_FRAMES]`,
 `ESP_EMU_DEBUG_NET`, `ESP_EMU_DEBUG_AES`, `ESP_EMU_DEBUG_SHA`, `ESP_EMU_DEBUG_RSA`.
 

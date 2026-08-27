@@ -143,6 +143,20 @@ Things that cost real time to find out, recorded so they do not have to be found
   the length by the distance), `rsr/wsr CCOUNT` must be block-first so time is exact, and a
   block cut by the scheduling quantum must *resume* rather than spawn a new block at the cut
   point, or the cache fills with fragments.
+- **The JIT is the block interpreter with the loop unrolled into machine code** — same block
+  boundaries, same exit rules, same page-version validation — which is what makes `--no-jit`
+  an exact oracle: every regression output is bit-identical between the two. On top of the
+  block interpreter it measured 1.23× (panel), 1.30× (detector), 1.37× (Atech), 1.46× (SID);
+  the SID player now runs 193 Minsn/s, 2.1× real time. Decisions that mattered:
+  a hand-written encoder for the ~90 instructions used, checked word-for-word against clang
+  (`cargo test encodings_match_clang`) rather than a dependency; anything not inlined calls
+  `exec_insn` for that one instruction and carries on natively, so coverage grew op by op
+  with the oracle green at every step; the register window base is cached per block and
+  reloaded after any helper that could rotate it; the window-overflow test is emitted once
+  per frame count per block (windowstart only changes through helpers); shared exit tails
+  and an offset-based `lend` compare cut code size 2.7× (the first version filled 48 MB and
+  thrashed). `MAP_JIT` works for a plain cargo binary on macOS; `pthread_jit_write_protect_np`
+  brackets every write.
 - **IRAM and DRAM are one SRAM, so code and data share version pages.** With 4 KiB pages the
   app's `.dram0.data` (starting at `0x3FC9C300`) sat in the same page as the end of IRAM text
   (`0x4038c300`), and every global-variable write invalidated `_xt_context_save` — 1.9 M block
@@ -173,10 +187,9 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Free things, measured so nobody removes them for speed**: the three `ccompare` checks in
   `advance_ccount`, the per-instruction stub/probe/breakpoint/trace checks in `step_core`, and the
   decode-cache size (32 K, 64 K and 128 K entries all perform the same — it could shrink).
-- **What is left is inside the instructions.** With blocks, the SID workload profiles as ~44 %
-  `exec_insn`, ~19 % loads/stores, ~14 % block loop (window check, pc compare, entry copy) and
-  the rest devices. Fetch and decode have vanished. Going further means generating code — the
-  JIT in speed-plan.md.
+- **What is left is memory access.** With the JIT, the SID workload profiles as ~46 % generated
+  code, ~35 % load/store helpers (the Rust TLB path), ~8 % interpreter fallbacks, the rest
+  devices. An inline TLB fast path in generated code is the next step (speed-plan.md).
 - **Profile the emulator, not just the guest.** `--profile` reports guest PCs and disables idle
   skipping, so an idle core shows up as a hot `waiti` — an artefact, not work. For emulator-side
   cost use `sample <pid>` (macOS) against a normal run, and confirm with an ablation build.

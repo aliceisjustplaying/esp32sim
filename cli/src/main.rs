@@ -16,7 +16,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut rom = find_rom(); let mut bootloader = None; let mut ptable = None; let mut app = None; let mut elfs: Vec<String> = Vec::new();
     let mut boot = "app".to_string(); let mut max_insns = u64::MAX; let mut trace = false; let mut trace_from = 0u64;
-    let mut breaks = Vec::new(); let mut log_periph = false; let mut dump_at_end = true; let mut peeks: Vec<(u32, usize)> = Vec::new(); let mut disasms: Vec<(u32, usize)> = Vec::new(); let mut watch = None; let mut stop_exc = u64::MAX; let mut profile = false; let mut wav: Option<String> = None; let mut tft_png: Option<String> = None; let mut gram_png: Option<String> = None; let mut script: Option<String> = None; let mut max_seconds: Option<f64> = None; let mut console = "both".to_string(); let mut console_prefix = false; let mut regtrace: Option<String> = None; let mut regtrace_max = u64::MAX; let mut regtrace_from_pc: Option<u32> = None; let mut efuse_file: Option<String> = None; let mut regs_init: Option<String> = None; let mut web_port: Option<u16> = None; let mut realtime = false; let mut web_dir: Option<String> = None; let mut strap: Option<u32> = None; let mut reset_cause: Option<u32> = None; let mut flash_mb: usize = 8; let mut flash_image: Option<String> = None; let mut board = "atech14".to_string(); let mut no_reboot = false; let mut psram_mb: usize = 2; let mut cam_image: Option<String> = None; let mut cam_fps: f64 = 10.0; let mut stubs: Vec<String> = Vec::new(); let mut regstat: Option<String> = None; let mut trace_fns: Vec<String> = Vec::new(); let mut wifi: Option<String> = None; let mut net_mode = "nat".to_string();
+    let mut breaks = Vec::new(); let mut log_periph = false; let mut dump_at_end = true; let mut peeks: Vec<(u32, usize)> = Vec::new(); let mut disasms: Vec<(u32, usize)> = Vec::new(); let mut watch = None; let mut stop_exc = u64::MAX; let mut profile = false; let mut wav: Option<String> = None; let mut tft_png: Option<String> = None; let mut gram_png: Option<String> = None; let mut script: Option<String> = None; let mut max_seconds: Option<f64> = None; let mut console = "both".to_string(); let mut console_prefix = false; let mut regtrace: Option<String> = None; let mut regtrace_max = u64::MAX; let mut regtrace_from_pc: Option<u32> = None; let mut efuse_file: Option<String> = None; let mut regs_init: Option<String> = None; let mut web_port: Option<u16> = None; let mut realtime = false; let mut web_dir: Option<String> = None; let mut strap: Option<u32> = None; let mut reset_cause: Option<u32> = None; let mut flash_mb: usize = 8; let mut flash_image: Option<String> = None; let mut board = "atech14".to_string(); let mut no_reboot = false; let mut psram_mb: usize = 2; let mut cam_image: Option<String> = None; let mut cam_fps: f64 = 10.0; let mut stubs: Vec<String> = Vec::new(); let mut regstat: Option<String> = None; let mut trace_fns: Vec<String> = Vec::new(); let mut wifi: Option<String> = None; let mut net_mode = "nat".to_string(); let mut no_jit = false;
     let mut i = 1;
     while i < args.len() {
         let a = args[i].as_str();
@@ -33,6 +33,7 @@ fn main() {
             "--trace-from" => { trace = true; trace_from = next().replace('_', "").parse().expect("trace-from") }
             "--break" => breaks.push(u32::from_str_radix(next().trim_start_matches("0x"), 16).expect("break addr")),
             "--log-periph" => log_periph = true,
+            "--no-jit" => no_jit = true,
             "--no-dump" => dump_at_end = false,
             "--peek" => { let v = next(); let mut it = v.split(','); let a = u32::from_str_radix(it.next().unwrap().trim_start_matches("0x"), 16).expect("peek addr"); let n = it.next().map(|x| x.parse().unwrap()).unwrap_or(8); peeks.push((a, n)); }
             "--disasm" => { let v = next(); let mut it = v.split(','); let a = u32::from_str_radix(it.next().unwrap().trim_start_matches("0x"), 16).expect("addr"); let n = it.next().map(|x| x.parse().unwrap()).unwrap_or(16); disasms.push((a, n)); }
@@ -104,6 +105,7 @@ fn main() {
     if psram_mb != 2 { m.bus.psram = vec![0; psram_mb * 1024 * 1024]; }
     m.bus.rebuild_page_table();
     if let Some(p) = &flash_image { m.write_flash(0, &std::fs::read(p).expect("flash image")).unwrap(); }
+    if no_jit { m.cpu.blocks.jit_enabled = false; m.cpu1.blocks.jit_enabled = false; }
     m.trace = trace; m.trace_from = trace_from; m.breakpoints = breaks; m.bus.periph.log_unknown = log_periph;
     if let Some(r) = &rom { match std::fs::read(r) { Ok(d) => { m.load_rom(&d).expect("rom"); eprintln!("[emu] ROM loaded from {}", r.display()); } Err(e) => eprintln!("[emu] no ROM ({}): {}", r.display(), e) } }
     if let Some(p) = &bootloader { m.write_flash(0x0, &std::fs::read(p).expect("bootloader")).unwrap(); }
@@ -211,7 +213,7 @@ fn main() {
     { let (a, sh, r) = (&m.bus.periph.aes, &m.bus.periph.sha, &m.bus.periph.rsa);
       if a.blocks + sh.blocks + r.ops > 0 { eprintln!("[emu] crypto: {} AES blocks, {} SHA blocks, {} RSA/MPI operations", a.blocks, sh.blocks, r.ops); } }
     { let (b0, b1) = (&m.cpu.blocks, &m.cpu1.blocks);
-      if b0.builds + b1.builds > 0 { eprintln!("[emu] blocks: {} built ({} cache flushes) core0, {} ({}) core1", b0.builds, b0.flushes, b1.builds, b1.flushes); } }
+      if b0.builds + b1.builds > 0 { eprintln!("[emu] blocks: {} built ({} cache flushes) core0, {} ({}) core1; jit: {} compiled, {} KB code", b0.builds, b0.flushes, b1.builds, b1.flushes, b0.compiled + b1.compiled, (b0.code_bytes() + b1.code_bytes()) / 1024); } }
     if m.stub_hits > 0 { eprintln!("[emu] stubs hit {} times", m.stub_hits); }
     if m.bus.periph.lcd_cam.lcd_frames > 0 { eprintln!("[emu] lcd: {} RGB frames", m.bus.periph.lcd_cam.lcd_frames); }
     if m.bus.periph.lcd_cam.frames + m.bus.periph.lcd_cam.dropped > 0 { eprintln!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)", m.bus.periph.lcd_cam.frames, m.bus.periph.lcd_cam.dropped); }

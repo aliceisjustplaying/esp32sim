@@ -137,6 +137,8 @@ pub struct Cpu {
     pub blocks: crate::block::BlockCache,
     /// pcs that must start a block (the machine's stubs and probes), as a bloom over `block::pc_bit`
     pub boundary_bloom: u64,
+    /// trap raised inside native code, handed back to `block::run_block`
+    pub jit_trap: Option<crate::exec::Trap>,
 }
 
 impl Default for Cpu {
@@ -157,7 +159,7 @@ impl Cpu {
             qr: [0; 8], accx: [0; 2], qacc_h: [0; 5], qacc_l: [0; 5], sar_byte: 0, fft_bit_width: 0, ua_state: [0; 4], gpio_out: 0,
             waiting: false, ext_level_lines: 0, insn_count: 0,
             icache: vec![crate::decode::CacheEntry::EMPTY; crate::decode::ICACHE_SIZE],
-            blocks: crate::block::BlockCache::new(), boundary_bloom: 0,
+            blocks: crate::block::BlockCache::new(), boundary_bloom: 0, jit_trap: None,
         };
         c.reset();
         c
