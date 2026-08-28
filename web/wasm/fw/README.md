@@ -9,5 +9,5 @@ Put images here for `index.html?wasm&fw=<name>`, described by `<name>.json`:
 ```
 
 `kind` names: `rom`, `bootloader`, `ptable`, `app`, `elf` (one or a list), `flash` (whole image),
-`script`, `picture`. `stubs` are `NAME[=value]` function stubs (need the ELF), `wifi` an AP spec. `demos.json` lists the manifests the page offers as links. Everything else in this directory is git-ignored except `public/` (hello_world and the Atech firmware — our own code — and their manifests): the mask ROM
+`script`, `picture`. `stubs` are `NAME[=value]` function stubs — resolved through the ELF, or through a `symbols` map (`{"NAME": "0xaddr"}`) when no ELF is shipped; `wifi` an AP spec. `demos.json` lists the manifests the page offers as links. Everything else in this directory is git-ignored except `public/` (hello_world and the Atech firmware — our own code — and their manifests): the mask ROM
 is Espressif's and firmware is whoever built it — host them only where you may.

@@ -9,7 +9,10 @@
   "rom": "esp32s3_rev0_rom.elf",
   "bootloader": "public/panel-bootloader.bin",
   "ptable": "public/panel-ptable.bin",
-  "app": "public/panel-demo.bin",
-  "elf": "local/panel-demo.elf"
- }
+  "app": "public/panel-demo.bin"
+ },
+ "symbols": {
+  "esp_wifi_start": "0x420a3efc"
+ },
+ "_note": "symbols: entry addresses in public/panel-demo.bin, so stubs need no ELF on the public page"
 }

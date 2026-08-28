@@ -91,11 +91,12 @@ pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize)
 }
 
 /// `--stub NAME[=value]`: return `value` immediately when execution reaches the function's entry.
-/// Needs the ELF symbols loaded first. Returns 1 if the symbol is unknown.
+/// NAME is a symbol (needs the ELF loaded) or a hex address. Returns 1 if it cannot be resolved.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_stub(e: *mut Emu, name: *const u8, len: usize, value: u32) -> u32 {
     let e = &mut *e; let name = text(name, len);
-    match e.m.symbols.iter().find(|(_, n)| n.as_str() == name).map(|(a, _)| *a) {
+    let by_addr = name.strip_prefix("0x").and_then(|h| u32::from_str_radix(h, 16).ok());
+    match by_addr.or_else(|| e.m.symbols.iter().find(|(_, n)| n.as_str() == name).map(|(a, _)| *a)) {
         Some(addr) => { e.m.stubs.insert(addr, value); log(&format!("[emu] stub {} @ {:#x} -> returns {:#x}", name, addr, value)); 0 }
         None => { log(&format!("[emu] stub: no symbol '{}' (load the app ELF first)", name)); 1 }
     }

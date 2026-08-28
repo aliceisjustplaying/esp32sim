@@ -78,7 +78,7 @@
     const ok = await ask('created', { op: 'create', board: cfg.board, flash_mb: cfg.flash_mb, psram_mb: cfg.psram_mb });
     if (!ok) { setStatus('unknown board'); return; }
     for (const [kind, data] of files) { const good = await ask('load' + KINDS[kind], { op: 'load', kind: KINDS[kind], data }, [data]); if (!good) { setStatus('failed to load ' + kind + ' (see console)'); return; } }
-    for (const st of cfg.stubs || []) { const [name, v] = st.split('='); post({ op: 'stub', name, value: v ? parseInt(v, 0) : 0 }); }
+    for (const st of cfg.stubs || []) { const [name, v] = st.split('='); post({ op: 'stub', name: (cfg.symbols || {})[name] || name, value: v ? parseInt(v, 0) : 0 }); }
     if (cfg.wifi) post({ op: 'wifi', spec: cfg.wifi });
     post({ op: 'start', appDirect: !!cfg.appDirect });
   }
@@ -100,7 +100,7 @@
       $('fw_board').value = man.board || 'none'; $('fw_flash').value = man.flash_mb || 8; $('fw_psram').value = man.psram_mb || 2; $('fw_wifi').value = man.wifi || ''; $('fw_stubs').value = (man.stubs || []).join(' ');
       const files = [];
       for (const [kind, url] of Object.entries(man.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`); if (!r.ok) { setStatus(`${u}: ${r.status}`); return; } files.push([kind, await r.arrayBuffer()]); }
-      const wait = () => ready ? boot({ board: man.board, flash_mb: man.flash_mb || 8, psram_mb: man.psram_mb || 2, wifi: man.wifi || '', stubs: man.stubs || [], appDirect: !!man.app_direct }, files) : setTimeout(wait, 50);
+      const wait = () => ready ? boot({ board: man.board, flash_mb: man.flash_mb || 8, psram_mb: man.psram_mb || 2, wifi: man.wifi || '', stubs: man.stubs || [], symbols: man.symbols || {}, appDirect: !!man.app_direct }, files) : setTimeout(wait, 50);
       wait();
     })().catch((e) => setStatus('manifest: ' + e.message));
   }
