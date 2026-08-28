@@ -48,7 +48,7 @@ onmessage = async (ev) => {
       emu = withBytes(enc.encode(m.board), (p, n) => wasm.esp32sim_new(p, n, m.flash_mb | 0, m.psram_mb | 0));
       postMessage({ created: emu !== 0 });
     }
-    else if (m.op === 'load') { const rc = withBytes(new Uint8Array(m.data), (p, n) => wasm.esp32sim_load(emu, m.kind, p, n)); postMessage({ loaded: m.kind, ok: rc === 0 }); }
+    else if (m.op === 'load') { const rc = withBytes(new Uint8Array(m.data), (p, n) => m.at !== undefined ? wasm.esp32sim_load_at(emu, m.at >>> 0, p, n) : wasm.esp32sim_load(emu, m.kind, p, n)); postMessage({ loaded: m.at !== undefined ? 'at' + m.at : m.kind, ok: rc === 0 }); }
     else if (m.op === 'stub') { withBytes(enc.encode(m.name), (p, n) => wasm.esp32sim_stub(emu, p, n, m.value >>> 0)); }
     else if (m.op === 'wifi') { withBytes(enc.encode(m.spec), (p, n) => wasm.esp32sim_wifi(emu, p, n)); }
     else if (m.op === 'start') { const rc = wasm.esp32sim_boot(emu, m.appDirect ? 1 : 0); if (rc === 0) { running = true; t0 = performance.now(); loop(); } postMessage({ started: rc === 0 }); }
