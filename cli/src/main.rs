@@ -193,7 +193,7 @@ fn main() {
     if profile { eprintln!("{}", m.profile_report(12)); }
     eprintln!("{}", m.irq_report());
     if let Some(w) = &wav { match m.write_wav(w) { Ok(n) => eprintln!("[emu] wrote {} samples ({:.2} s) to {}", n, n as f64 / m.bus.periph.audio().sample_rate as f64, w), Err(e) => eprintln!("[emu] wav: {}", e) } }
-    eprintln!("[emu] i2s frames out: {} (i2s0) {} (i2s1)", m.bus.periph.i2s0.frames_out, m.bus.periph.i2s1.frames_out);
+    eprintln!("[emu] i2s frames out: {} (i2s0 @ {} Hz) {} (i2s1 @ {} Hz)", m.bus.periph.i2s0.frames_out, m.bus.periph.i2s0.sample_rate, m.bus.periph.i2s1.frames_out, m.bus.periph.i2s1.sample_rate);
     if let Some(t) = m.bus.board.tft() { eprintln!("[emu] tft: {} RAMWR, {} pixels, madctl={:#x} inverted={} on={} bbox={:?} top colours {:x?}; gpio events {}", t.frames, t.pixels_written, t.madctl, t.inverted, t.on, t.bbox(), t.histogram(5), m.bus.board.gpio_events()); }
     if let (Some(path), Some(st)) = (&regstat, &m.bus.periph.regstat) {
         use std::io::Write;

@@ -36,7 +36,7 @@ def reader():
             if m.get("t") == "stat":
                 with lock: stats.append((m["time"], m.get("behind", 0), now))
         elif op == 2 and data and data[0] == 2:
-            with lock: audio.append(((len(data) - 1) // 2, now))
+            with lock: audio.append(((len(data) - 5) // 2, now, struct.unpack('<I', data[1:5])[0]))
 threading.Thread(target=reader, daemon=True).start()
 t0 = time.time(); i = 0
 while time.time() - t0 < dur:
@@ -49,4 +49,4 @@ gaps = [(st[k][2] - st[k-1][2]) * 1e3 for k in range(1, len(st))]
 slow = [g for g in gaps if g > 40]
 print(f"{i} press+knob cycles; {len(st)} stat pushes over {st[-1][2]-st[0][2]:.1f} s wall / {st[-1][0]-st[0][0]:.2f} s emulated")
 print(f"push gaps: max {max(gaps):.0f} ms, {len(slow)} over 40 ms (sum {sum(slow):.0f} ms); max behind {max(x[1] for x in st):.2f} s")
-sm = sum(n for n, _ in au); print(f"audio: {len(au)} chunks, {sm} samples = {sm/44100:.2f} s")
+sm = sum(n for n, _, _ in au); rate = au[-1][2] if au else 44100; print(f"audio: {len(au)} chunks, {sm} samples at {rate} Hz = {sm/rate:.2f} s")

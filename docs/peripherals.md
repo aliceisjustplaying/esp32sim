@@ -20,7 +20,7 @@ registers are logged with `--log-periph`).
 | USB Serial/JTAG | 0x60038000 | full | TX/RX FIFOs, interrupts (IDF console and Arduino `Serial`) |
 | I2C0/I2C1 | 0x60013000/27000 | full | IDF `i2c_master` command list, FIFOs, NACK/END/COMPLETE interrupts |
 | GDMA | 0x6003F000 | partial | out-channels (I2S0/I2S1) and in-channels (CAM); descriptor walk, DONE/EOF/TOTAL_EOF |
-| I2S0 / I2S1 | 0x6000F000/2D000 | partial | TX: clock config, sample rate, 16-bit stereo capture to PCM; RX — |
+| I2S0 / I2S1 | 0x6000F000/2D000 | partial | TX: frame rate derived from the clock tree (source, integer + fractional MCLK divider, BCK divider, slot width and count), 16-bit stereo capture to PCM; RX — |
 | RMT | 0x60016000 | partial | TX channels: symbol RAM, clock divider, end marker, done interrupt; RX — |
 | LCD_CAM | 0x60041000 | partial | camera engine (start/reset, VSYNC, frame pump from GDMA RX) and the LCD RGB/DPI engine (timing/clock registers, frame pump into GDMA TX, LCD_VSYNC); i8080 LCD mode — |
 | SHA | 0x6003B000 | full | SHA-1/224/256/384/512, block and GDMA modes (bootloader image verification, TLS certificate digests) |

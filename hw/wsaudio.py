@@ -28,6 +28,7 @@ while time.time() < end:
         buf += r
     data = buf[p:p + ln]; buf = buf[p + ln:]
     if op == 2 and data and data[0] == 2:
-        vals = struct.unpack("<%dh" % ((len(data) - 1) // 2), data[1:1 + ((len(data) - 1) // 2) * 2])
+        rate = struct.unpack("<I", data[1:5])[0]
+        vals = struct.unpack("<%dh" % ((len(data) - 5) // 2), data[5:5 + ((len(data) - 5) // 2) * 2])
         samples += len(vals); nz = sum(1 for v in vals if v); nonzero += nz; peak = max(peak, max((abs(v) for v in vals), default=0))
-print(f"{dur:.0f} s: {samples} samples, {nonzero} non-zero, peak {peak}")
+print(f"{dur:.0f} s: {samples} samples at {rate} Hz, {nonzero} non-zero, peak {peak}")

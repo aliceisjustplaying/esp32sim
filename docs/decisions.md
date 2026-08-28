@@ -42,6 +42,15 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Touch controllers must latch**: LVGL polls the GT911 every 30 ms; a UI click shorter than that must
   stay readable until the driver has seen it, or taps are lost.
 - **`cycles * 1e9 / CPU_HZ` overflows u64 at 76.86 s** — keep wall/emulated time in f64.
+- **The I2S sample rate must come from the clock registers, never a constant.** The model
+  hard-coded 44.1 kHz; the panel's SID player programs 22.05 kHz, so its DMA was drained at
+  twice the rate the tune was rendered and it played at double tempo. Nobody noticed while the
+  emulator ran at 0.5–0.8× real time — the two errors roughly cancelled — and it surfaced the
+  moment the JIT made real-time pacing exact. The derivation follows the silicon:
+  `MCLK = src/(div_num + b/a)` with `b/a` recovered from `x/y/z/yn1` the way `i2s_ll_tx_set_mclk`
+  encodes them, `BCK = MCLK/(bck_div+1)`, `fs = BCK/(slot_bits·slots)`. It also showed the Atech
+  Arduino build runs at 44 101 Hz, not 44 100 (its driver picked 76/442 instead of 76/441), so the
+  regression WAV was re-baselined: same sample stream, five more samples over five seconds.
 - **WebSocket sends must not block the emulator thread** — a frozen browser tab stalled
   emulation until sends moved to per-client writer threads with bounded queues.
 

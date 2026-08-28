@@ -475,10 +475,12 @@ impl Machine {
             }
             self.web_cam_pushed = self.bus.periph.lcd_cam.frames / 20;
         }
-        let pcm = &self.bus.periph.audio().pcm;
+        let audio = self.bus.periph.audio();
+        let (pcm, rate) = (&audio.pcm, audio.sample_rate);
         if pcm.len() > self.web_audio_sent {
             let chunk = &pcm[self.web_audio_sent..];
             let mut b = vec![2u8];
+            b.extend_from_slice(&rate.to_le_bytes());
             for s in chunk { b.extend_from_slice(&s.to_le_bytes()); }
             w.send_binary(&b);
             self.web_audio_sent = pcm.len();

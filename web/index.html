@@ -109,7 +109,7 @@
 <script>
 const $ = s => document.querySelector(s);
 const con = $('#console'); let ws, view = 'usb'; const lines = [];   // {src, text}
-let audioCtx = null, playHead = 0, audioLead = 0.06, underruns = 0, rate = 44100, knobAngle = 0, ringLeds = new Array(12).fill([0,0,0]);
+let audioCtx = null, playHead = 0, audioLead = 0.06, underruns = 0, ctxRate = 44100, knobAngle = 0, ringLeds = new Array(12).fill([0,0,0]);
 const tft = $('#tft').getContext('2d'), tftbig = $('#tftbig').getContext('2d'), ringC = $('#ring').getContext('2d');
 
 function render() {
@@ -165,8 +165,10 @@ function drawCamPreview(buf) {
   c.width = w; c.height = h; ctx.putImageData(img, 0, 0); const st = $('#camstat'); if (st && !st.textContent) st.textContent = 'picture from --cam-image';
 }
 function playAudio(buf) {
-  const n = (buf.byteLength - 1) / 2; if (n <= 0) return;
-  const i16 = new Int16Array(buf.slice(1)); let peak = 0; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(i16[i]));
+  // [2][rate u32 le][int16le samples]: the rate is whatever the firmware programmed the I2S clock to
+  const rate = new DataView(buf).getUint32(1, true);
+  const n = (buf.byteLength - 5) / 2; if (n <= 0 || rate < 3000) return;
+  const i16 = new Int16Array(buf.slice(5)); let peak = 0; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(i16[i]));
   $('#vu').value = Math.min(1, peak / 4000); const vu2 = $('#vu2'); if (vu2) vu2.value = Math.min(1, peak / 4000);
   if (!audioCtx) return;
   const ab = audioCtx.createBuffer(1, n, rate); const ch = ab.getChannelData(0);
@@ -207,7 +209,7 @@ window.onkeyup = e => { if (e.key === ' ' && e.target.tagName !== 'INPUT') send(
 $('#send').onclick = () => { const l = $('#line').value.trim(); if (!l) return; lines.push({src:'usb', text:'> ' + l}); render(); send({t:'serial', line:l}); };
 $('#line').onkeydown = e => { if (e.key === 'Enter') $('#send').click(); };
 $('#clear').onclick = () => { lines.length = 0; render(); };
-$('#audioBtn').onclick = async () => { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: rate}); await audioCtx.resume(); $('#audioBtn').textContent = '🔊 audio on'; };
+$('#audioBtn').onclick = async () => { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: ctxRate}); await audioCtx.resume(); $('#audioBtn').textContent = '🔊 audio on'; };
 const presets = [['set_note C','{"action":"set_note","value":"0"}'],['set_note A','{"action":"set_note","value":"5"}'],['octave 5','{"action":"set_octave","value":"5"}'],['trigger_note','{"action":"trigger_note","value":""}'],['chord','{"action":"play_chord_voices","value":""}'],['play_note 880','{"action":"play_note","value":"{\\"frequency\\":880,\\"duration\\":300}"}'],['volume 1.0','{"action":"set_volume","value":"1.0"}'],['ring red','{"action":"set_ring_color","value":"{\\"r\\":255,\\"g\\":0,\\"b\\":40}"}']];
 presets.forEach(([n, l]) => { const b = document.createElement('button'); b.className = 'act'; b.textContent = n; b.onclick = () => { $('#line').value = l; $('#send').click(); }; $('#presets').appendChild(b); });
 drawRing(); connect();
