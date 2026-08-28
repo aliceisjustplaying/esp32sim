@@ -71,6 +71,13 @@ pub unsafe extern "C" fn esp32sim_load(e: *mut Emu, kind: u32, ptr: *const u8, l
     match r { Ok(()) => 0, Err(msg) => { log(&format!("[emu] load kind {}: {}", kind, msg)); 1 } }
 }
 
+/// Write bytes into flash at an arbitrary offset (a data partition's contents).
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_load_at(e: *mut Emu, offset: u32, ptr: *const u8, len: usize) -> u32 {
+    let e = &mut *e;
+    match e.m.write_flash(offset as usize, bytes(ptr, len)) { Ok(()) => 0, Err(msg) => { log(&format!("[emu] flash {:#x}: {}", offset, msg)); 1 } }
+}
+
 /// Attach the virtual access point and subnet: `ssid=NAME,psk=PASS,chan=N`. No NAT — the browser
 /// has no sockets — so DHCP, DNS, SNTP and ICMP answer, and connections past the gateway are refused.
 #[no_mangle]

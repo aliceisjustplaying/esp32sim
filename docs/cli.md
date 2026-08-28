@@ -17,6 +17,7 @@ esp32sim --flash-image flash.bin --boot rom ...
 | `--board atech14\|waveshare-cam\|none` | board model (default atech14) |
 | `--strap HEX`, `--reset-cause HEX`, `--efuse-regs F`, `--regs-init F` | reproduce a real chip's boot state (used by the differential tests) |
 | `--no-reboot` | stop at the first chip reset instead of rebooting from ROM |
+| `--flash-at OFFSET=FILE` (repeatable) | write a file into flash at a hex offset — a data partition's contents (the panel's `demo` partition takes `energydata.json`) |
 | `--stub SYMBOL[=value]` (repeatable) | return `value` (default 0) immediately when execution reaches the function's entry |
 | `--wifi SPEC` | attach a virtual access point the WiFi blob hears, plus a virtual network (DHCP/ARP/ICMP/DNS/SNTP; station 10.0.2.15, gateway 10.0.2.2) — `ssid=NAME,chan=N,psk=PASS,bssid=xx:..`. Open and WPA2-PSK networks both join end to end (docs/wifi-plan.md) |
 | `--net nat\|none` | what the virtual network does with traffic it is not itself answering: `nat` (default) forwards TCP and UDP to the host's own network through ordinary sockets, `none` refuses it |

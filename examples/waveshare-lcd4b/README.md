@@ -18,6 +18,8 @@ data. The SSID and passphrase must be the ones the firmware was built for, and t
 instance it points at has to be reachable from this machine. See
 [../../docs/networking-howto.md](../../docs/networking-howto.md).
 
-Without `--wifi` the script stubs `esp_wifi_start`, because with no network to join the blob spins
+With `--flash-at 0x610000=../../web/wasm/fw/public/energydata.json` the firmware boots in **demo mode**
+(canned prices, energy bars and tile states from that file, fixed clock, WiFi never started) — the
+configuration the public WebAssembly page uses. Without `--wifi` (and without demo data) the script stubs `esp_wifi_start`, because with no network to join the blob spins
 in PHY calibration on core 0 and starves the LVGL task; prices and Home Assistant tiles then stay
 empty, which is the right way to demo the UI offline.
