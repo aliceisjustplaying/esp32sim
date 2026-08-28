@@ -82,7 +82,7 @@
     if (!files.some((x) => x[0] === 'app')) { setStatus('an app.bin is required'); return; }
     boot({ board: $('fw_board').value, flash_mb: +$('fw_flash').value, psram_mb: +$('fw_psram').value, wifi: $('fw_wifi').value.trim(), stubs: $('fw_stubs').value.split(/[ ,]+/).filter(Boolean), appDirect: $('fw_appdirect').checked }, files);
   };
-  fetch('wasm/fw/demos.json').then((r) => r.ok ? r.json() : []).then((demos) => {
+  fetch('wasm/fw/demos.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : []).then((demos) => {
     const row = $('fw_demos'); if (!demos.length) return; row.style.display = '';
     for (const d of demos) { const a = document.createElement('a'); const u = new URL(location.href); u.searchParams.set('wasm', ''); u.searchParams.set('fw', d.fw); a.href = u.toString(); a.textContent = d.title; a.title = d.note || ''; row.appendChild(a); }
   }).catch(() => {});
@@ -90,7 +90,7 @@
   const fw = q.get('fw');
   if (fw) {
     (async () => {
-      const man = await (await fetch(`wasm/fw/${fw}.json`)).json();
+      const man = await (await fetch(`wasm/fw/${fw}.json`, { cache: 'no-cache' })).json();   // manifests are tiny: always revalidate, so a removed demo disappears at once
       $('fw_board').value = man.board || 'none'; $('fw_flash').value = man.flash_mb || 8; $('fw_psram').value = man.psram_mb || 2; $('fw_wifi').value = man.wifi || ''; $('fw_stubs').value = (man.stubs || []).join(' ');
       const files = [];
       for (const [kind, url] of Object.entries(man.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`); if (!r.ok) { setStatus(`${u}: ${r.status}`); return; } files.push([kind, await r.arrayBuffer()]); }
