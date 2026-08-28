@@ -1,0 +1,15 @@
+{
+ "board": "waveshare-lcd4b",
+ "flash_mb": 16,
+ "psram_mb": 8,
+ "stubs": [
+  "esp_wifi_start=0"
+ ],
+ "files": {
+  "rom": "esp32s3_rev0_rom.elf",
+  "bootloader": "public/panel-bootloader.bin",
+  "ptable": "public/panel-ptable.bin",
+  "app": "public/panel-demo.bin",
+  "elf": "local/panel-demo.elf"
+ }
+}
