@@ -31,6 +31,12 @@ jobs:
           tar -xzf rom.tar.gz --wildcards '*esp32s3_rev0_rom.elf'
           find . -name esp32s3_rev0_rom.elf -exec cp {} web/wasm/fw/ \;
           ls -la web/wasm/fw/esp32s3_rev0_rom.elf
+      - name: Version-stamp the script and module URLs (Pages caches for 10 minutes)
+        run: |
+          v=${GITHUB_SHA::8}
+          sed -i "s|src=\"emu.js\"|src=\"emu.js?v=$v\"|" web/index.html
+          sed -i "s|new Worker('wasm/worker.js')|new Worker('wasm/worker.js?v=$v')|; s|fetch('wasm/esp32sim.wasm')|fetch('wasm/esp32sim.wasm?v=$v')|" web/emu.js
+          grep -c "v=$v" web/index.html web/emu.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
