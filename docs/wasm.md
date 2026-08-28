@@ -33,6 +33,13 @@ inputs for anyone's own firmware. On a `github.io` host the page starts in wasm 
 `?wasm`. Only firmware whose code is ours is committed under `web/wasm/fw/public/`; the panel is a
 separate build with placeholder `secrets.h` values (checked with `strings` against the real ones).
 
+**Demo data without a rebuild.** The panel firmware has a `demo` data partition (0x610000,
+64 KB); when it holds a JSON document the firmware renders that — prices for today and
+tomorrow, hourly kWh, tile states, header power, a fixed clock — and never starts WiFi. The
+manifest writes `public/energydata.json` there (`flash_at`), so changing the demo is editing a
+JSON file; real boards have the partition erased and behave as before. Natively:
+`--flash-at 0x610000=web/wasm/fw/public/energydata.json`.
+
 ## What it is
 
 ```
