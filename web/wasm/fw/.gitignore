@@ -1,11 +1,11 @@
 # Firmware for local wasm demos is not committed — except the public demos below, whose code is
-# ours (hello_world from ESP-IDF, the Atech Pocket Synth) and the manifests that describe them.
+# ours (hello_world from ESP-IDF) and the manifests that describe them. The Atech Pocket Synth demo
+# is held back pending Atech's answer on their driver-module license (asked 2026-08-28).
 # The mask ROM ELF (Apache-2.0, espressif/esp-rom-elfs) is fetched by the Pages workflow.
 *
 !.gitignore
 !README.md
 !demos.json
 !hello.json
-!atech.json
 !public/
 !public/*

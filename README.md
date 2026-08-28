@@ -114,7 +114,7 @@ The same emulator compiled to WebAssembly, running inside the page in a Web Work
 load the ROM ELF and firmware from disk (or `?wasm&fw=<name>` for a hosted manifest), press Boot.
 hello_world, the Touch-LCD-4B panel with its SID player, and the Atech board run at real time in
 Chrome; there is no NAT (the browser has no sockets) and no JIT. See [docs/wasm.md](docs/wasm.md).
-**Live: https://joakimeriksson.github.io/esp32sim/** — hello_world and the Atech Pocket Synth, or your own firmware from disk.
+**Live: https://joakimeriksson.github.io/esp32sim/** — hello_world, or your own firmware from disk.
 
 ## Debugging
 

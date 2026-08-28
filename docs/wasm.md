@@ -28,7 +28,7 @@ mask ROM is Espressif's and the firmware is whoever built it; host them only whe
 `.github/workflows/pages.yml` builds the module on every push to `main`, fetches the mask-ROM ELF
 from the Apache-2.0 `espressif/esp-rom-elfs` release, and publishes `web/` — so the page at
 **https://joakimeriksson.github.io/esp32sim/** is the emulator, with the demos in
-`web/wasm/fw/demos.json` (hello_world, the Atech Pocket Synth) one click away and the file
+`web/wasm/fw/demos.json` (hello_world; the Atech Pocket Synth once Atech confirms its driver-module license) one click away and the file
 inputs for anyone's own firmware. On a `github.io` host the page starts in wasm mode without
 `?wasm`. Only firmware whose code is ours is committed under `web/wasm/fw/public/`; the panel
 build is not (it carries its `secrets.h`).
