@@ -7,8 +7,6 @@
   const q = new URLSearchParams(location.search);
   // wasm mode: asked for explicitly, or the page is on a static host that cannot be the native emulator
   if (!q.has('wasm') && !/\.github\.io$/.test(location.hostname)) return;
-  // no firmware yet: no board to draw. The board announcement at boot switches the layout.
-  document.body.classList.add('bare'); document.querySelector('h1').textContent = 'ESP32\u2011S3 emulator';
   const worker = new Worker('wasm/worker.js');
   let onmessage = null, setStatus = () => {}, ready = false, started = false;
   const KINDS = { rom: 0, bootloader: 1, ptable: 2, app: 3, elf: 4, flash: 5, script: 6, picture: 7 };
@@ -39,6 +37,12 @@
     },
   };
 
+  // Everything below touches the DOM; this script is loaded at the top of <body>, before the
+  // header and main exist, so it waits for the document. EmuLink above is what index.html's
+  // own script (at the end of <body>) needs, and that is defined synchronously.
+  document.addEventListener('DOMContentLoaded', () => {
+  // no firmware yet: no board to draw. The board announcement at boot switches the layout.
+  document.body.classList.add('bare'); document.querySelector('h1').textContent = 'ESP32\u2011S3 emulator';
   // ---- firmware panel
   const panel = document.createElement('section');
   panel.id = 'fwpanel';
@@ -100,4 +104,5 @@
       wait();
     })().catch((e) => setStatus('manifest: ' + e.message));
   }
+  });
 })();
