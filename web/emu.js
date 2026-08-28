@@ -7,6 +7,8 @@
   const q = new URLSearchParams(location.search);
   // wasm mode: asked for explicitly, or the page is on a static host that cannot be the native emulator
   if (!q.has('wasm') && !/\.github\.io$/.test(location.hostname)) return;
+  // no firmware yet: no board to draw. The board announcement at boot switches the layout.
+  document.body.classList.add('bare'); document.querySelector('h1').textContent = 'ESP32\u2011S3 emulator';
   const worker = new Worker('wasm/worker.js');
   let onmessage = null, setStatus = () => {}, ready = false, started = false;
   const KINDS = { rom: 0, bootloader: 1, ptable: 2, app: 3, elf: 4, flash: 5, script: 6, picture: 7 };
