@@ -212,6 +212,27 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Check for leftover runs before benchmarking.** A background emulator from an earlier session at
   100 % CPU is indistinguishable from "the emulator got slower".
 
+## WebAssembly build
+- **The SoC crate compiled for `wasm32-unknown-unknown` without a single change** — `std::net`,
+  threads and files all *compile* there and fail only when used. The hazards are the ones that
+  panic at runtime: `Instant::now()` and `SystemTime::now()`. Those live behind `host.rs`; the
+  worker passes `Date.now()` in with every run slice. Never call `Instant` on a path the wasm
+  build can reach (real-time pacing is the worker's job there).
+- **Reuse the WebSocket protocol, not the WebSocket.** Giving `WebServer` a queue mode meant zero
+  changes to `Machine`'s push/poll code and a ~10-line change to the page. The one trap: the
+  per-client "hello" snapshot (board name, console backlog) is built for new socket clients and
+  never delivered in queue mode — the page kept the Atech layout for the panel until the wasm
+  boot sent the board announcement itself.
+- **No bindgen.** A dozen `extern "C"` functions plus `esp32sim_alloc`/`free` for buffers; the
+  worker copies messages out of wasm memory (re-creating views after every call, since memory
+  can grow). Kept the zero-dependency rule and the module at 4 MB unoptimised.
+- **Sizes**: the block-cache tables are 4× smaller on wasm (`block.rs`), the arena would
+  otherwise reserve 64 MB up front. The 480×480 panel at 50 frames/s moves ~23 MB/s through
+  `postMessage` with transfer lists and is fine; copying instead of transferring is not.
+- **Measured**: ~62 Minsn/s with the SID player, real time for all three boards in Chrome —
+  more than the spike's 47 % of native predicted, because the block interpreter arrived after
+  the spike. The JIT does not exist in wasm; a wasm-emitting backend is the next step for speed.
+
 ## Process
 - Bring-up loop: run → first unknown register / unimplemented instruction (`--log-periph`,
   `Unimplemented(pc, raw)`) → model it → rerun. Keep the objdump test and the hardware

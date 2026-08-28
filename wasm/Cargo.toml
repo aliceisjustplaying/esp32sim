@@ -1,0 +1,13 @@
+[package]
+name = "esp32sim-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "esp32sim compiled to WebAssembly: the emulator in the page, driven by web/wasm/worker.js"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+esp32s3 = { path = "../esp32s3" }
+xtensa-lx7 = { path = "../xtensa-lx7" }

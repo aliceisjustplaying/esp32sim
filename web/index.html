@@ -58,6 +58,7 @@
 .bare .right { max-width: 1100px; }
 </style></head>
 <body>
+<script src="emu.js"></script>
 <header><h1>ESP32‑S3 emulator — Atech 14‑port board</h1><span class="st" id="status">connecting…</span><span style="flex:1"></span>
   <span class="st" id="stat"></span><button class="act" id="audioBtn">🔇 enable audio</button></header>
 <main>
@@ -130,7 +131,9 @@ function addSerial(src, data) { data = data.replace(/\x1b\[[0-9;]*m/g, '');
   while (lines.length > 2000) lines.shift();
   render();
 }
-function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+let link = null;   // the transport: a WebSocket to a native emulator, or the wasm worker (emu.js)
+function linkSend(d) { if (link) link.send(d); }
+function send(o) { linkSend(JSON.stringify(o)); }
 
 function drawFrame(buf) {
   const dv = new DataView(buf); const w = dv.getUint16(1, true), h = dv.getUint16(3, true);
@@ -180,18 +183,22 @@ function playAudio(buf) {
   } else if (playHead > now + audioLead + 0.5) { playHead = now + audioLead; }   // runaway after a catch-up burst: drop the excess
   src.start(playHead); playHead += n / rate;
 }
-function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws`); ws.binaryType = 'arraybuffer';
-  ws.onopen = () => $('#status').textContent = 'connected';
-  ws.onclose = () => { $('#status').textContent = 'disconnected — retrying'; setTimeout(connect, 1000); };
-  ws.onmessage = ev => {
-    if (ev.data instanceof ArrayBuffer) { const t = new Uint8Array(ev.data)[0]; if (t === 1) drawFrame(ev.data); else if (t === 2) playAudio(ev.data); else if (t === 4) drawCamPreview(ev.data); return; }
-    const m = JSON.parse(ev.data);
+function handleMessage(data) {
+    if (data instanceof ArrayBuffer) { const t = new Uint8Array(data)[0]; if (t === 1) drawFrame(data); else if (t === 2) playAudio(data); else if (t === 4) drawCamPreview(data); return; }
+    const m = JSON.parse(data);
     if (m.t === 'serial') addSerial(m.src, m.data);
+    else if (m.t === 'emu') addSerial('usb', m.msg + '\n');
     else if (m.t === 'board') { document.body.classList.toggle('bare', m.name !== 'atech14'); if (m.name === 'none') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — bare module'; document.querySelector('.tabs button[data-src="uart0"]').click(); } if (m.name === 'waveshare-cam') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑CAM‑OV5640'; $('#campanel').style.display = ''; } if (m.name === 'waveshare-lcd4b') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑Touch‑LCD‑4B'; $('#lcdpanel').style.display = ''; } }
     else if (m.t === 'ring') { ringLeds = m.leds; drawRing(); }
     else if (m.t === 'stat') { $('#stat').textContent = `t = ${m.time.toFixed(2)} s · ${(m.insns/1e6).toFixed(1)} M insns · ${m.frames} frames` + (m.behind > 0 ? ` · ⚠ ${m.behind.toFixed(2)} s behind real time` : ' · real time') + (m.resyncs ? ` · ${m.resyncs} resync` : '') + (m.cam ? ` · ${m.cam} camera frames` : ''); $('#stat').style.color = m.behind > 0 ? '#f66' : ''; }
-  };
+}
+function connect() {
+  if (window.EmuLink) { link = window.EmuLink.connect(handleMessage, (s) => $('#status').textContent = s); return; }
+  ws = new WebSocket(`ws://${location.host}/ws`); ws.binaryType = 'arraybuffer';
+  ws.onopen = () => $('#status').textContent = 'connected';
+  ws.onclose = () => { $('#status').textContent = 'disconnected — retrying'; link = null; setTimeout(connect, 1000); };
+  ws.onmessage = ev => handleMessage(ev.data);
+  link = { send: (d) => { if (ws.readyState === 1) ws.send(d); } };
 }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('on')); b.classList.add('on'); view = b.dataset.src; render(); });
 document.querySelectorAll('.btn .cell').forEach(el => {
@@ -216,7 +223,7 @@ drawRing(); connect();
 // ---- touch panel: mouse/pointer -> GT911 touch points
 { const c = $('#lcd'); let down = false, last = 0;
   const pos = (e) => { const r = c.getBoundingClientRect(); return { x: Math.max(0, Math.min(c.width - 1, Math.round((e.clientX - r.left) * c.width / r.width))), y: Math.max(0, Math.min(c.height - 1, Math.round((e.clientY - r.top) * c.height / r.height))) }; };
-  const send = (p, d) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'touch', x: p.x, y: p.y, down: d ? 1 : 0 })); };
+  const send = (p, d) => linkSend(JSON.stringify({ t: 'touch', x: p.x, y: p.y, down: d ? 1 : 0 }));
   c.addEventListener('pointerdown', (e) => { down = true; c.setPointerCapture(e.pointerId); send(pos(e), true); });
   c.addEventListener('pointermove', (e) => { if (!down) return; const now = performance.now(); if (now - last < 40) return; last = now; send(pos(e), true); });
   const up = (e) => { if (!down) return; down = false; send(pos(e), false); };
@@ -224,9 +231,9 @@ drawRing(); connect();
 // ---- camera source (waveshare-cam): send RGBA frames as binary type 3
 const camCanvas = $('#camcanvas'), camCtx = camCanvas.getContext('2d'); let camStream = null, camTimer = null;
 function sendCamFrame() {
-  if (!ws || ws.readyState !== 1) return;
+  if (!link) return;
   const w = camCanvas.width, h = camCanvas.height; const img = camCtx.getImageData(0, 0, w, h);
-  const buf = new Uint8Array(5 + w * h * 4); buf[0] = 3; buf[1] = w & 255; buf[2] = w >> 8; buf[3] = h & 255; buf[4] = h >> 8; buf.set(img.data, 5); ws.send(buf);
+  const buf = new Uint8Array(5 + w * h * 4); buf[0] = 3; buf[1] = w & 255; buf[2] = w >> 8; buf[3] = h & 255; buf[4] = h >> 8; buf.set(img.data, 5); linkSend(buf);
 }
 $('#camfile').onchange = (e) => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => { camCtx.drawImage(im, 0, 0, camCanvas.width, camCanvas.height); sendCamFrame(); $('#camstat').textContent = `picture ${im.width}×${im.height} sent`; URL.revokeObjectURL(im.src); }; im.src = URL.createObjectURL(f); };
 $('#camwebcam').onclick = async () => {

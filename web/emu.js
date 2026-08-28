@@ -1,0 +1,95 @@
+// Page-side glue for the WebAssembly build. Active when the page is opened with `?wasm`; then
+// window.EmuLink replaces the WebSocket transport in index.html, and a firmware panel is added.
+// Firmware comes from the visitor's disk (file inputs) or from a manifest `wasm/fw/<name>.json`
+// (`?wasm&fw=<name>`) listing files to fetch — for your own hosting; never publish blobs you
+// may not redistribute (the Espressif mask ROM, third-party firmware).
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('wasm')) return;
+  const worker = new Worker('wasm/worker.js');
+  let onmessage = null, setStatus = () => {}, ready = false, started = false;
+  const KINDS = { rom: 0, bootloader: 1, ptable: 2, app: 3, elf: 4, flash: 5, script: 6, picture: 7 };
+  const pending = new Map();
+  worker.onmessage = (ev) => {
+    const m = ev.data;
+    if (m.text !== undefined) { onmessage && onmessage(m.text); return; }
+    if (m.bin !== undefined) { onmessage && onmessage(m.bin); return; }
+    if (m.log !== undefined) { console.log(m.log); onmessage && onmessage(JSON.stringify({ t: 'emu', msg: m.log })); return; }
+    if (m.ready) { ready = true; setStatus('wasm loaded — choose firmware'); flush(); }
+    if (m.created !== undefined) { const r = pending.get('created'); pending.delete('created'); r && r(m.created); }
+    if (m.loaded !== undefined) { const r = pending.get('load' + m.loaded); pending.delete('load' + m.loaded); r && r(m.ok); }
+    if (m.started !== undefined) { started = m.started; setStatus(started ? 'running in WebAssembly' : 'boot failed (see console)'); }
+    if (m.stopped !== undefined) { started = false; setStatus('stopped: code ' + m.stopped); }
+    if (m.pace) { const el = document.getElementById('pace'); if (el) el.textContent = `${(m.pace.mips || 0).toFixed(1)} Minsn/s · ` + (m.pace.behind > 0.05 ? `⚠ ${m.pace.behind.toFixed(2)} s behind` : 'real time'); }
+  };
+  const queue = []; const flush = () => { while (ready && queue.length) worker.postMessage(...queue.shift()); };
+  const post = (msg, transfer) => { queue.push([msg, transfer || []]); flush(); };
+  const ask = (key, msg, transfer) => new Promise((res) => { pending.set(key, res); post(msg, transfer); });
+
+  window.EmuLink = {
+    connect(handler, status) {
+      onmessage = handler; setStatus = status;
+      fetch('wasm/esp32sim.wasm').then((r) => { if (!r.ok) throw new Error('wasm/esp32sim.wasm: ' + r.status); return r.arrayBuffer(); })
+        .then((buf) => worker.postMessage({ op: 'init', wasm: buf }, [buf]))
+        .catch((e) => setStatus('cannot load wasm: ' + e.message));
+      return { send: (d) => { if (!started) return; if (typeof d === 'string') post({ op: 'text', data: d }); else { const b = d.buffer ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d; post({ op: 'bin', data: b }, [b]); } } };
+    },
+  };
+
+  // ---- firmware panel
+  const panel = document.createElement('section');
+  panel.id = 'fwpanel';
+  panel.innerHTML = `<style>#fwpanel{margin:12px 18px 0;padding:12px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;font-size:13px}
+    #fwpanel .row{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:4px 0}#fwpanel label{display:inline-flex;gap:6px;align-items:center}
+    #fwpanel input[type=file]{max-width:180px}#fwpanel .go{padding:6px 14px;font-weight:600}#fwpanel .note{color:#6b7280}</style>
+    <div class="row"><b>WebAssembly build</b><span class="note">everything runs in this tab — nothing is uploaded; firmware is read from your disk</span><span id="pace" class="note"></span></div>
+    <div class="row">
+      <label>board <select id="fw_board"><option>waveshare-lcd4b</option><option>atech14</option><option>waveshare-cam</option><option>none</option></select></label>
+      <label>flash MB <input id="fw_flash" type="number" value="16" min="1" max="32" style="width:52px"></label>
+      <label>PSRAM MB <input id="fw_psram" type="number" value="8" min="0" max="32" style="width:52px"></label>
+      <label>WiFi <input id="fw_wifi" placeholder="ssid=…,psk=… (optional)" style="width:190px"></label>
+      <label>stubs <input id="fw_stubs" placeholder="esp_wifi_start=0" style="width:150px"></label>
+      <label><input id="fw_appdirect" type="checkbox"> boot app directly (no ROM)</label>
+    </div>
+    <div class="row">
+      <label>ROM ELF <input type="file" id="fw_rom"></label>
+      <label>bootloader.bin <input type="file" id="fw_bootloader"></label>
+      <label>partition-table.bin <input type="file" id="fw_ptable"></label>
+      <label>app.bin <input type="file" id="fw_app"></label>
+      <label>app.elf (symbols) <input type="file" id="fw_elf"></label>
+      <label>script <input type="file" id="fw_script"></label>
+      <button class="go" id="fw_go">▶ Boot</button>
+    </div>`;
+  document.body.insertBefore(panel, document.querySelector('main'));
+  const $ = (id) => document.getElementById(id);
+  const readFile = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsArrayBuffer(f); });
+
+  async function boot(cfg, files) {
+    if (started) { location.reload(); return; }
+    setStatus('loading firmware…');
+    const ok = await ask('created', { op: 'create', board: cfg.board, flash_mb: cfg.flash_mb, psram_mb: cfg.psram_mb });
+    if (!ok) { setStatus('unknown board'); return; }
+    for (const [kind, data] of files) { const good = await ask('load' + KINDS[kind], { op: 'load', kind: KINDS[kind], data }, [data]); if (!good) { setStatus('failed to load ' + kind + ' (see console)'); return; } }
+    for (const st of cfg.stubs || []) { const [name, v] = st.split('='); post({ op: 'stub', name, value: v ? parseInt(v, 0) : 0 }); }
+    if (cfg.wifi) post({ op: 'wifi', spec: cfg.wifi });
+    post({ op: 'start', appDirect: !!cfg.appDirect });
+  }
+  $('fw_go').onclick = async () => {
+    const files = [];
+    for (const k of ['rom', 'bootloader', 'ptable', 'app', 'elf', 'script']) { const f = $('fw_' + k).files[0]; if (f) files.push([k, await readFile(f)]); }
+    if (!files.some((x) => x[0] === 'app')) { setStatus('an app.bin is required'); return; }
+    boot({ board: $('fw_board').value, flash_mb: +$('fw_flash').value, psram_mb: +$('fw_psram').value, wifi: $('fw_wifi').value.trim(), stubs: $('fw_stubs').value.split(/[ ,]+/).filter(Boolean), appDirect: $('fw_appdirect').checked }, files);
+  };
+  // ---- manifest: ?wasm&fw=name → wasm/fw/name.json
+  const fw = q.get('fw');
+  if (fw) {
+    (async () => {
+      const man = await (await fetch(`wasm/fw/${fw}.json`)).json();
+      $('fw_board').value = man.board || 'none'; $('fw_flash').value = man.flash_mb || 8; $('fw_psram').value = man.psram_mb || 2; $('fw_wifi').value = man.wifi || ''; $('fw_stubs').value = (man.stubs || []).join(' ');
+      const files = [];
+      for (const [kind, url] of Object.entries(man.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`); if (!r.ok) { setStatus(`${u}: ${r.status}`); return; } files.push([kind, await r.arrayBuffer()]); }
+      const wait = () => ready ? boot({ board: man.board, flash_mb: man.flash_mb || 8, psram_mb: man.psram_mb || 2, wifi: man.wifi || '', stubs: man.stubs || [], appDirect: !!man.app_direct }, files) : setTimeout(wait, 50);
+      wait();
+    })().catch((e) => setStatus('manifest: ' + e.message));
+  }
+})();

@@ -19,6 +19,9 @@ impl Client {
 }
 
 pub struct Shared {
+    /// queue mode (the wasm build): messages go to `outbox` for the JS glue instead of to sockets
+    pub queue: bool,
+    pub outbox: VecDeque<(u8, Vec<u8>)>,
     pub clients: Vec<Client>,
     pub incoming: VecDeque<String>,
     pub incoming_bin: VecDeque<Vec<u8>>,
@@ -74,7 +77,7 @@ fn frame(opcode: u8, data: &[u8]) -> Vec<u8> {
 impl WebServer {
     pub fn start(port: u16, web_dir: String) -> std::io::Result<WebServer> {
         let listener = TcpListener::bind(("127.0.0.1", port))?;
-        let shared = Arc::new(Mutex::new(Shared { clients: Vec::new(), incoming: VecDeque::new(), incoming_bin: VecDeque::new(), web_dir, hello: Vec::new() }));
+        let shared = Arc::new(Mutex::new(Shared { queue: false, outbox: VecDeque::new(), clients: Vec::new(), incoming: VecDeque::new(), incoming_bin: VecDeque::new(), web_dir, hello: Vec::new() }));
         let s2 = shared.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
@@ -84,12 +87,25 @@ impl WebServer {
         });
         Ok(WebServer { shared, port })
     }
-    pub fn send_text(&self, s: &str) { self.broadcast(frame(1, s.as_bytes())); }
-    pub fn send_binary(&self, d: &[u8]) { self.broadcast(frame(2, d)); }
+    /// A server with no sockets: everything sent is queued for whoever drains `take_outbox`
+    /// (the wasm glue), and input arrives through `push_incoming*`. Same protocol, no transport.
+    pub fn queued() -> WebServer {
+        WebServer { shared: Arc::new(Mutex::new(Shared { queue: true, outbox: VecDeque::new(), clients: Vec::new(), incoming: VecDeque::new(), incoming_bin: VecDeque::new(), web_dir: String::new(), hello: Vec::new() })), port: 0 }
+    }
+    pub fn send_text(&self, s: &str) { self.emit(1, s.as_bytes()); }
+    pub fn send_binary(&self, d: &[u8]) { self.emit(2, d); }
+    fn emit(&self, kind: u8, d: &[u8]) {
+        let queue = self.shared.lock().unwrap().queue;
+        if queue { self.shared.lock().unwrap().outbox.push_back((kind, d.to_vec())); } else { self.broadcast(frame(kind, d)); }
+    }
     fn broadcast(&self, f: Vec<u8>) {
         let mut sh = self.shared.lock().unwrap();
         sh.clients.retain(|c| c.send(f.clone()));
     }
+    /// Queue mode: take everything sent since the last call, as (1 = text, 2 = binary) messages.
+    pub fn take_outbox(&self) -> Vec<(u8, Vec<u8>)> { self.shared.lock().unwrap().outbox.drain(..).collect() }
+    pub fn push_incoming(&self, s: String) { self.shared.lock().unwrap().incoming.push_back(s); }
+    pub fn push_incoming_bin(&self, d: Vec<u8>) { self.shared.lock().unwrap().incoming_bin.push_back(d); }
     pub fn set_hello(&self, frames: Vec<Vec<u8>>) { self.shared.lock().unwrap().hello = frames; }
     pub fn poll_incoming(&self) -> Vec<String> { let mut sh = self.shared.lock().unwrap(); sh.incoming.drain(..).collect() }
     pub fn poll_incoming_bin(&self) -> Vec<Vec<u8>> { let mut sh = self.shared.lock().unwrap(); sh.incoming_bin.drain(..).collect() }

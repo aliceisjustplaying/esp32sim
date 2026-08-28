@@ -13,7 +13,8 @@
 | [networking-howto.md](networking-howto.md) | How to run firmware with WiFi and the network: flags, what the subnet offers, debugging, limits |
 | [networking-plan.md](networking-plan.md) | Status: the emulated subnet and the user-mode NAT that carries traffic to the host network |
 | [speed-plan.md](speed-plan.md) | Plan: performance roadmap — measured baselines, block interpreter, JIT, with the rejected ideas |
-| [wasm-plan.md](wasm-plan.md) | Plan: running the emulator itself in the browser, with the measured native-vs-wasm cost |
+| [wasm.md](wasm.md) | How to build and run the emulator in the browser (WebAssembly): `tools/wasm-build.sh`, `?wasm`, manifests, what works, limits |
+| [wasm-plan.md](wasm-plan.md) | The plan the browser build followed, with the original measurements; status at the top |
 | [testing-plan.md](testing-plan.md) | Plan: test layers, CPU/SoC/board/firmware suites, CI tiers, milestones |
 
 Board-specific material lives next to the board: `../boards/atech14/README.md`,

@@ -32,6 +32,8 @@ xtensa-lx7/   the core
   state.rs    Cpu: registers, special registers, user registers (ACCX/QACC/…), interrupt levels
   disasm.rs   objdump-compatible formatter (used by the differential decoder test)
 web/          index.html: board drawing, console, WebAudio, camera panel (no build step)
+              emu.js + wasm/worker.js: the same page driving the WebAssembly build (docs/wasm.md)
+wasm/         esp32sim-wasm: C ABI over Machine for the browser; the JIT is absent there
 ```
 
 ## CPU core (`xtensa-lx7`)
@@ -147,7 +149,9 @@ never knows what board it is on; `--board` selects the implementation. See board
 
 `web.rs` serves `web/index.html` and one WebSocket per tab. The machine pushes state 50 times
 per emulated second (console text, display frames, audio, ring colours, statistics) and polls
-inputs (buttons, encoder, serial lines, camera pictures). Protocol in web-ui.md.
+inputs (buttons, encoder, serial lines, camera pictures). Protocol in web-ui.md. The same
+`WebServer` has a **queue mode** with no sockets: the WebAssembly build's worker drains the
+outbox after every run slice and feeds inputs in, so the page code is identical for both.
 
 ## Provenance and verification
 

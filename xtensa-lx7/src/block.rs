@@ -41,12 +41,14 @@ pub struct BlockInsn { pub insn: Insn, pub max_ar: u8, /// byte offset of this i
 struct Entry { pc: u32, start: u32, n: u16, vidx: [u32; 2], ver: [u32; 2], code: u32 }
 impl Entry { const EMPTY: Entry = Entry { pc: 1, start: 0, n: 0, vidx: [0; 2], ver: [0; 2], code: crate::jit::NONE }; }
 
-const ENTRIES: usize = 1 << 17;
+#[cfg(not(target_arch = "wasm32"))] const ENTRIES: usize = 1 << 17;
+#[cfg(target_arch = "wasm32")] const ENTRIES: usize = 1 << 15;
 /// Instructions per block. At most 3 bytes each, so a block spans at most two version pages.
 pub const MAX_LEN: usize = 32;
 /// Arena size at which everything is thrown away and rebuilt (bounded memory, no eviction
 /// bookkeeping). The arena never reallocates — compiled code holds pointers into it.
-const ARENA_MAX: usize = 1 << 20;
+#[cfg(not(target_arch = "wasm32"))] const ARENA_MAX: usize = 1 << 20;
+#[cfg(target_arch = "wasm32")] const ARENA_MAX: usize = 1 << 17;   // 4 MB per core in the browser
 /// Native code cache size; flushed together with the blocks when full.
 const CODE_SIZE: usize = 256 << 20;   // address space; pages are only committed as code is written
 

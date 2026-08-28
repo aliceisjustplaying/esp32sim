@@ -1,5 +1,13 @@
 # Plan: esp32sim in the browser (WebAssembly)
 
+**Status (2026-08-28): built — phases 1–3 and 5 are done, see [wasm.md](wasm.md).** hello_world,
+the Touch-LCD-4B panel with the SID player, and the Atech board all run at real time in a tab
+(~62 Minsn/s from the block interpreter under V8, better than the 47 % estimate below because
+the block interpreter landed after the spike was measured). What took a day rather than the
+estimated 3–5: `esp32s3` compiled for wasm32 unchanged; the only runtime hazards were
+`Instant`/`SystemTime` (a `host` module) and the `WebServer` snapshot for late-joining clients
+(queue mode sends the board announcement itself). Open: phase 4, the network relay.
+
 Today the emulator is a native binary that *serves* a browser UI: `--web PORT` starts a
 dependency-free HTTP/WebSocket server, `web/index.html` draws the framebuffer on a canvas, plays
 audio through WebAudio and sends clicks back. The CPU, peripherals, NAT sockets and file loading

@@ -225,7 +225,7 @@ impl VirtualNet {
     /// SNTP: hand out the host's clock, so firmware waiting for time gets it.
     fn ntp(&mut self, q: &[u8], src: &[u8; 6], sip: &[u8; 4], dip: &[u8; 4], sport: u16) -> Vec<Vec<u8>> {
         if q.len() < 48 { return Vec::new(); }
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+        let now = std::time::Duration::from_millis(crate::host::unix_time_ms());
         let secs = (now.as_secs() + 2_208_988_800) as u32;               // seconds since 1900
         let frac = ((now.subsec_nanos() as u64) << 32 / 1) as u32;
         let mut r = vec![0u8; 48];

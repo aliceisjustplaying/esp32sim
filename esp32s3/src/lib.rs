@@ -1,3 +1,4 @@
+pub mod host;
 pub mod board;
 pub mod bus;
 pub mod elf;

@@ -3,9 +3,14 @@ pub struct Picture { pub w: u32, pub h: u32, pub rgb: Vec<u8> }
 
 pub fn load(path: &str) -> Result<Picture, String> {
     let d = std::fs::read(path).map_err(|e| format!("{}: {}", path, e))?;
-    if d.starts_with(b"P6") { return ppm(&d); }
-    if d.starts_with(b"BM") { return bmp(&d); }
-    Err(format!("{}: unsupported image (use PPM P6 or 24/32-bit BMP; `sips -s format bmp in.png --out out.bmp`)", path))
+    parse(&d).map_err(|e| format!("{}: {}", path, e))
+}
+
+/// Decode an image already in memory (the wasm build gets files from the page).
+pub fn parse(d: &[u8]) -> Result<Picture, String> {
+    if d.starts_with(b"P6") { return ppm(d); }
+    if d.starts_with(b"BM") { return bmp(d); }
+    Err("unsupported image (use PPM P6 or 24/32-bit BMP; `sips -s format bmp in.png --out out.bmp`)".into())
 }
 
 fn ppm(d: &[u8]) -> Result<Picture, String> {

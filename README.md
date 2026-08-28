@@ -23,7 +23,9 @@ esp32sim/
   examples/       hello_world (IDF), waveshare-cam (autopling run script + test photo)
   boards/atech14/ the Atech Pocket Synth: firmware (PlatformIO), hostsim, Wokwi
                   scenarios, regression.wav, script1.txt
-  tools/          PIE table generator (TRM-derived); bench.py: interleaved A/B benchmark of builds
+  tools/          PIE table generator (TRM-derived); bench.py: interleaved A/B benchmark of builds;
+                  wasm-build.sh: the WebAssembly module
+  wasm/           C-ABI crate wrapping Machine for the browser (web/emu.js + web/wasm/worker.js drive it)
 ```
 
 ## Boards
@@ -101,6 +103,17 @@ electricity prices over **HTTPS** and polls a real Home Assistant on the LAN.
 [docs/networking-howto.md](docs/networking-howto.md) is the how-to (flags, debugging, limits);
 [docs/wifi-plan.md](docs/wifi-plan.md) and [docs/networking-plan.md](docs/networking-plan.md)
 describe how the MAC model and the packet path work.
+
+## In the browser (WebAssembly)
+
+```sh
+tools/wasm-build.sh && python3 -m http.server -d web 8790     # then open http://127.0.0.1:8790/?wasm
+```
+
+The same emulator compiled to WebAssembly, running inside the page in a Web Worker: pick a board,
+load the ROM ELF and firmware from disk (or `?wasm&fw=<name>` for a hosted manifest), press Boot.
+hello_world, the Touch-LCD-4B panel with its SID player, and the Atech board run at real time in
+Chrome; there is no NAT (the browser has no sockets) and no JIT. See [docs/wasm.md](docs/wasm.md).
 
 ## Debugging
 
