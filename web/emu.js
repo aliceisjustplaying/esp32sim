@@ -5,7 +5,8 @@
 // may not redistribute (the Espressif mask ROM, third-party firmware).
 (() => {
   const q = new URLSearchParams(location.search);
-  if (!q.has('wasm')) return;
+  // wasm mode: asked for explicitly, or the page is on a static host that cannot be the native emulator
+  if (!q.has('wasm') && !/\.github\.io$/.test(location.hostname)) return;
   const worker = new Worker('wasm/worker.js');
   let onmessage = null, setStatus = () => {}, ready = false, started = false;
   const KINDS = { rom: 0, bootloader: 1, ptable: 2, app: 3, elf: 4, flash: 5, script: 6, picture: 7 };
@@ -43,6 +44,7 @@
     #fwpanel .row{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:4px 0}#fwpanel label{display:inline-flex;gap:6px;align-items:center}
     #fwpanel input[type=file]{max-width:180px}#fwpanel .go{padding:6px 14px;font-weight:600}#fwpanel .note{color:#6b7280}</style>
     <div class="row"><b>WebAssembly build</b><span class="note">everything runs in this tab — nothing is uploaded; firmware is read from your disk</span><span id="pace" class="note"></span></div>
+    <div class="row" id="fw_demos" style="display:none"><span>Demos:</span></div>
     <div class="row">
       <label>board <select id="fw_board"><option>waveshare-lcd4b</option><option>atech14</option><option>waveshare-cam</option><option>none</option></select></label>
       <label>flash MB <input id="fw_flash" type="number" value="16" min="1" max="32" style="width:52px"></label>
@@ -80,6 +82,10 @@
     if (!files.some((x) => x[0] === 'app')) { setStatus('an app.bin is required'); return; }
     boot({ board: $('fw_board').value, flash_mb: +$('fw_flash').value, psram_mb: +$('fw_psram').value, wifi: $('fw_wifi').value.trim(), stubs: $('fw_stubs').value.split(/[ ,]+/).filter(Boolean), appDirect: $('fw_appdirect').checked }, files);
   };
+  fetch('wasm/fw/demos.json').then((r) => r.ok ? r.json() : []).then((demos) => {
+    const row = $('fw_demos'); if (!demos.length) return; row.style.display = '';
+    for (const d of demos) { const a = document.createElement('a'); const u = new URL(location.href); u.searchParams.set('wasm', ''); u.searchParams.set('fw', d.fw); a.href = u.toString(); a.textContent = d.title; a.title = d.note || ''; row.appendChild(a); }
+  }).catch(() => {});
   // ---- manifest: ?wasm&fw=name → wasm/fw/name.json
   const fw = q.get('fw');
   if (fw) {

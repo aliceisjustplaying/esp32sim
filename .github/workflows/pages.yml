@@ -1,0 +1,45 @@
+name: pages
+# Build the WebAssembly emulator and publish web/ to GitHub Pages: the emulator, the public demo
+# firmware under web/wasm/fw/public, and the ESP32-S3 mask ROM ELF (Apache-2.0, espressif/esp-rom-elfs).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the wasm module
+        run: tools/wasm-build.sh
+      - name: Fetch the ESP32-S3 mask ROM ELF
+        run: |
+          set -e
+          url=$(curl -sL https://api.github.com/repos/espressif/esp-rom-elfs/releases/latest | python3 -c 'import json,sys; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".tar.gz")))')
+          curl -sL "$url" -o rom.tar.gz
+          tar -xzf rom.tar.gz --wildcards '*esp32s3_rev0_rom.elf'
+          find . -name esp32s3_rev0_rom.elf -exec cp {} web/wasm/fw/ \;
+          ls -la web/wasm/fw/esp32s3_rev0_rom.elf
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
