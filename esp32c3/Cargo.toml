@@ -1,0 +1,10 @@
+[package]
+name = "esp32c3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ESP32-C3 SoC model: memory map, peripherals, machine"
+
+[dependencies]
+riscv-rv32 = { path = "../riscv-rv32" }
+esp32s3 = { path = "../esp32s3" }

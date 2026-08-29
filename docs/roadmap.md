@@ -17,15 +17,19 @@ Ordered by value; each item links to its plan where one exists.
    bit-identical with `--no-jit`). Left inside the JIT: inline TLB for loads/stores (35 % of
    time), register caching, inlined call/entry/retw; then NEON for the PIE lanes and the wasm
    backend for the browser build. `tools/bench.py` is the yardstick.
-5. **More boards** — Touch-LCD-4B done (`waveshare-lcd4b`: LVGL panel, touch/swipe, SID player audio).
+5. **ESP32-C3 (RISC-V)** — a draft is in ([esp32c3.md](esp32c3.md)): RV32IMC decoder verified
+   against objdump, the C3 memory map and interrupt matrix, and unmodified IDF firmware booting
+   from the mask ROM through the bootloader into FreeRTOS and `app_main`. Left: `--boot app`,
+   more peripherals on demand, and merging the two CLIs behind `--chip`.
+6. **More boards** — Touch-LCD-4B done (`waveshare-lcd4b`: LVGL panel, touch/swipe, SID player audio).
    Next candidates as firmware needs them; `--board waveshare-*` variants share the codec/PSRAM/I2C work.
-6. **Peripherals on demand** — LEDC, PCNT, ADC, SPI2/3 masters, RX sides of I2S/RMT/UART DMA,
+7. **Peripherals on demand** — LEDC, PCNT, ADC, SPI2/3 masters, RX sides of I2S/RMT/UART DMA,
    LCD side of LCD_CAM. Each appears as "unknown register" in the log when a firmware needs it.
-7. **PIE completeness** — FFT, GPIO and s32 instruction groups (decoded, not executed).
-8. **Browser build (WebAssembly)** — done ([wasm.md](wasm.md)): the emulator in the page,
+8. **PIE completeness** — FFT, GPIO and s32 instruction groups (decoded, not executed).
+9. **Browser build (WebAssembly)** — done ([wasm.md](wasm.md)): the emulator in the page,
    hello_world / the panel with SID / Atech at real time in Chrome. Left: a WebSocket relay so
    the guest reaches the real network from a tab, and a wasm backend for the JIT.
-9. **Packaging** — `cargo install esp32sim`, a `--net`/`--board` aware `examples/` runner,
+10. **Packaging** — `cargo install esp32sim`, a `--net`/`--board` aware `examples/` runner,
    release binaries for macOS/Linux.
 
 Not planned: blob-level WiFi/BLE emulation, cache-timing accuracy, Wokwi/cloud integration.

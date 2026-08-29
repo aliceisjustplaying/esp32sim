@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "esp32c3"
+version = "0.1.0"
+dependencies = [
+ "esp32s3",
+ "riscv-rv32",
+]
+
+[[package]]
 name = "esp32s3"
 version = "0.1.0"
 dependencies = [
@@ -18,12 +26,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp32sim-c3"
+version = "0.1.0"
+dependencies = [
+ "esp32c3",
+ "esp32s3",
+ "riscv-rv32",
+]
+
+[[package]]
 name = "esp32sim-wasm"
 version = "0.1.0"
 dependencies = [
  "esp32s3",
  "xtensa-lx7",
 ]
+
+[[package]]
+name = "riscv-rv32"
+version = "0.1.0"
 
 [[package]]
 name = "xtensa-lx7"

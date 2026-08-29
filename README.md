@@ -10,6 +10,9 @@ driven from a timed script. No cloud, no accounts.
 
 ```
 esp32sim/
+  riscv-rv32/     the ESP32-C3's RV32IMC core: decoder (verified 100% against objdump), interpreter
+  esp32c3/        the C3 SoC: memory map, interrupt matrix, peripherals shared with esp32s3
+  cli-c3/         esp32sim-c3 binary
   xtensa-lx7/     the core: decoder (verified 100% against objdump over app+ROM+IDF),
                   interpreter (windowed regs, loops, XEA2 exceptions/interrupts, FPU,
                   MAC16, booleans, PIE SIMD), objdump-compatible disassembler
@@ -115,6 +118,21 @@ load the ROM ELF and firmware from disk (or `?wasm&fw=<name>` for a hosted manif
 hello_world, the Touch-LCD-4B panel with its SID player, and the Atech board run at real time in
 Chrome; there is no NAT (the browser has no sockets) and no JIT. See [docs/wasm.md](docs/wasm.md).
 **Live: https://joakimeriksson.github.io/esp32sim/** — hello_world and the Touch-LCD-4B panel with its SID player, or your own firmware from disk.
+
+## ESP32-C3 (RISC-V)
+
+A second chip lives in the same workspace: `esp32sim-c3` runs unmodified ESP-IDF firmware on an
+emulated RV32IMC core, from the real mask ROM through the real bootloader into FreeRTOS.
+
+```sh
+H=examples/hello_world-c3/build
+./target/release/esp32sim-c3 --boot rom --flash-mb 4 \
+    --bootloader $H/bootloader/bootloader.bin --ptable $H/partition_table/partition-table.bin \
+    --app $H/hello_world.bin --elf $H/hello_world.elf --max-seconds 26
+```
+
+prints the ROM banner, the bootloader log, `Hello world!` and the reboot. Still a draft — see
+[docs/esp32c3.md](docs/esp32c3.md) for what works, what does not, and the gotchas.
 
 ## Debugging
 
