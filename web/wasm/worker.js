@@ -1,6 +1,6 @@
 // esp32sim in a Web Worker: owns the wasm instance, paces it to wall time, and relays the UI
 // protocol (docs/web-ui.md) to the page as postMessage — text as strings, binary as ArrayBuffers.
-const CPU_HZ = 240e6;
+let CPU_HZ = 240e6;   // replaced from the module once an emulator exists: the C3 runs at 160 MHz
 let wasm = null, emu = 0, running = false, t0 = 0, resyncs = 0, lastStat = { wall: 0, insns: 0 };
 const enc = new TextEncoder(), dec = new TextDecoder();
 const mem = () => new Uint8Array(wasm.memory.buffer);
@@ -34,7 +34,7 @@ function loop() {
   const wall = performance.now();
   if (wall - lastStat.wall > 1000) {
     const insns = wasm.esp32sim_insns(emu);
-    postMessage({ pace: { behind: Math.max(0, -aheadMs / 1000), resyncs, mips: (insns - lastStat.insns) / (wall - lastStat.wall) / 1000 } });
+    postMessage({ pace: { behind: Math.max(0, -aheadMs / 1000), resyncs, mips: Math.max(0, (insns - lastStat.insns)) / (wall - lastStat.wall) / 1000 } });
     lastStat = { wall, insns };
   }
   setTimeout(loop, Math.max(0, Math.min(20, aheadMs)));
@@ -46,6 +46,7 @@ onmessage = async (ev) => {
     if (m.op === 'init') { const r = await WebAssembly.instantiate(m.wasm, imports); wasm = r.instance.exports; postMessage({ ready: true }); }
     else if (m.op === 'create') {
       emu = withBytes(enc.encode(m.board), (p, n) => wasm.esp32sim_new(p, n, m.flash_mb | 0, m.psram_mb | 0));
+      if (emu !== 0 && wasm.esp32sim_cpu_hz) CPU_HZ = wasm.esp32sim_cpu_hz(emu);
       postMessage({ created: emu !== 0 });
     }
     else if (m.op === 'load') { const rc = withBytes(new Uint8Array(m.data), (p, n) => m.at !== undefined ? wasm.esp32sim_load_at(emu, m.at >>> 0, p, n) : wasm.esp32sim_load(emu, m.kind, p, n)); postMessage({ loaded: m.at !== undefined ? 'at' + m.at : m.kind, ok: rc === 0 }); }

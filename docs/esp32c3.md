@@ -93,6 +93,14 @@ cd examples/hello_world-c3/build && python -m esptool --port /dev/cu.usbmodem110
 python -m espefuse --port /dev/cu.usbmodem1101 summary          # the revision fields above
 ```
 
+## In the browser
+
+The C3 is in the WebAssembly build too — pick board `esp32c3` on the page, or open it directly:
+
+    https://joakimeriksson.github.io/esp32sim/?fw=c3-hello
+
+Console-only, real time, from the same mask ROM and binaries. See [wasm.md](wasm.md).
+
 ## What is modelled
 
 | | |

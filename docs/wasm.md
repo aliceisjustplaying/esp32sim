@@ -42,6 +42,11 @@ JSON file; real boards have the partition erased and behave as before. Natively:
 
 ## What it is
 
+Both chips are in the one module: `esp32sim_new` takes a board name, and `esp32c3` builds the
+RISC-V machine instead of the Xtensa one. The C3 has no `WebServer` of its own — it is
+console-only — so the wasm layer turns its console into the same `{"t":"serial"}` messages the
+S3 sends, and `esp32sim_cpu_hz` tells the worker which clock to pace against (240 MHz vs 160).
+
 ```
 web/index.html   the UI, unchanged; `link` is either a WebSocket or the worker
 web/emu.js       page side: firmware panel, manifest loading, window.EmuLink
@@ -64,6 +69,7 @@ the tab falls half a second behind. `Date.now()` is passed in for the emulated S
 | IDF hello_world | real time | ROM → bootloader → app, `esp_restart` reboots through the ROM |
 | Waveshare Touch-LCD-4B energy panel + SID player | **real time**, ~62 Minsn/s | LVGL at 60 fps, touch, the tune plays through WebAudio |
 | Atech 14-port synth | real time | ST7735 and WS2812 decoded, buttons/knob, scripted scenario |
+| ESP32-C3 hello_world | real time | the other chip: one RV32IMC core, console only — pick board `esp32c3` |
 
 The interpreter in the browser is the basic-block interpreter — V8 executes the module natively
 but the AArch64 JIT is not available (wasm has no executable memory) — so throughput is about

@@ -31,6 +31,9 @@ pub struct Machine {
     pub console_uart0: Vec<u8>,
     /// 1 = usb, 2 = uart0
     pub console_mask: u8,
+    /// When set, `drain_console` leaves the text in `console` for the caller to take instead of
+    /// printing it — the WebAssembly build has no stdout worth writing to.
+    pub capture_console: bool,
     pub trace: bool,
     pub trace_from: u64,
     pub breakpoints: Vec<u32>,
@@ -49,7 +52,7 @@ impl Machine {
     pub fn new(mac: [u8; 6], flash_size: usize) -> Self {
         Machine {
             cpu: Cpu::new(), bus: SocBus::new(flash_size, mac), symbols: BTreeMap::new(), mac,
-            console: Vec::new(), console_usb: Vec::new(), console_uart0: Vec::new(), console_mask: 3,
+            console: Vec::new(), console_usb: Vec::new(), console_uart0: Vec::new(), console_mask: 3, capture_console: false,
             trace: false, trace_from: 0, breakpoints: Vec::new(), watch: None, max_cycles: u64::MAX,
             exceptions: 0, interrupts: 0, stop_after_exceptions: u64::MAX, reboots: 0, irq_hist: [0; 32],
         }
@@ -250,7 +253,7 @@ impl Machine {
             self.console_uart0.extend_from_slice(&u0);
             if self.console_mask & 2 != 0 { self.console.extend_from_slice(&u0); }
         }
-        if !self.console.is_empty() {
+        if !self.console.is_empty() && !self.capture_console {
             let out = std::mem::take(&mut self.console);
             print!("{}", String::from_utf8_lossy(&out));
             use std::io::Write;

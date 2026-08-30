@@ -67,10 +67,13 @@ impl Cpu {
     }
 
     pub fn reset(&mut self) {
-        let keep = std::mem::take(&mut self.csr_other);
+        // `insn_count` is the emulator's own monotonic counter — it drives the run statistics and
+        // the trace, so a chip reset must not rewind it (a reset that did made the browser UI
+        // report a negative instruction rate). It also feeds `mcycle`, which is a free-running
+        // counter firmware only ever reads as a delta.
+        let keep = self.insn_count;
         *self = Cpu::new();
-        self.csr_other = keep;
-        self.csr_other.clear();
+        self.insn_count = keep;
     }
 
     #[inline(always)]
