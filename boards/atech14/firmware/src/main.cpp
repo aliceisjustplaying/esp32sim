@@ -153,6 +153,71 @@ void drawHeaderUI() {
   st7735_tft_1.setCursor(6, 16);
   st7735_tft_1.print("POCKET SYNTH");
 }
+// ---- SID tune player (lib/crsid: a whole C64 — 6502 CPU, SID, CIA, VIC) ------------------------
+// The synth above drives a SID *chip* model directly. This plays real .sid files, which are 6502
+// machine code that writes the SID registers 50 times a second exactly as on a C64, so the tunes
+// sound as their composers wrote them. Same engine the esp32-screen panel uses; here it feeds the
+// same Speaker the synth does, at the same 44.1 kHz, so no resampling is needed.
+extern "C" {
+#include "libcRSID.h"
+#include "sidtunes.h"
+}
+
+#define TUNE_CHUNK 256                 // frames per pump: 5.8 ms of audio, so buttons stay responsive
+
+static cRSID_C64instance* tuneC64 = nullptr;
+static bool tunePlaying = false;
+static int  tuneIndex = 0, tuneSubtune = 1, tuneSubtunes = 1;
+static char tuneTitle[33] = "", tuneAuthor[33] = "";
+
+static void tuneField(char* dst, const char* src) {
+  memcpy(dst, src, 32);                // PSID header strings are fixed 32-byte fields, often unterminated
+  dst[32] = '\0';
+}
+
+static bool tuneStart(int idx, int subtune) {
+  if (SID_TUNE_COUNT <= 0) return false;
+  // The emulated C64 is ~270 KB — most of this board's free heap, and it has no PSRAM. Hold it
+  // only while a tune plays, so the synth and the WiFi stack get the memory back afterwards.
+  if (!tuneC64) {
+    tuneC64 = cRSID_init(44100, TUNE_CHUNK);
+    if (!tuneC64) { Serial.printf("[sid] not enough memory for the C64 (free heap %u)\n", (unsigned)ESP.getFreeHeap()); return false; }
+    Serial.printf("[sid] C64 ready (free heap %u)\n", (unsigned)ESP.getFreeHeap());
+  }
+  idx = ((idx % SID_TUNE_COUNT) + SID_TUNE_COUNT) % SID_TUNE_COUNT;      // wrap both ways
+  cRSID_SIDheader* h = cRSID_processSIDfile(tuneC64, (unsigned char*)SID_TUNES[idx].data,
+                                            (int)SID_TUNES[idx].len);
+  if (!h) { Serial.printf("[sid] bad SID file: %s\n", SID_TUNES[idx].name); return false; }
+  tuneField(tuneTitle, h->Title);
+  tuneField(tuneAuthor, h->Author);
+  tuneSubtunes = h->SubtuneAmount ? h->SubtuneAmount : 1;
+  if (subtune <= 0) subtune = h->DefaultSubtune ? h->DefaultSubtune : 1;
+  if (subtune > tuneSubtunes) subtune = 1;
+  cRSID_initSIDtune(tuneC64, h, subtune);
+  tuneIndex = idx; tuneSubtune = subtune; tunePlaying = true;
+  needsRedraw = true;
+  Serial.printf("[sid] playing \"%s\" by %s (subtune %d/%d)\n",
+                tuneTitle, tuneAuthor, subtune, tuneSubtunes);
+  return true;
+}
+
+static void tuneStop() {
+  if (!tunePlaying) return;
+  tunePlaying = false;
+  speaker_1.stop();
+  needsRedraw = true;
+  if (tuneC64) { cRSID_free(); tuneC64 = nullptr; }
+  Serial.printf("[sid] stopped (free heap %u)\n", (unsigned)ESP.getFreeHeap());
+}
+
+// One chunk per call. Speaker::writeSamples blocks on the I2S DMA, which is what paces playback.
+static void tunePump() {
+  if (!tuneC64) return;
+  static int16_t buf[TUNE_CHUNK];
+  cRSID_generateBuffer(tuneC64, buf, TUNE_CHUNK);
+  speaker_1.writeSamples(buf, TUNE_CHUNK);
+}
+
 void drawNoteUI() {
   st7735_tft_1.fillRect(0, 22, 160, 40, UI_BG);
   st7735_tft_1.setFont(&FreeSansBold18pt7b);
@@ -171,6 +236,23 @@ void drawFooterUI() {
   st7735_tft_1.print("  V");
   st7735_tft_1.print(lastVoice + 1);
 }
+void drawTuneUI() {
+  st7735_tft_1.fillRect(0, 22, 160, 58, UI_BG);
+  st7735_tft_1.setFont(&FreeSansBold9pt7b);
+  st7735_tft_1.setTextColor(UI_VALUE);
+  st7735_tft_1.setCursor(6, 40);
+  st7735_tft_1.print(tuneTitle[0] ? tuneTitle : SID_TUNES[tuneIndex].name);
+  st7735_tft_1.setFont(&FreeSans9pt7b);
+  st7735_tft_1.setTextColor(UI_LABEL);
+  st7735_tft_1.setCursor(6, 58);
+  st7735_tft_1.print(tuneAuthor);
+  st7735_tft_1.setTextColor(UI_ACCENT);
+  st7735_tft_1.setCursor(6, 76);
+  char pos[16];
+  snprintf(pos, sizeof(pos), "SID %d/%d", tuneIndex + 1, SID_TUNE_COUNT);
+  st7735_tft_1.print(pos);
+}
+
 void handleMessage(const char* action, const char* value) {
   if (strcmp(action, "play_note") == 0) {
     JsonDocument d;
@@ -285,6 +367,18 @@ void handleMessage(const char* action, const char* value) {
     needsRedraw = true;
     return;
   }
+  if (strcmp(action, "play_sid") == 0) {
+    tuneStart(value && *value ? atoi(value) : tuneIndex, 0);
+    return;
+  }
+  if (strcmp(action, "next_sid") == 0) {
+    tuneStart(tuneIndex + 1, 0);
+    return;
+  }
+  if (strcmp(action, "stop_sid") == 0) {
+    tuneStop();
+    return;
+  }
   if (strcmp(action, "stop_all_voices") == 0) {
     for (int v = 0; v < 3; v++) {
       sidVoices[v].gated = false;
@@ -368,6 +462,44 @@ void mainTask(void* parameter) {
         rotary_encoder_1.update();
         button_1.update();
         button_2.update();
+
+        // ---- SID jukebox: hold button 1 for ~0.7 s to start or stop tune playback ----
+        {
+          static uint32_t btn1DownMs = 0;
+          static bool btn1Long = false;
+          if (button_1.isPressed()) {
+            if (!btn1DownMs) btn1DownMs = millis();
+            else if (!btn1Long && millis() - btn1DownMs > 700) {
+              btn1Long = true;
+              if (tunePlaying) tuneStop(); else tuneStart(tuneIndex, 0);
+            }
+          } else { btn1DownMs = 0; btn1Long = false; }
+        }
+
+        // While a tune plays the board is a C64 jukebox, not a synth: the encoder and button 2
+        // pick tunes, the knob press stops. Rendering paces this loop, so nothing else runs here.
+        if (tunePlaying) {
+          int32_t tpos = rotary_encoder_1.getPosition();
+          if (tpos != lastEncoderPos) {
+            int32_t delta = tpos - lastEncoderPos;
+            lastEncoderPos = tpos;
+            tuneStart(tuneIndex + (delta > 0 ? 1 : -1), 0);
+          }
+          if (button_2.wasPressed()) tuneStart(tuneIndex + 1, 0);
+          if (rotary_encoder_1.wasPressed()) tuneStop();
+          button_1.wasPressed(); button_1.wasReleased(); button_2.wasReleased();  // drop synth edges
+          if (needsRedraw && (millis() - lastFrameMs >= 30)) {
+            lastFrameMs = millis();
+            needsRedraw = false;
+            drawTuneUI();
+            st7735_tft_1.display();
+          }
+          // tuneStop() above frees the C64, so re-check before rendering: pumping a freed
+          // instance is a use-after-free (it crashed the board when the knob stopped playback).
+          if (tunePlaying) tunePump();   // blocks on the I2S DMA — that is what paces playback
+          else vTaskDelay(pdMS_TO_TICKS(4));
+          continue;
+        }
 
         int32_t pos = rotary_encoder_1.getPosition();
         if (pos != lastEncoderPos) {
@@ -474,6 +606,8 @@ void setup() {
   // Initialize modules
   speaker_1.begin(44100);
   sidSetup();
+  Serial.printf("[sid] %d tunes embedded, C64 allocated on demand (free heap %u)\n",
+                SID_TUNE_COUNT, (unsigned)ESP.getFreeHeap());
   st7735_tft_1.begin();
   delay(150);  // Allow display to stabilize
   rotary_encoder_1.begin();

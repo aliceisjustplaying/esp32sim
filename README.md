@@ -47,8 +47,9 @@ esp32sim/
   web/            browser UI (board drawing, console, audio, camera) + emu.js/worker.js for wasm
   hw/             JTAG differential-test scripts against a real board, captured C3 console
   examples/       hello_world (IDF, S3 and C3), waveshare-cam (autopling run script + photo)
-  boards/atech14/ the Atech Pocket Synth: firmware (PlatformIO), hostsim, Wokwi scenarios,
-                  regression.wav, script1.txt
+  boards/atech14/ the Atech Pocket Synth: firmware (PlatformIO: SID chip synth + a cRSID
+                  jukebox that plays real .sid tunes), hostsim, Wokwi scenarios, script1.txt and
+                  regression.wav — a fixture of that firmware build's audio, bit-exact per run
   tools/          PIE table generator (TRM-derived); bench.py (interleaved A/B benchmark);
                   wasm-build.sh (the WebAssembly module)
 ```
