@@ -131,8 +131,9 @@ H=examples/hello_world-c3/build
     --app $H/hello_world.bin --elf $H/hello_world.elf --max-seconds 26
 ```
 
-prints the ROM banner, the bootloader log, `Hello world!` and the reboot. Still a draft — see
-[docs/esp32c3.md](docs/esp32c3.md) for what works, what does not, and the gotchas.
+prints the ROM banner, the bootloader log, `Hello world!` and the reboot. Checked against a real
+C3 module: **205 of 208 console lines identical** over three boot cycles. Still a draft — see
+[docs/esp32c3.md](docs/esp32c3.md) for what works, what does not, and the bugs the hardware found.
 
 ## Debugging
 

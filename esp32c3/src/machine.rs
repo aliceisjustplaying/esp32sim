@@ -150,6 +150,15 @@ impl Machine {
         p.log_unknown = old.log_unknown;
         p.usb.connected = old.usb.connected;
         p.rtc.reset_cause = cause;
+        // The flash chip is on the board, not in the chip: its JEDEC capacity survives a reset.
+        // (Real silicon reported 4 MB on every boot; without this the emulator re-detected the
+        // default 8 MB from the second boot onward.)
+        p.spi0.jedec = old.spi0.jedec;
+        p.spi1.jedec = old.spi1.jedec;
+        p.gpio.strap = old.gpio.strap;      // strapping pins are board wiring, not chip state
+        // Publish the cause where the ROM reads it, so the boot banner says RTC_SW_CPU_RST like
+        // real silicon rather than POWERON.
+        p.rtc.ram.write(0x38, cause | (cause << 6));
         self.bus.mmu = [crate::bus::MMU_INVALID; crate::bus::MMU_ENTRIES];
         self.cpu.reset();
         self.reboots += 1;
@@ -185,13 +194,6 @@ impl Machine {
             n += QUANTUM;
             self.bus.cycles += QUANTUM;
             self.bus.periph.tick(QUANTUM);
-            if self.bus.periph.spi_exec {
-                self.bus.periph.spi_exec = false;
-                let mut none = Vec::new();
-                let (f, s1) = (&mut self.bus.flash, &mut self.bus.periph.spi1);
-                s1.execute(f, &mut none);
-                s1.dirty.clear();
-            }
             self.bus.irq_dirty = false;
             self.bus.periph.refresh_lines();
             if self.bus.periph.rtc.sw_reset { self.drain_console(); return Stop::SwReset; }

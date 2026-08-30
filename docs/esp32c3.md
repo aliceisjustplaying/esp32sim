@@ -31,6 +31,68 @@ The mask ROM ELF is picked up from `~/.espressif/tools/esp-rom-elfs/*/esp32c3_re
 `--trace`, `--break`, `--watch`, `--peek`, `--disasm` and `--log-periph` all work and print
 RISC-V mnemonics with symbols.
 
+
+## Verified against real silicon
+
+An ESP32-C3 module (QFN32, rev v0.4, 4 MB embedded XMC flash, MAC `3c:84:27:b6:a7:1c`) was
+flashed with the same three binaries the emulator runs, and 26 s of its console captured
+(`hw/c3-hello-world-real.txt`). Comparing that with the emulator, timestamps normalised:
+
+| | |
+| --- | --- |
+| **205 of 208 lines identical** over three complete boot cycles | |
+| the only difference | the ROM's `Saved PC:0x...` line on a non-power-on reset |
+
+To reproduce, tell the emulator the board's identity and boot conditions:
+
+```sh
+./target/release/esp32sim-c3 --boot rom --flash-mb 4 \
+    --mac 3c:84:27:b6:a7:1c --reset-cause 0x15 --strap 0xd \
+    --bootloader $H/bootloader/bootloader.bin --ptable $H/partition_table/partition-table.bin \
+    --app $H/hello_world.bin --elf $H/hello_world.elf --max-seconds 26
+```
+
+`--mac`, `--reset-cause` and `--strap` exist for exactly this: without them the emulator does a
+cold power-on with its own MAC, which is correct behaviour but not the same boot the board had
+after esptool reset it over USB.
+
+`Saved PC` is printed by the ROM for a non-power-on reset, from a PC stashed in RTC memory by the
+previous reset. The emulator does not stash it, so the line is absent. Everything else — the ROM
+banner, the bootloader's partition table and segment map, the IDF startup log, the heap regions,
+`Minimum free heap size: 331296 bytes` to the byte, the countdown and the reboot — matches.
+
+### Five bugs the hardware found
+
+Each was invisible without a board to compare against; four came from that one 26-second capture.
+
+- **A SPI flash command must execute when it is issued, not at the end of the scheduling
+  quantum.** Firmware kicks a command and reads the result registers a few instructions later,
+  well inside one quantum, so the deferred model handed back zeros. On the power-on path the
+  timing happened to work; a chip-reset boot failed with `E memspi: no response` in
+  `esp_flash` init. (The S3 avoids this by accident: its lazy-tick work made every peripheral
+  access flush pending device work.)
+- **`SpiMem` misroutes a flash command to the S3's octal PSRAM on CS1.** The C3 has no PSRAM;
+  the model now carries `has_psram` and the C3 clears it.
+- **The efuse block revision was v1.0; the silicon reads v1.3.** `BLK_VERSION_MINOR` is BLK1
+  bit 120, which the model never set. The bootloader prints it on every boot.
+- **A chip reset reported POWERON.** `Machine::reboot()` kept the cause in its own field but
+  never wrote `RTC_CNTL_RESET_STATE_REG` (0x38), where the ROM reads it. Real silicon says
+  `rst:0xc (RTC_SW_CPU_RST)` after `esp_restart()`.
+- **Flash capacity and strapping were lost across a reset.** Both are board wiring, not chip
+  state, so `reboot()` now preserves the JEDEC capacity and `gpio.strap`; without that the
+  emulator re-detected its default 8 MB from the second boot onward.
+
+### Reading a board yourself
+
+```sh
+python -m esptool --port /dev/cu.usbmodem1101 chip_id          # identify before touching anything
+python -m esptool --port /dev/cu.usbmodem1101 --baud 921600 \
+    read_flash 0 0x400000 backup.bin                           # back up first
+cd examples/hello_world-c3/build && python -m esptool --port /dev/cu.usbmodem1101 \
+    --baud 921600 --chip esp32c3 write_flash '@flash_args'
+python -m espefuse --port /dev/cu.usbmodem1101 summary          # the revision fields above
+```
+
 ## What is modelled
 
 | | |
@@ -67,6 +129,8 @@ RISCV_DIS_FILES=/tmp/rom.dis:/tmp/app.dis cargo test -p riscv-rv32 --release
   today; a C3 board would need it lifted out.
 - **Peripherals on demand**: I2C, SPI2 master, LEDC, RMT, ADC, TWAI. Each shows up as an unknown
   register with `--log-periph` the moment a firmware wants it.
+- **`Saved PC`** on a non-power-on reset: the ROM reads a PC the previous reset stashed in RTC
+  memory, which the emulator does not write.
 - **Speed work** — the C3 bus does a plain address-range walk per access; it has none of the S3's
   software TLB, block interpreter or JIT. It still runs ~200–300 Minsn/s (well above the C3's
   160 MHz) because the workload is light, but a busy firmware would want the same treatment.

@@ -233,6 +233,22 @@ Things that cost real time to find out, recorded so they do not have to be found
   more than the spike's 47 % of native predicted, because the block interpreter arrived after
   the spike. The JIT does not exist in wasm; a wasm-emitting backend is the next step for speed.
 
+## Hardware differential testing
+- **A device model must complete a command when the guest issues it, not on the next tick.**
+  Firmware routinely writes a command register and reads the result a handful of instructions
+  later; anything deferred to a scheduling-quantum boundary loses that race and returns stale
+  data. Found on the C3, where a SPI flash ID read came back as zeros on one boot path and not
+  the other — the kind of bug that looks like firmware flakiness until you diff against silicon.
+- **What is board wiring must survive a chip reset**: flash JEDEC capacity, strapping pins, the
+  MAC. Re-creating the peripheral set on reboot silently reverted all three to defaults, and the
+  emulator started reporting a different flash size from the second boot onward.
+- **Give the emulator flags to adopt a board's identity** (`--mac`, `--reset-cause`, `--strap`).
+  Without them a comparison drowns in differences that are just "this board was reset over USB
+  and yours was a cold power-on", and the real mismatches hide among them.
+- **Normalise timestamps before diffing.** The emulator does not model flash read latency, so its
+  log timestamps run ~10x faster through boot; every line differs until `s/[0-9]\+/t/` on the
+  `I (nnn)` prefix, after which the comparison is exact and the residue is real.
+
 ## Process
 - Bring-up loop: run → first unknown register / unimplemented instruction (`--log-periph`,
   `Unimplemented(pc, raw)`) → model it → rerun. Keep the objdump test and the hardware

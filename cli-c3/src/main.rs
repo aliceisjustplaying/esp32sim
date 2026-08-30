@@ -10,6 +10,7 @@ fn usage() -> ! {
     eprintln!("                   the ROM mirrors its output to both, so \"both\" prints everything twice)");
     eprintln!("                   [--trace [--trace-from N]] [--break ADDR] [--log-periph] [--peek ADDR[,N]]");
     eprintln!("                   [--disasm ADDR[,N]] [--watch ADDR] [--stop-after-exceptions N] [--no-reboot] [--serial TEXT]");
+    eprintln!("                   [--mac xx:xx:xx:xx:xx:xx] [--reset-cause N] [--strap N]   (match a real board)");
     std::process::exit(2)
 }
 
@@ -22,6 +23,7 @@ fn main() {
     let (mut log_periph, mut peeks, mut disasms) = (false, Vec::new(), Vec::new());
     let (mut stop_exc, mut no_reboot, mut serial) = (u64::MAX, false, None::<String>);
     let mut watch: Option<u32> = None;
+    let (mut mac_arg, mut reset_cause, mut strap) = (None::<String>, None::<u32>, None::<u32>);
     let mut flash_at: Vec<String> = Vec::new();
 
     let mut i = 1;
@@ -53,6 +55,9 @@ fn main() {
             "--disasm" => { let v = next(); disasms.push(pair(&v)); }
             "--stop-after-exceptions" => stop_exc = next().parse().unwrap_or(u64::MAX),
             "--watch" => { let v = next(); watch = Some(num(&v)); }
+            "--mac" => mac_arg = Some(next()),
+            "--reset-cause" => { let v = next(); reset_cause = Some(num(&v)); }
+            "--strap" => { let v = next(); strap = Some(num(&v)); }
             "--no-reboot" => no_reboot = true,
             "--serial" => serial = Some(next()),
             "-h" | "--help" => usage(),
@@ -61,8 +66,14 @@ fn main() {
         i += 1;
     }
 
-    let mut m = Machine::new([0x60, 0x55, 0xf9, 0x00, 0x11, 0x22], flash_mb * 1024 * 1024);
+    let mut mac = [0x60, 0x55, 0xf9, 0x00, 0x11, 0x22];
+    if let Some(t) = &mac_arg {
+        let b: Vec<u8> = t.split(':').filter_map(|x| u8::from_str_radix(x, 16).ok()).collect();
+        if b.len() == 6 { mac.copy_from_slice(&b); } else { eprintln!("--mac wants xx:xx:xx:xx:xx:xx"); std::process::exit(2); }
+    }
+    let mut m = Machine::new(mac, flash_mb * 1024 * 1024);
     m.bus.periph.log_unknown = log_periph;
+    m.bus.periph.spi1.log = std::env::var("ESP_EMU_DEBUG_SPI").is_ok();
     m.trace = trace; m.trace_from = trace_from; m.breakpoints = breaks;
     m.stop_after_exceptions = stop_exc;
     if let Some(a) = watch { m.watch = Some((a, 0)); }
@@ -110,6 +121,10 @@ fn main() {
         m.boot_rom();
         eprintln!("[emu] ROM boot from reset vector {:#010x}", m.cpu.pc);
     }
+    // Match a real board's boot conditions for a differential run: the ROM prints the reset cause
+    // and the strapping-derived boot mode, and takes a different path for a non-power-on reset.
+    if let Some(c) = reset_cause { m.bus.periph.rtc.ram.write(0x38, c | (c << 6)); m.bus.periph.rtc.reset_cause = c; }
+    if let Some(v) = strap { m.bus.periph.gpio.strap = v; }
     if let Some(s) = max_seconds { m.max_cycles = (s * esp32c3::periph::CPU_HZ as f64) as u64; }
     if let Some((a, _)) = m.watch { let v = m.bus.read32(a).unwrap_or(0); m.watch = Some((a, v)); }
     for &(a, n) in &peeks { eprintln!("[peek before run]\n{}", peek(&mut m, a, n)); }

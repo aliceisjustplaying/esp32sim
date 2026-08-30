@@ -1142,6 +1142,10 @@ impl Peripherals {
 
 // ------------------------------------------------------------------ SPI flash controller (SPI_MEM: SPI1 = command engine, SPI0 = cache path)
 pub struct SpiMem {
+    /// Whether a PSRAM device sits on CS1. True for the S3; the C3 has no PSRAM, and without
+    /// this a flash command issued with CS0 disabled is misrouted to the PSRAM branch and
+    /// answered with zeros (found on real C3 silicon: `E memspi: no response`).
+    pub has_psram: bool,
     pub regs: RegRam,
     /// (buffer, offset, len) ranges the last command wrote, for the bus's page versions
     pub dirty: Vec<(u8, usize, usize)>,
@@ -1155,7 +1159,7 @@ pub struct SpiMem {
     pub psram_mr: [u8; 9],
 }
 impl SpiMem {
-    pub fn new(is_spi1: bool) -> Self { SpiMem { regs: RegRam::new(), dirty: Vec::new(), w: [0; 16], pending_cmd: 0, status: 0x200, jedec: [0x20, 0x40, 0x17], is_spi1, log: false , psram_mr: [0x09, 0x0d, 0x8b, 0x00, 0x20, 0, 0, 0, 0x03] } }
+    pub fn new(is_spi1: bool) -> Self { SpiMem { has_psram: true, regs: RegRam::new(), dirty: Vec::new(), w: [0; 16], pending_cmd: 0, status: 0x200, jedec: [0x20, 0x40, 0x17], is_spi1, log: false , psram_mr: [0x09, 0x0d, 0x8b, 0x00, 0x20, 0, 0, 0, 0x03] } }
     pub fn read(&self, off: u32) -> u32 {
         match off {
             0x0 => 0,                                   // CMD: always idle after execution
@@ -1191,7 +1195,7 @@ impl SpiMem {
         let fsize = flash.len();
         let mut rd = |a: u32, n: usize| -> Vec<u8> { (0..n).map(|i| { let x = a as usize + i; if x < fsize { flash[x] } else { 0xff } }).collect() };
         let misc = self.regs.read(0x34);
-        if cmd & (1 << 18) != 0 && misc & 1 != 0 && misc & 2 == 0 {   // USR command with CS0 disabled, CS1 enabled: the octal PSRAM
+        if self.has_psram && cmd & (1 << 18) != 0 && misc & 1 != 0 && misc & 2 == 0 {   // USR command with CS0 disabled, CS1 enabled: the octal PSRAM
             let c16 = user2 & 0xffff;
             let has_miso = user & (1 << 28) != 0; let has_mosi = user & (1 << 27) != 0;
             if self.log { eprintln!("[spi1] psram cmd {:#06x} addr {:#x} miso {} mosi {}", c16, addr, if has_miso { miso_bytes } else { 0 }, if has_mosi { mosi_bytes } else { 0 }); }

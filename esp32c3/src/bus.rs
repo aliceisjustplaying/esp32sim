@@ -100,7 +100,21 @@ impl SocBus {
             _ => { let old = self.periph.read32(a); let sh = (addr & 2) * 8; (old & !(0xffff << sh)) | ((v & 0xffff) << sh) }
         };
         self.periph.write32(a, v);
+        // A SPI flash command must complete before the guest can read its result: firmware kicks
+        // the command and polls/reads the data registers a few instructions later, well inside one
+        // scheduling quantum. Running it at the quantum boundary instead loses the race and the
+        // read returns zeros — which is exactly how `E memspi: no response` showed up on a
+        // non-power-on boot while a power-on boot happened to survive it.
+        if self.periph.spi_exec { self.run_spi(); }
         self.irq_dirty = true;
+    }
+
+    /// Execute a pending SPI1 command against the flash image.
+    fn run_spi(&mut self) {
+        self.periph.spi_exec = false;
+        let mut no_psram = Vec::new();
+        self.periph.spi1.execute(&mut self.flash, &mut no_psram);
+        self.periph.spi1.dirty.clear();
     }
 
     /// Write straight into flash (image loaders, not the guest).
@@ -123,12 +137,7 @@ impl SocBus {
 
     /// Run the SPI1 controller if the guest just kicked it, then advance device time.
     fn devices(&mut self, cycles: u32) {
-        if self.periph.spi_exec {
-            self.periph.spi_exec = false;
-            let mut nopsram = Vec::new();
-            self.periph.spi1.execute(&mut self.flash, &mut nopsram);
-            self.periph.spi1.dirty.clear();
-        }
+        if self.periph.spi_exec { self.run_spi(); }
         self.periph.tick(cycles as u64);
     }
 }

@@ -148,12 +148,16 @@ impl Extmem {
 /// 183 (minor high) and 184 (major), and the bootloader refuses to start an app whose
 /// `min_chip_rev` is above what it finds — so getting these wrong stops the boot with
 /// "chip revision check failed".
-pub fn efuse_c3(mac: [u8; 6], rev_major: u32, rev_minor: u32) -> Efuse {
+/// Values verified against real silicon (a C3 module, MAC 3c:84:27:b6:a7:1c, 2026-08-29):
+/// wafer v0.4, package 0, block revision v1.3. The bootloader prints both and refuses to start
+/// an app whose `min_chip_rev` is above the wafer version.
+pub fn efuse_c3(mac: [u8; 6], rev_major: u32, rev_minor: u32, blk_minor: u32) -> Efuse {
     let mut e = Efuse::new(mac);
     e.write(0x48, (mac[0] as u32) << 8 | mac[1] as u32);       // BLK1 word 1: MAC high, nothing else
-    e.write(0x50, (rev_minor & 7) << 18);                      // WAFER_VERSION_MINOR_LO, PKG_VERSION 0
+    // BLK1 word 3 holds WAFER_VERSION_MINOR_LO (bit 114), PKG_VERSION (117) and BLK_VERSION_MINOR (120)
+    e.write(0x50, (rev_minor & 7) << 18 | (blk_minor & 7) << 24);
     e.write(0x58, ((rev_minor >> 3) & 1) << 23 | (rev_major & 3) << 24);
-    e
+    e                                                          // BLK_VERSION_MAJOR = 1 comes from Efuse::new (0x6c)
 }
 
 pub struct Peripherals {
@@ -195,8 +199,10 @@ impl Peripherals {
         Peripherals {
             uart: [Uart::new(), Uart::new()], usb: UsbSerialJtag::new(), systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], gpio: Gpio::new(), rtc: RtcCntl::new(),
-            efuse: efuse_c3(mac, 0, 4), system: SystemRegs::new(), extmem: Extmem::new(), intc: Intc::new(),
-            spi0: SpiMem::new(false), spi1: SpiMem::new(true), gdma: Gdma::new(),
+            efuse: efuse_c3(mac, 0, 4, 3), system: SystemRegs::new(), extmem: Extmem::new(), intc: Intc::new(),
+            spi0: { let mut s = SpiMem::new(false); s.has_psram = false; s },
+            spi1: { let mut s = SpiMem::new(true); s.has_psram = false; s },   // the C3 has no PSRAM
+            gdma: Gdma::new(),
             sha: Sha::new(), aes: Aes::new(), rsa: Rsa::new(),
             generic: HashMap::new(), log_unknown: false, seen: Default::default(), cur_pc: 0,
             spi_exec: false, rng: 0x2545_f491, sw_int: 0, cycle_total: 0, st_done: 0, apb_done: 0, rtc_done: 0, last_status: [0; 2],
