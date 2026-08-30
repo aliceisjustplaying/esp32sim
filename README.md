@@ -1,37 +1,59 @@
-# esp32sim — an ESP32‑S3 (Xtensa LX7) emulator in Rust
+# esp32sim — an ESP32 emulator in Rust: **Xtensa (S3) and RISC-V (C3)**
 
-Instruction‑level emulation of the ESP32‑S3 that boots the **real mask ROM**, the real
-2nd‑stage bootloader and an unmodified application image, dual‑core, with enough of the
-SoC and boards modelled to run real firmware end to end — the Atech "Pocket Synth", stock
-ESP-IDF examples, the Waveshare ESP32-S3-CAM autopling detector:
-console over USB‑Serial/JTAG, the ST7735 display decoded from bit‑banged SPI, the
-WS2812 ring decoded from RMT, audio captured from I2S/GDMA, buttons/encoder/serial
-driven from a timed script. No cloud, no accounts.
+Instruction-level emulation of two ESP32 SoCs, across **both of Espressif's CPU architectures**.
+Each boots the **real mask ROM**, the real 2nd-stage bootloader and an unmodified application
+image — no patched firmware, no stubs in the way — with enough of the SoC modelled to run real
+projects end to end. No cloud, no accounts. MIT.
+
+| | **ESP32-S3** | **ESP32-C3** |
+| --- | --- | --- |
+| CPU | 2 × Xtensa LX7 @ 240 MHz | 1 × RISC-V RV32IMC @ 160 MHz |
+| Command | `esp32sim` | `esp32sim-c3` |
+| Core crate | `xtensa-lx7` | `riscv-rv32` |
+| Decoder vs `objdump` | 977 k instructions, 0 mismatches | 161 k instructions, 0 mismatches |
+| Boots | ROM → bootloader → FreeRTOS → app | ROM → bootloader → FreeRTOS → app |
+| Boards / displays | ST7735, ST7701S 480×480 + touch, WS2812, camera, audio | none — console only |
+| WiFi | virtual AP, WPA2, DHCP/DNS/NTP, NAT to the real network, HTTPS | not modelled |
+| Speed | block interpreter + **AArch64 JIT**, ~150–240 Minsn/s | plain interpreter (no block cache or JIT yet) — still well above real time on hello_world |
+| In the browser | yes (WebAssembly) | yes (WebAssembly) |
+| Checked against silicon | JTAG lock-step, 8000 steps, 0 PC divergences | console diff, 205/208 lines identical |
+| Status | mature | draft — see [docs/esp32c3.md](docs/esp32c3.md) |
+
+Most of the SoC is shared: the C3 reuses the S3's UART, USB-Serial/JTAG, systimer, timer groups,
+GPIO, SPI flash controller, GDMA and SHA/AES/RSA models unchanged, and adds its own memory map,
+cache controller and interrupt matrix. Only the CPU crates are genuinely separate.
+
+**Try it in a browser, no install:** <https://joakimeriksson.github.io/esp32sim/> — the
+Touch-LCD-4B panel with its SID player, and the C3 booting hello_world.
 
 ```
 esp32sim/
-  riscv-rv32/     the ESP32-C3's RV32IMC core: decoder (verified 100% against objdump), interpreter
-  esp32c3/        the C3 SoC: memory map, interrupt matrix, peripherals shared with esp32s3
-  cli-c3/         esp32sim-c3 binary
-  xtensa-lx7/     the core: decoder (verified 100% against objdump over app+ROM+IDF),
-                  interpreter (windowed regs, loops, XEA2 exceptions/interrupts, FPU,
-                  MAC16, booleans, PIE SIMD), objdump-compatible disassembler
-  esp32s3/        SoC + boards: memory map, cache MMU, SPI flash/PSRAM, SHA, RNG,
+  ── ESP32-S3 (Xtensa LX7, dual core) ──
+  xtensa-lx7/     decoder (verified 100% against objdump over app+ROM+IDF), interpreter
+                  (windowed regs, loops, XEA2 exceptions/interrupts, FPU, MAC16, booleans,
+                  PIE SIMD), basic-block interpreter, AArch64 JIT, objdump-compatible disassembler
+  esp32s3/        SoC + boards: memory map, cache MMU, SPI flash/PSRAM, SHA/AES/RSA, RNG,
                   systimer, timer groups, interrupt matrix (per core), GPIO, USB-CDC,
-                  UARTs, I2C, GDMA + I2S/LCD_CAM, RMT TX, regi2c, RTC WDT, dual core;
-                  board.rs: atech14 / waveshare-cam / none; ELF/app-image loaders
+                  UARTs, I2C, GDMA + I2S/LCD_CAM, RMT TX, regi2c, RTC WDT, WiFi MAC + virtual
+                  AP + NAT; board.rs: atech14 / waveshare-cam / waveshare-lcd4b / none
   cli/            the `esp32sim` command line
-  web/            browser UI (board drawing, console, audio, camera)
-  hw/             JTAG differential-test scripts against a real board, wsdrive.py
-  examples/       hello_world (IDF), waveshare-cam (autopling run script + test photo)
-  boards/atech14/ the Atech Pocket Synth: firmware (PlatformIO), hostsim, Wokwi
-                  scenarios, regression.wav, script1.txt
-  tools/          PIE table generator (TRM-derived); bench.py: interleaved A/B benchmark of builds;
-                  wasm-build.sh: the WebAssembly module
-  wasm/           C-ABI crate wrapping Machine for the browser (web/emu.js + web/wasm/worker.js drive it)
+  ── ESP32-C3 (RISC-V RV32IMC, single core) ──
+  riscv-rv32/     RV32IMC decoder (verified 100% against objdump), interpreter, disassembler
+  esp32c3/        the C3 SoC: memory map, interrupt matrix, cache controller, RNG;
+                  peripheral models shared with esp32s3 where the IP is identical
+  cli-c3/         the `esp32sim-c3` command line
+  ── shared ──
+  wasm/           C-ABI crate wrapping either Machine for the browser (both chips, one module)
+  web/            browser UI (board drawing, console, audio, camera) + emu.js/worker.js for wasm
+  hw/             JTAG differential-test scripts against a real board, captured C3 console
+  examples/       hello_world (IDF, S3 and C3), waveshare-cam (autopling run script + photo)
+  boards/atech14/ the Atech Pocket Synth: firmware (PlatformIO), hostsim, Wokwi scenarios,
+                  regression.wav, script1.txt
+  tools/          PIE table generator (TRM-derived); bench.py (interleaved A/B benchmark);
+                  wasm-build.sh (the WebAssembly module)
 ```
 
-## Boards
+## Boards (ESP32-S3)
 
 The SoC model emits pin-level events (GPIO edges, RMT symbol streams, I2S samples); a
 `BoardModel` (`esp32s3/src/board.rs`) interprets them. `--board atech14` (default) is the Atech
@@ -46,7 +68,7 @@ from `--cam-image` or the browser (picture upload / webcam) → esp‑dl pedestr
 emulated PIE SIMD unit → pling on the ES8311. See `examples/waveshare-cam/`. Adding a board =
 implementing the trait (`gpio_changes`, `rmt_frame`, `i2c_devices`, `camera_frame`, …).
 
-## Run
+## Run — ESP32-S3
 
 ```sh
 cargo build --release
@@ -76,6 +98,26 @@ then reboots through the RTC watchdog exactly as silicon does (`rst:0xc (RTC_SW_
 ~30× faster than real time. Chip resets (software, RTC watchdog) restart the machine from the
 ROM with the right reset cause; `--no-reboot` stops at the first reset instead.
 
+## Run — ESP32-C3
+
+`esp32sim-c3` runs unmodified ESP-IDF firmware on the emulated RISC-V core, from the real mask
+ROM through the real bootloader into FreeRTOS. Same flags as `esp32sim` (`--trace`, `--break`,
+`--watch`, `--peek`, `--disasm`, `--log-periph`), printing RISC-V mnemonics with symbols.
+
+```sh
+H=examples/hello_world-c3/build
+./target/release/esp32sim-c3 --boot rom --flash-mb 4 \
+    --bootloader $H/bootloader/bootloader.bin --ptable $H/partition_table/partition-table.bin \
+    --app $H/hello_world.bin --elf $H/hello_world.elf --max-seconds 26
+```
+
+prints the ROM banner, the bootloader log, `Hello world!` and the reboot, three times over.
+Checked line-for-line against a physical C3 module: **205 of 208 console lines identical** over
+three boot cycles — the difference is the ROM's `Saved PC:` line. `--mac`, `--reset-cause` and
+`--strap` let a run adopt a board's identity so the comparison is meaningful. Still a draft: no
+WiFi, no boards, `--boot app` unsupported. See [docs/esp32c3.md](docs/esp32c3.md) for what works,
+what does not, and the five emulator bugs the hardware found.
+
 ## Scripts (host actions at emulated time)
 
 ```
@@ -86,7 +128,7 @@ ROM with the right reset cause; `--no-reboot` stops at the first reset instead.
 5.0  stop
 ```
 
-## WiFi
+## WiFi (ESP32-S3)
 
 `--wifi ssid=NAME[,psk=PASS,chan=N,bssid=..]` attaches a virtual access point that the **unmodified**
 Espressif WiFi blob associates with — scan, authentication, association and, with a passphrase, the
@@ -118,23 +160,9 @@ load the ROM ELF and firmware from disk (or `?wasm&fw=<name>` for a hosted manif
 hello_world, the Touch-LCD-4B panel with its SID player, the Atech board and the ESP32-C3 all run
 at real time in Chrome; there is no NAT (the browser has no sockets) and no JIT. See
 [docs/wasm.md](docs/wasm.md).
-**Live: https://joakimeriksson.github.io/esp32sim/** — hello_world and the Touch-LCD-4B panel with its SID player, or your own firmware from disk.
-
-## ESP32-C3 (RISC-V)
-
-A second chip lives in the same workspace: `esp32sim-c3` runs unmodified ESP-IDF firmware on an
-emulated RV32IMC core, from the real mask ROM through the real bootloader into FreeRTOS.
-
-```sh
-H=examples/hello_world-c3/build
-./target/release/esp32sim-c3 --boot rom --flash-mb 4 \
-    --bootloader $H/bootloader/bootloader.bin --ptable $H/partition_table/partition-table.bin \
-    --app $H/hello_world.bin --elf $H/hello_world.elf --max-seconds 26
-```
-
-prints the ROM banner, the bootloader log, `Hello world!` and the reboot. Checked against a real
-C3 module: **205 of 208 console lines identical** over three boot cycles. Still a draft — see
-[docs/esp32c3.md](docs/esp32c3.md) for what works, what does not, and the bugs the hardware found.
+**Live: https://joakimeriksson.github.io/esp32sim/** — the Touch-LCD-4B panel with its SID
+player, the Atech board, and the ESP32-C3 booting hello_world; or load your own firmware for
+either chip from disk (pick the board, or `esp32c3`).
 
 ## Debugging
 
@@ -155,11 +183,19 @@ Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`, `ESP_EMU_DEBUG_W
 
 ## Provenance
 
-Written from the ESP‑IDF register headers, the Xtensa core config shipped with ESP‑IDF and
-observed firmware behaviour. QEMU was consulted only to confirm instruction semantics
+Written from the ESP‑IDF register headers, the Xtensa core config shipped with ESP‑IDF, the
+RISC-V specification and the C3 technical reference manual, and observed firmware behaviour. QEMU was consulted only to confirm instruction semantics
 (no code copied). MIT.
 
 ## Differential testing against real silicon (`hw/`)
+
+Both chips are checked against hardware, by different methods: the S3 in **JTAG lock-step**
+(below), the C3 by **diffing a captured console** against the emulator running the same binaries
+(`hw/c3-hello-world-real.txt`, 205/208 lines identical — see [docs/esp32c3.md](docs/esp32c3.md)).
+That comparison found five emulator bugs, including a device-command race that a
+board-free test would never have caught.
+
+### ESP32-S3, JTAG lock-step
 
 `DIFF_DIR=hw/<board> FLASH_MB=8 hw/difftest.sh 3000` — the scripts read efuses/strap from the
 attached chip over JTAG, then step it and the emulator in lock-step on the same flash dump
@@ -185,7 +221,7 @@ Result so far: the ROM reset path (8000 steps) and 3000+ steps of the IDF 5.5 bo
 run with zero PC divergence; remaining register differences are RTC‑domain values that
 depend on the previous boot.
 
-## Live board UI
+## Live board UI (ESP32-S3)
 
 ```sh
 ./target/release/esp32sim --boot rom --bootloader … --ptable … --app … --web 8766
@@ -197,10 +233,13 @@ depend on the previous boot.
 copy), USB‑CDC and UART0 consoles, an action box for the SDK JSON protocol, and audio through
 WebAudio. Inputs: click the buttons, wheel/drag/←→ on the knob, click the cap to push it.
 
-## Performance / real time
+## Performance / real time (ESP32-S3)
 
-Idle cores (`waiti`) are skipped, time advances in 256‑cycle chunks while both cores sleep,
-decoded instructions are cached, and interrupt lines are recomputed only when a source changes.
+Blocks of instructions are decoded once and executed from a cache, then compiled to native
+AArch64 code (`--no-jit` falls back to the interpreter and must give identical results); idle
+cores (`waiti`) are skipped, device time is delivered lazily against computed timer deadlines,
+and interrupt lines are recomputed only when a source changes. See
+[docs/speed-plan.md](docs/speed-plan.md) for the measurements behind each step.
 The Pocket Synth firmware runs at real time with margin while idle or playing notes; the one
 place it cannot keep up is a full display redraw, where core 1 runs 100 % busy bit‑banging SPI
 (4.8 M instructions per 20 ms — 240 Minsn/s needed, ~70 Minsn/s achieved on an M‑series

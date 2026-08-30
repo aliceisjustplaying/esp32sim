@@ -1,5 +1,8 @@
 # esp32sim documentation
 
+Two chips, two CPU architectures: the ESP32-S3 (Xtensa LX7) and the ESP32-C3 (RISC-V).
+Most documents describe the S3; [esp32c3.md](esp32c3.md) covers the RISC-V side.
+
 | Document | What it covers |
 | --- | --- |
 | [architecture.md](architecture.md) | How the emulator is built: crates, CPU core, SoC bus, scheduling, boards, UI |

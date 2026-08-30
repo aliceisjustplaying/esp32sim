@@ -1,5 +1,11 @@
 # Architecture
 
+esp32sim emulates two ESP32 SoCs across both of Espressif's CPU architectures: the **ESP32-S3**
+(two Xtensa LX7 cores) and the **ESP32-C3** (one RISC-V RV32IMC core, see
+[esp32c3.md](esp32c3.md)). They share the SoC peripheral models wherever the IP is identical, and
+differ in their CPU crate, memory map and interrupt controller. This document describes the S3,
+which is the more complete of the two; the C3 follows the same shape.
+
 esp32sim is an instruction-level emulator of the ESP32-S3: it executes the real mask ROM, the
 real second-stage bootloader and an unmodified application image on two emulated Xtensa LX7
 cores, with the SoC peripherals modelled at the register level and the board (what hangs off
