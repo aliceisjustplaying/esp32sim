@@ -21,7 +21,8 @@ separate seams in our esp32sim fork:
 
 1. A versioned Rust backend adapter is the only machine-facing product surface.
    It owns virtual time, bounded typed events, quotas, artifacts, primary guest
-   output validation, capabilities, browser marshalling, and stable errors.
+   output validation, adopted chip identity, explicit boot modes, cumulative
+   ledger chaining, capabilities, browser marshalling, and stable errors.
 2. A measured interpreter path in the CPU backend owns instruction and memory
    observation. It prices an instruction before its next architectural
    boundary, advances CCOUNT and device time from the same cycle ledger, and
@@ -31,10 +32,11 @@ Measured execution cannot be implemented as a `Bus` wrapper or as a price pass
 over a completed trace. The current JIT bypasses `Bus` for fast memory, and the
 current scheduler advances device time after execution quanta. The measured
 path must therefore be a separate interpreter backend selected outside the
-existing fast inner loops. Fast mode remains unchanged. Puck is a donor and
-evidence repository for UI, recorder and replay, differential harness, timing
-model, receipts, and reusable browser pieces. It is not the cycle-accurate
-product or the home of a second execution engine.
+existing fast inner loops. Fast mode remains unchanged. The esp32sim fork owns
+the web UI shell. Puck is the donor, evidence, differential, and decision
+repository for UI, recorder and replay, differential harness, timing model,
+receipts, and reusable browser pieces. It is not the cycle-accurate product or
+the home of a second execution engine.
 
 ## Code inspection receipt
 
@@ -49,6 +51,8 @@ product or the home of a second execution engine.
 | `xtensa-lx7/src/bus.rs:33-63` | `Bus` exposes memory methods, fetch, page versions, `note_pc`, block breaking, fast memory, and tick. It has no complete observation contract. | The measured CPU backend emits normalized instruction, fetch, data, fault, trap, and invalidation observations. The bus supplies resolution facts but is not the authority for completeness. |
 | `wasm/src/lib.rs:176-204` | `esp32sim_run(cycles, unix_ms)` sets `max_cycles` and then calls the instruction-budgeted machine loop. Host Unix time is accepted directly. | The fork-owned browser adapter accepts an absolute virtual deadline and an explicit deterministic input transcript. It does not accept host time as simulated time. |
 | `cli/src/main.rs:81-102,116` | Networking is created only when `--wifi` is supplied. `--no-jit` disables both native block caches. | The spike configuration requires interpreter execution and `NetworkPolicy::None`; incompatible configuration is rejected during `create`. |
+| `cli/src/main.rs:140-179` and `esp32s3/src/periph.rs:798-823,1010-1028` | The CLI overlays text-parsed efuse and reset-register dumps, then assigns strap and reset-cause values. `Machine::new` otherwise synthesizes MAC and revision defaults. | The adapter requires hash-pinned canonical raw efuse and reset-register artifacts plus the exact strap word. It replaces efuse state, validates every reset-state record, and reports one identity-set hash. |
+| `cli/src/main.rs:120-139` and `esp32s3/src/machine.rs:85-173` | ROM boot loads an ELF and starts at reset, while app boot installs synthetic second-stage state and jumps through `boot_app`. Individually supplied bootloader, partition, and app files are copied into flash. | Product boot requires the exact real mask-ROM ELF and one exact complete flash image. Direct application is a separately advertised diagnostic capability and cannot satisfy a product-boot claim. |
 
 The current fast implementation also establishes useful mechanisms that the
 measured path can reuse without exposing them through the adapter: decoded
@@ -82,7 +86,8 @@ The bounded direct-app run executed 41,775 core-0 instructions and reported
 `cli/src/main.rs:81-102` created neither a virtual AP nor a network backend.
 The guest reached its existing software-reset stop. This receipt proves only
 that the spike used the required interpreter and networking-off configuration.
-It is not a timing or firmware-correctness claim.
+It also confirms only the HLE direct-application path. It is not a real-ROM
+product-boot, timing, identity, or firmware-correctness claim.
 
 `cargo test --workspace` also exited zero under Rust and Cargo 1.98.0. Existing
 warnings are unchanged from the pinned base.
@@ -97,7 +102,7 @@ warnings are unchanged from the pinned base.
 | `esp32s3` measured scheduler module | Virtual-cycle advancement, CPU selection, device deadlines, interrupt sampling | `xtensa-lx7` measured CPU interface, SoC devices, `timing-model` |
 | `xtensa-lx7` measured interpreter module | Complete CPU observations, instruction pricing seam, pending instruction state, CCOUNT batching | CPU decode and interpreter internals, a timing-source interface supplied by the SoC |
 | Existing fast machine and JIT | Upstream fast behavior | Existing internals only |
-| Thin browser shell | UI and transport over the versioned Wasm interface; selected Puck browser pieces may be ported with provenance | No Rust machine internals and no execution engine |
+| Fork-owned thin web UI shell | UI and transport over the versioned Wasm interface; selected Puck browser pieces may be ported with provenance | No Rust machine internals and no execution engine |
 
 The dependency rule is mechanical: browser TypeScript imports only generated
 wire types and the versioned Wasm interface. Only the fork's `browser-backend`
@@ -117,26 +122,39 @@ One measured instruction is one architectural transaction:
    the blocking attempt and stop before the instruction. CPU, bus, timing,
    device, CCOUNT, and virtual-time state do not change.
 3. Persist a `PendingInstruction` containing the decoded operation, start and
-   completion cycles, staged timing mutations, and receipt references. Fetch is
-   observed at its priced phase. Version 1 applies data accesses and CPU
-   architectural effects at completion.
+   completion cycles, access dependencies, staged timing mutations, and receipt
+   references. Fetch is observed at its priced phase. Version 1 captures
+   effective address and CPU operands at start, but performs no data access or
+   preview then.
 4. Advance toward completion in scheduler segments. Each segment advances
    virtual time and CCOUNT and delivers any CCOMPARE match, device deadline, and
    injected event at its exact cycle. A run deadline or cycle budget may leave
    the instruction pending without an architectural commit.
-5. At completion, process reset, device, and input events before the CPU
-   boundary. Reset discards the pending instruction. Otherwise commit its data
-   access, architectural effects, timing state, and ledger entries atomically,
-   then increment the completed-instruction count once.
+5. At completion, process reset, device and DMA, and input events before the CPU
+   boundary. Reset discards the pending instruction. Otherwise perform the data
+   access exactly once against the resulting state, then commit architectural
+   effects, timing state, and ledger entries atomically and increment the
+   completed-instruction count once.
 6. Consider an asserted interrupt for acceptance only after the completing CPU
    boundary and before the next instruction starts.
 
 The persistent transaction keeps timing-driven execution from running ahead and
 pricing a finished trace while preserving state across arbitrary `run_until`
-partitions. A multi-access instruction is supported only when the planner can
-resolve every possible access without a guest-visible side effect. For example,
-an atomic RAM operation may use a read-only preview, while the same shape
-against side-effecting MMIO blocks before execution.
+partitions. The exact data-access phase is
+`CompletionAfterSameCycleExternalEvents`: a load observes an earlier or
+same-cycle DMA write, a store becomes visible after those external events, and
+an atomic access is indivisible at the CPU boundary. No load value, fault, MMIO
+return, match field, or side effect may be cached from preflight.
+
+The plan declares guest-range, MMU, cache, bus-route, device-state, fault,
+receipt-match, value, and side-effect dependencies. Device, DMA, and input
+events declare impacts in the same vocabulary. If the backend cannot defer the
+real access to completion, or an intervening impact can alter timing without a
+receipt-backed invariant resolver, the instruction blocks before starting.
+Injection into an existing pending interval is rejected when its impact is
+unknown or incompatible. A previously unknowable conflicting device impact
+blocks at its exact event prefix, leaves the instruction terminally pending,
+and requires reset or a stronger reviewed model before progress.
 
 The first measured implementation supports only instruction shapes it can
 stage completely. Any fallback instruction whose internal memory behavior is
@@ -186,8 +204,8 @@ a write that arms a deadline is then visible when the scheduler recomputes the
 minimum. The code and bounded detail for `Unknown` are stable test values, and
 the string is never used for control flow. Run partitioning must be inert: one
 `run_until(1000)` call and ten calls ending at 100, 200, through 1000 produce
-the same state, events, and ledger hash, even when a deadline lies inside a
-priced instruction.
+the same state, events, and cumulative ledger `chain_after` at every common
+entry sequence, even when a deadline lies inside a priced instruction.
 
 DMA, LCD, audio, USB, WiFi, and board devices currently rely in part on the
 coarse defer bound. They remain unsupported in a cycle claim until their active
@@ -221,6 +239,23 @@ Idle advancement uses the same virtual-cycle delta for the running core's
 CCOUNT. Measured dual-core scheduling remains capability-disabled in lane B;
 lane C must define how both core-local counters advance under its accepted
 interleave and contention policy.
+
+## Cumulative ledger chain
+
+`LedgerDelta.entries` contains only entries emitted by one `run_until` call, so
+its `delta_entries_hash` is transport integrity and may change with run slicing.
+The run identity is a separate cumulative chain. Its epoch seed hashes ledger
+schema, epoch, artifact set, adopted identity set, boot set, timing manifest,
+and receipt set. Each globally sequenced canonical entry extends the prior hash
+with a domain tag and length-prefixed entry bytes. Slice start, end, and grouping
+are excluded. Deltas return `chain_before`, `chain_after`, and cumulative entry
+count. Empty deltas leave the chain unchanged.
+
+A blocked ledger hashes the canonical `TimingBlock` with the known-prefix chain
+as `ledger_state_hash` but does not claim a complete total. Therefore arbitrary
+run partitions can have different delta hashes while producing the same ordered
+entry stream and cumulative hash at every shared sequence. The decision draft
+defines the exact domain strings and byte ordering.
 
 ## CPU-backend observation contract
 
@@ -258,22 +293,30 @@ The exact proposed adapter is in the unaccepted decision draft. Its key
 semantics are:
 
 - `create` accepts validated deterministic config. The spike accepts measured
-  mode, interpreter engine, and `NetworkPolicy::None` only.
+  mode, interpreter engine, and `NetworkPolicy::None` only. It also names one
+  hash-pinned adopted efuse image, strap word, reset-register state, and boot
+  mode.
 - `load` validates an artifact manifest and all declared and aggregate quotas
   before allocation, then streams bounded chunks and verifies actual size,
-  explicit EOF, and SHA-256 before atomic commit.
-- `reset` names power-on, software, watchdog, or external reset and starts a new
-  epoch. Partial snapshot support is reported absent.
+  explicit EOF, and SHA-256 before atomic commit. Product ROM-flash boot
+  requires the real mask-ROM ELF and exact complete flash image. HLE direct-app
+  boot is a distinct non-product capability.
+- the first `reset` must be power-on and applies the verified raw identity and
+  selected boot. Later software, watchdog, external, or power-on reset starts a
+  new epoch under the specified persistence rules. Partial snapshot support is
+  reported absent.
 - `run_until` accepts an absolute virtual deadline and independent cycle,
   instruction, wall-cancellation, output, and ledger budgets. Cycle limits may
   pause a persistent instruction. Instruction limits withhold only the CPU
   commit and never partially commit architecture. The wall budget never changes
   simulated time.
-- `inject` accepts a timestamped owned event no earlier than `virtual_now`.
+- `inject` accepts a timestamped owned event no earlier than `virtual_now` and
+  rejects an unknown or conflicting impact inside a pending instruction.
 - `drain_events` returns owned, typed, bounded events with no guest pointers.
 - `inspect` requires an explicit debug capability and a maximum byte count.
 - `capabilities` reports adapter and event versions, backend commit, engine,
-  networking, snapshot, board, measured-dual-core, receipt-manifest, and JIT
+  networking, snapshot, board, ROM-flash and direct-app boot support, active
+  identity and boot hashes, measured-dual-core, receipt manifest, and JIT
   observation-proof support.
 - `close` is deterministic and leaves no worker, socket, timer, or executable
   mapping.
@@ -284,6 +327,15 @@ coalesce silently. The Rust adapter checks declared sizes, guest ranges, queue
 capacity, and exact canonical encoded length before allocating owned payload
 bytes or constructing `BackendEvent`. Lane H reviews this primary seam. Browser
 TypeScript only rechecks the already-owned bounded event.
+
+The efuse image is exactly 128 little-endian words replacing addresses
+`0x60007000` through `0x600071fc`. The reset-state artifact is a canonical,
+sorted, duplicate-free list of address and value pairs, and every pair must be
+accepted by `Peripherals::init_regs`; none is ignored. The adapter verifies the
+base MAC decoded from raw efuses, pins the lane A/E adoption receipt, and hashes
+revision metadata, MAC, strap, raw efuse, reset state, and receipt into one
+identity-set hash. This complete tuple is the A-01/E identity handoff; an efuse
+digest alone is not sufficient.
 
 ## Cost and receipt boundary
 
@@ -345,10 +397,19 @@ The fake backend and esp32sim backend must pass the same adapter cases:
 - artifact count, per-kind size, aggregate size, hash, early EOF, late EOF,
   oversized chunk, non-sequential chunk, and Wasm pointer-overflow rejection,
   with an allocation spy proving rejection precedes allocation;
+- exact 512-byte efuse replacement, decoded-MAC mismatch, strap application,
+  reset-register ordering, duplicate, unaligned, disallowed-address, artifact
+  hash, and identity-set hash cases;
+- ROM-flash boot requiring the named real mask-ROM ELF and an exact flash-sized
+  image at offset zero, absent ROM reset-vector rejection, and direct-app
+  capability, fixed offset, and non-product receipt labeling;
 - every reset kind and reset-epoch sequencing;
 - absolute deadline behavior, zero budgets, cycle and instruction crossing, and
   run-partition invariance with a persistent pending instruction;
 - same-cycle reset, device, injected input, interrupt, and CPU-boundary ordering;
+- pending load, store, atomic, and MMIO access across DMA, device, and injected
+  input changes, including completion-phase value sampling, impact-safe passage,
+  injected conflict rejection, and terminal fail-closed unknown impact;
 - CCOMPARE and device deadlines at instruction start, strictly inside, and at
   completion, including CCOUNT wrap;
 - input, event, ledger, and runtime-memory quotas with stable typed errors;
@@ -358,6 +419,8 @@ The fake backend and esp32sim backend must pass the same adapter cases:
   the wrong backend instance;
 - close idempotence at the host wrapper and resource cleanup;
 - one known exact ledger and one unknown that blocks without a total;
+- one large run and many partitions producing different delta groupings but the
+  same canonical entry sequence and cumulative chain at every shared sequence;
 - timing manifest and receipt hash mismatch;
 - networking absent and JIT absent from measured capabilities.
 
@@ -369,7 +432,8 @@ window traps, dependent load-use, and unsupported-shape refusal.
 The fork's Rust timing model and the donor Puck TypeScript timing machine
 consume the same normalized trace fixture and must emit the same event order,
 tier labels, receipt identities, blocked event, and known ledger total. Same
-trace and same manifest must produce the same ledger hash in repeated runs.
+trace and same manifest must produce the same ordered canonical entries and
+cumulative ledger chain in repeated runs.
 
 ## Review gates
 
@@ -377,9 +441,11 @@ Maintainer approval is required for the companion decision draft before any
 product implementation. The recommendation is that `backend-api`,
 `browser-backend`, and `timing-model` are Rust crates in our esp32sim fork;
 measured scheduler and interpreter observation remain modules in `esp32s3` and
-`xtensa-lx7`; the Rust browser adapter is the schema source of truth. Approval
-must accept or amend those homes. No deep adapter or execution module is
-recommended for Puck TypeScript.
+`xtensa-lx7`; the Rust browser adapter is the schema source of truth, and the
+fork owns the thin web UI shell. Approval must accept or amend those homes. No
+deep adapter or execution module is recommended for Puck TypeScript. Puck
+`docs/decisions` is the recommended home for the accepted cross-lane record
+because Puck remains the evidence and decision repository.
 
 Lane C must approve or replace the capability-disabled measured dual-core seam
 before it adds contention. Lane H reviews the Rust validated-output seam. Lane

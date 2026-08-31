@@ -5,8 +5,8 @@ Date: 2026-08-31
 Status: **draft, unaccepted**. This record is a lane B review artifact. It does
 not authorize implementation, product merge, a timing claim, or an accepted
 cross-lane interface. If approved, it must be assigned a numbered decision
-record in the decision repository chosen by the maintainer and updated with the
-maintainer's disposition.
+record in Puck's `docs/decisions`, the recommended decision and evidence home,
+and updated with the maintainer's disposition.
 
 ## Context
 
@@ -46,8 +46,9 @@ draft's review evidence.
 
 Adopt a separately versioned backend protocol and a separate measured
 interpreter scheduler as Rust modules in the esp32sim fork. Keep the existing
-fast `Machine::run` and JIT path unchanged. Puck TypeScript remains a thin UI,
-transport, and differential client. It does not own an execution engine or a
+fast `Machine::run` and JIT path unchanged. The esp32sim fork owns the web UI
+shell and its thin TypeScript transport. Puck remains the donor, evidence,
+differential, and decision repository. It does not own an execution engine or a
 second substantial adapter implementation.
 
 The proposed permanent homes are fork workspace crates `backend-api` for the
@@ -56,7 +57,7 @@ adapter, bounded loader, browser interface, queue and primary validator, and
 `timing-model` for the manifest importer and ledger. Measured scheduler and CPU
 observation stay as modules in the existing `esp32s3` and `xtensa-lx7` crates.
 The Rust `backend-api` schema is the source of truth for generated browser wire
-types.
+types, and the fork's `web/` tree owns the UI shell.
 
 The initial measured capability is single-core, interpreter-only, and
 networking-off. Releasing core 1 returns `UnsupportedCapability` until lane C
@@ -105,6 +106,10 @@ pub const MAX_INSPECT_BYTES: usize = 1 * 1_024 * 1_024;
 pub const MAX_RUN_CYCLES: u64 = 1 << 32;
 pub const MAX_RUN_INSTRUCTIONS: u64 = 10_000_000;
 pub const MAX_RUN_WALL_MILLIS: u32 = 60_000;
+pub const EFUSE_REGISTER_IMAGE_BYTES: u64 = 128 * 4;
+pub const MAX_RESET_REGISTER_RECORDS: usize = 4_096;
+pub const MAX_RESET_REGISTER_STATE_BYTES: u64 = 64 * 1_024;
+pub const DIRECT_APP_FLASH_OFFSET: u32 = 0x0001_0000;
 
 pub type VirtualCycle = u64;
 
@@ -174,8 +179,19 @@ pub struct BoardConfig {
 }
 
 pub struct ChipIdentity {
-    pub base_mac: [u8; 6],
-    pub efuse_digest: [u8; 32],
+    pub revision: ChipRevision,
+    pub expected_base_mac: [u8; 6],
+    pub efuse_registers: HashPinnedArtifact,
+    pub strap_word: u32,
+    pub reset_register_state: HashPinnedArtifact,
+    pub adoption_receipt_sha256: [u8; 32],
+}
+
+pub struct ChipRevision { pub major: u8, pub minor: u8 }
+
+pub struct HashPinnedArtifact {
+    pub id: ArtifactId,
+    pub sha256: [u8; 32],
 }
 
 pub trait BackendFactory {
@@ -213,6 +229,7 @@ pub struct BackendConfig {
     pub chip: ChipConfig,
     pub board: BoardConfig,
     pub identity: ChipIdentity,
+    pub boot: BootMode,
     pub execution: ExecutionConfig,
     pub networking: NetworkPolicy,
     pub quotas: Quotas,
@@ -233,6 +250,17 @@ pub enum ExecutionConfig {
 pub enum FastEngine { Interpreter, JitIfProven }
 pub enum MeasuredEngine { Interpreter }
 pub enum NetworkPolicy { None, Transcript(ArtifactId), LiveOptIn }
+
+pub enum BootMode {
+    RomFlash {
+        mask_rom: HashPinnedArtifact,
+        flash_image: HashPinnedArtifact,
+    },
+    DirectApplication {
+        application: HashPinnedArtifact,
+        flash_offset: u32,
+    },
+}
 
 pub struct Quotas {
     pub max_artifacts: u16,
@@ -265,11 +293,11 @@ pub struct ArtifactDescriptor {
 
 pub enum ArtifactKind {
     MaskRomElf,
-    Bootloader,
-    PartitionTable,
+    FlashImage,
     Application,
     SymbolsElf,
-    FlashImage,
+    EfuseRegisterImage,
+    ResetRegisterState,
     InputTranscript,
     TimingManifest,
 }
@@ -333,12 +361,18 @@ pub struct LoadReceipt {
     pub artifact_hashes:
         BoundedList<(ArtifactId, [u8; 32]), MAX_ARTIFACTS>,
     pub artifact_set_hash: [u8; 32],
+    pub identity_set_hash: [u8; 32],
+    pub boot_set_hash: [u8; 32],
+    pub active_boot: ActiveBootMode,
 }
 
 pub struct ResetReceipt {
     pub epoch: u64,
     pub cycle: VirtualCycle,
     pub kind: ResetKind,
+    pub active_boot: ActiveBootMode,
+    pub identity_set_hash: [u8; 32],
+    pub boot_set_hash: [u8; 32],
 }
 
 pub struct RunRequest {
@@ -359,6 +393,9 @@ pub struct RunSlice {
     pub epoch: u64,
     pub start_cycle: VirtualCycle,
     pub end_cycle: VirtualCycle,
+    pub active_boot: ActiveBootMode,
+    pub identity_set_hash: [u8; 32],
+    pub boot_set_hash: [u8; 32],
     pub instructions: [u64; 2],
     pub pending_instruction: Option<PendingInstructionSummary>,
     pub stop: RunStop,
@@ -410,6 +447,8 @@ pub enum CapabilityId {
     LiveNetworkEgress,
     Snapshot,
     PrivilegedInspection,
+    RomFlashBoot,
+    DirectApplicationBoot,
 }
 
 pub struct PendingInstructionSummary {
@@ -423,9 +462,18 @@ pub struct PendingInstructionSummary {
 pub struct TimingBlock {
     pub event_sequence: u64,
     pub instruction_sequence: Option<u64>,
+    pub code: TimingBlockCode,
     pub tier_candidate: CostTierName,
     pub reason: DiagnosticString,
     pub source: ReceiptPath,
+}
+
+pub enum TimingBlockCode {
+    UnknownCost,
+    UnsupportedAccessShape,
+    UnknownDeviceDeadline,
+    InterveningAccessImpact,
+    AffinePhaseUnresolved,
 }
 
 pub enum CostTierName { Exact, Affine, Interval, Distribution, Unexplained }
@@ -517,6 +565,7 @@ pub struct Capabilities {
     pub adapter_commit: CommitId,
     pub chip: Identifier,
     pub board: Identifier,
+    pub active_boot: ActiveBootMode,
     pub engine: ActiveEngine,
     pub trust: TrustClass,
     pub interpreter: bool,
@@ -529,11 +578,17 @@ pub struct Capabilities {
     pub privileged_inspection: bool,
     pub measured_single_core: bool,
     pub measured_dual_core: bool,
+    pub rom_flash_boot: bool,
+    pub direct_application_boot: bool,
+    pub identity_set_sha256: Option<[u8; 32]>,
+    pub boot_set_sha256: Option<[u8; 32]>,
     pub timing_manifest_sha256: Option<[u8; 32]>,
     pub receipt_set_sha256: Option<[u8; 32]>,
     pub observation_proof: ObservationProof,
     pub quotas: Quotas,
 }
+
+pub enum ActiveBootMode { RomFlash, DirectApplication }
 
 pub enum ObservationProof {
     Absent,
@@ -548,23 +603,91 @@ maximum. `max_single_output_bytes` may not exceed
 contain each `ArtifactKind` at most once. The sum of declared artifact
 sizes uses checked `u64` addition and may not exceed either the requested quota
 or `MAX_TOTAL_ARTIFACT_BYTES`. The fixed per-kind limits are: Mask ROM ELF 64
-MiB, bootloader 2 MiB, partition table 64 KiB, application 32 MiB, symbols ELF
-64 MiB, flash image 32 MiB, input transcript 16 MiB, and timing manifest 4 MiB.
+MiB, flash image 32 MiB, application 32 MiB, symbols ELF 64 MiB, efuse register
+image exactly 512 bytes, reset-register state 64 KiB, input transcript 16 MiB,
+and timing manifest 4 MiB.
 `DebugScope::Ranges` contains 1 through `MAX_DEBUG_RANGES` nonempty valid
 ranges. A `CommitId` contains lowercase hexadecimal and has exactly 40 or 64
 bytes. `ChipConfig.core_count` is 1 or 2, CPU frequency is nonzero, and flash
 and PSRAM sizes may not exceed `max_runtime_bytes` when combined with declared
-internal RAM and adapter-owned runtime state. Measured lane B additionally
-requires one active core.
+internal RAM and adapter-owned runtime state. Flash size may not exceed 32 MiB.
+Measured lane B additionally requires one active core.
 
-A valid version-1 manifest contains exactly one of `Application` and
-`FlashImage`. `TimingManifest` is required in measured mode and forbidden in
+A valid version-1 manifest always contains the exact
+`EfuseRegisterImage` and `ResetRegisterState` named and hash-pinned by
+`ChipIdentity`. `TimingManifest` is required in measured mode and forbidden in
 fast mode. `InputTranscript` is present if and only if
-`NetworkPolicy::Transcript` names it. ROM and symbols are optional evidence
-artifacts. Bootloader and partition table must either both be absent for direct
-application boot or both be present. Canonical manifest and artifact-set hashes
-sort descriptors by `ArtifactKind` tag then artifact ID bytes and hash their
-version-1 canonical encoding.
+`NetworkPolicy::Transcript` names it. `SymbolsElf` is optional and never changes
+guest state. Canonical manifest and artifact-set hashes sort descriptors by
+`ArtifactKind` tag then artifact ID bytes and hash their version-1 canonical
+encoding.
+
+`BootMode::RomFlash` is the product boot. Its manifest contains the exact real
+`MaskRomElf` and exact complete `FlashImage` named by the two hash-pinned
+references and contains no `Application`. The flash artifact's declared and
+actual size equals `ChipConfig.flash_bytes`; it includes bootloader, partition
+table, application, and erased regions at their physical offsets and is written
+at flash offset zero. The ROM ELF must parse successfully, map the reset vector
+at `0x4000_0400`, and match its configured hash before any boot state changes.
+Reset starts at the mask-ROM vector and must not call `Machine::boot_app` or
+install second-stage-bootloader presets.
+
+`BootMode::DirectApplication` is a separate test and diagnosis capability. Its
+manifest contains the exact named `Application` and no `MaskRomElf` or
+`FlashImage`. Version 1 requires `flash_offset == DIRECT_APP_FLASH_OFFSET`,
+writes the application at that offset, and invokes the existing HLE
+`Machine::boot_app` path including its synthetic second-stage state. A backend
+advertises `direct_application_boot` explicitly or rejects the config. Direct
+application output cannot satisfy a product-boot, real-ROM, or correlation
+claim, and every run receipt and capability report names the active boot mode.
+Checked addition must prove `DIRECT_APP_FLASH_OFFSET + application_size <=
+ChipConfig.flash_bytes` before flash allocation or mutation.
+
+The A-01/E identity handoff is not an efuse digest. It is the tuple of the
+hash-pinned raw efuse image, exact strap word, hash-pinned raw reset-register
+state, expected MAC, revision metadata, and lane A/E adoption-receipt hash in
+`ChipIdentity`. Absence or mismatch of any element is `IdentityMismatch` and
+blocks both boot modes.
+
+`EfuseRegisterImage` version 1 is exactly 128 little-endian `u32` words. Word
+index `i` replaces, rather than overlays, the efuse register at absolute address
+`0x6000_7000 + 4*i`. With `w44 = words[0x44 / 4]` and
+`w48 = words[0x48 / 4]`, the adapter decodes the base MAC as bytes
+`[w48 >> 8, w48, w44 >> 24, w44 >> 16, w44 >> 8, w44]`, with each expression
+truncated to `u8`, and requires it to equal `expected_base_mac`. Raw efuse words are authoritative for
+guest-visible revision fields. `ChipIdentity.revision` is provenance metadata
+and `adoption_receipt_sha256` pins the lane A/E disposition that associates the
+raw capture, strap, reset state, board, and revision.
+
+`ResetRegisterState` version 1 is little-endian `schema_version: u16 = 1`,
+reserved zero `u16`, record count `u32`, then strictly increasing unique
+`{ address: u32, value: u32 }` records. Count is at most
+`MAX_RESET_REGISTER_RECORDS`. Every address is 4-byte aligned and must be
+in one of these inclusive version-1 ranges: `0x60008000..0x60008ffc`,
+`0x600c0000..0x600c0ffc`, `0x600c4000..0x600c4ffc`,
+`0x60009000..0x60009ffc`, `0x60002004..0x60002ffc`,
+`0x60003004..0x60003ffc`, `0x6000e000..0x6000effc`,
+`0x60026000..0x60026ffc`, or `0x600c1000..0x600c1ffc`. The excluded holes are
+`0x600c0030..0x600c003c` and `0x60002058..0x60002094`. These are exactly the
+pinned esp32sim `Peripherals::init_regs` allowlist. The loader rejects the whole
+artifact if any record is outside it. No record is silently skipped. The raw
+state is applied before first reset, then
+`strap_word` is assigned to `gpio.strap`. Power-on reset reapplies the adopted
+raw reset state, efuses, and strap. Software, watchdog, and external reset retain
+or clear state according to the esp32sim reset implementation and do not
+reapply the raw capture.
+
+`identity_set_hash` is SHA-256 over `b"esp32sim-identity-v1\0"`, revision major
+and minor as two `u8` values, the six MAC bytes, little-endian strap `u32`, the
+efuse artifact reference, reset-state artifact reference, and adoption receipt
+hash in that order. An artifact reference is canonical ID byte length as
+little-endian `u32`, ID UTF-8 bytes, then its 32-byte hash.
+
+`boot_set_hash` is SHA-256 over `b"esp32sim-boot-v1\0"`, boot tag as
+little-endian `u16` (`0` ROM-flash, `1` direct application), then the active
+artifact references in field order. Direct application appends its little-endian
+offset `u32`; ROM-flash has no trailing field. Both hashes are exposed in load,
+reset, run, and capability receipts.
 
 For framebuffer output, bytes per pixel is fixed by `PixelFormat`. Checked
 arithmetic must prove `row_start + row_count <= height`, `stride_bytes >= width
@@ -635,8 +758,10 @@ loader state machine.
 
 The backend state machine is `Created`, `Loaded`, `Runnable`, `AwaitingReset`,
 and `Closed`. `load` is valid only in `Created` and moves atomically to `Loaded`.
-`reset` is valid in `Loaded`, `Runnable`, or `AwaitingReset`, increments the
-epoch, zeroes virtual time and event sequences, and enters `Runnable`.
+The first `reset` after `load` must be `PowerOn`; it installs the verified boot
+artifacts and adopted identity before entering the selected boot path. Later
+`reset` calls are valid in `Runnable` or `AwaitingReset`, increment the epoch,
+zero virtual time and event sequences, and enter `Runnable`.
 `run_until` and `inject` require `Runnable`. A due reset request discards any
 pending instruction, consumes that request, enters `AwaitingReset`, and returns
 `ResetRequested`; only explicit `reset` may resume. `drain_events` is valid in
@@ -675,12 +800,15 @@ pub enum ErrorCode {
     InvalidConfig,
     InvalidState,
     InvalidArtifact,
+    InvalidBootSet,
+    IdentityMismatch,
     ArtifactSizeMismatch,
     ArtifactHashMismatch,
     QuotaExceeded,
     UnsupportedCapability,
     EventInPast,
     EventSequence,
+    PendingInstructionConflict,
     InspectionDenied,
     InvalidGuestRange,
     GuestFault,
@@ -700,6 +828,8 @@ tests.
 - adapter, event, and ledger schema versions;
 - backend name, esp32sim commit, and fork adapter commit;
 - chip and board identifiers;
+- active boot mode, ROM-flash and direct-application boot capabilities, and
+  verified boot-set and identity-set hashes;
 - interpreter, native JIT, and WebAssembly JIT availability;
 - active engine and trust class;
 - network policies, with live egress false for untrusted and measured modes;
@@ -761,7 +891,10 @@ model.
 
 `inject` rejects an epoch mismatch, a cycle earlier than `virtual_now`, and a
 non-increasing caller sequence. Inputs are not applied until the scheduler
-reaches their cycle.
+reaches their cycle. If an instruction is pending, injection at or before its
+completion is accepted only when the input-impact classifier proves the event
+compatible with that instruction's access phase and dependency set. Unknown or
+conflicting impact returns `PendingInstructionConflict` without queue mutation.
 
 Each request validates every budget against `BackendConfig.quotas` and the hard
 limits. `deadline` may not precede `start_cycle`. The cycle-budget endpoint is
@@ -778,10 +911,38 @@ unresolved cost or access returns `TimingBlocked` before pending state is
 created and changes no machine, device, CCOUNT, or virtual-time state. A
 resolved instruction becomes a persistent `PendingInstruction` with its start,
 completion, decoded operation, staged timing mutations, and receipt references.
-Fetch is observed at its priced fetch phase. Version 1 applies data reads,
-writes, atomics, and architectural register effects at the completion cycle.
-Any shape whose cost key could be changed by an event before completion blocks
-at planning time.
+Fetch is observed at its priced fetch phase.
+
+Version 1 has one exact data-access phase:
+`CompletionAfterSameCycleExternalEvents`. Effective addresses and non-memory
+operands are captured from CPU state at instruction start. No load value, fault,
+MMIO return, atomic result, store effect, or MMIO side effect is previewed or
+cached. At the completion cycle, reset, device and DMA completion, and injected
+input run in event-order positions 1 through 3. The interpreter then performs
+the data access exactly once against that resulting state at position 4 and
+commits its architectural effects. A RAM load therefore observes a DMA write
+completed earlier in the interval or at the same cycle; a store becomes visible
+after those external transitions. Atomic read and write are one indivisible
+position-4 access.
+
+The pending plan carries a dependency set covering accessed guest ranges, MMU
+and cache versions, bus routing, target device state, possible fault, receipt
+match fields, returned value, and side effects. Every device deadline, DMA
+completion, and input classifier declares its possible impacts in the same
+vocabulary. Before pending state is created, any intervening event that can
+change access timing or a receipt match blocks unless a committed receipt proves
+the duration invariant and completion-phase execution remains exact. An
+implementation that cannot defer the actual value, fault, match-key evaluation,
+and side effect to the completion phase must block whenever an intervening
+impact can change any of them. It may not reuse a preflight value or validate
+only the cost key.
+
+If an exact device transition generates a previously unknowable impact before
+completion, the scheduler commits only the complete prefix through that device
+event, leaves the instruction pending, and returns `TimingBlocked` with reason
+`InterveningAccessImpact`. No later run may complete that instruction; reset or
+a backend recreated with a stronger reviewed model is required. This terminal
+fail-closed path and all impact declarations are included in contract tests.
 
 The scheduler may stop between the pending instruction's start and completion.
 It advances virtual time, CCOUNT, devices, CCOMPARE assertions, and injected
@@ -833,8 +994,9 @@ cycles and may schedule further deadlines before instruction completion.
 Pending state, all same-cycle ordering cursors, CCOUNT, device clocks, input
 cursors, and ledger sequence are persistent. Therefore one call ending at cycle
 1000 and calls ending at 100, 200, through 1000 produce identical state, event
-bytes, and ledger hash after the final call, including when CCOMPARE or a device
-deadline lies inside an instruction.
+bytes, ordered canonical ledger entries, and cumulative `chain_after` at every
+shared entry sequence, including when CCOMPARE or a device deadline lies inside
+an instruction. Per-call delta hashes may differ.
 
 Host pacing observes virtual time after a slice. It may delay the next host
 call but cannot change event order, guest inputs, virtual cycles, or ledger
@@ -848,9 +1010,15 @@ pub struct LedgerDelta {
     pub epoch: u64,
     pub start_cycle: VirtualCycle,
     pub end_cycle: Option<VirtualCycle>,
+    pub first_sequence: u64,
     pub entries: BoundedList<LedgerEntry, MAX_LEDGER_ENTRIES_PER_RUN>,
     pub status: LedgerStatus,
-    pub hash: [u8; 32],
+    pub delta_entries_hash: [u8; 32],
+    pub chain_before: [u8; 32],
+    pub chain_after: [u8; 32],
+    pub cumulative_entry_count: u64,
+    pub cumulative_resolved_cycles: Option<u64>,
+    pub ledger_state_hash: [u8; 32],
 }
 
 pub struct LedgerEntry {
@@ -864,7 +1032,7 @@ pub struct LedgerEntry {
 }
 
 pub enum LedgerStatus {
-    Complete,
+    Open,
     Blocked(TimingBlock),
 }
 
@@ -955,6 +1123,50 @@ maps the claim to this occurrence. An interval or distribution claim therefore
 does not imply sampling. Its accepted deterministic phase model, if any, is
 part of the hashed timing manifest. `Unexplained` never resolves.
 
+`LedgerDelta.entries` contains only the contiguous entries emitted by this
+`run_until` call. `first_sequence` equals the first entry sequence, or the next
+global sequence for an empty delta. `start_cycle`, `end_cycle`, delta grouping,
+and `delta_entries_hash` are transport metadata and are not inputs to the
+cumulative chain. `delta_entries_hash` is SHA-256 over the domain string
+`esp32sim-ledger-delta-v1\0`, first sequence and entry count as little-endian
+`u64`, and each canonical entry prefixed by its little-endian `u64` byte length.
+It may differ when the caller partitions a run differently.
+
+The cumulative chain is independent of run slicing. At power-on reset:
+
+```text
+H0 = SHA256(
+  "esp32sim-ledger-chain-v1\0" ||
+  ledger_schema_le || epoch_le || artifact_set_hash || identity_set_hash ||
+  boot_set_hash || timing_manifest_hash || receipt_set_hash
+)
+H(n+1) = SHA256(
+  "esp32sim-ledger-entry-v1\0" || Hn || entry_length_le ||
+  canonical_ledger_entry_bytes
+)
+```
+
+Canonical ledger entry bytes use the version-1 little-endian encoding, fixed
+enum tags, bounded UTF-8 bytes, and the complete `ReceiptRef`; they never contain
+a run-slice identifier. `chain_before` is the chain at `first_sequence`,
+`chain_after` is the result after exactly this delta's entries, and
+`cumulative_entry_count` is the number of entries incorporated in
+`chain_after`. An empty delta has equal before and after hashes. Software,
+watchdog, and external resets close the current epoch and seed the next epoch
+with its incremented epoch and unchanged provenance hashes.
+
+`timing_manifest_hash` and `receipt_set_hash` in the seed use one tag byte:
+zero for absent, or one followed by the 32 hash bytes for present. Measured mode
+requires both present. All other seed hashes are exactly 32 bytes.
+
+For `LedgerStatus::Open`, `ledger_state_hash == chain_after`. For
+`LedgerStatus::Blocked(block)`, `ledger_state_hash` is SHA-256 over
+`"esp32sim-ledger-blocked-v1\0"`, `chain_after`, and the canonical bounded
+`TimingBlock`. The blocked hash identifies the same known prefix and refusal but
+does not make it a complete timing total. `cumulative_resolved_cycles` is
+present only while every chained claim through `chain_after` has an event-scoped
+deterministic resolution; it is absent after a block.
+
 Affine claims retain slope, intercept, measured cell sizes, and cohort scope.
 The committed same-value MMIO evidence is `3n - 8`. The current schema-1
 profile's scalar `3` is not an executable replacement for that claim. The
@@ -962,9 +1174,12 @@ initial importer rejects it for measured totals, and the online scheduler
 blocks until an event-scoped resolver is reviewed. It does not distribute or
 discard the negative intercept.
 
-Unknown cost blocks the ledger total. No ledger hash is described as complete
-when `LedgerStatus::Blocked` is present. Same normalized trace plus the same
-timing-manifest hash must produce the same ledger bytes and hash.
+Unknown cost blocks the ledger total. No cumulative chain or state hash is
+described as a complete total when `LedgerStatus::Blocked` is present. Same
+normalized trace plus the same provenance hashes must produce the same ordered
+canonical entries and the same `chain_after` at every global entry sequence.
+Different run partitions may return different delta groupings and
+`delta_entries_hash` values without changing that cumulative chain.
 
 ## CPU observation contract
 
@@ -1003,10 +1218,11 @@ Replace decision 0011's `The role of puck` section with:
 
 > The product is a browser-hosted cycle-accurate ESP32-S3 emulator built from
 > our esp32sim fork. The fork owns the Rust machine, measured mode, browser
-> interface, Wasm JIT, device models, safety seams, and likely the web app
-> shell. Puck is a donor and evidence repository. Its UI, recorder and replay,
-> differential harness, timing model, receipts, and browser pieces may be
-> ported selectively with provenance. Puck is not the cycle-accurate product
+> interface, Wasm JIT, device models, safety seams, and web UI shell. Puck is the
+> donor, evidence, differential, and decision repository. Its UI, recorder and
+> replay, differential harness, timing model, receipts, and browser pieces may
+> be ported selectively with provenance. Cross-lane architectural decisions are
+> recorded in Puck's `docs/decisions`. Puck is not the cycle-accurate product
 > and does not carry a separate execution engine or deep backend adapter.
 
 Replace decision 0012's first backend-adapter paragraph with:
@@ -1015,14 +1231,17 @@ Replace decision 0012's first backend-adapter paragraph with:
 > adapter owned by our esp32sim fork. Nothing outside that adapter imports
 > machine, bus, peripheral, JIT, or internal WebAssembly types. The adapter
 > creates from validated deterministic configuration, loads hash-pinned
-> immutable artifacts through a bounded pre-allocation loader, resets with an
+> immutable artifacts through a bounded pre-allocation loader, applies the
+> hash-pinned raw efuse, strap, and reset-register identity, selects an explicit
+> real-ROM flash or capability-gated direct-app boot mode, resets with an
 > explicit cause, runs to a virtual deadline under explicit budgets, injects
 > timestamped events, drains typed bounded events, gates memory inspection,
 > reports capabilities, versions its schemas, and shuts down deterministically.
 > It owns virtual time, event and ledger schemas, quota enforcement, stable
-> errors, primary guest-output validation before `BackendEvent` construction,
-> and browser marshalling. Browser TypeScript is a thin UI and transport client
-> which schema-checks already-owned bounded events as defense in depth.
+> errors, cumulative slice-independent ledger chaining, primary guest-output
+> validation before `BackendEvent` construction, and browser marshalling. The
+> fork-owned web UI TypeScript is a thin UI and transport client which
+> schema-checks already-owned bounded events as defense in depth.
 
 Replace decision 0012's lane B consequence with:
 
@@ -1049,13 +1268,14 @@ Replace roadmap lane B with:
 > event schemas, interpreter-first timing-driven execution, pending instruction
 > scheduling, exact device deadlines, block-batched CCOUNT, CPU-backend
 > observation, receipt-pinned timing importer and ledger, pre-allocation quotas,
-> primary guest-output validation, and shared Rust contract tests. Puck timing
-> traces and receipts are donor evidence. No TypeScript execution engine is
-> built.
+> raw adopted chip identity, real-ROM flash and direct-app boot capabilities,
+> slice-independent cumulative ledger chaining, primary guest-output validation,
+> and shared Rust contract tests. Puck timing traces and receipts are donor
+> evidence. No TypeScript execution engine is built.
 
-Replace roadmap lane F's `puck UX wrap (or successor UI)` phrase with `thin
-browser shell over the fork-owned versioned Wasm interface, using selected Puck
-UI and browser pieces with provenance`. Replace the standing dependency rule
+Replace roadmap lane F's `puck UX wrap (or successor UI)` phrase with
+`fork-owned thin web UI shell over the versioned Wasm interface, using selected
+Puck UI and browser pieces with provenance`. Replace the standing dependency rule
 with `No browser TypeScript or other product caller imports esp32sim internals;
 all machine access crosses the fork-owned Rust adapter, and dependency lint
 enforces it`.
@@ -1069,6 +1289,11 @@ enforces it`.
 - The adapter interface, event and ledger schemas, scheduler, timing importer,
   quotas, and primary validator live in the esp32sim fork and have shared Rust
   fake-backend contract tests.
+- Product boot requires the exact hash-pinned real mask ROM, complete flash
+  image, raw efuse image, strap, and reset-register capture. The HLE direct-app
+  path is a separately advertised non-product capability.
+- Ledger deltas remain per call, while the canonical cumulative chain is
+  independent of `run_until` slicing.
 - Lane C must propose the measured dual-core policy before enabling that
   capability.
 - Lane H reviews the Rust validated-output seam used before `BackendEvent`
@@ -1083,7 +1308,8 @@ enforces it`.
 Approval must accept or amend the exact scheduler ordering, single-core
 capability boundary, fork crate and module homes, and the proposed amendments
 to decision 0011, decision 0012, and roadmap revision 4. It must assign the
-numbered decision record home and record the owner of timing-profile schema
-version 2 and the lane H validator review.
+numbered decision record to the recommended Puck `docs/decisions` home or record
+a different maintainer disposition, and record the owner of timing-profile
+schema version 2 and the lane H validator review.
 
 Until that happens, this document remains a design-spike artifact only.
