@@ -1,4 +1,4 @@
-# Lane B design spike: measured execution and the Puck backend adapter
+# Lane B design spike: browser emulator measured execution and adapter
 
 Date: 2026-08-31
 
@@ -8,18 +8,20 @@ deliverable. It specifies interfaces against esp32sim commit
 `2114ffc92039b4605264d2cfb4ee5543acbf98c1`. It contains no product
 implementation and authorizes no merge.
 
-The companion [decision-record draft](puck-adapter-scheduler-decision-draft.md)
+The companion
+[decision-record draft](browser-emulator-adapter-scheduler-decision-draft.md)
 is explicitly unaccepted. The adapter protocol, event schema, timing
 vocabulary, and scheduler semantics are cross-lane interfaces. They require
 maintainer approval before implementation or merge.
 
 ## Result
 
-The spike is feasible with two separate seams:
+The browser-hosted cycle-accurate ESP32-S3 emulator is feasible with two
+separate seams in our esp32sim fork:
 
-1. A Puck-owned, versioned backend adapter is the only product-facing surface.
-   It owns virtual time, bounded typed events, quotas, artifacts, capabilities,
-   and stable errors.
+1. A versioned Rust backend adapter is the only machine-facing product surface.
+   It owns virtual time, bounded typed events, quotas, artifacts, primary guest
+   output validation, capabilities, browser marshalling, and stable errors.
 2. A measured interpreter path in the CPU backend owns instruction and memory
    observation. It prices an instruction before its next architectural
    boundary, advances CCOUNT and device time from the same cycle ledger, and
@@ -29,7 +31,10 @@ Measured execution cannot be implemented as a `Bus` wrapper or as a price pass
 over a completed trace. The current JIT bypasses `Bus` for fast memory, and the
 current scheduler advances device time after execution quanta. The measured
 path must therefore be a separate interpreter backend selected outside the
-existing fast inner loops. Fast mode remains unchanged.
+existing fast inner loops. Fast mode remains unchanged. Puck is a donor and
+evidence repository for UI, recorder and replay, differential harness, timing
+model, receipts, and reusable browser pieces. It is not the cycle-accurate
+product or the home of a second execution engine.
 
 ## Code inspection receipt
 
@@ -42,7 +47,7 @@ existing fast inner loops. Fast mode remains unchanged.
 | `xtensa-lx7/src/exec.rs:117-124` | `advance_ccount(cycles)` already handles wrapping CCOUNT and three CCOMPARE registers for one scalar delta. | Reuse this state transition with measured cycle deltas. Record the exact match cycle and sample its interrupt at the next instruction boundary. |
 | `xtensa-lx7/src/block.rs:143,187` and `xtensa-lx7/src/jit/mod.rs:468-472` | JIT compilation detects `fast_mem`, and generated code receives raw TLB and page-version pointers. RAM and mapped flash/PSRAM loads and stores can bypass `Bus`. | Observation is emitted by the CPU backend. Measured mode is interpreter-only until a JIT conformance proof covers RAM, flash, MMIO, faults, self-modifying code, and cross-page accesses. |
 | `xtensa-lx7/src/bus.rs:33-63` | `Bus` exposes memory methods, fetch, page versions, `note_pc`, block breaking, fast memory, and tick. It has no complete observation contract. | The measured CPU backend emits normalized instruction, fetch, data, fault, trap, and invalidation observations. The bus supplies resolution facts but is not the authority for completeness. |
-| `wasm/src/lib.rs:176-204` | `esp32sim_run(cycles, unix_ms)` sets `max_cycles` and then calls the instruction-budgeted machine loop. Host Unix time is accepted directly. | The Puck adapter accepts an absolute virtual deadline and an explicit deterministic input transcript. It does not accept host time as simulated time. |
+| `wasm/src/lib.rs:176-204` | `esp32sim_run(cycles, unix_ms)` sets `max_cycles` and then calls the instruction-budgeted machine loop. Host Unix time is accepted directly. | The fork-owned browser adapter accepts an absolute virtual deadline and an explicit deterministic input transcript. It does not accept host time as simulated time. |
 | `cli/src/main.rs:81-102,116` | Networking is created only when `--wifi` is supplied. `--no-jit` disables both native block caches. | The spike configuration requires interpreter execution and `NetworkPolicy::None`; incompatible configuration is rejected during `create`. |
 
 The current fast implementation also establishes useful mechanisms that the
@@ -86,43 +91,52 @@ warnings are unchanged from the pinned base.
 
 | Layer | Owns | May import |
 | --- | --- | --- |
-| `puck-backend-api` | Adapter types, protocol and event versions, stable errors, fake backend contract suite | No esp32sim crate |
-| `puck-esp32sim-backend` | Translation between adapter values and esp32sim `Machine` | `puck-backend-api`, `esp32s3`; it is the only Puck-owned crate allowed to import esp32sim internals |
-| `esp32s3` measured scheduler | Virtual-cycle advancement, CPU selection, device deadlines, interrupt sampling | `xtensa-lx7` measured CPU interface and SoC devices |
-| `xtensa-lx7` measured interpreter | Complete CPU observations, instruction pricing boundary, CCOUNT batching | CPU decode and interpreter internals, a timing-source interface supplied by the SoC |
+| Fork Rust `backend-api` crate | Adapter types, protocol and event versions, stable errors, quota types, fake-backend contract suite | No machine internals |
+| Fork Rust `browser-backend` crate | Deep adapter implementation, bounded artifact loader, primary guest-output validation, event queues, WebAssembly browser interface | `backend-api`, `esp32s3`, `timing-model` |
+| Fork Rust `timing-model` crate | Receipt-pinned manifest importer, cost claims, ledger, normalized trace comparison | `backend-api`; no Puck TypeScript |
+| `esp32s3` measured scheduler module | Virtual-cycle advancement, CPU selection, device deadlines, interrupt sampling | `xtensa-lx7` measured CPU interface, SoC devices, `timing-model` |
+| `xtensa-lx7` measured interpreter module | Complete CPU observations, instruction pricing seam, pending instruction state, CCOUNT batching | CPU decode and interpreter internals, a timing-source interface supplied by the SoC |
 | Existing fast machine and JIT | Upstream fast behavior | Existing internals only |
+| Thin browser shell | UI and transport over the versioned Wasm interface; selected Puck browser pieces may be ported with provenance | No Rust machine internals and no execution engine |
 
-The dependency rule is mechanical: all Puck product code imports
-`puck-backend-api`; only `puck-esp32sim-backend` may import `esp32s3` or
-`xtensa-lx7`. The fake backend depends only on `puck-backend-api`.
+The dependency rule is mechanical: browser TypeScript imports only generated
+wire types and the versioned Wasm interface. Only the fork's `browser-backend`
+crate may construct product-facing values from `esp32s3` internals. The primary
+quota and guest-output validation occurs in Rust before `BackendEvent`
+construction. Browser TypeScript rechecks already-owned bounded events only as
+thin-client defense. The fake backend depends only on `backend-api`.
 
 ## Measured CPU transaction
 
 One measured instruction is one architectural transaction:
 
-1. Decode from the existing block cache and emit `InstructionStart` with core,
-   PC, exact encoding, and width.
-2. Ask the timing source for the instruction's base claim and any statically
-   classifiable additions, including branch route, loop alignment, and a
-   pending dependent load-use hazard.
-3. Stage instruction fetch and data accesses through the timing memory model.
-   The stage resolves address class, cache state, MMIO class, line fills, and
-   faults before committing cache-model mutations.
-4. If every required duration resolves to a non-negative deterministic cycle
-   delta, execute the interpreter instruction, commit staged timing state, and
-   append its ledger entries.
-5. If any cost or access shape is unknown, append the blocking attempt and stop
-   before the instruction. No CPU, bus, cache-model, device, CCOUNT, or virtual
-   time state changes. The loaded artifact set is immutable, so reset or a new
-   backend with a newly approved timing manifest is required before progress.
-6. Advance CCOUNT, device time, and interrupt assertions to the committed
-   completion boundary. Sample pending interrupts before the next instruction.
+1. Decode from the separate measured block cache and plan the instruction's
+   exact encoding, width, fetch, every possible data-access shape, receipt
+   matches, and nonnegative deterministic cost.
+2. If any cost, access, or state-sensitive match key cannot be resolved, append
+   the blocking attempt and stop before the instruction. CPU, bus, timing,
+   device, CCOUNT, and virtual-time state do not change.
+3. Persist a `PendingInstruction` containing the decoded operation, start and
+   completion cycles, staged timing mutations, and receipt references. Fetch is
+   observed at its priced phase. Version 1 applies data accesses and CPU
+   architectural effects at completion.
+4. Advance toward completion in scheduler segments. Each segment advances
+   virtual time and CCOUNT and delivers any CCOMPARE match, device deadline, and
+   injected event at its exact cycle. A run deadline or cycle budget may leave
+   the instruction pending without an architectural commit.
+5. At completion, process reset, device, and input events before the CPU
+   boundary. Reset discards the pending instruction. Otherwise commit its data
+   access, architectural effects, timing state, and ledger entries atomically,
+   then increment the completed-instruction count once.
+6. Consider an asserted interrupt for acceptance only after the completing CPU
+   boundary and before the next instruction starts.
 
-The staging rule keeps timing-driven execution from running ahead and pricing a
-finished trace. A multi-access instruction is supported only when the planner
-can resolve every possible access without causing a guest-visible side effect.
-For example, an atomic RAM operation may use a read-only preview, while the
-same shape against side-effecting MMIO blocks before execution.
+The persistent transaction keeps timing-driven execution from running ahead and
+pricing a finished trace while preserving state across arbitrary `run_until`
+partitions. A multi-access instruction is supported only when the planner can
+resolve every possible access without a guest-visible side effect. For example,
+an atomic RAM operation may use a read-only preview, while the same shape
+against side-effecting MMIO blocks before execution.
 
 The first measured implementation supports only instruction shapes it can
 stage completely. Any fallback instruction whose internal memory behavior is
@@ -139,7 +153,23 @@ explicit device deadline interface:
 enum DeviceDeadline {
     At(u64),
     None,
-    Unknown { device: DeviceId, reason: String },
+    Unknown {
+        device: DeviceId,
+        reason: DeviceDeadlineUnknown,
+    },
+}
+
+struct DeviceDeadlineUnknown {
+    code: DeviceDeadlineUnknownCode,
+    detail: DiagnosticString,
+}
+
+enum DeviceDeadlineUnknownCode {
+    NoDeadlineModel,
+    UnsupportedActivePath,
+    UnresolvedExternalClock,
+    UnresolvedDmaCompletion,
+    UnresolvedSharedResource,
 }
 ```
 
@@ -149,12 +179,15 @@ an injected event. It does not mean that no deadline implementation exists.
 tier candidate.
 
 The measured scheduler advances from `virtual_now` to the earliest run,
-injection, device, or CCOMPARE boundary. Devices may receive a batch only when
-their declared next deadline is not crossed. A peripheral read or write first
-delivers all device time through `virtual_now`; a write that arms a deadline is
-then visible when the scheduler recomputes the minimum. Run partitioning must
-be inert: one `run_until(1000)` call and ten calls ending at 100, 200, through
-1000 produce the same state, events, and ledger hash.
+injection, device, CCOMPARE, or pending-instruction phase boundary. Devices may
+receive a batch only when their declared next deadline is not crossed. A
+peripheral read or write first delivers all device time through `virtual_now`;
+a write that arms a deadline is then visible when the scheduler recomputes the
+minimum. The code and bounded detail for `Unknown` are stable test values, and
+the string is never used for control flow. Run partitioning must be inert: one
+`run_until(1000)` call and ten calls ending at 100, 200, through 1000 produce
+the same state, events, and ledger hash, even when a deadline lies inside a
+priced instruction.
 
 DMA, LCD, audio, USB, WiFi, and board devices currently rely in part on the
 coarse defer bound. They remain unsupported in a cycle claim until their active
@@ -177,11 +210,12 @@ The interpreter may aggregate several completed instruction deltas and call
 - no memory, MMIO, trap, reset, or injected event requires an earlier flush;
 - no cost in the aggregate is unknown.
 
-At the first crossed CCOMPARE, the batch ends at the completing instruction.
-The ledger records the exact match cycle even when the match occurred during
-that instruction, and the timer interrupt is sampled before the next
-instruction. Reads and writes of CCOUNT and CCOMPARE remain block-first and
-flush any pending delta before execution.
+At the first crossed CCOMPARE, the batch splits at the exact matching virtual
+cycle, including a match inside a pending instruction. CCOUNT and device time
+advance to that cycle, the timer interrupt asserts, and the instruction remains
+pending until its completion boundary. It cannot accept the interrupt before
+that boundary. Reads and writes of CCOUNT and CCOMPARE remain block-first and
+flush any pending aggregate before execution.
 
 Idle advancement uses the same virtual-cycle delta for the running core's
 CCOUNT. Measured dual-core scheduling remains capability-disabled in lane B;
@@ -225,13 +259,16 @@ semantics are:
 
 - `create` accepts validated deterministic config. The spike accepts measured
   mode, interpreter engine, and `NetworkPolicy::None` only.
-- `load` accepts bounded, immutable, SHA-256-verified ROM, bootloader,
-  partition, app, ELF, and timing-profile artifacts.
+- `load` validates an artifact manifest and all declared and aggregate quotas
+  before allocation, then streams bounded chunks and verifies actual size,
+  explicit EOF, and SHA-256 before atomic commit.
 - `reset` names power-on, software, watchdog, or external reset and starts a new
   epoch. Partial snapshot support is reported absent.
-- `run_until` accepts an absolute virtual deadline and independent instruction,
-  wall-cancellation, memory, output, and ledger budgets. The wall budget never
-  changes simulated time.
+- `run_until` accepts an absolute virtual deadline and independent cycle,
+  instruction, wall-cancellation, output, and ledger budgets. Cycle limits may
+  pause a persistent instruction. Instruction limits withhold only the CPU
+  commit and never partially commit architecture. The wall budget never changes
+  simulated time.
 - `inject` accepts a timestamped owned event no earlier than `virtual_now`.
 - `drain_events` returns owned, typed, bounded events with no guest pointers.
 - `inspect` requires an explicit debug capability and a maximum byte count.
@@ -243,8 +280,10 @@ semantics are:
 
 The adapter event queue is lossless in the initial contract. Reaching its byte
 or count quota stops execution with `QuotaExceeded`; it does not drop or
-coalesce silently. The output validator shared with lane H runs before an event
-enters this queue.
+coalesce silently. The Rust adapter checks declared sizes, guest ranges, queue
+capacity, and exact canonical encoded length before allocating owned payload
+bytes or constructing `BackendEvent`. Lane H reviews this primary seam. Browser
+TypeScript only rechecks the already-owned bounded event.
 
 ## Cost and receipt boundary
 
@@ -300,12 +339,23 @@ loop-alignment result were inspected only as unreviewed candidates.
 
 The fake backend and esp32sim backend must pass the same adapter cases:
 
-- version negotiation, invalid config, artifact hash and size rejection;
+- version negotiation and every hard limit at maximum and maximum plus one;
+- bounded UTF-8, NUL, canonical event-length, unknown-tag, and trailing-byte
+  rejection;
+- artifact count, per-kind size, aggregate size, hash, early EOF, late EOF,
+  oversized chunk, non-sequential chunk, and Wasm pointer-overflow rejection,
+  with an allocation spy proving rejection precedes allocation;
 - every reset kind and reset-epoch sequencing;
-- absolute deadline behavior and run-partition invariance;
+- absolute deadline behavior, zero budgets, cycle and instruction crossing, and
+  run-partition invariance with a persistent pending instruction;
 - same-cycle reset, device, injected input, interrupt, and CPU-boundary ordering;
-- event and ledger quotas with stable typed errors;
-- privileged and denied memory inspection;
+- CCOMPARE and device deadlines at instruction start, strictly inside, and at
+  completion, including CCOUNT wrap;
+- input, event, ledger, and runtime-memory quotas with stable typed errors;
+- typed bounded device-deadline unknowns for every reason code;
+- privileged and denied memory inspection, guest-range addition overflow,
+  unmapped range, scope mismatch, byte-limit crossing, and use of a permit with
+  the wrong backend instance;
 - close idempotence at the host wrapper and resource cleanup;
 - one known exact ledger and one unknown that blocks without a total;
 - timing manifest and receipt hash mismatch;
@@ -316,19 +366,25 @@ deadline crossing inside a priced instruction, MMIO flush-before-access,
 self-modifying invalidation, cache line-fill sequencing, loop alignment,
 window traps, dependent load-use, and unsupported-shape refusal.
 
-The TypeScript timing machine and measured interpreter consume the same
-normalized trace fixture and must emit the same event order, tier labels,
-receipt identities, blocked event, and known ledger total. Same trace and same
-manifest must produce the same ledger hash in repeated runs.
+The fork's Rust timing model and the donor Puck TypeScript timing machine
+consume the same normalized trace fixture and must emit the same event order,
+tier labels, receipt identities, blocked event, and known ledger total. Same
+trace and same manifest must produce the same ledger hash in repeated runs.
 
 ## Review gates
 
 Maintainer approval is required for the companion decision draft before any
-product implementation. Approval must also assign permanent homes for the
-adapter API crates and the schema source of truth.
+product implementation. The recommendation is that `backend-api`,
+`browser-backend`, and `timing-model` are Rust crates in our esp32sim fork;
+measured scheduler and interpreter observation remain modules in `esp32s3` and
+`xtensa-lx7`; the Rust browser adapter is the schema source of truth. Approval
+must accept or amend those homes. No deep adapter or execution module is
+recommended for Puck TypeScript.
 
 Lane C must approve or replace the capability-disabled measured dual-core seam
-before it adds contention. Lane H must approve the validated-output handoff.
-Lane 0's receipt rebaseline must land before lane B adopts new execution costs.
+before it adds contention. Lane H reviews the Rust validated-output seam. Lane
+0's receipt rebaseline must land before lane B adopts new execution costs. The
+unaccepted decision draft also carries exact proposed text for amending decision
+0011's role of Puck, decision 0012's Puck-owned adapter wording, and the roadmap.
 
 The spike stops here for review as required by the lane brief.
