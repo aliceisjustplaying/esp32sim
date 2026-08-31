@@ -107,8 +107,10 @@ pub const MAX_RUN_CYCLES: u64 = 1 << 32;
 pub const MAX_RUN_INSTRUCTIONS: u64 = 10_000_000;
 pub const MAX_RUN_WALL_MILLIS: u32 = 60_000;
 pub const EFUSE_REGISTER_IMAGE_BYTES: u64 = 128 * 4;
+pub const MAX_RAW_RESET_REGISTER_CAPTURE_BYTES: u64 = 16 * 1_024 * 1_024;
 pub const MAX_RESET_REGISTER_RECORDS: usize = 4_096;
 pub const MAX_RESET_REGISTER_STATE_BYTES: u64 = 64 * 1_024;
+pub const RESET_REGISTER_FILTER_RECEIPT_BYTES: u64 = 152;
 pub const DIRECT_APP_FLASH_OFFSET: u32 = 0x0001_0000;
 
 pub type VirtualCycle = u64;
@@ -183,7 +185,9 @@ pub struct ChipIdentity {
     pub expected_base_mac: [u8; 6],
     pub efuse_registers: HashPinnedArtifact,
     pub strap_word: u32,
-    pub reset_register_state: HashPinnedArtifact,
+    pub raw_reset_register_capture: HashPinnedArtifact,
+    pub reset_register_applied_subset: HashPinnedArtifact,
+    pub reset_register_filter_receipt: HashPinnedArtifact,
     pub adoption_receipt_sha256: [u8; 32],
 }
 
@@ -297,7 +301,9 @@ pub enum ArtifactKind {
     Application,
     SymbolsElf,
     EfuseRegisterImage,
+    RawResetRegisterCapture,
     ResetRegisterState,
+    ResetRegisterFilterReceipt,
     InputTranscript,
     TimingManifest,
 }
@@ -604,8 +610,9 @@ contain each `ArtifactKind` at most once. The sum of declared artifact
 sizes uses checked `u64` addition and may not exceed either the requested quota
 or `MAX_TOTAL_ARTIFACT_BYTES`. The fixed per-kind limits are: Mask ROM ELF 64
 MiB, flash image 32 MiB, application 32 MiB, symbols ELF 64 MiB, efuse register
-image exactly 512 bytes, reset-register state 64 KiB, input transcript 16 MiB,
-and timing manifest 4 MiB.
+image exactly 512 bytes, complete raw reset-register capture 16 MiB,
+reset-register applied subset 64 KiB, reset-register filter receipt exactly 152
+bytes, input transcript 16 MiB, and timing manifest 4 MiB.
 `DebugScope::Ranges` contains 1 through `MAX_DEBUG_RANGES` nonempty valid
 ranges. A `CommitId` contains lowercase hexadecimal and has exactly 40 or 64
 bytes. `ChipConfig.core_count` is 1 or 2, CPU frequency is nonzero, and flash
@@ -613,10 +620,11 @@ and PSRAM sizes may not exceed `max_runtime_bytes` when combined with declared
 internal RAM and adapter-owned runtime state. Flash size may not exceed 32 MiB.
 Measured lane B additionally requires one active core.
 
-A valid version-1 manifest always contains the exact
-`EfuseRegisterImage` and `ResetRegisterState` named and hash-pinned by
-`ChipIdentity`. `TimingManifest` is required in measured mode and forbidden in
-fast mode. `InputTranscript` is present if and only if
+A valid version-1 manifest always contains the exact `EfuseRegisterImage`,
+`RawResetRegisterCapture`, `ResetRegisterState`, and
+`ResetRegisterFilterReceipt` named and hash-pinned by `ChipIdentity`.
+`TimingManifest` is required in measured mode and forbidden in fast mode.
+`InputTranscript` is present if and only if
 `NetworkPolicy::Transcript` names it. `SymbolsElf` is optional and never changes
 guest state. Canonical manifest and artifact-set hashes sort descriptors by
 `ArtifactKind` tag then artifact ID bytes and hash their version-1 canonical
@@ -644,20 +652,43 @@ Checked addition must prove `DIRECT_APP_FLASH_OFFSET + application_size <=
 ChipConfig.flash_bytes` before flash allocation or mutation.
 
 The A-01/E identity handoff is not an efuse digest. It is the tuple of the
-hash-pinned raw efuse image, exact strap word, hash-pinned raw reset-register
-state, expected MAC, revision metadata, and lane A/E adoption-receipt hash in
-`ChipIdentity`. Absence or mismatch of any element is `IdentityMismatch` and
-blocks both boot modes.
+hash-pinned raw efuse image, exact strap word, complete hash-pinned raw OpenOCD
+reset-register capture, separately hash-pinned canonical applied subset,
+hash-pinned derivation and filter receipt, expected MAC, revision metadata, and
+lane A/E adoption-receipt hash in `ChipIdentity`. Absence or mismatch of any
+element is `IdentityMismatch` and blocks both boot modes.
 
 `EfuseRegisterImage` version 1 is exactly 128 little-endian `u32` words. Word
 index `i` replaces, rather than overlays, the efuse register at absolute address
 `0x6000_7000 + 4*i`. With `w44 = words[0x44 / 4]` and
 `w48 = words[0x48 / 4]`, the adapter decodes the base MAC as bytes
 `[w48 >> 8, w48, w44 >> 24, w44 >> 16, w44 >> 8, w44]`, with each expression
-truncated to `u8`, and requires it to equal `expected_base_mac`. Raw efuse words are authoritative for
-guest-visible revision fields. `ChipIdentity.revision` is provenance metadata
-and `adoption_receipt_sha256` pins the lane A/E disposition that associates the
-raw capture, strap, reset state, board, and revision.
+truncated to `u8`, and requires it to equal `expected_base_mac`. Raw efuse words
+are authoritative for guest-visible revision fields. `ChipIdentity.revision`
+is provenance metadata and `adoption_receipt_sha256` pins the lane A/E
+disposition that associates the efuse capture, strap, complete raw
+reset-register capture, applied subset, filter receipt, board, and revision.
+
+`RawResetRegisterCapture` is the complete byte-for-byte A-01 OpenOCD reset dump.
+It is retained as provenance and is never passed to `Peripherals::init_regs`,
+partially applied, or treated as the emulator reset state. Its bytes may contain
+registers outside esp32sim's current modeled allowlist. The runtime verifies its
+declared size and hash, then retains its artifact reference for receipts.
+
+`ResetRegisterFilterReceipt` version 1 is a 152-byte canonical binary record:
+`schema_version: u16 = 1`, `algorithm: u16 = 0`, raw-capture SHA-256,
+applied-subset SHA-256, 40-byte lowercase hexadecimal pinned esp32sim commit,
+parsed-record count `u32`, applied-record count `u32`, omitted-record count
+`u32`, and lane A/E adoption-receipt SHA-256, in that order. Integers are
+little-endian. Algorithm zero means the derivation tool parsed the complete
+OpenOCD capture, retained only address and value pairs for which
+`Peripherals::init_regs` at the pinned commit returned true, rejected duplicate
+applied addresses, and emitted the sorted version-1 `ResetRegisterState` below.
+The adapter requires both embedded hashes and the adoption hash to match
+`ChipIdentity`, requires `parsed == applied + omitted` with checked addition,
+and requires `applied` to equal the subset record count. Any mismatch is
+`IdentityMismatch`. The receipt records the derivation; it does not make the raw
+capture safe to apply.
 
 `ResetRegisterState` version 1 is little-endian `schema_version: u16 = 1`,
 reserved zero `u16`, record count `u32`, then strictly increasing unique
@@ -671,17 +702,19 @@ in one of these inclusive version-1 ranges: `0x60008000..0x60008ffc`,
 `0x600c0030..0x600c003c` and `0x60002058..0x60002094`. These are exactly the
 pinned esp32sim `Peripherals::init_regs` allowlist. The loader rejects the whole
 artifact if any record is outside it. No record is silently skipped. The raw
-state is applied before first reset, then
+capture is never applied. This canonical artifact is the complete applied
+subset and is applied before first reset, then
 `strap_word` is assigned to `gpio.strap`. Power-on reset reapplies the adopted
-raw reset state, efuses, and strap. Software, watchdog, and external reset retain
+applied subset, efuses, and strap. Software, watchdog, and external reset retain
 or clear state according to the esp32sim reset implementation and do not
-reapply the raw capture.
+reapply either artifact.
 
 `identity_set_hash` is SHA-256 over `b"esp32sim-identity-v1\0"`, revision major
 and minor as two `u8` values, the six MAC bytes, little-endian strap `u32`, the
-efuse artifact reference, reset-state artifact reference, and adoption receipt
-hash in that order. An artifact reference is canonical ID byte length as
-little-endian `u32`, ID UTF-8 bytes, then its 32-byte hash.
+efuse artifact reference, complete raw reset-register capture reference,
+applied-subset reference, filter-receipt reference, and adoption receipt hash in
+that order. An artifact reference is canonical ID byte length as little-endian
+`u32`, ID UTF-8 bytes, then its 32-byte hash.
 
 `boot_set_hash` is SHA-256 over `b"esp32sim-boot-v1\0"`, boot tag as
 little-endian `u16` (`0` ROM-flash, `1` direct application), then the active
@@ -1243,7 +1276,9 @@ Replace decision 0012's first backend-adapter paragraph with:
 > machine, bus, peripheral, JIT, or internal WebAssembly types. The adapter
 > creates from validated deterministic configuration, loads hash-pinned
 > immutable artifacts through a bounded pre-allocation loader, applies the
-> hash-pinned raw efuse, strap, and reset-register identity, selects an explicit
+> hash-pinned raw efuse, strap, and canonical reset-register subset, preserves
+> the separate complete raw OpenOCD capture and its filter receipt as identity
+> provenance, selects an explicit
 > real-ROM flash or capability-gated direct-app boot mode, resets with an
 > explicit cause, runs to a virtual deadline under explicit budgets, injects
 > timestamped events, drains typed bounded events, gates memory inspection,
@@ -1301,8 +1336,10 @@ enforces it`.
   quotas, and primary validator live in the esp32sim fork and have shared Rust
   fake-backend contract tests.
 - Product boot requires the exact hash-pinned real mask ROM, complete flash
-  image, raw efuse image, strap, and reset-register capture. The HLE direct-app
-  path is a separately advertised non-product capability.
+  image, raw efuse image, strap, complete raw reset-register capture, canonical
+  applied subset, and filter receipt. Only the applied subset reaches
+  `Peripherals::init_regs`. The HLE direct-app path is a separately advertised
+  non-product capability.
 - Ledger deltas remain per call, while the canonical cumulative chain is
   independent of `run_until` slicing.
 - Lane C must propose the measured dual-core policy before enabling that

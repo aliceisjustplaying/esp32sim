@@ -51,7 +51,7 @@ the home of a second execution engine.
 | `xtensa-lx7/src/bus.rs:33-63` | `Bus` exposes memory methods, fetch, page versions, `note_pc`, block breaking, fast memory, and tick. It has no complete observation contract. | The measured CPU backend emits normalized instruction, fetch, data, fault, trap, and invalidation observations. The bus supplies resolution facts but is not the authority for completeness. |
 | `wasm/src/lib.rs:176-204` | `esp32sim_run(cycles, unix_ms)` sets `max_cycles` and then calls the instruction-budgeted machine loop. Host Unix time is accepted directly. | The fork-owned browser adapter accepts an absolute virtual deadline and an explicit deterministic input transcript. It does not accept host time as simulated time. |
 | `cli/src/main.rs:81-102,116` | Networking is created only when `--wifi` is supplied. `--no-jit` disables both native block caches. | The spike configuration requires interpreter execution and `NetworkPolicy::None`; incompatible configuration is rejected during `create`. |
-| `cli/src/main.rs:140-179` and `esp32s3/src/periph.rs:798-823,1010-1028` | The CLI overlays text-parsed efuse and reset-register dumps, then assigns strap and reset-cause values. `Machine::new` otherwise synthesizes MAC and revision defaults. | The adapter requires hash-pinned canonical raw efuse and reset-register artifacts plus the exact strap word. It replaces efuse state, validates every reset-state record, and reports one identity-set hash. |
+| `cli/src/main.rs:140-179` and `esp32s3/src/periph.rs:798-823,1010-1028` | The CLI overlays text-parsed efuse and reset-register dumps, then assigns strap and reset-cause values. `Machine::new` otherwise synthesizes MAC and revision defaults. A-01's complete raw OpenOCD dump includes addresses outside `Peripherals::init_regs`. | The adapter requires a hash-pinned canonical raw efuse image and exact strap word. It preserves the separate complete raw reset-register capture, applies only a canonical subset derived through the pinned `init_regs` allowlist, requires a hash-pinned filter receipt tying both artifacts together, and reports one identity-set hash. |
 | `cli/src/main.rs:120-139` and `esp32s3/src/machine.rs:85-173` | ROM boot loads an ELF and starts at reset, while app boot installs synthetic second-stage state and jumps through `boot_app`. Individually supplied bootloader, partition, and app files are copied into flash. | Product boot requires the exact real mask-ROM ELF and one exact complete flash image. Direct application is a separately advertised diagnostic capability and cannot satisfy a product-boot claim. |
 
 The current fast implementation also establishes useful mechanisms that the
@@ -294,8 +294,8 @@ semantics are:
 
 - `create` accepts validated deterministic config. The spike accepts measured
   mode, interpreter engine, and `NetworkPolicy::None` only. It also names one
-  hash-pinned adopted efuse image, strap word, reset-register state, and boot
-  mode.
+  hash-pinned adopted efuse image, strap word, complete raw reset-register
+  capture, canonical applied subset, filter receipt, and boot mode.
 - `load` validates an artifact manifest and all declared and aggregate quotas
   before allocation, then streams bounded chunks and verifies actual size,
   explicit EOF, and SHA-256 before atomic commit. Product ROM-flash boot
@@ -329,13 +329,18 @@ bytes or constructing `BackendEvent`. Lane H reviews this primary seam. Browser
 TypeScript only rechecks the already-owned bounded event.
 
 The efuse image is exactly 128 little-endian words replacing addresses
-`0x60007000` through `0x600071fc`. The reset-state artifact is a canonical,
-sorted, duplicate-free list of address and value pairs, and every pair must be
-accepted by `Peripherals::init_regs`; none is ignored. The adapter verifies the
-base MAC decoded from raw efuses, pins the lane A/E adoption receipt, and hashes
-revision metadata, MAC, strap, raw efuse, reset state, and receipt into one
-identity-set hash. This complete tuple is the A-01/E identity handoff; an efuse
-digest alone is not sufficient.
+`0x60007000` through `0x600071fc`. The complete A-01 OpenOCD reset dump is a
+separate hash-pinned provenance artifact and is never applied to the emulator.
+`ResetRegisterState` is a canonical sorted, duplicate-free applied subset
+derived from that capture, never the raw capture itself. Every subset pair must
+be accepted by `Peripherals::init_regs`; none is ignored. A separate hash-pinned
+filter receipt records the raw and subset hashes, pinned esp32sim commit,
+parsed, applied, and omitted counts, filter algorithm, and A/E adoption hash.
+The adapter verifies those links and the base MAC decoded from raw efuses, then
+hashes revision metadata, MAC, strap, raw efuse, complete raw reset capture,
+applied subset, filter receipt, and adoption receipt into one identity-set hash.
+This complete tuple is the A-01/E identity handoff; an efuse digest alone is not
+sufficient.
 
 ## Cost and receipt boundary
 
@@ -408,8 +413,9 @@ The fake backend and esp32sim backend must pass the same adapter cases:
   oversized chunk, non-sequential chunk, and Wasm pointer-overflow rejection,
   with an allocation spy proving rejection precedes allocation;
 - exact 512-byte efuse replacement, decoded-MAC mismatch, strap application,
-  reset-register ordering, duplicate, unaligned, disallowed-address, artifact
-  hash, and identity-set hash cases;
+  complete raw reset capture preserved but never applied, subset ordering,
+  duplicate, unaligned and disallowed addresses, raw, subset and filter-receipt
+  hash mismatch, derivation count mismatch, and identity-set hash cases;
 - ROM-flash boot requiring the named real mask-ROM ELF and an exact flash-sized
   image at offset zero, absent ROM reset-vector rejection, and direct-app
   capability, fixed offset, and non-product receipt labeling;
