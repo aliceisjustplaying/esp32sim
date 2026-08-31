@@ -7,6 +7,7 @@ pub trait BoardModel {
     fn name(&self) -> &'static str;
     fn gpio_changes(&mut self, changes: &[(u8, bool)]) {}      // output edges, in order
     fn rmt_frame(&mut self, ch: usize, bits: &[bool]) {}       // a decoded RMT transmission
+    fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8>
     fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn I2cDevice>)> // devices on I2C0
     fn set_camera_picture(&mut self, p: Picture) {}
     fn camera_frame(&mut self) -> Option<(u32, u32, Arc<Vec<u8>>)>   // YUYV at sensor size
@@ -61,8 +62,9 @@ No devices; console only. For stock ESP-IDF projects (`examples/hello_world`).
 ## Adding a board
 
 1. Implement `BoardModel` in `board.rs` (or a new module) and add it to `make_board`.
-2. Devices that talk I2C implement `I2cDevice` (`start/write/read/stop`); GPIO-driven devices
-   parse edges in `gpio_changes`; RMT-driven ones in `rmt_frame`.
+2. Devices that talk I2C implement `I2cDevice` (`start/write/read/stop`); GP-SPI devices answer
+   `spi_transfer`; GPIO-driven devices parse edges in `gpio_changes`; RMT-driven ones in
+   `rmt_frame`.
 3. If the board has a display or LEDs, return them from `tft()`/`ring()` (or extend the trait
    with a new optional accessor) and teach `web/index.html` to draw them (the page switches
    layout on the `board` message).
