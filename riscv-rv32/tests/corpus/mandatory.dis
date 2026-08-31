@@ -1,0 +1,11 @@
+00000000 <mandatory_start>:
+   0:	02a00513          	li	a0,42
+   4:	4582              	lw	a1,0(sp)
+   6:	c22e              	sw	a1,4(sp)
+   8:	00b50633          	add	a2,a0,a1
+   c:	02a606b3          	mul	a3,a2,a0
+  10:	c681              	beqz	a3,18 <mandatory_done>
+  12:	30002773          	csrr	a4,mstatus
+  16:	0001              	nop
+00000018 <mandatory_done>:
+  18:	8082              	ret
