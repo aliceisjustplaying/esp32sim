@@ -25,6 +25,9 @@ as upstream pull requests from `main`-based branches; `puck/base` carries
 only what upstream declines. Upstream syncs are explicit, reviewed
 merges/rebases with a range-diff summary.
 
-Planning, decisions, receipts, and lane briefs live in the puck
-repository: https://github.com/aliceisjustplaying/puck, branch
-`codex/esp32s3-timing-model`, `docs/roadmap.md` and `docs/lanes/`.
+Planning, decisions, receipts, and lane briefs live in the program
+office repository:
+https://github.com/aliceisjustplaying/esp32s3-cycle-accurate-wasm
+(`roadmap.md`, `lanes/`, `decisions/`). The project incubated in
+https://github.com/aliceisjustplaying/puck, branch
+`codex/esp32s3-timing-model`, now a frozen archive and donor.
