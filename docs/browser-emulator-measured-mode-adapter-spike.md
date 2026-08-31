@@ -367,6 +367,16 @@ lane B.
 Lane 0 owns toolchain rebaseline and adoption inputs. Lane B must not combine
 new IDF 6.1 evidence with the historical IDF 6.0.2 cohort in one manifest.
 
+The ESP-IDF 6.1 rebaseline currently leaves the pooled single-core first-line
+cache class blocked. Lane 0 observed instruction-cache flash 204 to 203,
+data-cache flash 115 to 114, and data-cache PSRAM 82 to 81 cycles, all exact
+minus-one shifts, while each per-boot ladder remained internally identical.
+Neither side of those first-line pairs enters a timing manifest until the probe
+diagnosis and adoption disposition are committed. Subsequent-line observations
+remain 266, 473, and 170 cycles. MMIO observations remain 8 cycles per read and
+12,280 cycles for 4,096 writes. The latter observations remain eligible only
+when a committed accepted decision-0008 receipt matches the exact toolchain.
+
 The inspection used Puck commit
 `a91fddc9cb1629ee2de37d916468ee3eb8f681f7`. These are the exact committed
 source hashes consulted by the spike:

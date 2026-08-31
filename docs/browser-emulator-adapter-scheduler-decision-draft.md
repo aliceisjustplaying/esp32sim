@@ -1208,6 +1208,17 @@ the tiered importer and exact event mapping after this draft is approved. The
 lands their 6.1 adoption disposition. Lane B requests lane E evidence only if
 an existing committed receipt cannot resolve an event mapping.
 
+Lane 0's current rebaseline reports a toolchain-sensitive pooled single-core
+first-line diagnostic: instruction-cache flash changed from 204 to 203 cycles,
+data-cache flash from 115 to 114, and data-cache PSRAM from 82 to 81. The
+per-boot ladders are internally identical, so neither the minus-one values nor
+the superseded first-line values are executable costs until lane 0 diagnoses
+the pooling probe and commits an adoption disposition. The importer blocks the
+whole first-line class. Subsequent-line observations remain 266, 473, and 170
+cycles, and MMIO observations remain 8 cycles per read and 12,280 cycles for
+4,096 writes. Those unchanged observations are usable only through committed,
+accepted, exact-toolchain receipts under decision 0008.
+
 ## Proposed source-document amendments, unaccepted
 
 These replacements record the maintainer's product direction precisely enough
