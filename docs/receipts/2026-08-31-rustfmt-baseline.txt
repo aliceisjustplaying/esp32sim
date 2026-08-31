@@ -1,0 +1,52 @@
+ESP32SIM RUSTFMT BASELINE RECEIPT
+date=2026-08-31
+repository=https://github.com/joakimeriksson/esp32sim
+commit=2114ffc92039b4605264d2cfb4ee5543acbf98c1
+rustfmt=rustfmt 1.9.0-stable (88d9e12ae1 2026-08-18)
+command=cargo fmt --all -- --check
+exit_code=1
+diff_hunks=893
+files_with_diffs=39
+normalized_output_bytes=1312485
+normalized_output_sha256=e2d522e5aa66e9e4610b79083964efb0e114b423005ceeeeee97ec63164cad98
+normalization=replace the absolute checkout root in stderr/stdout with <repo>
+
+cli-c3/src/main.rs
+cli/src/main.rs
+esp32c3/src/bus.rs
+esp32c3/src/machine.rs
+esp32c3/src/periph.rs
+esp32s3/src/board.rs
+esp32s3/src/bus.rs
+esp32s3/src/crypto.rs
+esp32s3/src/elf.rs
+esp32s3/src/host.rs
+esp32s3/src/i2c.rs
+esp32s3/src/image.rs
+esp32s3/src/lib.rs
+esp32s3/src/machine.rs
+esp32s3/src/nat.rs
+esp32s3/src/net.rs
+esp32s3/src/periph.rs
+esp32s3/src/picture.rs
+esp32s3/src/web.rs
+esp32s3/src/wifi.rs
+riscv-rv32/src/bus.rs
+riscv-rv32/src/decode.rs
+riscv-rv32/src/disasm.rs
+riscv-rv32/src/exec.rs
+riscv-rv32/src/state.rs
+riscv-rv32/tests/objdump_diff.rs
+wasm/src/lib.rs
+xtensa-lx7/src/block.rs
+xtensa-lx7/src/bus.rs
+xtensa-lx7/src/decode.rs
+xtensa-lx7/src/disasm.rs
+xtensa-lx7/src/exec.rs
+xtensa-lx7/src/jit/a64.rs
+xtensa-lx7/src/jit/mod.rs
+xtensa-lx7/src/lib.rs
+xtensa-lx7/src/pie.rs
+xtensa-lx7/src/pie_table.rs
+xtensa-lx7/src/state.rs
+xtensa-lx7/tests/objdump_diff.rs
