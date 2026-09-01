@@ -126,25 +126,36 @@ The board has one owner at a time. Front-load everything USB-C can
 reach (CCOUNT probes, GPIO interrupt timestamps, hardware cache
 counters, USB Serial/JTAG capture) as one early batch, in tiers:
 
-TinyDraw `main` at `5f38ca5` is ready for Tier A capture and has Tier B
-probe drafts ready for review. Its fail-closed NDJSON path covers 28 Tier B
-cells across six families. A
+The Tier A batch captured product firmware at TinyDraw `5f38ca5` with capture
+tooling at `fe0ee64`; both are contained in current TinyDraw `main` at
+`6ecc1fd`. The accepted receipt is
+[`evidence/timing/tier-a-2026-09-01/`](evidence/timing/tier-a-2026-09-01/README.md).
+Tier B probe drafts remain ready for review. Their fail-closed NDJSON path
+covers 28 Tier B cells across six families. A
 committed objdump gate verifies the probe issue-block encodings and all
 four loop-body residues modulo 4 before capture; mismatch exits nonzero
 without a result file. Task 5-prep did not flash the board or open serial.
 
-Tier A, capture now with committed TinyDraw assets:
+Tier A dispositions:
 
-1. Close the six IDF 6.1 receipt-gap identities (full-suite boots;
-   no selective rerun mode exists yet).
-2. Second independent IDF 6.1 core-timing boot: window pair,
-   straight-line issue, loop alignment, interrupt entry and resume.
-3. Boot-to-product reset cohort (about 30 resets, kept as a
-   distribution, not an acceptance bound).
-4. Diagnostic TE telemetry: the normal product's internally measured
-   `te_period_us` and `te_high_us` across the reset cohort
-   (diagnostic only; interrupt latency means it is not adopted panel
-   timing).
+1. Parked: the IDF 6.1 rebaseline receipt pins TinyDraw commit
+   `3db39856f0a04266a42aef8cd5ead1be6fc8eca4`, but that object is absent
+   after fetching every TinyDraw remote. The maintainer directed captures
+   from current `main`; a current-main full-suite capture cannot be joined
+   to the pinned cohort without an explicit source-equivalence receipt. The
+   six receipt-gap identities remain open.
+2. Complete: two accepted independent IDF 6.1 core-timing boots corroborate
+   the existing exact values for the window pair, straight-line issue, loop
+   alignment, and level 1 and level 3 interrupt entry and resume. Boot 1 is
+   retained by archive hash as a rejected noncanonical diagnostic.
+3. Complete: 30 contiguous successful product resets retain reset-to-ready
+   as a distribution only. The median is 2.7968129584987764 seconds and the
+   nearest-rank p90 is 2.8008790419989964 seconds; this is not an acceptance
+   bound.
+4. Complete: all 30 product resets retain internally measured TE telemetry
+   as diagnostic only. The median period is 16,806 microseconds and median
+   high time is 579 microseconds; interrupt latency means neither is adopted
+   panel timing.
 5. PSRAM long-window (complete offline): the four cold PSRAM cohorts have
    3, 4, 4, and 4 eligible independent boots. They are retained as
    distribution candidates only, with no recapture needed. Receipt:
