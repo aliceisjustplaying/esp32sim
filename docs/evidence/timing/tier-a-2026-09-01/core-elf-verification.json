@@ -1,0 +1,59 @@
+{
+  "elf": "../../out/build/esp32s3-core-timing-calibration/esp32s3_core_timing_calibration.elf",
+  "elfSha256": "7c3e21993da886855be4660c0db691b2c5f938fd1f73ad6301718cde5a9d1014",
+  "issueBlocks": [
+    {
+      "address": 1077376256,
+      "bodySha256": "c43e3162f4fcca21bcfd02c129ab123d8c1be8433c8e3f0e8fa9993346a31315",
+      "operations": 256,
+      "symbol": "issue_narrow_block"
+    },
+    {
+      "address": 1077376776,
+      "bodySha256": "b62475f8ed5bdfa8643a336a2de04bff617eae0bf99788bd1c0cff2465407d63",
+      "operations": 256,
+      "symbol": "issue_wide_block"
+    },
+    {
+      "address": 1077377552,
+      "bodySha256": "796f28dd7cfe803bbcb032e671135e63fe02dcecc61f90a974d83a446d1e90aa",
+      "operations": 256,
+      "symbol": "issue_mixed_block"
+    },
+    {
+      "address": 1077378200,
+      "bodySha256": "a398152b58b886cc26fb5fff5975972d5f9761318e46e8831463d0acd2974830",
+      "operations": 256,
+      "symbol": "issue_dependent_block"
+    },
+    {
+      "address": 1077378976,
+      "bodySha256": "7affa7bf5fb729f42fa9fee8aeaf5f0efdc2ab8e0fe40238b75a7bd25277e799",
+      "operations": 256,
+      "symbol": "issue_independent_block"
+    }
+  ],
+  "loopBodies": [
+    {
+      "bodyAddress": 1077379824,
+      "residueMod4": 0,
+      "symbol": "loop_body_r0"
+    },
+    {
+      "bodyAddress": 1077379761,
+      "residueMod4": 1,
+      "symbol": "loop_body_r1"
+    },
+    {
+      "bodyAddress": 1077379858,
+      "residueMod4": 2,
+      "symbol": "loop_body_r2"
+    },
+    {
+      "bodyAddress": 1077379791,
+      "residueMod4": 3,
+      "symbol": "loop_body_r3"
+    }
+  ],
+  "ok": true
+}
