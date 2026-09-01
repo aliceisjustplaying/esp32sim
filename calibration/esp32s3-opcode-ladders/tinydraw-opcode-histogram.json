@@ -1,0 +1,892 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw",
+    "elf": "out/build/esp32-vector-v2/tinydraw_esp32.elf",
+    "elfSha256": "7f598fd3580cf52078fb6aa04a5f6fe5179b0de9d89bb6468fdb06ed5e40e424"
+  },
+  "emulator": {
+    "repository": "https://github.com/aliceisjustplaying/esp32sim",
+    "baseCommit": "2664fe6a54b4059d634fe988c27660dad853d4c2",
+    "mode": "fast functional mode with single-step opcode observer"
+  },
+  "runBoundary": "ROM reset through the first TINYDRAW_AUTOSAVE_COMMIT USB console marker",
+  "totalDynamicInstructions": 46690498,
+  "opcodes": [
+    {
+      "opcode": "abs",
+      "dynamicCount": 553,
+      "share": 1.1843952e-05
+    },
+    {
+      "opcode": "add",
+      "dynamicCount": 59712,
+      "share": 0.001278889765
+    },
+    {
+      "opcode": "add.n",
+      "dynamicCount": 1482079,
+      "share": 0.031742625662
+    },
+    {
+      "opcode": "addi",
+      "dynamicCount": 965610,
+      "share": 0.02068108162
+    },
+    {
+      "opcode": "addi.n",
+      "dynamicCount": 2854774,
+      "share": 0.061142504841
+    },
+    {
+      "opcode": "addmi",
+      "dynamicCount": 15857,
+      "share": 0.000339619423
+    },
+    {
+      "opcode": "addx2",
+      "dynamicCount": 22517,
+      "share": 0.000482260866
+    },
+    {
+      "opcode": "addx4",
+      "dynamicCount": 450282,
+      "share": 0.009643975097
+    },
+    {
+      "opcode": "addx8",
+      "dynamicCount": 15779,
+      "share": 0.000337948848
+    },
+    {
+      "opcode": "and",
+      "dynamicCount": 330357,
+      "share": 0.007075465333
+    },
+    {
+      "opcode": "ball",
+      "dynamicCount": 58,
+      "share": 1.242223e-06
+    },
+    {
+      "opcode": "bany",
+      "dynamicCount": 10473,
+      "share": 0.000224306881
+    },
+    {
+      "opcode": "bbc",
+      "dynamicCount": 3580,
+      "share": 7.667513e-05
+    },
+    {
+      "opcode": "bbci",
+      "dynamicCount": 134975,
+      "share": 0.002890845157
+    },
+    {
+      "opcode": "bbs",
+      "dynamicCount": 3267,
+      "share": 6.997141e-05
+    },
+    {
+      "opcode": "bbsi",
+      "dynamicCount": 152795,
+      "share": 0.003272507395
+    },
+    {
+      "opcode": "beq",
+      "dynamicCount": 496518,
+      "share": 0.010634240826
+    },
+    {
+      "opcode": "beqi",
+      "dynamicCount": 195126,
+      "share": 0.004179137263
+    },
+    {
+      "opcode": "beqz",
+      "dynamicCount": 1676161,
+      "share": 0.035899402915
+    },
+    {
+      "opcode": "beqz.n",
+      "dynamicCount": 950922,
+      "share": 0.020366499411
+    },
+    {
+      "opcode": "bge",
+      "dynamicCount": 9230,
+      "share": 0.000197684762
+    },
+    {
+      "opcode": "bgei",
+      "dynamicCount": 76109,
+      "share": 0.00163007471
+    },
+    {
+      "opcode": "bgeu",
+      "dynamicCount": 56081,
+      "share": 0.001201122335
+    },
+    {
+      "opcode": "bgeui",
+      "dynamicCount": 16204,
+      "share": 0.000347051342
+    },
+    {
+      "opcode": "bgez",
+      "dynamicCount": 10808,
+      "share": 0.000231481789
+    },
+    {
+      "opcode": "blt",
+      "dynamicCount": 16716,
+      "share": 0.000358017171
+    },
+    {
+      "opcode": "blti",
+      "dynamicCount": 4904,
+      "share": 0.000105032077
+    },
+    {
+      "opcode": "bltu",
+      "dynamicCount": 2090061,
+      "share": 0.04476416165
+    },
+    {
+      "opcode": "bltui",
+      "dynamicCount": 8690,
+      "share": 0.00018611924
+    },
+    {
+      "opcode": "bltz",
+      "dynamicCount": 1091,
+      "share": 2.3366639e-05
+    },
+    {
+      "opcode": "bnall",
+      "dynamicCount": 3424,
+      "share": 7.3333979e-05
+    },
+    {
+      "opcode": "bne",
+      "dynamicCount": 504378,
+      "share": 0.010802583429
+    },
+    {
+      "opcode": "bnei",
+      "dynamicCount": 98890,
+      "share": 0.002117989832
+    },
+    {
+      "opcode": "bnez",
+      "dynamicCount": 313718,
+      "share": 0.00671909732
+    },
+    {
+      "opcode": "bnez.n",
+      "dynamicCount": 710439,
+      "share": 0.01521592252
+    },
+    {
+      "opcode": "bnone",
+      "dynamicCount": 18595,
+      "share": 0.000398260905
+    },
+    {
+      "opcode": "call0",
+      "dynamicCount": 29565,
+      "share": 0.000633212351
+    },
+    {
+      "opcode": "call4",
+      "dynamicCount": 7261,
+      "share": 0.000155513441
+    },
+    {
+      "opcode": "call8",
+      "dynamicCount": 401843,
+      "share": 0.008606526321
+    },
+    {
+      "opcode": "callx4",
+      "dynamicCount": 3357,
+      "share": 7.1898998e-05
+    },
+    {
+      "opcode": "callx8",
+      "dynamicCount": 454025,
+      "share": 0.009724141302
+    },
+    {
+      "opcode": "dsync",
+      "dynamicCount": 20,
+      "share": 4.28353e-07
+    },
+    {
+      "opcode": "entry",
+      "dynamicCount": 866494,
+      "share": 0.018558251403
+    },
+    {
+      "opcode": "extui",
+      "dynamicCount": 2237016,
+      "share": 0.047911590063
+    },
+    {
+      "opcode": "isync",
+      "dynamicCount": 21,
+      "share": 4.4977e-07
+    },
+    {
+      "opcode": "j",
+      "dynamicCount": 858939,
+      "share": 0.018396441177
+    },
+    {
+      "opcode": "jx",
+      "dynamicCount": 152365,
+      "share": 0.003263297813
+    },
+    {
+      "opcode": "l16si",
+      "dynamicCount": 276,
+      "share": 5.911267e-06
+    },
+    {
+      "opcode": "l16ui",
+      "dynamicCount": 405341,
+      "share": 0.008681445205
+    },
+    {
+      "opcode": "l32e",
+      "dynamicCount": 420929,
+      "share": 0.009015303285
+    },
+    {
+      "opcode": "l32i",
+      "dynamicCount": 526588,
+      "share": 0.011278269082
+    },
+    {
+      "opcode": "l32i.n",
+      "dynamicCount": 4113967,
+      "share": 0.088111439719
+    },
+    {
+      "opcode": "l32r",
+      "dynamicCount": 1911407,
+      "share": 0.040937815656
+    },
+    {
+      "opcode": "l8ui",
+      "dynamicCount": 1663737,
+      "share": 0.035633310229
+    },
+    {
+      "opcode": "loop",
+      "dynamicCount": 8554,
+      "share": 0.000183206442
+    },
+    {
+      "opcode": "loopnez",
+      "dynamicCount": 28059,
+      "share": 0.000600957394
+    },
+    {
+      "opcode": "max",
+      "dynamicCount": 6179,
+      "share": 0.000132339561
+    },
+    {
+      "opcode": "maxu",
+      "dynamicCount": 2973,
+      "share": 6.3674626e-05
+    },
+    {
+      "opcode": "memw",
+      "dynamicCount": 2737917,
+      "share": 0.058639704378
+    },
+    {
+      "opcode": "min",
+      "dynamicCount": 5804,
+      "share": 0.000124307948
+    },
+    {
+      "opcode": "minu",
+      "dynamicCount": 10838,
+      "share": 0.000232124318
+    },
+    {
+      "opcode": "mov.n",
+      "dynamicCount": 777584,
+      "share": 0.016654009559
+    },
+    {
+      "opcode": "moveqz",
+      "dynamicCount": 81960,
+      "share": 0.001755389287
+    },
+    {
+      "opcode": "movgez",
+      "dynamicCount": 151,
+      "share": 3.234063e-06
+    },
+    {
+      "opcode": "movi",
+      "dynamicCount": 195244,
+      "share": 0.004181664543
+    },
+    {
+      "opcode": "movi.n",
+      "dynamicCount": 922199,
+      "share": 0.019751320708
+    },
+    {
+      "opcode": "movltz",
+      "dynamicCount": 54,
+      "share": 1.156552e-06
+    },
+    {
+      "opcode": "movnez",
+      "dynamicCount": 104002,
+      "share": 0.002227476777
+    },
+    {
+      "opcode": "movsp",
+      "dynamicCount": 1020,
+      "share": 2.1845987e-05
+    },
+    {
+      "opcode": "mul16s",
+      "dynamicCount": 1212,
+      "share": 2.5958172e-05
+    },
+    {
+      "opcode": "mul16u",
+      "dynamicCount": 121,
+      "share": 2.591534e-06
+    },
+    {
+      "opcode": "mula.aa.ll",
+      "dynamicCount": 132,
+      "share": 2.827128e-06
+    },
+    {
+      "opcode": "mull",
+      "dynamicCount": 23062,
+      "share": 0.000493933477
+    },
+    {
+      "opcode": "mulsh",
+      "dynamicCount": 6,
+      "share": 1.28506e-07
+    },
+    {
+      "opcode": "muluh",
+      "dynamicCount": 554,
+      "share": 1.1865369e-05
+    },
+    {
+      "opcode": "neg",
+      "dynamicCount": 35074,
+      "share": 0.000751202097
+    },
+    {
+      "opcode": "nop.n",
+      "dynamicCount": 14,
+      "share": 2.99847e-07
+    },
+    {
+      "opcode": "nsau",
+      "dynamicCount": 153878,
+      "share": 0.003295702693
+    },
+    {
+      "opcode": "or",
+      "dynamicCount": 1068969,
+      "share": 0.022894786858
+    },
+    {
+      "opcode": "quos",
+      "dynamicCount": 4760,
+      "share": 0.000101947938
+    },
+    {
+      "opcode": "quou",
+      "dynamicCount": 5461,
+      "share": 0.0001169617
+    },
+    {
+      "opcode": "remu",
+      "dynamicCount": 8187,
+      "share": 0.00017534617
+    },
+    {
+      "opcode": "rer",
+      "dynamicCount": 3,
+      "share": 6.4253e-08
+    },
+    {
+      "opcode": "ret.n",
+      "dynamicCount": 22084,
+      "share": 0.00047298703
+    },
+    {
+      "opcode": "retw",
+      "dynamicCount": 7976,
+      "share": 0.000170827049
+    },
+    {
+      "opcode": "retw.n",
+      "dynamicCount": 900653,
+      "share": 0.019289856364
+    },
+    {
+      "opcode": "rfe",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "rfwo",
+      "dynamicCount": 41217,
+      "share": 0.000882770623
+    },
+    {
+      "opcode": "rfwu",
+      "dynamicCount": 42192,
+      "share": 0.000903652816
+    },
+    {
+      "opcode": "rotw",
+      "dynamicCount": 18743,
+      "share": 0.000401430715
+    },
+    {
+      "opcode": "rsil",
+      "dynamicCount": 307890,
+      "share": 0.006594275349
+    },
+    {
+      "opcode": "rsr.acchi",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.acclo",
+      "dynamicCount": 3465,
+      "share": 7.4212102e-05
+    },
+    {
+      "opcode": "rsr.br",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.ccount",
+      "dynamicCount": 1626499,
+      "share": 0.034835760372
+    },
+    {
+      "opcode": "rsr.cpenable",
+      "dynamicCount": 4142,
+      "share": 8.871184e-05
+    },
+    {
+      "opcode": "rsr.epc1",
+      "dynamicCount": 10031,
+      "share": 0.000214840287
+    },
+    {
+      "opcode": "rsr.exccause",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.excsave1",
+      "dynamicCount": 6694,
+      "share": 0.000143369642
+    },
+    {
+      "opcode": "rsr.intenable",
+      "dynamicCount": 8765,
+      "share": 0.000187725562
+    },
+    {
+      "opcode": "rsr.interrupt",
+      "dynamicCount": 6694,
+      "share": 0.000143369642
+    },
+    {
+      "opcode": "rsr.lbeg",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.lend",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.m0",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.m1",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.m2",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.m3",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.memctl",
+      "dynamicCount": 2,
+      "share": 4.2835e-08
+    },
+    {
+      "opcode": "rsr.prid",
+      "dynamicCount": 456262,
+      "share": 0.009772052549
+    },
+    {
+      "opcode": "rsr.ps",
+      "dynamicCount": 154440,
+      "share": 0.003307739403
+    },
+    {
+      "opcode": "rsr.sar",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.scompare1",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    },
+    {
+      "opcode": "rsr.windowbase",
+      "dynamicCount": 3087,
+      "share": 6.6116236e-05
+    },
+    {
+      "opcode": "rsr.windowstart",
+      "dynamicCount": 2058,
+      "share": 4.4077491e-05
+    },
+    {
+      "opcode": "rsync",
+      "dynamicCount": 300861,
+      "share": 0.006443730799
+    },
+    {
+      "opcode": "rur.threadptr",
+      "dynamicCount": 4364,
+      "share": 9.3466555e-05
+    },
+    {
+      "opcode": "s16i",
+      "dynamicCount": 584732,
+      "share": 0.012523575996
+    },
+    {
+      "opcode": "s32c1i",
+      "dynamicCount": 110061,
+      "share": 0.002357246222
+    },
+    {
+      "opcode": "s32e",
+      "dynamicCount": 336406,
+      "share": 0.007205020602
+    },
+    {
+      "opcode": "s32i",
+      "dynamicCount": 145811,
+      "share": 0.003122926639
+    },
+    {
+      "opcode": "s32i.n",
+      "dynamicCount": 2327006,
+      "share": 0.049838962951
+    },
+    {
+      "opcode": "s8i",
+      "dynamicCount": 856979,
+      "share": 0.018354462615
+    },
+    {
+      "opcode": "salt",
+      "dynamicCount": 1867,
+      "share": 3.9986723e-05
+    },
+    {
+      "opcode": "saltu",
+      "dynamicCount": 6323,
+      "share": 0.0001354237
+    },
+    {
+      "opcode": "sext",
+      "dynamicCount": 40,
+      "share": 8.56705e-07
+    },
+    {
+      "opcode": "sll",
+      "dynamicCount": 30812,
+      "share": 0.00065992014
+    },
+    {
+      "opcode": "slli",
+      "dynamicCount": 795084,
+      "share": 0.017028818155
+    },
+    {
+      "opcode": "sra",
+      "dynamicCount": 336,
+      "share": 7.196325e-06
+    },
+    {
+      "opcode": "srai",
+      "dynamicCount": 788,
+      "share": 1.6877096e-05
+    },
+    {
+      "opcode": "src",
+      "dynamicCount": 5994,
+      "share": 0.000128377299
+    },
+    {
+      "opcode": "srl",
+      "dynamicCount": 9834,
+      "share": 0.000210621013
+    },
+    {
+      "opcode": "srli",
+      "dynamicCount": 251443,
+      "share": 0.00538531416
+    },
+    {
+      "opcode": "ssa8b",
+      "dynamicCount": 11,
+      "share": 2.35594e-07
+    },
+    {
+      "opcode": "ssa8l",
+      "dynamicCount": 111,
+      "share": 2.377357e-06
+    },
+    {
+      "opcode": "ssai",
+      "dynamicCount": 5642,
+      "share": 0.000120838291
+    },
+    {
+      "opcode": "ssl",
+      "dynamicCount": 30822,
+      "share": 0.000660134317
+    },
+    {
+      "opcode": "ssr",
+      "dynamicCount": 9133,
+      "share": 0.000195607252
+    },
+    {
+      "opcode": "sub",
+      "dynamicCount": 1817575,
+      "share": 0.038928156217
+    },
+    {
+      "opcode": "subx2",
+      "dynamicCount": 6,
+      "share": 1.28506e-07
+    },
+    {
+      "opcode": "subx8",
+      "dynamicCount": 8873,
+      "share": 0.000190038667
+    },
+    {
+      "opcode": "waiti",
+      "dynamicCount": 1768,
+      "share": 3.7866377e-05
+    },
+    {
+      "opcode": "wdtlb",
+      "dynamicCount": 34,
+      "share": 7.282e-07
+    },
+    {
+      "opcode": "witlb",
+      "dynamicCount": 31,
+      "share": 6.63947e-07
+    },
+    {
+      "opcode": "wsr.acchi",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.acclo",
+      "dynamicCount": 3471,
+      "share": 7.4340608e-05
+    },
+    {
+      "opcode": "wsr.atomctl",
+      "dynamicCount": 2,
+      "share": 4.2835e-08
+    },
+    {
+      "opcode": "wsr.br",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.ccount",
+      "dynamicCount": 2,
+      "share": 4.2835e-08
+    },
+    {
+      "opcode": "wsr.cpenable",
+      "dynamicCount": 7259,
+      "share": 0.000155470606
+    },
+    {
+      "opcode": "wsr.epc1",
+      "dynamicCount": 6676,
+      "share": 0.000142984125
+    },
+    {
+      "opcode": "wsr.excsave1",
+      "dynamicCount": 6674,
+      "share": 0.00014294129
+    },
+    {
+      "opcode": "wsr.excsave2",
+      "dynamicCount": 2,
+      "share": 4.2835e-08
+    },
+    {
+      "opcode": "wsr.excsave3",
+      "dynamicCount": 2,
+      "share": 4.2835e-08
+    },
+    {
+      "opcode": "wsr.excsave4",
+      "dynamicCount": 2,
+      "share": 4.2835e-08
+    },
+    {
+      "opcode": "wsr.excsave5",
+      "dynamicCount": 2,
+      "share": 4.2835e-08
+    },
+    {
+      "opcode": "wsr.intclear",
+      "dynamicCount": 3357,
+      "share": 7.1898998e-05
+    },
+    {
+      "opcode": "wsr.intenable",
+      "dynamicCount": 4180,
+      "share": 8.952571e-05
+    },
+    {
+      "opcode": "wsr.lbeg",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.lcount",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.lend",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.m0",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.m1",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.m2",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.m3",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.memctl",
+      "dynamicCount": 3,
+      "share": 6.4253e-08
+    },
+    {
+      "opcode": "wsr.ps",
+      "dynamicCount": 295576,
+      "share": 0.006330538603
+    },
+    {
+      "opcode": "wsr.sar",
+      "dynamicCount": 3339,
+      "share": 7.151348e-05
+    },
+    {
+      "opcode": "wsr.scompare1",
+      "dynamicCount": 113400,
+      "share": 0.002428759702
+    },
+    {
+      "opcode": "wsr.vecbase",
+      "dynamicCount": 4,
+      "share": 8.5671e-08
+    },
+    {
+      "opcode": "wsr.windowbase",
+      "dynamicCount": 1031,
+      "share": 2.2081581e-05
+    },
+    {
+      "opcode": "wsr.windowstart",
+      "dynamicCount": 2060,
+      "share": 4.4120326e-05
+    },
+    {
+      "opcode": "wur.threadptr",
+      "dynamicCount": 4368,
+      "share": 9.3552226e-05
+    },
+    {
+      "opcode": "xor",
+      "dynamicCount": 897981,
+      "share": 0.019232628446
+    },
+    {
+      "opcode": "xsr.intenable",
+      "dynamicCount": 4177,
+      "share": 8.9461457e-05
+    },
+    {
+      "opcode": "xsr.lcount",
+      "dynamicCount": 3337,
+      "share": 7.1470645e-05
+    }
+  ]
+}

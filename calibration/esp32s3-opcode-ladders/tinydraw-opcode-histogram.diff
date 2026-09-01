@@ -1,0 +1,84 @@
+diff --git a/cli/src/main.rs b/cli/src/main.rs
+index bc14d29..1e1b19c 100644
+--- a/cli/src/main.rs
++++ b/cli/src/main.rs
+@@ -514,0 +515 @@ fn main() {
++    xtensa_lx7::exec::write_opcode_histogram().expect("write opcode histogram");
+diff --git a/esp32s3/src/machine.rs b/esp32s3/src/machine.rs
+index ee2b3f9..72efaf6 100644
+--- a/esp32s3/src/machine.rs
++++ b/esp32s3/src/machine.rs
+@@ -65,0 +66 @@ pub struct Machine {
++    stop_console_marker: Option<Vec<u8>>,
+@@ -149,0 +151,2 @@ impl Machine {
++            stop_console_marker: std::env::var_os("ESP32SIM_STOP_CONSOLE_MARKER")
++                .map(|marker| marker.to_string_lossy().into_owned().into_bytes()),
+@@ -435,0 +439,14 @@ impl Machine {
++    fn console_marker_reached(&mut self) -> bool {
++        if self.stop_console_marker.is_none() || self.bus.periph.usb.tx_out.is_empty() {
++            return false;
++        }
++        self.drain_console();
++        let marker = self
++            .stop_console_marker
++            .as_ref()
++            .expect("the marker was checked above");
++        self.console_usb
++            .windows(marker.len())
++            .any(|window| window == marker)
++    }
++
+@@ -713,0 +731,3 @@ impl Machine {
++                    if self.console_marker_reached() {
++                        return Stop::Halted;
++                    }
+@@ -735,0 +756,3 @@ impl Machine {
++                        if self.console_marker_reached() {
++                            return Stop::Halted;
++                        }
+diff --git a/xtensa-lx7/src/exec.rs b/xtensa-lx7/src/exec.rs
+index 5f5b665..8cdec0a 100644
+--- a/xtensa-lx7/src/exec.rs
++++ b/xtensa-lx7/src/exec.rs
+@@ -4,0 +5,4 @@ use crate::state::*;
++use std::collections::BTreeMap;
++use std::sync::{Mutex, OnceLock};
++
++static OPCODE_COUNTS: OnceLock<Mutex<BTreeMap<String, u64>>> = OnceLock::new();
+@@ -18,0 +23,34 @@ pub enum Trap {
++fn record_opcode(i: &Insn) {
++    if std::env::var_os("ESP32SIM_OPCODE_HISTOGRAM").is_none() {
++        return;
++    }
++    let mnemonic = crate::disasm::format(i)
++        .split_whitespace()
++        .next()
++        .unwrap_or("illegal")
++        .to_string();
++    *OPCODE_COUNTS
++        .get_or_init(|| Mutex::new(BTreeMap::new()))
++        .lock()
++        .expect("opcode histogram mutex")
++        .entry(mnemonic)
++        .or_default() += 1;
++}
++
++pub fn write_opcode_histogram() -> std::io::Result<()> {
++    use std::io::Write;
++
++    let Some(path) = std::env::var_os("ESP32SIM_OPCODE_HISTOGRAM") else {
++        return Ok(());
++    };
++    let counts = OPCODE_COUNTS
++        .get_or_init(|| Mutex::new(BTreeMap::new()))
++        .lock()
++        .expect("opcode histogram mutex");
++    let mut output = std::io::BufWriter::new(std::fs::File::create(path)?);
++    for (opcode, count) in counts.iter() {
++        writeln!(output, "{opcode}\t{count}")?;
++    }
++    Ok(())
++}
++
+@@ -413,0 +452 @@ pub fn step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(), Trap> {
++    record_opcode(&i);
