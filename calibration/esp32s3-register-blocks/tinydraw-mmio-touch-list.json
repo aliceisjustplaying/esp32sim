@@ -1,0 +1,6615 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "firmwareRepository": "https://github.com/aliceisjustplaying/tinydraw",
+    "firmwareRevision": "7a157d44a9da3312b1ecda2b45b116af2de28e63",
+    "elfPath": "out/build/esp32-vector-v2/tinydraw_esp32.elf",
+    "elfSha256": "7f598fd3580cf52078fb6aa04a5f6fe5179b0de9d89bb6468fdb06ed5e40e424",
+    "simulatorRevision": "2664fe6a54b4059d634fe988c27660dad853d4c2",
+    "instrumentationPatch": "tinydraw-mmio-touch-list.diff",
+    "stopCondition": "ROM boot through the first TINYDRAW_AUTOSAVE_COMMIT with --max-insns 400000000",
+    "emulatorArguments": [
+      "--boot",
+      "rom",
+      "--board",
+      "waveshare-amoled18-v2",
+      "--flash-mb",
+      "16",
+      "--psram-mb",
+      "8",
+      "--console",
+      "usb",
+      "--no-dump",
+      "--max-insns",
+      "400000000",
+      "--log-periph",
+      "--regstat"
+    ]
+  },
+  "summary": {
+    "blocks": 25,
+    "distinctRegisters": 637,
+    "addressAccessPairs": 936,
+    "blockAddressAccessPairs": {
+      "INTERRUPT": 198,
+      "IO_MUX": 92,
+      "RTC": 80,
+      "SPI1": 72,
+      "SENSITIVE": 56,
+      "GPIO": 51,
+      "EXTMEM": 51,
+      "SPI0": 50,
+      "I2C0": 40,
+      "SYSTEM": 30,
+      "SPI2": 28,
+      "SHA": 28,
+      "SYSTIMER": 27,
+      "APB_SARADC": 24,
+      "APB_CTRL": 22,
+      "TIMG0": 17,
+      "GDMA": 14,
+      "UART0": 13,
+      "TIMG1": 12,
+      "EFUSE": 9,
+      "I2C_MST": 8,
+      "USB_SERIAL_JTAG": 5,
+      "ASSIST_DEBUG": 5,
+      "NRX": 2,
+      "FE2": 2
+    }
+  },
+  "touches": [
+    {
+      "address": "0x600c2000",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2004",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2008",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c200c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2010",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2014",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2018",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c201c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2020",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2024",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2028",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c202c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2030",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2034",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2038",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c203c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2040",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2044",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2048",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c204c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2050",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2054",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 47,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2058",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c205c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2060",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2064",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2068",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c206c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x40048b35"
+    },
+    {
+      "address": "0x600c2070",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2074",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2078",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c207c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2080",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2084",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2088",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c208c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2090",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2094",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2098",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c209c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20a0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20a4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20a8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20ac",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20b0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20b4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20b8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20bc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20c0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20c4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20c8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20cc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20d0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20d4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20d8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20dc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20e0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20e4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20e8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20ec",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20f0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20f4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20f8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c20fc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2100",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2104",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2108",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c210c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2110",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2114",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2118",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c211c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2120",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2124",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2128",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c212c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2130",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2134",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2138",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c213c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2140",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2144",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2148",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c214c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2150",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2154",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2158",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c215c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2160",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2164",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2168",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c216c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2170",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2174",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2178",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c217c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2180",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2184",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2188",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2800",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2804",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2808",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c280c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2810",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2814",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2818",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c281c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2820",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2824",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2828",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c282c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2830",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2834",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2838",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c283c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2840",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2844",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2848",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c284c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2850",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2854",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2858",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c285c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2860",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2864",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2868",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c286c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2870",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2874",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2878",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c287c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2880",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2884",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2888",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c288c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2890",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2894",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2898",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c289c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28a0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28a4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28a8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28ac",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28b0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28b4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28b8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28bc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28c0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28c4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28c8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28cc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28d0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28d4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28d8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28dc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28e0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28e4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28e8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28ec",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28f0",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28f4",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28f8",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c28fc",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2900",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2904",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2908",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c290c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2910",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2914",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2918",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c291c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2920",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2924",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2928",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c292c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2930",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2934",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2938",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c293c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2940",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2944",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2948",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c294c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2950",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2954",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2958",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c295c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2960",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2964",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2968",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c296c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2970",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2974",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2978",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c297c",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2980",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2984",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x600c2988",
+      "block": "INTERRUPT",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004357f"
+    },
+    {
+      "address": "0x60009000",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004d50c"
+    },
+    {
+      "address": "0x60009000",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004d525"
+    },
+    {
+      "address": "0x60009004",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 89,
+      "firstAccessPc": "0x4005016a"
+    },
+    {
+      "address": "0x60009004",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 87,
+      "firstAccessPc": "0x40050172"
+    },
+    {
+      "address": "0x60009008",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009008",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x6000900c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x6000900c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009010",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009010",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009014",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009014",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009018",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009018",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x6000901c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x6000901c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009020",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009020",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009024",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 15,
+      "firstAccessPc": "0x4005016a"
+    },
+    {
+      "address": "0x60009024",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 15,
+      "firstAccessPc": "0x40050172"
+    },
+    {
+      "address": "0x60009028",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009028",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x6000902c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x6000902c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009030",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 7,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009030",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 7,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009034",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009034",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009038",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 10,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009038",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 10,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x6000903c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 14,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x6000903c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 14,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009040",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 14,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009040",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 14,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009044",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009044",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009048",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009048",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x6000904c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x6000904c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009050",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009050",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009054",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009054",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009058",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 10,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009058",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 10,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x6000906c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 7,
+      "firstAccessPc": "0x40380da6"
+    },
+    {
+      "address": "0x6000906c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 7,
+      "firstAccessPc": "0x40380db0"
+    },
+    {
+      "address": "0x60009070",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009070",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x60009074",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009074",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x60009078",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x60009078",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x6000907c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x6000907c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60009080",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009080",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x60009084",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009084",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x60009088",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009088",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x6000908c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x6000908c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x60009090",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009090",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x60009094",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009094",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x60009098",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f171"
+    },
+    {
+      "address": "0x60009098",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037f179"
+    },
+    {
+      "address": "0x6000909c",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x6000909c",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090a0",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090a0",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090a4",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090a4",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090a8",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090a8",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090ac",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090ac",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090b0",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4005016a"
+    },
+    {
+      "address": "0x600090b0",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x40050172"
+    },
+    {
+      "address": "0x600090b4",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x40048a6b"
+    },
+    {
+      "address": "0x600090b4",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x40048a73"
+    },
+    {
+      "address": "0x600090b8",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090b8",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090bc",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090bc",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090c0",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090c0",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x600090c4",
+      "block": "IO_MUX",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4204002d"
+    },
+    {
+      "address": "0x600090c4",
+      "block": "IO_MUX",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x42040035"
+    },
+    {
+      "address": "0x60008000",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x403ce672"
+    },
+    {
+      "address": "0x60008000",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x403ce67b"
+    },
+    {
+      "address": "0x6000800c",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x40380308"
+    },
+    {
+      "address": "0x6000800c",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x40380310"
+    },
+    {
+      "address": "0x60008010",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x40380318"
+    },
+    {
+      "address": "0x60008014",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x40380320"
+    },
+    {
+      "address": "0x6000801c",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x403ce2c9"
+    },
+    {
+      "address": "0x6000801c",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x403ce2d7"
+    },
+    {
+      "address": "0x60008020",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be28e"
+    },
+    {
+      "address": "0x60008020",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be29f"
+    },
+    {
+      "address": "0x60008024",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x420be172"
+    },
+    {
+      "address": "0x60008024",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x420be180"
+    },
+    {
+      "address": "0x60008028",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x420be1f1"
+    },
+    {
+      "address": "0x60008028",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x420be1fe"
+    },
+    {
+      "address": "0x6000802c",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be159"
+    },
+    {
+      "address": "0x6000802c",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be16d"
+    },
+    {
+      "address": "0x60008030",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x420be1c8"
+    },
+    {
+      "address": "0x60008030",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x420be1d5"
+    },
+    {
+      "address": "0x60008034",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x403cd45a"
+    },
+    {
+      "address": "0x60008034",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x403cd469"
+    },
+    {
+      "address": "0x60008038",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 24,
+      "firstAccessPc": "0x40044577"
+    },
+    {
+      "address": "0x6000803c",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200684d"
+    },
+    {
+      "address": "0x60008040",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 2086,
+      "firstAccessPc": "0x400475f8"
+    },
+    {
+      "address": "0x60008040",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 2089,
+      "firstAccessPc": "0x403c8c3a"
+    },
+    {
+      "address": "0x6000804c",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x400475e7"
+    },
+    {
+      "address": "0x6000804c",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x403c8c46"
+    },
+    {
+      "address": "0x60008054",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x42005759"
+    },
+    {
+      "address": "0x60008054",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42005838"
+    },
+    {
+      "address": "0x60008074",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 27,
+      "firstAccessPc": "0x403ce3a9"
+    },
+    {
+      "address": "0x60008074",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 16,
+      "firstAccessPc": "0x403c9537"
+    },
+    {
+      "address": "0x60008078",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x403ce816"
+    },
+    {
+      "address": "0x60008078",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x403ce821"
+    },
+    {
+      "address": "0x60008084",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c9504"
+    },
+    {
+      "address": "0x60008084",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c9519"
+    },
+    {
+      "address": "0x60008088",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x40043688"
+    },
+    {
+      "address": "0x60008088",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x40043690"
+    },
+    {
+      "address": "0x60008090",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x420be0c0"
+    },
+    {
+      "address": "0x60008090",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x420be0cb"
+    },
+    {
+      "address": "0x60008094",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 11,
+      "firstAccessPc": "0x4004369b"
+    },
+    {
+      "address": "0x60008094",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 11,
+      "firstAccessPc": "0x400436a3"
+    },
+    {
+      "address": "0x60008098",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 18,
+      "firstAccessPc": "0x40047a7f"
+    },
+    {
+      "address": "0x60008098",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 18,
+      "firstAccessPc": "0x40047a91"
+    },
+    {
+      "address": "0x6000809c",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x40047836"
+    },
+    {
+      "address": "0x600080ac",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4004798f"
+    },
+    {
+      "address": "0x600080ac",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x40047998"
+    },
+    {
+      "address": "0x600080b0",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 12,
+      "firstAccessPc": "0x40047953"
+    },
+    {
+      "address": "0x600080b4",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x400444fd"
+    },
+    {
+      "address": "0x600080b4",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403cd42b"
+    },
+    {
+      "address": "0x600080b8",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403c8afa"
+    },
+    {
+      "address": "0x600080bc",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037e5fd"
+    },
+    {
+      "address": "0x600080bc",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037e605"
+    },
+    {
+      "address": "0x600080c0",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 16,
+      "firstAccessPc": "0x40048bbe"
+    },
+    {
+      "address": "0x600080c0",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ce4a2"
+    },
+    {
+      "address": "0x600080c8",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bee59"
+    },
+    {
+      "address": "0x600080d8",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 18,
+      "firstAccessPc": "0x4005021a"
+    },
+    {
+      "address": "0x600080d8",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 18,
+      "firstAccessPc": "0x4005023e"
+    },
+    {
+      "address": "0x600080dc",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4005022e"
+    },
+    {
+      "address": "0x600080dc",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4005023e"
+    },
+    {
+      "address": "0x600080e8",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 11,
+      "firstAccessPc": "0x403c8ad8"
+    },
+    {
+      "address": "0x600080e8",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 11,
+      "firstAccessPc": "0x403c8ae6"
+    },
+    {
+      "address": "0x60008148",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x403cd40b"
+    },
+    {
+      "address": "0x60008148",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x403cd416"
+    },
+    {
+      "address": "0x600081fc",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x403ce50b"
+    },
+    {
+      "address": "0x600081fc",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x403ce521"
+    },
+    {
+      "address": "0x60008484",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42040501"
+    },
+    {
+      "address": "0x60008484",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4204050e"
+    },
+    {
+      "address": "0x600084b8",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42040501"
+    },
+    {
+      "address": "0x600084b8",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4204050e"
+    },
+    {
+      "address": "0x600084d8",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42040501"
+    },
+    {
+      "address": "0x600084d8",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4204050e"
+    },
+    {
+      "address": "0x6000880c",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c8e6b"
+    },
+    {
+      "address": "0x6000880c",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c8e73"
+    },
+    {
+      "address": "0x60008810",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x403c8e5b"
+    },
+    {
+      "address": "0x60008810",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403c8e66"
+    },
+    {
+      "address": "0x60008834",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x403c8e85"
+    },
+    {
+      "address": "0x60008834",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403c8e8f"
+    },
+    {
+      "address": "0x6000883c",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006b1b"
+    },
+    {
+      "address": "0x6000883c",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006b26"
+    },
+    {
+      "address": "0x60008904",
+      "block": "RTC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006b0c"
+    },
+    {
+      "address": "0x60008904",
+      "block": "RTC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006b15"
+    },
+    {
+      "address": "0x60002000",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 16617,
+      "firstAccessPc": "0x40049b21"
+    },
+    {
+      "address": "0x60002000",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 6661,
+      "firstAccessPc": "0x40049b1c"
+    },
+    {
+      "address": "0x60002004",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 5562,
+      "firstAccessPc": "0x403cbc57"
+    },
+    {
+      "address": "0x60002008",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 17596,
+      "firstAccessPc": "0x4004a843"
+    },
+    {
+      "address": "0x60002008",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 19670,
+      "firstAccessPc": "0x4004a579"
+    },
+    {
+      "address": "0x60002010",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 2082,
+      "firstAccessPc": "0x4004a439"
+    },
+    {
+      "address": "0x60002010",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 2082,
+      "firstAccessPc": "0x4004a444"
+    },
+    {
+      "address": "0x60002014",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037ed01"
+    },
+    {
+      "address": "0x60002014",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 1047,
+      "firstAccessPc": "0x4004a55f"
+    },
+    {
+      "address": "0x60002018",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 34252,
+      "firstAccessPc": "0x4004a429"
+    },
+    {
+      "address": "0x60002018",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 35227,
+      "firstAccessPc": "0x4004a431"
+    },
+    {
+      "address": "0x6000201c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 5673,
+      "firstAccessPc": "0x403cbb81"
+    },
+    {
+      "address": "0x6000201c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 5607,
+      "firstAccessPc": "0x403cbc39"
+    },
+    {
+      "address": "0x60002020",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 8867,
+      "firstAccessPc": "0x403cbb86"
+    },
+    {
+      "address": "0x60002020",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 8868,
+      "firstAccessPc": "0x403cbbda"
+    },
+    {
+      "address": "0x60002024",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 8771,
+      "firstAccessPc": "0x403cbcb8"
+    },
+    {
+      "address": "0x60002024",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 8771,
+      "firstAccessPc": "0x403cbccf"
+    },
+    {
+      "address": "0x60002028",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 8837,
+      "firstAccessPc": "0x403cbd12"
+    },
+    {
+      "address": "0x60002028",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 8838,
+      "firstAccessPc": "0x403cbd26"
+    },
+    {
+      "address": "0x6000202c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 14,
+      "firstAccessPc": "0x40049ab3"
+    },
+    {
+      "address": "0x6000202c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 7,
+      "firstAccessPc": "0x40049abb"
+    },
+    {
+      "address": "0x60002034",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 3234,
+      "firstAccessPc": "0x4004e0e2"
+    },
+    {
+      "address": "0x60002034",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 3234,
+      "firstAccessPc": "0x4004e0f7"
+    },
+    {
+      "address": "0x6000203c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 5500,
+      "firstAccessPc": "0x403cbc0c"
+    },
+    {
+      "address": "0x6000203c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 5500,
+      "firstAccessPc": "0x403cbc1f"
+    },
+    {
+      "address": "0x60002054",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 7,
+      "firstAccessPc": "0x40049b39"
+    },
+    {
+      "address": "0x60002058",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 4468,
+      "firstAccessPc": "0x4004a67f"
+    },
+    {
+      "address": "0x60002058",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 100,
+      "firstAccessPc": "0x4004a665"
+    },
+    {
+      "address": "0x6000205c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 93,
+      "firstAccessPc": "0x4004e177"
+    },
+    {
+      "address": "0x6000205c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 95,
+      "firstAccessPc": "0x4004ded8"
+    },
+    {
+      "address": "0x60002060",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 93,
+      "firstAccessPc": "0x4004e177"
+    },
+    {
+      "address": "0x60002060",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 95,
+      "firstAccessPc": "0x4004ded8"
+    },
+    {
+      "address": "0x60002064",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 93,
+      "firstAccessPc": "0x4004e177"
+    },
+    {
+      "address": "0x60002064",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 95,
+      "firstAccessPc": "0x4004ded8"
+    },
+    {
+      "address": "0x60002068",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 93,
+      "firstAccessPc": "0x4004e177"
+    },
+    {
+      "address": "0x60002068",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 94,
+      "firstAccessPc": "0x4004ded8"
+    },
+    {
+      "address": "0x6000206c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 93,
+      "firstAccessPc": "0x4004e177"
+    },
+    {
+      "address": "0x6000206c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 94,
+      "firstAccessPc": "0x4004ded8"
+    },
+    {
+      "address": "0x60002070",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 93,
+      "firstAccessPc": "0x4004e177"
+    },
+    {
+      "address": "0x60002070",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 94,
+      "firstAccessPc": "0x4004ded8"
+    },
+    {
+      "address": "0x60002074",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 93,
+      "firstAccessPc": "0x4004e177"
+    },
+    {
+      "address": "0x60002074",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 94,
+      "firstAccessPc": "0x4004ded8"
+    },
+    {
+      "address": "0x60002078",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f5c"
+    },
+    {
+      "address": "0x60002078",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 92,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x6000207c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f5e"
+    },
+    {
+      "address": "0x6000207c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 92,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x60002080",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f62"
+    },
+    {
+      "address": "0x60002080",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 92,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x60002084",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f66"
+    },
+    {
+      "address": "0x60002084",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 92,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x60002088",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f5c"
+    },
+    {
+      "address": "0x60002088",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 91,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x6000208c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f5e"
+    },
+    {
+      "address": "0x6000208c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 91,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x60002090",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f62"
+    },
+    {
+      "address": "0x60002090",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 91,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x60002094",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x40056f66"
+    },
+    {
+      "address": "0x60002094",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 91,
+      "firstAccessPc": "0x4037e89f"
+    },
+    {
+      "address": "0x60002098",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 2080,
+      "firstAccessPc": "0x4037e139"
+    },
+    {
+      "address": "0x60002098",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 2080,
+      "firstAccessPc": "0x4037e15f"
+    },
+    {
+      "address": "0x6000209c",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 3120,
+      "firstAccessPc": "0x4037e174"
+    },
+    {
+      "address": "0x6000209c",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 3120,
+      "firstAccessPc": "0x4037e17d"
+    },
+    {
+      "address": "0x600020a0",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 1040,
+      "firstAccessPc": "0x4037e194"
+    },
+    {
+      "address": "0x600020a0",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 1040,
+      "firstAccessPc": "0x4037e19d"
+    },
+    {
+      "address": "0x600020a4",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 3268,
+      "firstAccessPc": "0x4004a4e7"
+    },
+    {
+      "address": "0x600020a4",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004a4ef"
+    },
+    {
+      "address": "0x600020a8",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 1040,
+      "firstAccessPc": "0x4037e1db"
+    },
+    {
+      "address": "0x600020a8",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 1040,
+      "firstAccessPc": "0x4037e1e6"
+    },
+    {
+      "address": "0x600020e0",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 4482,
+      "firstAccessPc": "0x40380e50"
+    },
+    {
+      "address": "0x600020e0",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 4486,
+      "firstAccessPc": "0x4004a603"
+    },
+    {
+      "address": "0x600020e8",
+      "block": "SPI1",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be502"
+    },
+    {
+      "address": "0x600020e8",
+      "block": "SPI1",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be50a"
+    },
+    {
+      "address": "0x600c1004",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004f6b4"
+    },
+    {
+      "address": "0x600c1004",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004f6d1"
+    },
+    {
+      "address": "0x600c1014",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004f6db"
+    },
+    {
+      "address": "0x600c1014",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004f6f0"
+    },
+    {
+      "address": "0x600c10c0",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x42008711"
+    },
+    {
+      "address": "0x600c10c0",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x420082c7"
+    },
+    {
+      "address": "0x600c10c4",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420083e8"
+    },
+    {
+      "address": "0x600c10c4",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006c61"
+    },
+    {
+      "address": "0x600c10c8",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42008409"
+    },
+    {
+      "address": "0x600c10c8",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006d2a"
+    },
+    {
+      "address": "0x600c10cc",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42008428"
+    },
+    {
+      "address": "0x600c10cc",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420080b0"
+    },
+    {
+      "address": "0x600c10d0",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420084fd"
+    },
+    {
+      "address": "0x600c10d0",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006eda"
+    },
+    {
+      "address": "0x600c10d4",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42008520"
+    },
+    {
+      "address": "0x600c10d4",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42006fb2"
+    },
+    {
+      "address": "0x600c10d8",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42008738"
+    },
+    {
+      "address": "0x600c10d8",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420082cc"
+    },
+    {
+      "address": "0x600c10e0",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 10,
+      "firstAccessPc": "0x4200816d"
+    },
+    {
+      "address": "0x600c10e0",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x42008175"
+    },
+    {
+      "address": "0x600c10e4",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420076ce"
+    },
+    {
+      "address": "0x600c10e4",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200761e"
+    },
+    {
+      "address": "0x600c10e8",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x420077b6"
+    },
+    {
+      "address": "0x600c10e8",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200784d"
+    },
+    {
+      "address": "0x600c10f0",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420076de"
+    },
+    {
+      "address": "0x600c10f0",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200762a"
+    },
+    {
+      "address": "0x600c10f4",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x420077c6"
+    },
+    {
+      "address": "0x600c10f4",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200784d"
+    },
+    {
+      "address": "0x600c10fc",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420087c8"
+    },
+    {
+      "address": "0x600c10fc",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420082f8"
+    },
+    {
+      "address": "0x600c1100",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x42008888"
+    },
+    {
+      "address": "0x600c1100",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x42008895"
+    },
+    {
+      "address": "0x600c1104",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420076fa"
+    },
+    {
+      "address": "0x600c1104",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42007640"
+    },
+    {
+      "address": "0x600c1108",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x420077f4"
+    },
+    {
+      "address": "0x600c1108",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x420077fc"
+    },
+    {
+      "address": "0x600c1114",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200770e"
+    },
+    {
+      "address": "0x600c1114",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200764b"
+    },
+    {
+      "address": "0x600c1118",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x42007820"
+    },
+    {
+      "address": "0x600c1118",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x42007828"
+    },
+    {
+      "address": "0x600c1124",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42007090"
+    },
+    {
+      "address": "0x600c1148",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x42006fff"
+    },
+    {
+      "address": "0x600c1148",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x42007007"
+    },
+    {
+      "address": "0x600c114c",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x420072a6"
+    },
+    {
+      "address": "0x600c114c",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x420072bb"
+    },
+    {
+      "address": "0x600c119c",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42007664"
+    },
+    {
+      "address": "0x600c11a0",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200783e"
+    },
+    {
+      "address": "0x600c11a0",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200784d"
+    },
+    {
+      "address": "0x600c11d0",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200709f"
+    },
+    {
+      "address": "0x600c11f4",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x42006fff"
+    },
+    {
+      "address": "0x600c11f4",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x42007007"
+    },
+    {
+      "address": "0x600c11f8",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x420072a6"
+    },
+    {
+      "address": "0x600c11f8",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x420072bb"
+    },
+    {
+      "address": "0x600c1248",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42007672"
+    },
+    {
+      "address": "0x600c124c",
+      "block": "SENSITIVE",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200785a"
+    },
+    {
+      "address": "0x600c124c",
+      "block": "SENSITIVE",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200784d"
+    },
+    {
+      "address": "0x60004008",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4203f645"
+    },
+    {
+      "address": "0x60004024",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 29,
+      "firstAccessPc": "0x4005008a"
+    },
+    {
+      "address": "0x60004028",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x4203f309"
+    },
+    {
+      "address": "0x60004038",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 9,
+      "firstAccessPc": "0x40048b89"
+    },
+    {
+      "address": "0x6000403c",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 772,
+      "firstAccessPc": "0x4203f692"
+    },
+    {
+      "address": "0x6000404c",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 156,
+      "firstAccessPc": "0x420bdad5"
+    },
+    {
+      "address": "0x6000405c",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 151,
+      "firstAccessPc": "0x403793ba"
+    },
+    {
+      "address": "0x60004068",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 151,
+      "firstAccessPc": "0x40379450"
+    },
+    {
+      "address": "0x60004074",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f536"
+    },
+    {
+      "address": "0x60004074",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f53f"
+    },
+    {
+      "address": "0x600040a8",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4203f536"
+    },
+    {
+      "address": "0x600040a8",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x4203f53f"
+    },
+    {
+      "address": "0x600040ac",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f5b7"
+    },
+    {
+      "address": "0x600040ac",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f5c0"
+    },
+    {
+      "address": "0x600040b0",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f5b7"
+    },
+    {
+      "address": "0x600040b0",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f5c0"
+    },
+    {
+      "address": "0x600040c8",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f536"
+    },
+    {
+      "address": "0x600040c8",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4203f53f"
+    },
+    {
+      "address": "0x60004154",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x60004158",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x6000415c",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x60004160",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x60004170",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x60004174",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x60004178",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x6000417c",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x60004180",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x600042b8",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x600042bc",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x600042ec",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x600042f0",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x600042f4",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x600042f8",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x6000430c",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005003b"
+    },
+    {
+      "address": "0x60004554",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4203f310"
+    },
+    {
+      "address": "0x60004554",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 19,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004564",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004568",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x6000456c",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004570",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004574",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004580",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004584",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004588",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4203f310"
+    },
+    {
+      "address": "0x60004588",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4203f31e"
+    },
+    {
+      "address": "0x6000458c",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4203f310"
+    },
+    {
+      "address": "0x6000458c",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x60004590",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4203f310"
+    },
+    {
+      "address": "0x60004590",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4005006d"
+    },
+    {
+      "address": "0x600045a8",
+      "block": "GPIO",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4203f310"
+    },
+    {
+      "address": "0x600045a8",
+      "block": "GPIO",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4203f31e"
+    },
+    {
+      "address": "0x600c4000",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 3233,
+      "firstAccessPc": "0x4004e2f5"
+    },
+    {
+      "address": "0x600c4000",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 3231,
+      "firstAccessPc": "0x4004e309"
+    },
+    {
+      "address": "0x600c4004",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 3145,
+      "firstAccessPc": "0x4004eb1b"
+    },
+    {
+      "address": "0x600c4004",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 3144,
+      "firstAccessPc": "0x4004eb23"
+    },
+    {
+      "address": "0x600c4008",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4d2"
+    },
+    {
+      "address": "0x600c4008",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4dd"
+    },
+    {
+      "address": "0x600c4028",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 116,
+      "firstAccessPc": "0x4004e543"
+    },
+    {
+      "address": "0x600c4028",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 58,
+      "firstAccessPc": "0x4004e54b"
+    },
+    {
+      "address": "0x600c402c",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 58,
+      "firstAccessPc": "0x4004e520"
+    },
+    {
+      "address": "0x600c4030",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 58,
+      "firstAccessPc": "0x4004e525"
+    },
+    {
+      "address": "0x600c4030",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 58,
+      "firstAccessPc": "0x4004e539"
+    },
+    {
+      "address": "0x600c4040",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1099,
+      "firstAccessPc": "0x4004f467"
+    },
+    {
+      "address": "0x600c404c",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 3301,
+      "firstAccessPc": "0x4004e6e3"
+    },
+    {
+      "address": "0x600c404c",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1099,
+      "firstAccessPc": "0x4004e727"
+    },
+    {
+      "address": "0x600c4060",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 3220,
+      "firstAccessPc": "0x4004f313"
+    },
+    {
+      "address": "0x600c4060",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 3220,
+      "firstAccessPc": "0x4004f31b"
+    },
+    {
+      "address": "0x600c4064",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 3136,
+      "firstAccessPc": "0x4004eb0b"
+    },
+    {
+      "address": "0x600c4064",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 3135,
+      "firstAccessPc": "0x4004eb13"
+    },
+    {
+      "address": "0x600c4068",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4e2"
+    },
+    {
+      "address": "0x600c4068",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4ed"
+    },
+    {
+      "address": "0x600c4088",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 106,
+      "firstAccessPc": "0x4004e4ef"
+    },
+    {
+      "address": "0x600c4088",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 53,
+      "firstAccessPc": "0x4004e4f7"
+    },
+    {
+      "address": "0x600c408c",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 53,
+      "firstAccessPc": "0x4004e4cc"
+    },
+    {
+      "address": "0x600c4090",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 53,
+      "firstAccessPc": "0x4004e4d1"
+    },
+    {
+      "address": "0x600c4090",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 53,
+      "firstAccessPc": "0x4004e4e5"
+    },
+    {
+      "address": "0x600c4094",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1096,
+      "firstAccessPc": "0x4004f2e4"
+    },
+    {
+      "address": "0x600c40a0",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 3292,
+      "firstAccessPc": "0x403ce0d2"
+    },
+    {
+      "address": "0x600c40a0",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1096,
+      "firstAccessPc": "0x4004e6cf"
+    },
+    {
+      "address": "0x600c40dc",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x420045b9"
+    },
+    {
+      "address": "0x600c40dc",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x420045c3"
+    },
+    {
+      "address": "0x600c40e0",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x420045a9"
+    },
+    {
+      "address": "0x600c40e0",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004e370"
+    },
+    {
+      "address": "0x600c40e8",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420045ec"
+    },
+    {
+      "address": "0x600c40e8",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420045f7"
+    },
+    {
+      "address": "0x600c40ec",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420045dc"
+    },
+    {
+      "address": "0x600c40ec",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420045e7"
+    },
+    {
+      "address": "0x600c40f4",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004688"
+    },
+    {
+      "address": "0x600c40f4",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004690"
+    },
+    {
+      "address": "0x600c40f8",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004678"
+    },
+    {
+      "address": "0x600c40f8",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004683"
+    },
+    {
+      "address": "0x600c4128",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004e37b"
+    },
+    {
+      "address": "0x600c4128",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004e385"
+    },
+    {
+      "address": "0x600c412c",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4b8"
+    },
+    {
+      "address": "0x600c412c",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4c3"
+    },
+    {
+      "address": "0x600c4130",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 2197,
+      "firstAccessPc": "0x4004f2fb"
+    },
+    {
+      "address": "0x600c4148",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004f658"
+    },
+    {
+      "address": "0x600c4148",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004f660"
+    },
+    {
+      "address": "0x600c4150",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 5245,
+      "firstAccessPc": "0x4004e919"
+    },
+    {
+      "address": "0x600c4150",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 3147,
+      "firstAccessPc": "0x4004e92e"
+    },
+    {
+      "address": "0x600c4154",
+      "block": "EXTMEM",
+      "access": "read",
+      "accessCount": 5230,
+      "firstAccessPc": "0x4004e8b1"
+    },
+    {
+      "address": "0x600c4154",
+      "block": "EXTMEM",
+      "access": "write",
+      "accessCount": 3138,
+      "firstAccessPc": "0x4004e8c6"
+    },
+    {
+      "address": "0x60003008",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 32,
+      "firstAccessPc": "0x4004a853"
+    },
+    {
+      "address": "0x60003008",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 10,
+      "firstAccessPc": "0x4004a587"
+    },
+    {
+      "address": "0x60003010",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 6,
+      "firstAccessPc": "0x4004a3c0"
+    },
+    {
+      "address": "0x60003010",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004a3d0"
+    },
+    {
+      "address": "0x60003014",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 7,
+      "firstAccessPc": "0x4004a56b"
+    },
+    {
+      "address": "0x60003018",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 18,
+      "firstAccessPc": "0x4004a3b0"
+    },
+    {
+      "address": "0x60003018",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 16,
+      "firstAccessPc": "0x4004a3bb"
+    },
+    {
+      "address": "0x6000301c",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 10,
+      "firstAccessPc": "0x4004a36f"
+    },
+    {
+      "address": "0x6000301c",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 10,
+      "firstAccessPc": "0x4004a37d"
+    },
+    {
+      "address": "0x60003020",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x4004a5b8"
+    },
+    {
+      "address": "0x60003020",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x4004a5c6"
+    },
+    {
+      "address": "0x60003024",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004a5a2"
+    },
+    {
+      "address": "0x60003024",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004a5ad"
+    },
+    {
+      "address": "0x60003028",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004a58f"
+    },
+    {
+      "address": "0x60003028",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004a59a"
+    },
+    {
+      "address": "0x60003034",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004a4f7"
+    },
+    {
+      "address": "0x60003034",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004a4ff"
+    },
+    {
+      "address": "0x6000303c",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004a5d0"
+    },
+    {
+      "address": "0x6000303c",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004a5d8"
+    },
+    {
+      "address": "0x60003040",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x403812a0"
+    },
+    {
+      "address": "0x60003040",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x403812ab"
+    },
+    {
+      "address": "0x60003044",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x40381396"
+    },
+    {
+      "address": "0x60003044",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403813a4"
+    },
+    {
+      "address": "0x60003048",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x403812e8"
+    },
+    {
+      "address": "0x60003048",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403812f3"
+    },
+    {
+      "address": "0x6000304c",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x403812b0"
+    },
+    {
+      "address": "0x6000304c",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403812be"
+    },
+    {
+      "address": "0x60003050",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037edfa"
+    },
+    {
+      "address": "0x60003054",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 7,
+      "firstAccessPc": "0x40049b47"
+    },
+    {
+      "address": "0x600030ac",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037eb9c"
+    },
+    {
+      "address": "0x600030ac",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037ebab"
+    },
+    {
+      "address": "0x600030b0",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037ebb0"
+    },
+    {
+      "address": "0x600030b0",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037ebbe"
+    },
+    {
+      "address": "0x600030bc",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 9,
+      "firstAccessPc": "0x4037ec27"
+    },
+    {
+      "address": "0x600030bc",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 9,
+      "firstAccessPc": "0x4037ec31"
+    },
+    {
+      "address": "0x600030c0",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 18,
+      "firstAccessPc": "0x4037ec04"
+    },
+    {
+      "address": "0x600030c0",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 18,
+      "firstAccessPc": "0x4037ec12"
+    },
+    {
+      "address": "0x600030c4",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 18,
+      "firstAccessPc": "0x4037ec17"
+    },
+    {
+      "address": "0x600030c4",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 18,
+      "firstAccessPc": "0x4037ec22"
+    },
+    {
+      "address": "0x600030dc",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 7,
+      "firstAccessPc": "0x4004a3ec"
+    },
+    {
+      "address": "0x600030dc",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 7,
+      "firstAccessPc": "0x4004a3f6"
+    },
+    {
+      "address": "0x600030e0",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4004a5f9"
+    },
+    {
+      "address": "0x600030e4",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x40381352"
+    },
+    {
+      "address": "0x600030e4",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4038135c"
+    },
+    {
+      "address": "0x600030e8",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4f2"
+    },
+    {
+      "address": "0x600030e8",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4fd"
+    },
+    {
+      "address": "0x600030ec",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 10,
+      "firstAccessPc": "0x4037ed29"
+    },
+    {
+      "address": "0x600030ec",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 9,
+      "firstAccessPc": "0x4037ed35"
+    },
+    {
+      "address": "0x600033fc",
+      "block": "SPI0",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037f12b"
+    },
+    {
+      "address": "0x600033fc",
+      "block": "SPI0",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037f136"
+    },
+    {
+      "address": "0x60013000",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039c8c"
+    },
+    {
+      "address": "0x60013000",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039c9c"
+    },
+    {
+      "address": "0x60013004",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 3856,
+      "firstAccessPc": "0x42039d7a"
+    },
+    {
+      "address": "0x60013004",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 3856,
+      "firstAccessPc": "0x42039d82"
+    },
+    {
+      "address": "0x60013008",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x420bb8f7"
+    },
+    {
+      "address": "0x6001300c",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 3840,
+      "firstAccessPc": "0x42039d4b"
+    },
+    {
+      "address": "0x6001300c",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 3840,
+      "firstAccessPc": "0x42039d5b"
+    },
+    {
+      "address": "0x60013018",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 5128,
+      "firstAccessPc": "0x42039de4"
+    },
+    {
+      "address": "0x60013018",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 5128,
+      "firstAccessPc": "0x42039def"
+    },
+    {
+      "address": "0x6001301c",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 6340,
+      "firstAccessPc": "0x4037bf5b"
+    },
+    {
+      "address": "0x6001301c",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 3840,
+      "firstAccessPc": "0x420bb1c8"
+    },
+    {
+      "address": "0x60013024",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1282,
+      "firstAccessPc": "0x420bc090"
+    },
+    {
+      "address": "0x60013028",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 2560,
+      "firstAccessPc": "0x420bba18"
+    },
+    {
+      "address": "0x60013028",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 2560,
+      "firstAccessPc": "0x420bba23"
+    },
+    {
+      "address": "0x6001302c",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 2560,
+      "firstAccessPc": "0x4037684a"
+    },
+    {
+      "address": "0x60013030",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039ccd"
+    },
+    {
+      "address": "0x60013030",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039cdd"
+    },
+    {
+      "address": "0x60013034",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039ce2"
+    },
+    {
+      "address": "0x60013034",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039cf2"
+    },
+    {
+      "address": "0x60013038",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 2560,
+      "firstAccessPc": "0x42039ca1"
+    },
+    {
+      "address": "0x60013038",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 2560,
+      "firstAccessPc": "0x42039caf"
+    },
+    {
+      "address": "0x60013040",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039d21"
+    },
+    {
+      "address": "0x60013040",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039d30"
+    },
+    {
+      "address": "0x60013044",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039cf7"
+    },
+    {
+      "address": "0x60013044",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039d06"
+    },
+    {
+      "address": "0x60013048",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039d36"
+    },
+    {
+      "address": "0x60013048",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039d45"
+    },
+    {
+      "address": "0x6001304c",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039d0c"
+    },
+    {
+      "address": "0x6001304c",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x42039d1b"
+    },
+    {
+      "address": "0x60013050",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x420bc272"
+    },
+    {
+      "address": "0x60013050",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x420bc283"
+    },
+    {
+      "address": "0x60013054",
+      "block": "I2C0",
+      "access": "read",
+      "accessCount": 3844,
+      "firstAccessPc": "0x42039e3b"
+    },
+    {
+      "address": "0x60013054",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 3844,
+      "firstAccessPc": "0x42039e47"
+    },
+    {
+      "address": "0x60013058",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x420bafe9"
+    },
+    {
+      "address": "0x6001305c",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x420babb3"
+    },
+    {
+      "address": "0x60013060",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1280,
+      "firstAccessPc": "0x420bafe9"
+    },
+    {
+      "address": "0x60013064",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1273,
+      "firstAccessPc": "0x420bb10d"
+    },
+    {
+      "address": "0x60013068",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1273,
+      "firstAccessPc": "0x420bae97"
+    },
+    {
+      "address": "0x6001306c",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1273,
+      "firstAccessPc": "0x420bafe9"
+    },
+    {
+      "address": "0x60013070",
+      "block": "I2C0",
+      "access": "write",
+      "accessCount": 1267,
+      "firstAccessPc": "0x420bafe9"
+    },
+    {
+      "address": "0x600c0000",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x42003db7"
+    },
+    {
+      "address": "0x600c0000",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x42003dc7"
+    },
+    {
+      "address": "0x600c0004",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40000466"
+    },
+    {
+      "address": "0x600c0004",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004366d"
+    },
+    {
+      "address": "0x600c0008",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x400436de"
+    },
+    {
+      "address": "0x600c0008",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x400436e6"
+    },
+    {
+      "address": "0x600c000c",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x400436cc"
+    },
+    {
+      "address": "0x600c000c",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x400436d4"
+    },
+    {
+      "address": "0x600c0010",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 14,
+      "firstAccessPc": "0x403ce7a6"
+    },
+    {
+      "address": "0x600c0010",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x403ce6a8"
+    },
+    {
+      "address": "0x600c0014",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be655"
+    },
+    {
+      "address": "0x600c0014",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be65f"
+    },
+    {
+      "address": "0x600c0018",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 12,
+      "firstAccessPc": "0x40048a07"
+    },
+    {
+      "address": "0x600c0018",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 12,
+      "firstAccessPc": "0x40048a11"
+    },
+    {
+      "address": "0x600c001c",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x40044eff"
+    },
+    {
+      "address": "0x600c001c",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x40044f07"
+    },
+    {
+      "address": "0x600c0020",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 20,
+      "firstAccessPc": "0x40048a1c"
+    },
+    {
+      "address": "0x600c0020",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 20,
+      "firstAccessPc": "0x40048a27"
+    },
+    {
+      "address": "0x600c0024",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 7,
+      "firstAccessPc": "0x40044f12"
+    },
+    {
+      "address": "0x600c0024",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 7,
+      "firstAccessPc": "0x40044f1a"
+    },
+    {
+      "address": "0x600c0028",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004457"
+    },
+    {
+      "address": "0x600c0028",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004465"
+    },
+    {
+      "address": "0x600c002c",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4200446a"
+    },
+    {
+      "address": "0x600c002c",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x42004472"
+    },
+    {
+      "address": "0x600c0030",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 1312,
+      "firstAccessPc": "0x40379a36"
+    },
+    {
+      "address": "0x600c0034",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 9182,
+      "firstAccessPc": "0x40379a44"
+    },
+    {
+      "address": "0x600c0048",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 6,
+      "firstAccessPc": "0x4004e3db"
+    },
+    {
+      "address": "0x600c0048",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x4004e3e3"
+    },
+    {
+      "address": "0x600c0060",
+      "block": "SYSTEM",
+      "access": "read",
+      "accessCount": 27,
+      "firstAccessPc": "0x40045385"
+    },
+    {
+      "address": "0x600c0060",
+      "block": "SYSTEM",
+      "access": "write",
+      "accessCount": 9,
+      "firstAccessPc": "0x403ce560"
+    },
+    {
+      "address": "0x60024000",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 220,
+      "firstAccessPc": "0x4203dc36"
+    },
+    {
+      "address": "0x60024000",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 110,
+      "firstAccessPc": "0x4203dc41"
+    },
+    {
+      "address": "0x60024004",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 54,
+      "firstAccessPc": "0x4037cb37"
+    },
+    {
+      "address": "0x60024008",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 546,
+      "firstAccessPc": "0x4203dc5b"
+    },
+    {
+      "address": "0x60024008",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 546,
+      "firstAccessPc": "0x4203dc6c"
+    },
+    {
+      "address": "0x6002400c",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037c362"
+    },
+    {
+      "address": "0x60024010",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 493,
+      "firstAccessPc": "0x4203db96"
+    },
+    {
+      "address": "0x60024010",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 494,
+      "firstAccessPc": "0x4203dba1"
+    },
+    {
+      "address": "0x60024014",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 58,
+      "firstAccessPc": "0x4203db76"
+    },
+    {
+      "address": "0x60024014",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 58,
+      "firstAccessPc": "0x4203db81"
+    },
+    {
+      "address": "0x60024018",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 108,
+      "firstAccessPc": "0x4037ca6a"
+    },
+    {
+      "address": "0x60024018",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 108,
+      "firstAccessPc": "0x4037ca7b"
+    },
+    {
+      "address": "0x6002401c",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 54,
+      "firstAccessPc": "0x4037c9af"
+    },
+    {
+      "address": "0x6002401c",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 54,
+      "firstAccessPc": "0x4037c9c5"
+    },
+    {
+      "address": "0x60024020",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 63,
+      "firstAccessPc": "0x4037c31a"
+    },
+    {
+      "address": "0x60024020",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 62,
+      "firstAccessPc": "0x4037c359"
+    },
+    {
+      "address": "0x60024030",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 165,
+      "firstAccessPc": "0x4203dbe7"
+    },
+    {
+      "address": "0x60024030",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 166,
+      "firstAccessPc": "0x4203dbe2"
+    },
+    {
+      "address": "0x60024034",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4203dc17"
+    },
+    {
+      "address": "0x60024034",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4203dc22"
+    },
+    {
+      "address": "0x60024038",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 216,
+      "firstAccessPc": "0x4037c78b"
+    },
+    {
+      "address": "0x60024038",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 216,
+      "firstAccessPc": "0x4037c795"
+    },
+    {
+      "address": "0x6002403c",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 65,
+      "firstAccessPc": "0x4037cdfc"
+    },
+    {
+      "address": "0x60024044",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4203dc27"
+    },
+    {
+      "address": "0x60024044",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4203dc30"
+    },
+    {
+      "address": "0x600240e0",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4203dbb5"
+    },
+    {
+      "address": "0x600240e8",
+      "block": "SPI2",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200a163"
+    },
+    {
+      "address": "0x600240e8",
+      "block": "SPI2",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4200a16f"
+    },
+    {
+      "address": "0x6003b000",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x400450f2"
+    },
+    {
+      "address": "0x6003b010",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4004513d"
+    },
+    {
+      "address": "0x6003b014",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17528,
+      "firstAccessPc": "0x4004514b"
+    },
+    {
+      "address": "0x6003b018",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 17532,
+      "firstAccessPc": "0x40045107"
+    },
+    {
+      "address": "0x6003b040",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f5c"
+    },
+    {
+      "address": "0x6003b044",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f5e"
+    },
+    {
+      "address": "0x6003b048",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f62"
+    },
+    {
+      "address": "0x6003b04c",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f66"
+    },
+    {
+      "address": "0x6003b050",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f5c"
+    },
+    {
+      "address": "0x6003b054",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f5e"
+    },
+    {
+      "address": "0x6003b058",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f62"
+    },
+    {
+      "address": "0x6003b05c",
+      "block": "SHA",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40056f66"
+    },
+    {
+      "address": "0x6003b080",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f60"
+    },
+    {
+      "address": "0x6003b084",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f64"
+    },
+    {
+      "address": "0x6003b088",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f68"
+    },
+    {
+      "address": "0x6003b08c",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f6d"
+    },
+    {
+      "address": "0x6003b090",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f60"
+    },
+    {
+      "address": "0x6003b094",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f64"
+    },
+    {
+      "address": "0x6003b098",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f68"
+    },
+    {
+      "address": "0x6003b09c",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f6d"
+    },
+    {
+      "address": "0x6003b0a0",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f60"
+    },
+    {
+      "address": "0x6003b0a4",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f64"
+    },
+    {
+      "address": "0x6003b0a8",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f68"
+    },
+    {
+      "address": "0x6003b0ac",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f6d"
+    },
+    {
+      "address": "0x6003b0b0",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f60"
+    },
+    {
+      "address": "0x6003b0b4",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f64"
+    },
+    {
+      "address": "0x6003b0b8",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f68"
+    },
+    {
+      "address": "0x6003b0bc",
+      "block": "SHA",
+      "access": "write",
+      "accessCount": 17530,
+      "firstAccessPc": "0x40056f6d"
+    },
+    {
+      "address": "0x60023000",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 14,
+      "firstAccessPc": "0x4037e274"
+    },
+    {
+      "address": "0x60023000",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 14,
+      "firstAccessPc": "0x4037e27e"
+    },
+    {
+      "address": "0x60023004",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 18352,
+      "firstAccessPc": "0x4037e292"
+    },
+    {
+      "address": "0x60023004",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 9176,
+      "firstAccessPc": "0x4037e29a"
+    },
+    {
+      "address": "0x60023008",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 6482,
+      "firstAccessPc": "0x4037e292"
+    },
+    {
+      "address": "0x60023008",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 3241,
+      "firstAccessPc": "0x4037e29a"
+    },
+    {
+      "address": "0x60023014",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x40381e28"
+    },
+    {
+      "address": "0x60023014",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x40381e35"
+    },
+    {
+      "address": "0x60023018",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x40381e3a"
+    },
+    {
+      "address": "0x60023034",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 1625,
+      "firstAccessPc": "0x4037e3b6"
+    },
+    {
+      "address": "0x60023034",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037e3c1"
+    },
+    {
+      "address": "0x60023038",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 1623,
+      "firstAccessPc": "0x4037e3b6"
+    },
+    {
+      "address": "0x60023038",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x4037e3c1"
+    },
+    {
+      "address": "0x6002303c",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4037e3b6"
+    },
+    {
+      "address": "0x6002303c",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4037e3c1"
+    },
+    {
+      "address": "0x60023040",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 9176,
+      "firstAccessPc": "0x4037e2b7"
+    },
+    {
+      "address": "0x60023044",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 18352,
+      "firstAccessPc": "0x4037e2ab"
+    },
+    {
+      "address": "0x60023048",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 3241,
+      "firstAccessPc": "0x4037e2b7"
+    },
+    {
+      "address": "0x6002304c",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 6482,
+      "firstAccessPc": "0x4037e2ab"
+    },
+    {
+      "address": "0x60023050",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037e334"
+    },
+    {
+      "address": "0x60023054",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037e334"
+    },
+    {
+      "address": "0x60023060",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x40381e3f"
+    },
+    {
+      "address": "0x60023064",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4037e45e"
+    },
+    {
+      "address": "0x60023064",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4037e46d"
+    },
+    {
+      "address": "0x6002306c",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 3240,
+      "firstAccessPc": "0x40381d2b"
+    },
+    {
+      "address": "0x6002306c",
+      "block": "SYSTIMER",
+      "access": "write",
+      "accessCount": 3240,
+      "firstAccessPc": "0x40381d36"
+    },
+    {
+      "address": "0x60023070",
+      "block": "SYSTIMER",
+      "access": "read",
+      "accessCount": 3240,
+      "firstAccessPc": "0x40381d90"
+    },
+    {
+      "address": "0x60040000",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 7,
+      "firstAccessPc": "0x403c8ce4"
+    },
+    {
+      "address": "0x60040000",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 7,
+      "firstAccessPc": "0x403c8cee"
+    },
+    {
+      "address": "0x60040004",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c8ee6"
+    },
+    {
+      "address": "0x60040004",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c8ef6"
+    },
+    {
+      "address": "0x60040018",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x403c8db2"
+    },
+    {
+      "address": "0x60040018",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403c8ddd"
+    },
+    {
+      "address": "0x6004001c",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccafe"
+    },
+    {
+      "address": "0x6004001c",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb06"
+    },
+    {
+      "address": "0x60040020",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccafe"
+    },
+    {
+      "address": "0x60040020",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb06"
+    },
+    {
+      "address": "0x60040024",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccafe"
+    },
+    {
+      "address": "0x60040024",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb06"
+    },
+    {
+      "address": "0x60040028",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x403c8de2"
+    },
+    {
+      "address": "0x60040028",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403c8e06"
+    },
+    {
+      "address": "0x6004002c",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb10"
+    },
+    {
+      "address": "0x6004002c",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb1a"
+    },
+    {
+      "address": "0x60040030",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb10"
+    },
+    {
+      "address": "0x60040030",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb1a"
+    },
+    {
+      "address": "0x60040034",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb10"
+    },
+    {
+      "address": "0x60040034",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x403ccb1a"
+    },
+    {
+      "address": "0x60040038",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x403c8e94"
+    },
+    {
+      "address": "0x60040038",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x403c8e9f"
+    },
+    {
+      "address": "0x60040070",
+      "block": "APB_SARADC",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x403c8cc8"
+    },
+    {
+      "address": "0x60040070",
+      "block": "APB_SARADC",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x403c8cde"
+    },
+    {
+      "address": "0x60026014",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c8c5f"
+    },
+    {
+      "address": "0x60026014",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c8c6a"
+    },
+    {
+      "address": "0x60026018",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bdf5a"
+    },
+    {
+      "address": "0x60026018",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bdfba"
+    },
+    {
+      "address": "0x60026028",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004652"
+    },
+    {
+      "address": "0x60026028",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004660"
+    },
+    {
+      "address": "0x60026038",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420045fc"
+    },
+    {
+      "address": "0x60026048",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004601"
+    },
+    {
+      "address": "0x60026048",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004613"
+    },
+    {
+      "address": "0x6002604c",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004619"
+    },
+    {
+      "address": "0x6002604c",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004628"
+    },
+    {
+      "address": "0x60026050",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200462e"
+    },
+    {
+      "address": "0x60026050",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200463a"
+    },
+    {
+      "address": "0x60026054",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x42004640"
+    },
+    {
+      "address": "0x60026054",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4200464c"
+    },
+    {
+      "address": "0x60026058",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x40380e37"
+    },
+    {
+      "address": "0x60026058",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40380e42"
+    },
+    {
+      "address": "0x6002609c",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4037fce4"
+    },
+    {
+      "address": "0x6002609c",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4037fcf5"
+    },
+    {
+      "address": "0x600260a8",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420be4cd"
+    },
+    {
+      "address": "0x600260b0",
+      "block": "APB_CTRL",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x4037fdc1"
+    },
+    {
+      "address": "0x600260b0",
+      "block": "APB_CTRL",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x4037fddd"
+    },
+    {
+      "address": "0x6001f048",
+      "block": "TIMG0",
+      "access": "read",
+      "accessCount": 12,
+      "firstAccessPc": "0x40047a9b"
+    },
+    {
+      "address": "0x6001f048",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 12,
+      "firstAccessPc": "0x40047aad"
+    },
+    {
+      "address": "0x6001f04c",
+      "block": "TIMG0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004772d"
+    },
+    {
+      "address": "0x6001f04c",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40047739"
+    },
+    {
+      "address": "0x6001f050",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x400478d2"
+    },
+    {
+      "address": "0x6001f054",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x400478f6"
+    },
+    {
+      "address": "0x6001f060",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 1533,
+      "firstAccessPc": "0x40047a6b"
+    },
+    {
+      "address": "0x6001f064",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 3070,
+      "firstAccessPc": "0x4004795c"
+    },
+    {
+      "address": "0x6001f068",
+      "block": "TIMG0",
+      "access": "read",
+      "accessCount": 8,
+      "firstAccessPc": "0x4037fe3a"
+    },
+    {
+      "address": "0x6001f068",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x40380004"
+    },
+    {
+      "address": "0x6001f06c",
+      "block": "TIMG0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4038016a"
+    },
+    {
+      "address": "0x6001f070",
+      "block": "TIMG0",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x400476d4"
+    },
+    {
+      "address": "0x6001f070",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x400476e2"
+    },
+    {
+      "address": "0x6001f07c",
+      "block": "TIMG0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x400476e8"
+    },
+    {
+      "address": "0x6001f07c",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x400476f1"
+    },
+    {
+      "address": "0x6001f080",
+      "block": "TIMG0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x40380036"
+    },
+    {
+      "address": "0x6001f080",
+      "block": "TIMG0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40380047"
+    },
+    {
+      "address": "0x6003f000",
+      "block": "GDMA",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x420bd85b"
+    },
+    {
+      "address": "0x6003f000",
+      "block": "GDMA",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x420bd865"
+    },
+    {
+      "address": "0x6003f004",
+      "block": "GDMA",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd71b"
+    },
+    {
+      "address": "0x6003f004",
+      "block": "GDMA",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd72c"
+    },
+    {
+      "address": "0x6003f048",
+      "block": "GDMA",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd846"
+    },
+    {
+      "address": "0x6003f048",
+      "block": "GDMA",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd855"
+    },
+    {
+      "address": "0x6003f060",
+      "block": "GDMA",
+      "access": "read",
+      "accessCount": 110,
+      "firstAccessPc": "0x420bd978"
+    },
+    {
+      "address": "0x6003f060",
+      "block": "GDMA",
+      "access": "write",
+      "accessCount": 110,
+      "firstAccessPc": "0x420bd98d"
+    },
+    {
+      "address": "0x6003f064",
+      "block": "GDMA",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd763"
+    },
+    {
+      "address": "0x6003f064",
+      "block": "GDMA",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd775"
+    },
+    {
+      "address": "0x6003f080",
+      "block": "GDMA",
+      "access": "read",
+      "accessCount": 108,
+      "firstAccessPc": "0x4037c270"
+    },
+    {
+      "address": "0x6003f080",
+      "block": "GDMA",
+      "access": "write",
+      "accessCount": 108,
+      "firstAccessPc": "0x4037c282"
+    },
+    {
+      "address": "0x6003f0a8",
+      "block": "GDMA",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd871"
+    },
+    {
+      "address": "0x6003f0a8",
+      "block": "GDMA",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x420bd880"
+    },
+    {
+      "address": "0x60000000",
+      "block": "UART0",
+      "access": "write",
+      "accessCount": 6210,
+      "firstAccessPc": "0x40048847"
+    },
+    {
+      "address": "0x6000000c",
+      "block": "UART0",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x40048b21"
+    },
+    {
+      "address": "0x6000000c",
+      "block": "UART0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40048b29"
+    },
+    {
+      "address": "0x60000010",
+      "block": "UART0",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x40048895"
+    },
+    {
+      "address": "0x60000014",
+      "block": "UART0",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x403c9304"
+    },
+    {
+      "address": "0x60000014",
+      "block": "UART0",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x40048992"
+    },
+    {
+      "address": "0x6000001c",
+      "block": "UART0",
+      "access": "read",
+      "accessCount": 6216,
+      "firstAccessPc": "0x40048839"
+    },
+    {
+      "address": "0x60000020",
+      "block": "UART0",
+      "access": "read",
+      "accessCount": 4,
+      "firstAccessPc": "0x40048997"
+    },
+    {
+      "address": "0x60000020",
+      "block": "UART0",
+      "access": "write",
+      "accessCount": 5,
+      "firstAccessPc": "0x400489a2"
+    },
+    {
+      "address": "0x60000024",
+      "block": "UART0",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40048b15"
+    },
+    {
+      "address": "0x6000006c",
+      "block": "UART0",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x40048ca8"
+    },
+    {
+      "address": "0x60000078",
+      "block": "UART0",
+      "access": "read",
+      "accessCount": 5,
+      "firstAccessPc": "0x40048a2c"
+    },
+    {
+      "address": "0x60000078",
+      "block": "UART0",
+      "access": "write",
+      "accessCount": 6,
+      "firstAccessPc": "0x40048a34"
+    },
+    {
+      "address": "0x60020048",
+      "block": "TIMG1",
+      "access": "read",
+      "accessCount": 3249,
+      "firstAccessPc": "0x42004703"
+    },
+    {
+      "address": "0x60020048",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 3249,
+      "firstAccessPc": "0x4200470f"
+    },
+    {
+      "address": "0x6002004c",
+      "block": "TIMG1",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4004772d"
+    },
+    {
+      "address": "0x6002004c",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40047739"
+    },
+    {
+      "address": "0x60020050",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 1620,
+      "firstAccessPc": "0x400478d2"
+    },
+    {
+      "address": "0x60020054",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 1620,
+      "firstAccessPc": "0x400478f6"
+    },
+    {
+      "address": "0x60020060",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 1621,
+      "firstAccessPc": "0x40047a6b"
+    },
+    {
+      "address": "0x60020064",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 3244,
+      "firstAccessPc": "0x4004766f"
+    },
+    {
+      "address": "0x60020070",
+      "block": "TIMG1",
+      "access": "read",
+      "accessCount": 2,
+      "firstAccessPc": "0x400476d4"
+    },
+    {
+      "address": "0x60020070",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x400476e2"
+    },
+    {
+      "address": "0x6002007c",
+      "block": "TIMG1",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x400476e8"
+    },
+    {
+      "address": "0x6002007c",
+      "block": "TIMG1",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x400476f1"
+    },
+    {
+      "address": "0x60007034",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 19,
+      "firstAccessPc": "0x40376295"
+    },
+    {
+      "address": "0x60007038",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 39,
+      "firstAccessPc": "0x40042875"
+    },
+    {
+      "address": "0x6000703c",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 50,
+      "firstAccessPc": "0x4004284d"
+    },
+    {
+      "address": "0x60007040",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037626d"
+    },
+    {
+      "address": "0x60007048",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 22,
+      "firstAccessPc": "0x400426f3"
+    },
+    {
+      "address": "0x6000704c",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 29,
+      "firstAccessPc": "0x400426fe"
+    },
+    {
+      "address": "0x60007050",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 30,
+      "firstAccessPc": "0x40042753"
+    },
+    {
+      "address": "0x60007058",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 15,
+      "firstAccessPc": "0x403cc47d"
+    },
+    {
+      "address": "0x6000706c",
+      "block": "EFUSE",
+      "access": "read",
+      "accessCount": 15,
+      "firstAccessPc": "0x403cc48e"
+    },
+    {
+      "address": "0x6000e000",
+      "block": "I2C_MST",
+      "access": "read",
+      "accessCount": 116,
+      "firstAccessPc": "0x4003584b"
+    },
+    {
+      "address": "0x6000e000",
+      "block": "I2C_MST",
+      "access": "write",
+      "accessCount": 58,
+      "firstAccessPc": "0x40035866"
+    },
+    {
+      "address": "0x6000e040",
+      "block": "I2C_MST",
+      "access": "read",
+      "accessCount": 10,
+      "firstAccessPc": "0x403ce6ad"
+    },
+    {
+      "address": "0x6000e040",
+      "block": "I2C_MST",
+      "access": "write",
+      "accessCount": 8,
+      "firstAccessPc": "0x403ce6b7"
+    },
+    {
+      "address": "0x6000e044",
+      "block": "I2C_MST",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x403c9552"
+    },
+    {
+      "address": "0x6000e044",
+      "block": "I2C_MST",
+      "access": "write",
+      "accessCount": 28,
+      "firstAccessPc": "0x403c955d"
+    },
+    {
+      "address": "0x6000e048",
+      "block": "I2C_MST",
+      "access": "read",
+      "accessCount": 59,
+      "firstAccessPc": "0x400354d9"
+    },
+    {
+      "address": "0x6000e048",
+      "block": "I2C_MST",
+      "access": "write",
+      "accessCount": 59,
+      "firstAccessPc": "0x400354e7"
+    },
+    {
+      "address": "0x60038000",
+      "block": "USB_SERIAL_JTAG",
+      "access": "write",
+      "accessCount": 6210,
+      "firstAccessPc": "0x40049096"
+    },
+    {
+      "address": "0x60038004",
+      "block": "USB_SERIAL_JTAG",
+      "access": "read",
+      "accessCount": 8524,
+      "firstAccessPc": "0x40049068"
+    },
+    {
+      "address": "0x60038004",
+      "block": "USB_SERIAL_JTAG",
+      "access": "write",
+      "accessCount": 95,
+      "firstAccessPc": "0x400490a7"
+    },
+    {
+      "address": "0x60038008",
+      "block": "USB_SERIAL_JTAG",
+      "access": "read",
+      "accessCount": 1620,
+      "firstAccessPc": "0x40377b37"
+    },
+    {
+      "address": "0x60038014",
+      "block": "USB_SERIAL_JTAG",
+      "access": "write",
+      "accessCount": 1620,
+      "firstAccessPc": "0x40377b3c"
+    },
+    {
+      "address": "0x600ce048",
+      "block": "ASSIST_DEBUG",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x400436ff"
+    },
+    {
+      "address": "0x600ce04c",
+      "block": "ASSIST_DEBUG",
+      "access": "write",
+      "accessCount": 2,
+      "firstAccessPc": "0x40043707"
+    },
+    {
+      "address": "0x600ce05c",
+      "block": "ASSIST_DEBUG",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x40043889"
+    },
+    {
+      "address": "0x600ce0d8",
+      "block": "ASSIST_DEBUG",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40375bec"
+    },
+    {
+      "address": "0x600ce0dc",
+      "block": "ASSIST_DEBUG",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x40375bf4"
+    },
+    {
+      "address": "0x6001ccd4",
+      "block": "NRX",
+      "access": "read",
+      "accessCount": 3,
+      "firstAccessPc": "0x4037fd51"
+    },
+    {
+      "address": "0x6001ccd4",
+      "block": "NRX",
+      "access": "write",
+      "accessCount": 3,
+      "firstAccessPc": "0x4037fd65"
+    },
+    {
+      "address": "0x600050f0",
+      "block": "FE2",
+      "access": "read",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037fda8"
+    },
+    {
+      "address": "0x600050f0",
+      "block": "FE2",
+      "access": "write",
+      "accessCount": 1,
+      "firstAccessPc": "0x4037fdb9"
+    }
+  ]
+}
