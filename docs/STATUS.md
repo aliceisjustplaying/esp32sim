@@ -16,10 +16,17 @@ what is adopted, and what the hardware queue holds. The goal is
   Xtensa LX7 interpreter and native JIT, the ESP32-S3 SoC and
   peripheral models, real-ROM boot, a wasm build (interpreter-only),
   and the web shell.
-- Task 3a's initial measured core is merged at `a142952`: a typed backend
-  API and transaction engine, a structurally dual-core scheduler, the
-  `FakeBackend` contract, and tests that assert exact values from committed
-  receipts. Wiring this core into the product interpreter remains open.
+- Task 3a's initial measured core is merged at `a142952`. Task 3b wires it
+  into the product interpreter through `Esp32Backend` at `88ae4dd`, with the
+  full adopted-cost replay for both fake and real backends at `808581f`.
+  Both adapters use the same typed transaction engine and structurally
+  dual-core scheduler state. The product path delivers board deadlines and
+  timestamped GPIO edges before the next transaction, commits timing only
+  after architectural success, and emits deterministic canonical ledgers.
+  Level 1 and level 3 interrupt entry and resume are priced, typed ledger
+  transactions using the committed IDF 6.1 receipt. Unsupported interrupt
+  levels, unknown MMIO, first-line fills, and unadopted instruction classes
+  fail closed.
 - The TinyDraw V2 board harvest is merged. It includes GP-SPI2 DMA,
   CST820 touch, the CO5300 panel, timestamped GPIO edges, browser touch,
   and the paced-stroke workflow, with the defect dispositions below.
@@ -179,10 +186,8 @@ mode (needs GOAL milestone 2).
 
 ## Next steps
 
-1. Task 3b: wire the measured core into the product interpreter and board
-   deadline contract while preserving the dual-core and fail-closed rules.
-2. Extend receipt-correlation coverage as additional cost classes are adopted.
-3. Execute the maintainer-owned hardware batch from TinyDraw `5f38ca5`: tier A,
+1. Extend measured interpreter coverage as additional cost classes are adopted.
+2. Execute the maintainer-owned hardware batch from TinyDraw `5f38ca5`: tier A,
    then the prepared Tier B cells.
-4. Attach the architectural interpreter-versus-JIT conformance gate to the
+3. Attach the architectural interpreter-versus-JIT conformance gate to the
    first costed-JIT task before product-JIT work begins.
