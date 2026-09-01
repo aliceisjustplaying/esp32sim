@@ -1,4 +1,4 @@
-use backend_api::contract_suite::assert_backend_contract;
+use backend_api::contract_suite::{assert_backend_contract, assert_receipt_correlation};
 use backend_api::{
     Backend, CacheFillPosition, CacheKind, CoreId, CostClass, DeadlineError, DeadlineModel,
     ExecutionOutcome, FakeBackend, Operation, RefusalReason, TierCandidate, TraceEvent,
@@ -17,6 +17,7 @@ fn event(core: CoreId, pc: u32, operation: Operation) -> TraceEvent {
 #[test]
 fn fake_backend_passes_shared_contract() {
     assert_backend_contract::<FakeBackend>();
+    assert_receipt_correlation::<FakeBackend>();
 }
 
 #[test]
