@@ -149,6 +149,13 @@ in the archived predecessor repository (request A-01).
 Tier D, blocked on emulator work: CCOUNT lock-step against measured
 mode (needs GOAL milestone 2).
 
+## Review residuals
+
+- Interpreter-versus-JIT architectural conformance test: required before any costed-JIT work; attach it to the first JIT task.
+- Root `LICENSE` file on the fork: waiting on the upstream author; the maintainer owns the contact.
+- `.github/workflows/pages.yml` fetches the mask ROM unpinned from `releases/latest`: dormant because it triggers only on `main`, the upstream mirror; pin or remove it when the workflow is next touched.
+- `periph.rs` and `machine.rs` decomposition: deliberately deferred; extract only what Task 3b forces under the build-exactly-the-thing rule.
+
 ## Next steps
 
 1. Integration trunk: harvest the board model and the measured-mode
