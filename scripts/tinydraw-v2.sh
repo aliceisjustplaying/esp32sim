@@ -59,8 +59,11 @@ case "$action" in
     build_all
     smoke_log="$(mktemp "${TMPDIR:-/tmp}/tinydraw-v2-smoke.XXXXXX")"
     trap 'rm -f "$smoke_log"' EXIT
-    run_emulator --max-seconds 120 2>&1 | tee "$smoke_log"
+    run_emulator --script "$repo_root/examples/tinydraw-v2/touch.script" \
+      --max-seconds 120 2>&1 | tee "$smoke_log"
     grep -q 'TINYDRAW_VECTOR_V2_READY' "$smoke_log"
+    grep -qE 'TINYDRAW_LIVE_STROKE .*samples=([2-9]|[1-9][0-9]+)' "$smoke_log"
+    grep -q 'TINYDRAW_LIVE_STROKE_DONE committed=1 refresh=1 commit_failed=0' "$smoke_log"
     if grep -qE 'Guru Meditation|task_wdt|TG1WDT_SYS_RST|stack overflow|TINYDRAW_LIVE_FAIL' "$smoke_log"; then
       echo "TinyDraw V2 smoke test reported a crash or product failure" >&2
       exit 1
