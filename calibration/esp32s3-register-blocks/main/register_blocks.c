@@ -197,8 +197,8 @@ static write_probe_t write_probe(uint32_t operations) {
   }
 }
 
-static IRAM_ATTR uint32_t measure_once(const cell_t *cell,
-                                       cache_counters_t *counters) {
+static IRAM_ATTR __attribute__((noinline)) uint32_t
+measure_once(const cell_t *cell, cache_counters_t *counters) {
   volatile uint32_t *address = (volatile uint32_t *)cell->address;
   const bool is_read = cell->kind == PROBE_READ;
   const read_probe_t reader = read_probe(cell->operations);
