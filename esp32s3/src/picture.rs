@@ -43,7 +43,7 @@ fn ppm(d: &[u8]) -> Result<Picture, String> {
         }
         nums.push(
             std::str::from_utf8(&d[s..i])
-                .unwrap()
+                .map_err(|e| format!("ppm: invalid numeric header: {e}"))?
                 .parse::<u32>()
                 .map_err(|e| e.to_string())?,
         );
@@ -107,11 +107,11 @@ pub fn to_yuyv(p: &Picture, w: u32, h: u32) -> Vec<u8> {
         let sy = (y as u64 * p.h as u64 / h as u64) as usize;
         for x2 in 0..w / 2 {
             let mut px = [(0u8, 0u8, 0u8); 2];
-            for k in 0..2 {
+            for (k, pixel) in px.iter_mut().enumerate() {
                 let x = x2 * 2 + k as u32;
                 let sx = (x as u64 * p.w as u64 / w as u64) as usize;
                 let o = (sy * p.w as usize + sx) * 3;
-                px[k] = yuv(p.rgb[o], p.rgb[o + 1], p.rgb[o + 2]);
+                *pixel = yuv(p.rgb[o], p.rgb[o + 1], p.rgb[o + 2]);
             }
             let o = ((y * w + x2 * 2) * 2) as usize;
             out[o] = px[0].0;

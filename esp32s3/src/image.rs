@@ -16,15 +16,15 @@ pub fn parse(d: &[u8]) -> Result<AppImage, String> {
         return Err("not an ESP image (magic 0xE9 missing)".into());
     }
     let nseg = d[1] as usize;
-    let entry = u32::from_le_bytes(d[4..8].try_into().unwrap());
+    let entry = u32::from_le_bytes([d[4], d[5], d[6], d[7]]);
     let mut off = 24usize;
     let mut segments = Vec::new();
     for _ in 0..nseg {
         if off + 8 > d.len() {
             return Err("truncated image".into());
         }
-        let load_addr = u32::from_le_bytes(d[off..off + 4].try_into().unwrap());
-        let len = u32::from_le_bytes(d[off + 4..off + 8].try_into().unwrap());
+        let load_addr = u32::from_le_bytes([d[off], d[off + 1], d[off + 2], d[off + 3]]);
+        let len = u32::from_le_bytes([d[off + 4], d[off + 5], d[off + 6], d[off + 7]]);
         segments.push(ImageSegment {
             load_addr,
             file_off: (off + 8) as u32,
