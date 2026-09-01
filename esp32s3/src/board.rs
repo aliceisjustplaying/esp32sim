@@ -9,6 +9,23 @@
 //!
 //! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
+pub type VirtualCycle = u64;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BoardEdge {
+    pub cycle: VirtualCycle,
+    pub pin: u8,
+    pub level: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoardDeadlineError {
+    TimeReversed {
+        current: VirtualCycle,
+        requested: VirtualCycle,
+    },
+}
+
 /// What a board does with the SoC's pin-level activity.
 pub trait BoardModel {
     fn name(&self) -> &'static str;
@@ -18,6 +35,12 @@ pub trait BoardModel {
     fn rmt_frame(&mut self, _ch: usize, _bits: &[bool]) {}
     /// Bytes a GP-SPI master (`host` = 2 or 3) shifted out on MOSI.
     fn spi_tx(&mut self, _host: u8, _data: &[u8]) {}
+    /// One complete CPU-driven GP-SPI transaction. The default preserves
+    /// transmit-only boards and leaves an unattached MISO line high.
+    fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+        self.spi_tx(host, tx);
+        vec![0xff; rx_len]
+    }
     fn tft(&self) -> Option<&St7735> {
         None
     }
@@ -50,17 +73,30 @@ pub trait BoardModel {
     }
     /// Touch input from the UI (panel coordinates).
     fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
+    /// Earliest autonomous transition strictly after the board's current cycle.
+    fn next_deadline(&self) -> Option<VirtualCycle> {
+        None
+    }
+    /// Advance monotonically through every transition due by `cycle`.
+    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
+        Ok(())
+    }
+    /// Exactly timestamped GPIO edges emitted by the last advance.
+    fn take_edges(&mut self) -> Vec<BoardEdge> {
+        Vec::new()
+    }
 }
 
 pub type Board = Box<dyn BoardModel>;
 
-/// Board by name: `atech14` (default), `none`.
+/// Board by name: `atech14` (default), `none`, or a supported Waveshare board.
 pub fn make_board(name: &str) -> Option<Board> {
     match name {
         "atech14" | "atech" => Some(Box::new(Atech14::new())),
         "none" | "bare" => Some(Box::new(NoBoard)),
         "waveshare-cam" | "waveshare" => Some(Box::new(WaveshareCam::new())),
         "waveshare-lcd4b" | "lcd4b" => Some(Box::new(WaveshareLcd4b::new())),
+        "waveshare-amoled18-v2" | "amoled18-v2" => Some(Box::new(WaveshareAmoled18V2::new())),
         _ => None,
     }
 }
@@ -603,5 +639,344 @@ impl Default for WaveshareCam {
 impl Default for WaveshareLcd4b {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Waveshare ESP32-S3-Touch-AMOLED-1.8 V2: CO5300 368x448 QSPI panel, CST820 touch at 0x15,
+/// TCA9554 power/reset expander at 0x20, AXP2101 PMIC, PCF85063A RTC, and QMI8658 IMU.
+pub struct Co5300 {
+    pub frame: Vec<u16>,
+    pub frames: u64,
+    pub pixels_written: u64,
+    x0: u16,
+    x1: u16,
+    y0: u16,
+    y1: u16,
+    x: u16,
+    y: u16,
+    pending: Option<u8>,
+    pixel_hi: Option<u8>,
+}
+impl Co5300 {
+    pub const WIDTH: usize = 368;
+    pub const HEIGHT: usize = 448;
+    pub fn new() -> Self {
+        Co5300 {
+            frame: vec![0; Self::WIDTH * Self::HEIGHT],
+            frames: 0,
+            pixels_written: 0,
+            x0: 0,
+            x1: 367,
+            y0: 0,
+            y1: 447,
+            x: 0,
+            y: 0,
+            pending: None,
+            pixel_hi: None,
+        }
+    }
+    pub fn transaction(&mut self, tx: &[u8]) {
+        if tx.len() == 4 && (tx[0] == 0x02 || tx[0] == 0x32) {
+            let cmd = tx[2];
+            self.pending = Some(cmd);
+            self.pixel_hi = None;
+            if cmd == 0x2c {
+                self.x = self.x0;
+                self.y = self.y0;
+            }
+            return;
+        }
+        match self.pending {
+            Some(0x2a) if tx.len() >= 4 => {
+                self.x0 = u16::from_be_bytes([tx[0], tx[1]]);
+                self.x1 = u16::from_be_bytes([tx[2], tx[3]]);
+                self.x = self.x0;
+                self.pending = None;
+            }
+            Some(0x2b) if tx.len() >= 4 => {
+                self.y0 = u16::from_be_bytes([tx[0], tx[1]]);
+                self.y1 = u16::from_be_bytes([tx[2], tx[3]]);
+                self.y = self.y0;
+                self.pending = None;
+            }
+            Some(0x2c | 0x3c) => {
+                for &b in tx {
+                    match self.pixel_hi.take() {
+                        None => self.pixel_hi = Some(b),
+                        Some(hi) => {
+                            self.write_pixel(u16::from_be_bytes([hi, b]));
+                        }
+                    }
+                }
+                if !tx.is_empty() {
+                    self.frames += 1;
+                }
+            }
+            Some(_) => self.pending = None,
+            None => {}
+        }
+    }
+    fn write_pixel(&mut self, pixel: u16) {
+        if (self.x as usize) < Self::WIDTH && (self.y as usize) < Self::HEIGHT {
+            self.frame[self.y as usize * Self::WIDTH + self.x as usize] = pixel;
+            self.pixels_written += 1;
+        }
+        if self.x >= self.x1 {
+            self.x = self.x0;
+            if self.y >= self.y1 {
+                self.y = self.y0;
+            } else {
+                self.y += 1;
+            }
+        } else {
+            self.x += 1;
+        }
+    }
+}
+
+impl Default for Co5300 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct WaveshareAmoled18V2 {
+    pub gpio_events: u64,
+    pub panel_display: Co5300,
+    pub touch_state: std::sync::Arc<std::sync::Mutex<crate::i2c::TouchState>>,
+    cycle: VirtualCycle,
+    next_te_cycle: VirtualCycle,
+    te_level: bool,
+    touch_irq_level: bool,
+    pending_touch_irq: Option<(VirtualCycle, bool)>,
+    edges: Vec<BoardEdge>,
+}
+impl WaveshareAmoled18V2 {
+    pub fn new() -> Self {
+        WaveshareAmoled18V2 {
+            gpio_events: 0,
+            panel_display: Co5300::new(),
+            touch_state: Default::default(),
+            cycle: 0,
+            next_te_cycle: crate::periph::CPU_HZ / 120,
+            te_level: true,
+            touch_irq_level: true,
+            pending_touch_irq: None,
+            edges: Vec::new(),
+        }
+    }
+
+    fn emit_due_edge(&mut self, cycle: VirtualCycle, pin: u8, level: bool) {
+        self.edges.push(BoardEdge { cycle, pin, level });
+    }
+}
+
+impl Default for WaveshareAmoled18V2 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BoardModel for WaveshareAmoled18V2 {
+    fn name(&self) -> &'static str {
+        "waveshare-amoled18-v2"
+    }
+    fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
+        self.gpio_events += changes.len() as u64;
+    }
+    fn gpio_events(&self) -> u64 {
+        self.gpio_events
+    }
+    fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+        if host == 2 {
+            self.panel_display.transaction(tx);
+        }
+        vec![0xff; rx_len]
+    }
+    fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn crate::i2c::I2cDevice>)> {
+        use crate::i2c::*;
+        vec![
+            (0x15, Box::new(Cst820::new(self.touch_state.clone()))),
+            (0x20, Box::new(Tca9554::register_ram_stub())),
+            (
+                0x34,
+                Box::new(Reg8Device::new(
+                    "axp2101-pmic-register-ram-stub",
+                    &[(0x03, 0x4a)],
+                )),
+            ),
+            (
+                0x51,
+                Box::new(Reg8Device::new("pcf85063a-rtc-register-ram-stub", &[])),
+            ),
+            (
+                0x6b,
+                Box::new(Reg8Device::new(
+                    "qmi8658-imu-register-ram-stub",
+                    &[(0x00, 0x05)],
+                )),
+            ),
+        ]
+    }
+    fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> {
+        Some((
+            368,
+            448,
+            self.panel_display.frame.clone(),
+            self.panel_display.pixels_written,
+        ))
+    }
+    fn touch(&mut self, x: u16, y: u16, down: bool) {
+        let mut t = self
+            .touch_state
+            .lock()
+            .expect("the touch-state mutex must remain usable");
+        t.x = x.min(367);
+        t.y = y.min(447);
+        if down {
+            t.down = true;
+            t.seen = false;
+            t.release_pending = false;
+        } else if t.seen {
+            t.down = false;
+        } else {
+            t.release_pending = true;
+        }
+        let level = !down;
+        if level == self.touch_irq_level {
+            self.pending_touch_irq = None;
+        } else {
+            self.pending_touch_irq = Some((self.cycle.saturating_add(1), level));
+        }
+    }
+    fn next_deadline(&self) -> Option<VirtualCycle> {
+        Some(
+            self.pending_touch_irq
+                .map_or(self.next_te_cycle, |(cycle, _)| {
+                    cycle.min(self.next_te_cycle)
+                }),
+        )
+    }
+    fn advance_to(&mut self, cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
+        if cycle < self.cycle {
+            return Err(BoardDeadlineError::TimeReversed {
+                current: self.cycle,
+                requested: cycle,
+            });
+        }
+        let half_period = crate::periph::CPU_HZ / 120;
+        while self
+            .next_deadline()
+            .is_some_and(|deadline| deadline <= cycle)
+        {
+            let deadline = self
+                .next_deadline()
+                .expect("a due board transition must have a deadline");
+            if self.next_te_cycle == deadline {
+                self.te_level = !self.te_level;
+                self.emit_due_edge(deadline, 13, self.te_level);
+                self.next_te_cycle = self.next_te_cycle.saturating_add(half_period);
+            }
+            if self
+                .pending_touch_irq
+                .is_some_and(|(touch_cycle, _)| touch_cycle == deadline)
+            {
+                let (_, level) = self
+                    .pending_touch_irq
+                    .take()
+                    .expect("the due touch interrupt must remain pending");
+                self.touch_irq_level = level;
+                self.emit_due_edge(deadline, 21, level);
+            }
+        }
+        self.cycle = cycle;
+        Ok(())
+    }
+    fn take_edges(&mut self) -> Vec<BoardEdge> {
+        std::mem::take(&mut self.edges)
+    }
+}
+
+#[cfg(test)]
+mod co5300_tests {
+    use super::*;
+    #[test]
+    fn qspi_windowed_write_updates_panel_pixels() {
+        let mut panel = Co5300::new();
+        panel.transaction(&[0x02, 0, 0x2a, 0]);
+        panel.transaction(&[0, 1, 0, 2]);
+        panel.transaction(&[0x02, 0, 0x2b, 0]);
+        panel.transaction(&[0, 3, 0, 3]);
+        panel.transaction(&[0x32, 0, 0x2c, 0]);
+        panel.transaction(&[0xf8, 0, 0x07, 0xe0]);
+        assert_eq!(panel.frame[3 * Co5300::WIDTH + 1], 0xf800);
+        assert_eq!(panel.frame[3 * Co5300::WIDTH + 2], 0x07e0);
+        assert_eq!(panel.pixels_written, 2);
+    }
+    #[test]
+    fn amoled_board_deadlines_generate_exactly_timestamped_edges() {
+        let mut board = WaveshareAmoled18V2::new();
+        let half_period = crate::periph::CPU_HZ / 120;
+        assert_eq!(board.next_deadline(), Some(half_period));
+        board.advance_to(half_period - 1).unwrap();
+        assert!(board.take_edges().is_empty());
+        board.advance_to(half_period).unwrap();
+        assert_eq!(
+            board.take_edges(),
+            [BoardEdge {
+                cycle: half_period,
+                pin: 13,
+                level: false,
+            }]
+        );
+        assert_eq!(board.next_deadline(), Some(half_period * 2));
+        board.advance_to(half_period * 2).unwrap();
+        assert_eq!(
+            board.take_edges(),
+            [BoardEdge {
+                cycle: half_period * 2,
+                pin: 13,
+                level: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn amoled_touch_drives_active_low_gpio21_interrupt() {
+        let mut board = WaveshareAmoled18V2::new();
+        board.touch(100, 200, true);
+        assert_eq!(board.next_deadline(), Some(1));
+        board.advance_to(1).unwrap();
+        assert_eq!(
+            board.take_edges(),
+            [BoardEdge {
+                cycle: 1,
+                pin: 21,
+                level: false,
+            }]
+        );
+        board.touch(100, 200, false);
+        board.advance_to(2).unwrap();
+        assert_eq!(
+            board.take_edges(),
+            [BoardEdge {
+                cycle: 2,
+                pin: 21,
+                level: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn amoled_board_rejects_reverse_time() {
+        let mut board = WaveshareAmoled18V2::new();
+        board.advance_to(9).unwrap();
+        assert_eq!(
+            board.advance_to(8),
+            Err(BoardDeadlineError::TimeReversed {
+                current: 9,
+                requested: 8,
+            })
+        );
     }
 }
