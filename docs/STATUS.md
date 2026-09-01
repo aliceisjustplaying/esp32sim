@@ -23,10 +23,12 @@ what is adopted, and what the hardware queue holds. The goal is
   dual-core scheduler state. The product path delivers board deadlines and
   timestamped GPIO edges before the next transaction, commits timing only
   after architectural success, and emits deterministic canonical ledgers.
-  Level 1 and level 3 interrupt entry and resume are priced, typed ledger
-  transactions using the committed IDF 6.1 receipt. Unsupported interrupt
-  levels, unknown MMIO, first-line fills, and unadopted instruction classes
-  fail closed.
+  Level 1 and level 3 interrupt entry and matching architectural resume are
+  priced, typed ledger transactions using the committed IDF 6.1 receipt.
+  Accepted interrupt context is tracked per core and consumed only after the
+  matching return instruction succeeds. RFUE, unmatched or mismatched returns,
+  unsupported interrupt levels, unknown MMIO, first-line fills, and unadopted
+  instruction classes fail closed.
 - The TinyDraw V2 board harvest is merged. It includes GP-SPI2 DMA,
   CST820 touch, the CO5300 panel, timestamped GPIO edges, browser touch,
   and the paced-stroke workflow, with the defect dispositions below.
