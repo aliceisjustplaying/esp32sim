@@ -57,6 +57,41 @@ cells are classified exact only when every pooled sample agrees, interval only
 for a one-cycle pooled range, and distribution otherwise. The detailed values
 and all non-affine fit diagnostics are in `summary.json`.
 
+## Cross-variant analysis
+
+The normal and XIP PSRAM images share 24 captured cells. `summary.json` pools
+all four independent boots for each shared cell and fits every shared sweep and
+writeback ladder across both variants. The family classification is retained
+when every shared cell in that family agrees; a mixed family is unexplained and
+keeps each cell's narrower classification alongside it.
+
+| Shared family | Cross-variant classification | Detail |
+| --- | --- | --- |
+| arbitration aggressors | distribution | all three fixed-size cells are distributions |
+| store hit | distribution | the pooled PSRAM store-hit cell spans 272 to 386 cycles |
+| writeback ladders | unexplained | dirty totals are affine; clean totals fail the affine threshold |
+| first-line pooling | unexplained | D-flash is exact at 128 cycles; D-PSRAM is a 94 to 96 cycle distribution |
+| display path | unexplained | SPI2 and cache-msync writeback totals are affine; the other sweeps are unexplained or distributions |
+
+The cross-variant dirty-writeback total fits `854.000000 +
+161.951612903 * lines` cycles. SPI2 fits `8831.207786 + 47.985973280 *
+bytes` cycles. Cache-msync writeback fits `1212.005784 + 2.472458699 *
+bytes` cycles. These equations classify the observed end-to-end intervals.
+They do not identify separable product costs:
+
+| Observed total | Component result | Missing independent probe |
+| --- | --- | --- |
+| dirty writeback | unexplained, refused | cross dirty-line count with a controlled PSRAM service-rate change, plus a no-op cache-msync control |
+| SPI2 transfer | unexplained, refused | repeat the payload sweep at two verified SPI clocks, with submission and DMA completion timed separately |
+| cache-msync writeback | unexplained, refused | independently vary dirty-line count and PSRAM service rate at matched byte counts |
+
+Each current experiment varies one size axis while CPU work, cache-controller
+work, and device traffic move together. The corresponding component equations
+are rank-deficient. The exact D-flash first-line observation also remains
+blocked by the already recorded cross-toolchain first-line discrepancy. No Tier
+B value is product-adoptable from this cohort, and
+`adoptedMeasuredModeCosts` therefore remains empty.
+
 All seven earlier attempts, including attempt 7's earlier successful normal
 corroboration, remain noncanonical hash references in `archive-SHA256SUMS`.
 They are excluded from every tally, statistic, and fit in this receipt.
