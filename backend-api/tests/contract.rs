@@ -141,6 +141,78 @@ fn same_cycle_input_precedes_cpu_commit() {
 }
 
 #[test]
+fn input_injected_across_pending_slice_applies_at_its_cycle() {
+    let mut backend = fake_backend(&[10]);
+    let first = backend.run_until(request(3)).unwrap();
+    assert_eq!(first.pending_instruction.unwrap().completion, 10);
+    backend
+        .inject(InputEvent {
+            epoch: 1,
+            cycle: 6,
+            caller_sequence: 1,
+            payload: InputPayload::Bytes(vec![0x55]),
+        })
+        .unwrap();
+    let second = backend.run_until(request(8)).unwrap();
+    assert_eq!(second.end_cycle, 8);
+    assert!(second.pending_instruction.is_some());
+    let input = second
+        .ledger
+        .entries
+        .iter()
+        .find(|entry| matches!(entry.kind, LedgerKind::InputApplied { .. }))
+        .unwrap();
+    assert_eq!(input.cycle, 6);
+    let final_slice = backend.run_until(request(10)).unwrap();
+    assert_eq!(final_slice.completed_instructions, 1);
+}
+
+#[test]
+fn reset_request_precedes_same_cycle_input_regardless_of_caller_order() {
+    let mut backend = fake_backend(&[]);
+    backend
+        .inject(InputEvent {
+            epoch: 1,
+            cycle: 5,
+            caller_sequence: 1,
+            payload: InputPayload::Bytes(vec![1]),
+        })
+        .unwrap();
+    backend
+        .inject(InputEvent {
+            epoch: 1,
+            cycle: 5,
+            caller_sequence: 2,
+            payload: InputPayload::Reset(ResetKind::Watchdog),
+        })
+        .unwrap();
+    let slice = backend.run_until(request(5)).unwrap();
+    assert_eq!(slice.stop, RunStop::ResetRequested(ResetKind::Watchdog));
+    assert!(backend.drain_events(usize::MAX).unwrap().events.is_empty());
+}
+
+#[test]
+fn ccompare_detects_wrap_and_full_u32_period() {
+    let mut wrapping = fake_backend(&[]);
+    wrapping.set_ccompare(0, 3);
+    wrapping.run_until(request(u32::MAX as u64)).unwrap();
+    let wrapped = wrapping.run_until(request((u32::MAX as u64) + 4)).unwrap();
+    assert!(wrapped.ledger.entries.iter().any(|entry| {
+        entry.cycle == (1u64 << 32) + 3
+            && matches!(entry.kind, LedgerKind::CcompareAssert { comparator: 0 })
+    }));
+
+    let mut full_period = fake_backend(&[]);
+    full_period.set_ccompare(0, 0);
+    let slice = full_period.run_until(request(1u64 << 32)).unwrap();
+    assert!(slice.ledger.entries.iter().any(|entry| {
+        entry.cycle == 1u64 << 32
+            && matches!(entry.kind, LedgerKind::CcompareAssert { comparator: 0 })
+    }));
+    assert_eq!(full_period.ccount(), 0);
+}
+
+#[test]
 fn unknown_cost_blocks_without_state_change() {
     let block = TimingBlock {
         claim_id: "unknown-op".into(),

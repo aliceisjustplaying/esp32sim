@@ -105,9 +105,15 @@ impl FakeBackend {
         self.ccount = self.ccount.wrapping_add(delta as u32);
         for index in 0..3 {
             let compare = self.ccompare[index];
-            if compare.wrapping_sub(before).wrapping_sub(1) < delta as u32 {
+            let wrapped_distance = compare.wrapping_sub(before);
+            let distance = if wrapped_distance == 0 {
+                1u64 << 32
+            } else {
+                u64::from(wrapped_distance)
+            };
+            if distance <= delta {
                 self.record(
-                    target,
+                    self.now + distance,
                     LedgerKind::CcompareAssert {
                         comparator: index as u8,
                     },
@@ -119,6 +125,20 @@ impl FakeBackend {
     }
 
     fn apply_inputs(&mut self) -> Option<ResetKind> {
+        let reset = self
+            .inputs
+            .iter()
+            .take_while(|event| event.cycle == self.now)
+            .enumerate()
+            .find_map(|(index, event)| match event.payload {
+                InputPayload::Reset(kind) => Some((index, kind, event.caller_sequence)),
+                InputPayload::Bytes(_) => None,
+            });
+        if let Some((index, kind, caller_sequence)) = reset {
+            self.inputs.remove(index);
+            self.record(self.now, LedgerKind::InputApplied { caller_sequence }, None);
+            return Some(kind);
+        }
         while self
             .inputs
             .front()
@@ -440,17 +460,15 @@ impl Backend for FakeBackend {
         if self.inputs.len() >= MAX_QUEUED_INPUT_EVENTS {
             return Err(BackendError::InvalidInput("input queue is full".into()));
         }
-        if self
-            .pending
-            .as_ref()
-            .is_some_and(|pending| event.cycle <= pending.completion)
-        {
-            return Err(BackendError::InvalidInput(
-                "pending instruction impact is not classified".into(),
-            ));
-        }
         self.last_input_sequence = Some(event.caller_sequence);
-        self.inputs.push_back(event);
+        let index = self
+            .inputs
+            .iter()
+            .position(|queued| {
+                (queued.cycle, queued.caller_sequence) > (event.cycle, event.caller_sequence)
+            })
+            .unwrap_or(self.inputs.len());
+        self.inputs.insert(index, event);
         Ok(())
     }
 
