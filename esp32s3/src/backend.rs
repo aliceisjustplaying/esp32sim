@@ -269,7 +269,7 @@ const fn core_index(core: CoreId) -> usize {
 mod tests {
     use super::*;
     use crate::board::WaveshareAmoled18V2;
-    use backend_api::contract_suite::assert_backend_contract;
+    use backend_api::contract_suite::{assert_backend_contract, assert_receipt_correlation};
     use backend_api::{CacheFillPosition, CacheKind, CostClass, ReceiptId};
     use xtensa_lx7::state::ps;
 
@@ -302,6 +302,7 @@ mod tests {
     #[test]
     fn real_backend_passes_the_same_contract_as_fake() {
         assert_backend_contract::<Esp32Backend>();
+        assert_receipt_correlation::<Esp32Backend>();
     }
 
     #[test]
