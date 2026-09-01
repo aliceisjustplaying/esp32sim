@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "captureDate": "2026-09-01",
+  "board": "Waveshare ESP32-S3-Touch-AMOLED-1.8",
+  "chip": "ESP32-S3 QFN56 revision v0.2",
+  "sourceCommit": "5f38ca50ca3fd877116bc20ec461e1b321a7d31a",
+  "captureToolCommit": "fe0ee64adaa3054468685657bf7becec8856b2a4",
+  "toolchain": {
+    "espIdf": "v6.1",
+    "compiler": "xtensa-esp-elf 15.2.0"
+  },
+  "sourceArchive": {
+    "path": "/Users/sarah/Archives/esp32s3/2026-09-01-tier-a",
+    "sha256SumsSha256": "acf9867287c773acceaaaa7b20c80ec2f97f79c3ae80671f440166be31664120",
+    "manifestSha256": "881a12c857f6043878be4d600535d7e4108041103327a35faec229a965b48e1e",
+    "verification": "Every entry in the archived SHA256SUMS passed shasum -a 256 -c before adoption."
+  },
+  "coreTiming": {
+    "disposition": "corroborating exact existing IDF 6.1 values only",
+    "acceptedBoots": [
+      {
+        "boot": 2,
+        "calRecordCount": 30,
+        "rawSha256": "5fb7a9aff3d75b340fb02c6e1f38082500720a8b9eb5f5e42e0dc3bd111c7555",
+        "committedPath": "core-boot-2.log.gz",
+        "committedSha256": "1ca642ba4ebc10e2e92a5d2c9f41b1f5e90929b2ca9d812adcc56ab809aba8e3"
+      },
+      {
+        "boot": 3,
+        "calRecordCount": 30,
+        "rawSha256": "f5e3b6ebccc74707486668cea602dda577626bfd47b2576956e8ebd09ccaf517",
+        "committedPath": "core-boot-3.log.gz",
+        "committedSha256": "5952b799e71432d78a70d804d5e9384e64357b20ed2a124bc6a66e857ee20ed8"
+      }
+    ],
+    "derivation": {
+      "sampleSummary": "median of each ascending odd-length sample array",
+      "windowOverflowUnderflowPair": "For each boot, subtract the 16-cycle per-depth pre-overflow slope from the 51-cycle per-depth post-overflow slope. Each slope is the median depth delta divided by 256 chains.",
+      "straightLineIssue": "For each issue block, subtract the median 4,096-call empty baseline and divide by 1,048,576 instructions. Every block rounds to 1 cycle per instruction at integer precision.",
+      "loopAlignment": "Subtract the least median among residues 0, 1, and 2 from residue 3, then divide by 65,536 iterations. Both boots round to an additional 1 cycle per iteration at integer precision.",
+      "interrupts": "Take the median of each 33-sample entry or resume array."
+    },
+    "bootSummaries": [
+      {
+        "boot": 2,
+        "windowOverflowUnderflowPairCycles": 35,
+        "straightLineIssueCyclesPerInstruction": {
+          "narrow": 1.0000314712524414,
+          "wide": 1.0005197525024414,
+          "mixed": 1.0002937316894531,
+          "dependent": 1.0005197525024414,
+          "independent": 1.0002222061157227
+        },
+        "loopResiduePlus3AdditionalCyclesPerIteration": 1.00006103515625,
+        "interruptCycles": {
+          "level1Entry": 227,
+          "level1Resume": 143,
+          "level3Entry": 222,
+          "level3Resume": 139
+        }
+      },
+      {
+        "boot": 3,
+        "windowOverflowUnderflowPairCycles": 35,
+        "straightLineIssueCyclesPerInstruction": {
+          "narrow": 1.0000295639038086,
+          "wide": 1.0005083084106445,
+          "mixed": 1.0002822875976562,
+          "dependent": 1.0005083084106445,
+          "independent": 1.0002107620239258
+        },
+        "loopResiduePlus3AdditionalCyclesPerIteration": 1.000091552734375,
+        "interruptCycles": {
+          "level1Entry": 227,
+          "level1Resume": 143,
+          "level3Entry": 222,
+          "level3Resume": 139
+        }
+      }
+    ],
+    "corroboratedValues": {
+      "windowOverflowUnderflowPairCycles": 35,
+      "straightLineIssueCyclesPerInstruction": 1,
+      "loopResiduePlus3AdditionalCyclesPerIteration": 1,
+      "interruptCycles": {
+        "level1Entry": 227,
+        "level1Resume": 143,
+        "level3Entry": 222,
+        "level3Resume": 139
+      },
+      "matchesCommittedIdf61Values": true
+    },
+    "elfVerification": {
+      "path": "core-elf-verification.json",
+      "sha256": "c0649d52f19322c72f1082cd2c27e08004ac367dc417fb640cc0aadb9ef54fb5",
+      "ok": true,
+      "issueBlockCount": 5,
+      "operationsPerIssueBlock": 256,
+      "loopBodyResiduesMod4": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "archiveOnlyArtifacts": {
+      "elfSha256": "7c3e21993da886855be4660c0db691b2c5f938fd1f73ad6301718cde5a9d1014",
+      "firmwareBinSha256": "a68ce0d0232de33bab567e83200a28f882e1177e8a453bfe8df104a2e1495ec4",
+      "sdkconfigSha256": "a4ad3689c4b64d4d9e6b70481556bfb5345a61dad4a276d8d0921e1d2c629fc8"
+    }
+  },
+  "productCohort": {
+    "disposition": "reset-to-ready distribution and diagnostic TE telemetry only",
+    "path": "product-boot-cohort-validated.json",
+    "sha256": "9abdef5159d7903a3af29ad8158bf27d90bed202043dba612b23e58d741c1dd5",
+    "validation": {
+      "schemaVersion": 1,
+      "marker": "TINYDRAW_VECTOR_V2_READY",
+      "declaredRuns": 30,
+      "sampleCount": 30,
+      "runIndices": "contiguous 0 through 29",
+      "readyLineCount": 30,
+      "teFieldSetCount": 30
+    },
+    "summaryMethod": {
+      "ordering": "ascending numeric values",
+      "median": "arithmetic mean of ranks 15 and 16 for 30 samples",
+      "p90": "nearest rank, value at one-based rank ceil(0.90 * n)"
+    },
+    "resetToReadySeconds": {
+      "classification": "distribution",
+      "count": 30,
+      "min": 2.788178125003469,
+      "median": 2.7968129584987764,
+      "p90NearestRank": 2.8008790419989964,
+      "max": 2.8038100420089904
+    },
+    "diagnosticTe": {
+      "classification": "diagnostic only",
+      "edgeCount": {
+        "count": 30,
+        "min": 76,
+        "median": 76,
+        "p90NearestRank": 76,
+        "max": 76
+      },
+      "periodUs": {
+        "count": 30,
+        "min": 16784,
+        "median": 16806,
+        "p90NearestRank": 16814,
+        "max": 16820
+      },
+      "highUs": {
+        "count": 30,
+        "min": 577,
+        "median": 579,
+        "p90NearestRank": 579,
+        "max": 580
+      },
+      "levelCounts": {
+        "0": 30
+      }
+    },
+    "archiveOnlyArtifacts": {
+      "elfSha256": "315e8e431badbac79c5f547fdc184c0fefe003617c4f6cd8e1b47a083b31b48b",
+      "firmwareBinSha256": "35c66ceedfc0628b906508cd290b2f92881fedf9f732b79b553c089c46a980c6",
+      "sdkconfigSha256": "9d7af17178759879b55aa8ad2e4802eb44cc5833d7bc9a4fd1d5f25dfe79484e"
+    }
+  },
+  "noncanonicalDiagnostics": [
+    {
+      "path": "core-timing/boot-1-serial.log",
+      "sha256": "fb737a8e1456d449e19156de5ebfbcee1ce5097c62dc024968395c9df376a80f",
+      "reason": "Rejected because a stale partial pre-reset CAL_RECORD line prefixes the ROM banner."
+    },
+    {
+      "path": "product-cohort/boot-cohort.json",
+      "sha256": "1a44a606fe19fec8841db73f7a5a40d101854ba9fbee3f808e24337303b28d40",
+      "reason": "Superseded by the atomic capture tool cohort."
+    },
+    {
+      "path": "product-cohort/diagnostic-single.json",
+      "sha256": "eca33185ad4faad22358ea24f6fbed75664b23d4f9f9484350d5f1d1536c6866",
+      "reason": "Single-run diagnostic for the corrected serial open sequence."
+    },
+    {
+      "path": "product-cohort/diagnostic-serial.log",
+      "sha256": "9e4ee7c5b61b484590903a456c8c96600322ceb2bd435aa9cc7d6313c69b0fbd",
+      "reason": "Full serial diagnostic after initial marker timeouts."
+    },
+    {
+      "path": null,
+      "sha256": null,
+      "reason": "The older serial open sequence timed out before every marker in a 30-run attempt and correctly wrote no result file."
+    }
+  ]
+}
