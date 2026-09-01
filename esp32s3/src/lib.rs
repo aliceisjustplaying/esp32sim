@@ -1,3 +1,4 @@
+pub mod backend;
 pub mod board;
 pub mod bus;
 pub mod periph;
@@ -7,5 +8,6 @@ pub mod wifi;
 pub mod net;
 pub mod nat;
 pub mod crypto { pub use esp_periph::crypto::*; }
+pub use backend::{Esp32Backend, MeasuredMachine, MeasuredStep, MeasuredStepError};
 pub use esp_soc::{elf, host, image, picture, web, Stop};
 pub use soc::{machine, Machine, S3};
