@@ -39,6 +39,22 @@ points there.
 - No TypeScript execution engine is ever built. The web shell is a
   thin transport and UI client.
 
+## Checkouts and worktrees
+
+- One canonical checkout per live repository:
+  `~/src/a/esp32sim` (this repo) and `~/src/a/tinydraw`. Do not make
+  additional clones of either.
+- An agent that needs isolation uses `git worktree add` from the
+  canonical checkout and removes the worktree when its branch is
+  merged or abandoned.
+- Nothing valuable lives only in a working tree overnight: push the
+  branch the same day or treat the work as disposable.
+- Run `git fetch` before making any claim about repository or branch
+  state.
+- Receipt-pinned bytes (raw captures, built probe ELFs) are copied to
+  committed evidence or `~/Archives/esp32s3/` at capture time, never
+  left inside a working tree.
+
 ## Process
 
 - Upstream-first: fixes and capabilities upstream would want are built
