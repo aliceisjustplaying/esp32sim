@@ -1,0 +1,17 @@
+schema=1
+architecture=xtensa-lx7
+corpus=mandatory.dis
+sha256=7e684d22347931c81770ddbea6c7fb1878542c8fecc0dc51340edcfc8b1c591f
+case_count=10
+semantic_mnemonics=add.n,addi.n,beqz.n,entry,l32i.n,movi.n,nop.n,retw.n,s32i.n,xor
+source=mandatory.S
+source_sha256=7e1f7457d705813e0648f94899c59c762c9900665eb9d31b9f7b4e45464525c5
+oracle=GNU objdump for the Espressif Xtensa ESP32-S3 target
+toolchain=crosstool-NG esp-15.2.0_20251204, GNU binutils 2.45
+generator=xtensa-esp32s3-elf-as -o mandatory.o mandatory.S && xtensa-esp32s3-elf-objdump -d mandatory.o
+flags=default ESP32-S3 assembler architecture
+generated_at=2026-08-31
+host=arm64-apple-darwin
+seed=none
+virtual_duration=not-applicable
+backend_capabilities=decoder-only

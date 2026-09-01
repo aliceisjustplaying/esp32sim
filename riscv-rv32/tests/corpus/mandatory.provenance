@@ -1,0 +1,17 @@
+schema=1
+architecture=riscv-rv32imc
+corpus=mandatory.dis
+sha256=d6ee3d1719bd31eb878667c6b742d5597d50e73cc9bc75ce4ce1efade59933ab
+case_count=9
+semantic_mnemonics=add,beqz,csrr,li,lw,mul,nop,ret,sw
+source=mandatory.S
+source_sha256=264dfc0290a94cf34d8e193c864c37e20027cb8b01fe22c6fe7cccae6878f859
+oracle=GNU objdump for the Espressif RISC-V target
+toolchain=crosstool-NG esp-15.2.0_20251204, GNU binutils 2.45
+generator=riscv32-esp-elf-as -march=rv32imc_zicsr -mabi=ilp32 -o mandatory.o mandatory.S && riscv32-esp-elf-objdump -d mandatory.o
+flags=-march=rv32imc_zicsr -mabi=ilp32
+generated_at=2026-08-31
+host=arm64-apple-darwin
+seed=none
+virtual_duration=not-applicable
+backend_capabilities=decoder-only

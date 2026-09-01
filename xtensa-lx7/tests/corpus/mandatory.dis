@@ -1,0 +1,12 @@
+00000000 <mandatory_start>:
+   0:	004136        	entry	a1, 32
+   3:	a22c          	movi.n	a2, 42
+   5:	320b          	addi.n	a3, a2, -1
+   7:	0148          	l32i.n	a4, a1, 0
+   9:	1149          	s32i.n	a4, a1, 4
+   b:	534a          	add.n	a5, a3, a4
+   d:	306520        	xor	a6, a5, a2
+  10:	068c          	beqz.n	a6, 14 <mandatory_done>
+  12:	f03d          	nop.n
+00000014 <mandatory_done>:
+  14:	f01d          	retw.n
