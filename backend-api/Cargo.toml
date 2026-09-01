@@ -1,0 +1,12 @@
+[package]
+name = "backend-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Versioned backend contract for deterministic ESP32-S3 execution"
+
+[dependencies]
+sha2 = "0.10"
+
+[dev-dependencies]
+proptest = "1"
