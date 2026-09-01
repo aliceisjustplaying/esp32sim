@@ -1,0 +1,72 @@
+{
+  "adoptionVersion": 1,
+  "status": "adopted-cache-line-fill-costs",
+  "scope": {
+    "chip": "ESP32-S3 revision 0.2",
+    "cpuHz": 240000000,
+    "flash": "QIO 80 MHz",
+    "psram": "octal DTR 80 MHz",
+    "instructionCacheLineBytes": 32,
+    "dataCacheLineBytes": 64
+  },
+  "firmware": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "a91d1d74af0ff4c1b55aebc3ed584e9074821394",
+    "dirty": false
+  },
+  "evidence": {
+    "dcacheAnalysis": {
+      "path": "esp32s3-rev02-tinydraw-a91d1d7-dcache-burst-analysis.json",
+      "sha256": "84dc4150f56e66d5b6f971e48cf6cf4255833452219517c3106d7bb0b3d15b89",
+      "boots": [
+        "1cdbd47b85c8-9c64e721-000124de",
+        "1cdbd47b85c8-eb5922de-000124dc"
+      ],
+      "samplesPerCell": 200
+    },
+    "icacheAnalysis": {
+      "path": "esp32s3-rev02-tinydraw-a91d1d7-icache-burst-analysis.json",
+      "sha256": "258155e0f9c561e7da9da31e38f13787df79cbe1b98f94b2cd19145be7307180",
+      "boots": [
+        "1cdbd47b85c8-1f5a312c-000124dd",
+        "1cdbd47b85c8-9c64e721-000124de",
+        "1cdbd47b85c8-eb5922de-000124dc"
+      ],
+      "samplesPerCell": 300
+    }
+  },
+  "estimator": {
+    "firstLine": "exact pooled median cold-minus-hot penalty at one line",
+    "subsequentLine": "nearest integer to the fixed-first-line least-squares interval",
+    "validation": "every cold sample has exactly N target cache misses and every hot sample has zero target misses"
+  },
+  "costs": {
+    "instruction": {
+      "flash": {
+        "firstLineCycles": 204,
+        "subsequentLineCycles": 266,
+        "maximumLadderResidualCycles": 1
+      },
+      "psram": null
+    },
+    "data": {
+      "flash": {
+        "firstLineCycles": 115,
+        "subsequentLineCycles": 473,
+        "maximumLadderResidualCycles": 2
+      },
+      "psram": {
+        "firstLineCycles": 82,
+        "subsequentLineCycles": 170,
+        "maximumLadderResidualCycles": 2
+      }
+    }
+  },
+  "claimBoundary": {
+    "cacheLineFillCostsCalibrated": true,
+    "instructionPsramMeasured": false,
+    "cacheHitCostsCalibrated": false,
+    "dirtyWritebackCostsCalibrated": false,
+    "architectureCycleAccurate": false
+  }
+}

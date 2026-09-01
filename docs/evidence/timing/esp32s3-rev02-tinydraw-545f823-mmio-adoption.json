@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "status": "adopted",
+  "previousAdoption": {
+    "path": "esp32s3-rev02-tinydraw-6f22350-mmio-adoption.json",
+    "sha256": "7cdf6dfbcf9c702d209ce9c55f15057107637b890c623ea6f0c3d08189da16ae"
+  },
+  "firmware": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "545f8236beb0bc12fbe90c4c09268b05f73da17a",
+    "dirty": false,
+    "elfSha256": "fd6e03f85e60df681942612b23e8350128115b6c3881878137dcca140d4c1602",
+    "sdkconfigSha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68"
+  },
+  "strictReceipts": {
+    "samplesPerCellPerBoot": 100,
+    "operationsPerSample": 4096,
+    "cells": [
+      {
+        "role": "dcache-autoload-read",
+        "kernel": "mmio_read_extmem_dcache_autoload_ctrl_4096_aligned_single_core",
+        "cycles": 45074,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_read_extmem_dcache_autoload_ctrl_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_read_extmem_dcache_autoload_ctrl_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "3cc492392d9257e4627c5b9bb193cc440c9cc607ab75ec186692e879b5ff3feb",
+          "58e48f455334b5f256a139a80eabf8b8ce8b3f4f44db45b4e938ced13df50a2a"
+        ]
+      },
+      {
+        "role": "dcache-ctrl1-read",
+        "kernel": "mmio_read_extmem_dcache_ctrl1_4096_aligned_single_core",
+        "cycles": 45074,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_read_extmem_dcache_ctrl1_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_read_extmem_dcache_ctrl1_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "469ec4d8d5c516d8d92dceb4e9d29de31e7bd4e2cd36a8cc8886675e453d90e2",
+          "6bb68a405247b33cabf2186082258f473382167805890d4fd6e8d8612e06f383"
+        ]
+      },
+      {
+        "role": "icache-autoload-read",
+        "kernel": "mmio_read_extmem_icache_autoload_ctrl_4096_aligned_single_core",
+        "cycles": 45074,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_read_extmem_icache_autoload_ctrl_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_read_extmem_icache_autoload_ctrl_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "29c2e16a57ed44f22da84a243f920bc395ccb0c239e1abe6ef2f6c8f8a2bca0f",
+          "3f32a20e08bdf5abd0a08495bbb4b18719e067d12b8f645ffd0c5ee2b367b5b6"
+        ]
+      },
+      {
+        "role": "icache-ctrl1-read",
+        "kernel": "mmio_read_extmem_icache_ctrl1_4096_aligned_single_core",
+        "cycles": 45074,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_read_extmem_icache_ctrl1_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_read_extmem_icache_ctrl1_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "243a5f82fb1a9efbeaea37ae0b4e11c292637d7d97550d16aaa2833ffedcaaea",
+          "f7a4fe537fc5018a084857552788f9032242a6d4f9bcc1503588b969791f40be"
+        ]
+      },
+      {
+        "role": "read-baseline",
+        "kernel": "mmio_read_sram_4096_aligned_single_core",
+        "cycles": 12306,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_read_sram_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_read_sram_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "c5beaeef7def9ec6e694b1b5e188a2da9076c74ba79f795374f0df15a46a1395",
+          "64427c5c4974e38ea0c6993d43fda7339b372aafe22ee85e63b71af4227e2e89"
+        ]
+      },
+      {
+        "role": "sysclk-read",
+        "kernel": "mmio_read_system_sysclk_conf_4096_aligned_single_core",
+        "cycles": 45074,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_read_system_sysclk_conf_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_read_system_sysclk_conf_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "569ff31e92c9bd520d6ca69542d534ecbb9fb045f580ee923f9e49321a0ca721",
+          "a976255ed38b751ec60960d9a73f34961f2883b690cbff1bac77aa68cb370e67"
+        ]
+      },
+      {
+        "role": "dcache-ctrl1-write-excluded",
+        "kernel": "mmio_write_same_value_extmem_dcache_ctrl1_4096_aligned_single_core",
+        "cycles": 16400,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_write_same_value_extmem_dcache_ctrl1_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_write_same_value_extmem_dcache_ctrl1_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "397753f54aa4f9b4b686e081c2f6a31784be074d4a0de22e8ce9ee84d17c86e9",
+          "f7df880d2477a386950be30c53998fdabc79016fc851f4852c9cd7d05c8dc4ba"
+        ]
+      },
+      {
+        "role": "icache-ctrl1-write-excluded",
+        "kernel": "mmio_write_same_value_extmem_icache_ctrl1_4096_aligned_single_core",
+        "cycles": 16400,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_write_same_value_extmem_icache_ctrl1_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_write_same_value_extmem_icache_ctrl1_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "3f6c3da2ed5cc16621582d4386be73821723b26b9445ac76f9922d9389db5c14",
+          "bdb3bc0f555dcb841a7e69bab0eaf08168188312ed66bba9de7690f0cb9ca7da"
+        ]
+      },
+      {
+        "role": "write-baseline",
+        "kernel": "mmio_write_same_value_sram_4096_aligned_single_core",
+        "cycles": 4120,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_write_same_value_sram_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_write_same_value_sram_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "9b98bafca0043f256f729bd106504f6a1b57a577f7c2484ebab53bc8e732764e",
+          "cac11d2a412ce61e55dc35839e928a55b0c819741a8b216f30343746fd529664"
+        ]
+      },
+      {
+        "role": "sysclk-write-excluded",
+        "kernel": "mmio_write_same_value_system_sysclk_conf_4096_aligned_single_core",
+        "cycles": 16400,
+        "paths": [
+          "boot-mmio-545f823/boot-1/mmio_write_same_value_system_sysclk_conf_4096_aligned_single_core.json",
+          "boot-mmio-545f823/boot-2/mmio_write_same_value_system_sysclk_conf_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "50055afebcb776fd4250e4cf5f445e0bdd8535a2728b927cabd80bd9689f9141",
+          "eb2fcd89d899db65f57991836adfdfea64643686e8ee0190e0dc1342352b1e23"
+        ]
+      }
+    ]
+  },
+  "matchedResults": {
+    "readBaselineCycles": 12306,
+    "registerReadCycles": 45074,
+    "readDeltaCycles": 32768,
+    "adoptedReadCyclesPerAccess": 8,
+    "writeBaselineCycles": 4120,
+    "registerWriteCycles": 16400,
+    "writeDeltaCycles": 12280,
+    "writeDeltaCyclesPerAccess": {
+      "numerator": 12280,
+      "denominator": 4096
+    }
+  },
+  "adoptedAccesses": [
+    { "address": "0x600c0010", "operation": "read", "bytes": 4, "peripheral": "system-controller", "cycles": 8 },
+    { "address": "0x600c0060", "operation": "read", "bytes": 4, "peripheral": "system-controller", "cycles": 8 },
+    { "address": "0x600c4004", "operation": "read", "bytes": 4, "peripheral": "cache-controller", "cycles": 8 },
+    { "address": "0x600c404c", "operation": "read", "bytes": 4, "peripheral": "cache-controller", "cycles": 8 },
+    { "address": "0x600c4064", "operation": "read", "bytes": 4, "peripheral": "cache-controller", "cycles": 8 },
+    { "address": "0x600c40a0", "operation": "read", "bytes": 4, "peripheral": "cache-controller", "cycles": 8 },
+    { "address": "0x600c4130", "operation": "read", "bytes": 4, "peripheral": "cache-controller", "cycles": 8 }
+  ],
+  "claimBoundary": {
+    "exactAddressOperationWidthAndPeripheralOnly": true,
+    "allAdoptedCacheCountersZero": true,
+    "sameValueWritesExcludedUntilAffineSlopeIsMeasured": true,
+    "autoloadWritesExcludedAfterHardwareStateFailure": true,
+    "otherMmioAccessesCalibrated": false,
+    "architectureCycleAccurate": false
+  }
+}
