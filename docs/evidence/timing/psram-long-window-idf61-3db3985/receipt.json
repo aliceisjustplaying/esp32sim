@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "status": "candidate",
+  "tierCandidate": "distribution",
+  "adopted": false,
+  "acceptanceBound": false,
+  "source": {
+    "bundle": "../idf61-rebaseline-3db3985",
+    "tinyDrawCommit": "3db39856ecec411cbb7c4b697f6b47e65b5a8f2a",
+    "espIdfVersion": "v6.1",
+    "compilerVersion": "15.2.0",
+    "timingElfSha256": "4d70b3bea29c88f1d56f026b09b72f6949e861a27e08016660dbc543d3e4c233",
+    "boots": [
+      {
+        "number": 1,
+        "bootId": "1cdbd47b85c8-6c747621-000198ea",
+        "rawCapture": "../idf61-rebaseline-3db3985/captures/timing-boot-1.log.gz",
+        "rawCaptureSha256": "44fb94a1376013144c61b0c80eeb0a7d244830f14f7434b784cb36cf849225cb",
+        "uncompressedRawLogSha256": "727b293ebc27287edd36206b20b17536f99f087d8cee181c63c68918d83fb966",
+        "recoveredReceipts": "../idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz",
+        "recoveredReceiptsSha256": "14764620c67975eb4a6383f78d921dbbbcca06acdb5117cf78164426c3ed6287"
+      },
+      {
+        "number": 2,
+        "bootId": "1cdbd47b85c8-ded8955b-000198ea",
+        "rawCapture": "../idf61-rebaseline-3db3985/captures/timing-boot-2.log.gz",
+        "rawCaptureSha256": "0456be450c115f9a63265359a7aa3ae633e9bf5edb5f277d349529038a80bc4b",
+        "uncompressedRawLogSha256": "d97196b3759b4d7166316813df951517c4c63390d05cbb18ef6eb465cb856ef7",
+        "recoveredReceipts": "../idf61-rebaseline-3db3985/receipts/boot-2-recovered.tar.gz",
+        "recoveredReceiptsSha256": "4d43cb919c0bceeb7bc5b8389249b2a532ddc820b9fc0df62bc63b0a415198a1"
+      },
+      {
+        "number": 3,
+        "bootId": "1cdbd47b85c8-ab0f2402-000198e9",
+        "rawCapture": "../idf61-rebaseline-3db3985/captures/timing-boot-3.log.gz",
+        "rawCaptureSha256": "c6ebae547b4c01abac69727a7a8ca20fccc59e29999cf28435ef29d434d98090",
+        "uncompressedRawLogSha256": "92ae6438a325c4b058be388c6f12d3009d6b4937c14a8dbeeaa0b4d77bb34a76",
+        "recoveredReceipts": "../idf61-rebaseline-3db3985/receipts/boot-3-recovered.tar.gz",
+        "recoveredReceiptsSha256": "9eb40b6b8714873e84666d30850e1616b72fdbbc6d0d73f5c6e40cf750b25a8e"
+      },
+      {
+        "number": 4,
+        "bootId": "1cdbd47b85c8-fc5b5182-000198eb",
+        "rawCapture": "../idf61-rebaseline-3db3985/captures/timing-boot-4.log.gz",
+        "rawCaptureSha256": "8f01d17dc4901bca9f1edf9d6323ddeac5000c0b7403fee93f55af15cc27b97d",
+        "uncompressedRawLogSha256": "cc8a6c6f766f571269bb26ee42fa117a33d6ab0090d84748b44dac0849312cfb",
+        "recoveredReceipts": "../idf61-rebaseline-3db3985/receipts/boot-4-recovered.tar.gz",
+        "recoveredReceiptsSha256": "5ca8183e8416c235113576d6fd7eb413d34167ca86663a62a23dcaef66f049b1"
+      }
+    ]
+  },
+  "method": {
+    "receiptEntry": "./<kernel>.json in each recovered-receipt archive",
+    "eligibility": [
+      "complete recovered receipt is present",
+      "capture mode is hardware",
+      "TinyDraw commit and toolchain match the source bundle",
+      "receipt contains exactly 100 samples with contiguous ordinals",
+      "all samples start and end on core 0",
+      "raw log hash matches the receipt boot metadata"
+    ],
+    "pooling": "concatenate cycle samples from every eligible independent boot",
+    "percentileMethod": "nearest rank",
+    "percentileIndexOneBased": "ceil(p * sampleCount)",
+    "units": "cycles"
+  },
+  "cohorts": [
+    {
+      "kernel": "psram_cold_sequential_single_core",
+      "eligibleBoots": [1, 2, 4],
+      "incompleteOrMissingBoots": [3],
+      "samplesPerBoot": 100,
+      "pooledSampleCount": 300,
+      "cycles": {
+        "min": 1432180,
+        "p50": 1432180,
+        "p90": 1432180,
+        "p99": 1432251,
+        "max": 1433597
+      }
+    },
+    {
+      "kernel": "psram_cold_sequential_core1_contended",
+      "eligibleBoots": [1, 2, 3, 4],
+      "incompleteOrMissingBoots": [],
+      "samplesPerBoot": 100,
+      "pooledSampleCount": 400,
+      "cycles": {
+        "min": 2806948,
+        "p50": 2807281,
+        "p90": 2807300,
+        "p99": 2807648,
+        "max": 2809162
+      }
+    },
+    {
+      "kernel": "psram_cold_random_single_core",
+      "eligibleBoots": [1, 2, 3, 4],
+      "incompleteOrMissingBoots": [],
+      "samplesPerBoot": 100,
+      "pooledSampleCount": 400,
+      "cycles": {
+        "min": 2652302,
+        "p50": 2658665,
+        "p90": 2661461,
+        "p99": 2662784,
+        "max": 2662958
+      }
+    },
+    {
+      "kernel": "psram_cold_random_core1_contended",
+      "eligibleBoots": [1, 2, 3, 4],
+      "incompleteOrMissingBoots": [],
+      "samplesPerBoot": 100,
+      "pooledSampleCount": 400,
+      "cycles": {
+        "min": 5435990,
+        "p50": 5448089,
+        "p90": 5453885,
+        "p99": 5457303,
+        "max": 5458557
+      }
+    }
+  ],
+  "disposition": {
+    "recaptureRequired": false,
+    "reason": "all four cohorts have at least two complete independent boot receipts",
+    "classification": "distribution candidates only"
+  }
+}
