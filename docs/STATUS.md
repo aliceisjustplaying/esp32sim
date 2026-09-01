@@ -140,6 +140,13 @@ their families. The dirty-writeback, SPI2, and cache-msync writeback totals are
 affine, but their CPU, cache, and device components are mathematically
 underdetermined. These captures adopt no measured-mode costs.
 
+The Tier B decomposition follow-up is complete from clean TinyDraw
+`7a157d44a9da3312b1ecda2b45b116af2de28e63`. Its candidate receipt is
+[`evidence/timing/tier-b-decomposition-2026-09-01/`](evidence/timing/tier-b-decomposition-2026-09-01/README.md).
+Two normal boots each completed 43 cells and 360 samples; two XIP PSRAM boots
+each completed 44 cells and 373 samples. All four have distinct boot identities
+and zero refusals. These captures adopt no measured-mode costs.
+
 Tier A dispositions:
 
 1. Parked: the IDF 6.1 rebaseline receipt pins TinyDraw commit
@@ -184,6 +191,25 @@ Tier B dispositions:
     cell.
 13. Deferred as optional: the DMA descriptor marker remains available for a
     later electrical capture and is not part of this canonical cohort.
+14. Cache-msync decomposition complete as candidate evidence: the total remains
+    unexplained because its matched-clean baseline fails the affine threshold.
+    The dirty C2M delta is an affine candidate at 161.334240342 cycles per dirty
+    line at 80 MHz plus 125.245246779 at 40 MHz. The 4 KiB, 64-miss service
+    controls remain distributions, not a universal line cost. Nothing is
+    product-adopted because the C2M interval is not yet a non-double-counted
+    measured transaction. Receipt:
+    [`evidence/timing/tier-b-decomposition-2026-09-01/`](evidence/timing/tier-b-decomposition-2026-09-01/README.md).
+15. SPI2 decomposition complete as candidate evidence: the rank-8 phase design
+    reconciles all 216 samples exactly. Submission and completion fixed costs
+    remain distributions. Device serialization is exact at 96 cycles per byte
+    at 20 MHz, and exact at 48 cycles per byte at 40 MHz only from 4 KiB through
+    32 KiB. Phased totals do not replace the prior blocking receipt, and no
+    product transaction adopts these candidates.
+
+No further board sessions are scheduled. The hardware queue is a queue, not
+active work. Hardware resumes only when a milestone 2 through 4 cost class
+lacks a receipt. Display-path and DMA decomposition are parked until milestone
+4 is complete.
 
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
 capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
@@ -205,12 +231,11 @@ mode (needs GOAL milestone 2).
 
 ## Next steps
 
-1. Add the independent Tier B controls named in the receipt: crossed dirty-line
-   count and PSRAM service rate with a no-op cache-msync control, plus SPI2
-   payload sweeps at two verified clocks with separate submission and DMA
-   completion timing.
-2. Reclassify the refused dirty-writeback, SPI2, and cache-msync components only
-   after those controls make the decomposition identifiable.
-3. Extend measured interpreter coverage as additional cost classes are adopted.
-4. Attach the architectural interpreter-versus-JIT conformance gate to the
+1. Milestone 2 is next: make `step_measured` run one real SRAM-resident kernel
+   end to end, produce its typed cycle ledger, and pass a committed replay test
+   against that ledger.
+2. Extend measured interpreter coverage only as the end-to-end kernel needs
+   additional receipt-backed cost classes. Unknown classes remain fail-closed.
+3. Attach the architectural interpreter-versus-JIT conformance gate to the
    first costed-JIT task before product-JIT work begins.
+4. Resume display-path and DMA decomposition after milestone 4 is complete.

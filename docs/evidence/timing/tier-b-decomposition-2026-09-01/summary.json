@@ -1,0 +1,1831 @@
+{
+  "adoptedMeasuredModeCosts": [],
+  "archiveSha256SumsSha256": "f8fdad6a863d6484e1a29ab3a103a3f36d5b29005111c0c4108b538a0ea3653a",
+  "captures": [
+    {
+      "boot": 1,
+      "bootIdentity": "11-e098c0b3353cc871",
+      "captureSha256": "f5f84ce39a1a6390c186ab251f9248eab72e7e1f43619ccb48f0d5a51d41623c",
+      "cells": 43,
+      "refusals": 0,
+      "samples": 360,
+      "variant": "normal"
+    },
+    {
+      "boot": 2,
+      "bootIdentity": "11-50f6ad54f11b5c37",
+      "captureSha256": "f1a3c48810e0959d0ee76be90e431958dea17363d79836a894ac1a1e7a4008ce",
+      "cells": 43,
+      "refusals": 0,
+      "samples": 360,
+      "variant": "normal"
+    },
+    {
+      "boot": 1,
+      "bootIdentity": "11-e0dfb6331da2978f",
+      "captureSha256": "d032f095432ab461cb431ae8f7ff7ac6c510e554687e08b10c99005d04f99271",
+      "cells": 44,
+      "refusals": 0,
+      "samples": 373,
+      "variant": "xip-psram"
+    },
+    {
+      "boot": 2,
+      "bootIdentity": "11-bce20af617052ee2",
+      "captureSha256": "7572d2291c08801764c883556d4ae0d9307489a08a4b6618f46d3146fc6d348b",
+      "cells": 44,
+      "refusals": 0,
+      "samples": 373,
+      "variant": "xip-psram"
+    }
+  ],
+  "decomposition": {
+    "msync": {
+      "classification": "unexplained",
+      "coefficients": {
+        "addressedLineCycles": 1.241970872,
+        "dirtyLineCyclesAt80MHz": 161.334240342,
+        "fixedCycles": 869.113612667,
+        "slow40MHzAddressedLineCycles": 0.014719868,
+        "slow40MHzDirtyLineCycles": 125.245246779,
+        "slow40MHzFixedCycles": -7.301527805
+      },
+      "components": {
+        "dirtyWritebackDelta": {
+          "classification": "affine",
+          "coefficients": {
+            "dirtyLineCyclesAt80MHz": 161.334240342,
+            "slow40MHzDirtyLineCycles": 125.245246779
+          },
+          "designRank": 2,
+          "maxAbsoluteResidualCycles": 105.271794,
+          "observations": 24,
+          "observedRangeCycles": 146582,
+          "rSquared": 0.999999112236,
+          "rmseCycles": 53.074316
+        },
+        "matchedCleanBaseline": {
+          "classification": "unexplained",
+          "coefficients": {
+            "addressedLineCycles": 1.200101703,
+            "fixedCycles": 889.882066454,
+            "slow40MHzAddressedLineCycles": -0.000518368,
+            "slow40MHzFixedCycles": 0.258072146
+          },
+          "designRank": 4,
+          "maxAbsoluteResidualCycles": 28.416306,
+          "observations": 6,
+          "observedRangeCycles": 640,
+          "rSquared": 0.993652781892,
+          "rmseCycles": 22.768602
+        }
+      },
+      "design": "[1,L,D,S40,L*S40,D*S40]",
+      "designRank": 6,
+      "maxAbsoluteResidualCycles": 56.080863,
+      "medianTotalFitClassification": "affine",
+      "observations": 48,
+      "observedRangeCycles": 147376,
+      "productAdoptable": false,
+      "productDisposition": "dirty writeback is an affine candidate inside a typed C2M boundary, but the matched-clean baseline is unexplained and product accounting still needs a non-double-counted cache-msync transaction",
+      "rSquared": 0.999999625077,
+      "rawResiduals": {
+        "maxAbsoluteResidualCycles": 1461.133754,
+        "observations": 432,
+        "rmseCycles": 263.777862
+      },
+      "rmseCycles": 27.321673,
+      "stability": "dirty-delta medians repeat across both boots and differ by at most 8 cycles at 512 lines between firmware variants",
+      "transactionBoundary": "CCOUNT around esp_cache_msync(..., ESP_CACHE_MSYNC_FLAG_DIR_C2M)"
+    },
+    "perCapture": {
+      "normal-boot-1": {
+        "msync_decompose_l16_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 937,
+            "median": 937,
+            "min": 937,
+            "p90": 937,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 937,
+            "median": 937,
+            "min": 937,
+            "p90": 937,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 5417,
+            "median": 5417,
+            "min": 5417,
+            "p90": 5417,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 3443,
+            "median": 3443,
+            "min": 3443,
+            "p90": 3443,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p40": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 1022,
+            "median": 863,
+            "min": 863,
+            "p90": 1022,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 863,
+            "median": 863,
+            "min": 863,
+            "p90": 863,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1143,
+            "median": 1143,
+            "min": 1143,
+            "p90": 1143,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1017,
+            "median": 1017,
+            "min": 1017,
+            "p90": 1017,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1503,
+            "median": 1503,
+            "min": 1503,
+            "p90": 1503,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1503,
+            "median": 1503,
+            "min": 1503,
+            "p90": 1503,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 148239,
+            "median": 148239,
+            "min": 148239,
+            "p90": 148239,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p80": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 84105,
+            "median": 84105,
+            "min": 82647,
+            "p90": 84105,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 3148353,
+            "median": 3148353,
+            "min": 3148353,
+            "p90": 3148353,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 3155186,
+            "median": 3154178,
+            "min": 3154178,
+            "p90": 3155186,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6833,
+            "median": 5825,
+            "min": 5825,
+            "p90": 6833,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 1575474,
+            "median": 1575474,
+            "min": 1575474,
+            "p90": 1575474,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 1582308,
+            "median": 1581300,
+            "min": 1581300,
+            "p90": 1582308,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6834,
+            "median": 5826,
+            "min": 5826,
+            "p90": 6834,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 395841,
+            "median": 395841,
+            "min": 395841,
+            "p90": 395841,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 402449,
+            "median": 401441,
+            "min": 401441,
+            "p90": 402449,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6608,
+            "median": 5600,
+            "min": 5600,
+            "p90": 6608,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 199218,
+            "median": 199218,
+            "min": 199218,
+            "p90": 199218,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 205827,
+            "median": 204819,
+            "min": 204819,
+            "p90": 205827,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6609,
+            "median": 5601,
+            "min": 5601,
+            "p90": 6609,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c20": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 9221,
+            "median": 8769,
+            "min": 8769,
+            "p90": 9221,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 18901,
+            "median": 14339,
+            "min": 14339,
+            "p90": 18901,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 9680,
+            "median": 5570,
+            "min": 5570,
+            "p90": 9680,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c40": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 5949,
+            "median": 5949,
+            "min": 5841,
+            "p90": 5949,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 12420,
+            "median": 11520,
+            "min": 11487,
+            "p90": 12420,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6579,
+            "median": 5571,
+            "min": 5571,
+            "p90": 6579,
+            "samples": 9
+          }
+        }
+      },
+      "normal-boot-2": {
+        "msync_decompose_l16_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 937,
+            "median": 937,
+            "min": 937,
+            "p90": 937,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 937,
+            "median": 937,
+            "min": 937,
+            "p90": 937,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 5417,
+            "median": 5417,
+            "min": 5417,
+            "p90": 5417,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 3443,
+            "median": 3443,
+            "min": 3443,
+            "p90": 3443,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p40": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 1022,
+            "median": 863,
+            "min": 863,
+            "p90": 1022,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 863,
+            "median": 863,
+            "min": 863,
+            "p90": 863,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1143,
+            "median": 1143,
+            "min": 1143,
+            "p90": 1143,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1017,
+            "median": 1017,
+            "min": 1017,
+            "p90": 1017,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1503,
+            "median": 1503,
+            "min": 1503,
+            "p90": 1503,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1503,
+            "median": 1503,
+            "min": 1503,
+            "p90": 1503,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 148239,
+            "median": 148239,
+            "min": 148239,
+            "p90": 148239,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p80": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 84105,
+            "median": 84105,
+            "min": 82647,
+            "p90": 84105,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 3148353,
+            "median": 3148353,
+            "min": 3148353,
+            "p90": 3148353,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 3155186,
+            "median": 3154178,
+            "min": 3154178,
+            "p90": 3155186,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6833,
+            "median": 5825,
+            "min": 5825,
+            "p90": 6833,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 1575474,
+            "median": 1575474,
+            "min": 1575474,
+            "p90": 1575474,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 1582308,
+            "median": 1581300,
+            "min": 1581300,
+            "p90": 1582308,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6834,
+            "median": 5826,
+            "min": 5826,
+            "p90": 6834,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 395841,
+            "median": 395841,
+            "min": 395841,
+            "p90": 395841,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 402449,
+            "median": 401441,
+            "min": 401441,
+            "p90": 402449,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6608,
+            "median": 5600,
+            "min": 5600,
+            "p90": 6608,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 199218,
+            "median": 199218,
+            "min": 199218,
+            "p90": 199218,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 205827,
+            "median": 204819,
+            "min": 204819,
+            "p90": 205827,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6609,
+            "median": 5601,
+            "min": 5601,
+            "p90": 6609,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c20": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 9191,
+            "median": 8769,
+            "min": 8769,
+            "p90": 9191,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 18871,
+            "median": 14339,
+            "min": 14339,
+            "p90": 18871,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 9680,
+            "median": 5570,
+            "min": 5570,
+            "p90": 9680,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c40": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 5949,
+            "median": 5949,
+            "min": 5841,
+            "p90": 5949,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 12420,
+            "median": 11520,
+            "min": 11487,
+            "p90": 12420,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6579,
+            "median": 5571,
+            "min": 5571,
+            "p90": 6579,
+            "samples": 9
+          }
+        }
+      },
+      "xip-psram-boot-1": {
+        "msync_decompose_l16_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 938,
+            "median": 938,
+            "min": 938,
+            "p90": 938,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 938,
+            "median": 938,
+            "min": 938,
+            "p90": 938,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 5418,
+            "median": 5418,
+            "min": 5418,
+            "p90": 5418,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 3444,
+            "median": 3444,
+            "min": 3444,
+            "p90": 3444,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p40": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 1017,
+            "median": 864,
+            "min": 864,
+            "p90": 1017,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 864,
+            "median": 864,
+            "min": 864,
+            "p90": 864,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1144,
+            "median": 1144,
+            "min": 1144,
+            "p90": 1144,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1018,
+            "median": 1018,
+            "min": 1018,
+            "p90": 1018,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1504,
+            "median": 1504,
+            "min": 1504,
+            "p90": 1504,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1504,
+            "median": 1504,
+            "min": 1504,
+            "p90": 1504,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p40": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 148235,
+            "median": 148232,
+            "min": 148232,
+            "p90": 148235,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p80": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 84113,
+            "median": 84113,
+            "min": 82662,
+            "p90": 84113,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 3148402,
+            "median": 3148402,
+            "min": 3148402,
+            "p90": 3148402,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 3155300,
+            "median": 3154293,
+            "min": 3154293,
+            "p90": 3155300,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6898,
+            "median": 5891,
+            "min": 5891,
+            "p90": 6898,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 1575523,
+            "median": 1575523,
+            "min": 1575523,
+            "p90": 1575523,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 1582422,
+            "median": 1581415,
+            "min": 1581415,
+            "p90": 1582422,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6899,
+            "median": 5892,
+            "min": 5892,
+            "p90": 6899,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 395890,
+            "median": 395890,
+            "min": 395890,
+            "p90": 395890,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 402563,
+            "median": 401556,
+            "min": 401556,
+            "p90": 402563,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6673,
+            "median": 5666,
+            "min": 5666,
+            "p90": 6673,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 199267,
+            "median": 199267,
+            "min": 199267,
+            "p90": 199267,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 205941,
+            "median": 204934,
+            "min": 204934,
+            "p90": 205941,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6674,
+            "median": 5667,
+            "min": 5667,
+            "p90": 6674,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c20": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 9305,
+            "median": 8818,
+            "min": 8818,
+            "p90": 9305,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 17178,
+            "median": 14454,
+            "min": 14454,
+            "p90": 17178,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 7873,
+            "median": 5636,
+            "min": 5636,
+            "p90": 7873,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c40": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 5992,
+            "median": 5992,
+            "min": 5884,
+            "p90": 5992,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 12528,
+            "median": 11629,
+            "min": 11596,
+            "p90": 12528,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6644,
+            "median": 5637,
+            "min": 5637,
+            "p90": 6644,
+            "samples": 9
+          }
+        }
+      },
+      "xip-psram-boot-2": {
+        "msync_decompose_l16_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 938,
+            "median": 938,
+            "min": 938,
+            "p90": 938,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 938,
+            "median": 938,
+            "min": 938,
+            "p90": 938,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 5418,
+            "median": 5418,
+            "min": 5418,
+            "p90": 5418,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l16_d16_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 3444,
+            "median": 3444,
+            "min": 3444,
+            "p90": 3444,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p40": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 1017,
+            "median": 864,
+            "min": 864,
+            "p90": 1017,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d0_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 864,
+            "median": 864,
+            "min": 864,
+            "p90": 864,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1144,
+            "median": 1144,
+            "min": 1144,
+            "p90": 1144,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l1_d1_p80": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1018,
+            "median": 1018,
+            "min": 1018,
+            "p90": 1018,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p40": {
+          "cycles": {
+            "classification": "exact",
+            "max": 1504,
+            "median": 1504,
+            "min": 1504,
+            "p90": 1504,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d0_p80": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 2954,
+            "median": 1504,
+            "min": 1504,
+            "p90": 2954,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p40": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 148235,
+            "median": 148232,
+            "min": 148232,
+            "p90": 148235,
+            "samples": 9
+          }
+        },
+        "msync_decompose_l512_d512_p80": {
+          "cycles": {
+            "classification": "distribution",
+            "max": 84113,
+            "median": 84113,
+            "min": 82648,
+            "p90": 84113,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 3148402,
+            "median": 3148402,
+            "min": 3148402,
+            "p90": 3148402,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 3155300,
+            "median": 3154293,
+            "min": 3154293,
+            "p90": 3155300,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6898,
+            "median": 5891,
+            "min": 5891,
+            "p90": 6898,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b32768_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 1575523,
+            "median": 1575523,
+            "min": 1575523,
+            "p90": 1575523,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 1582422,
+            "median": 1581415,
+            "min": 1581415,
+            "p90": 1582422,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6899,
+            "median": 5892,
+            "min": 5892,
+            "p90": 6899,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c20": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 395890,
+            "median": 395890,
+            "min": 395890,
+            "p90": 395890,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 402563,
+            "median": 401556,
+            "min": 401556,
+            "p90": 402563,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6673,
+            "median": 5666,
+            "min": 5666,
+            "p90": 6673,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b4096_c40": {
+          "completionCycles": {
+            "classification": "exact",
+            "max": 199267,
+            "median": 199267,
+            "min": 199267,
+            "p90": 199267,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 205941,
+            "median": 204934,
+            "min": 204934,
+            "p90": 205941,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6674,
+            "median": 5667,
+            "min": 5667,
+            "p90": 6674,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c20": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 9332,
+            "median": 8818,
+            "min": 8818,
+            "p90": 9332,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 17181,
+            "median": 14454,
+            "min": 14454,
+            "p90": 17181,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 7849,
+            "median": 5636,
+            "min": 5636,
+            "p90": 7849,
+            "samples": 9
+          }
+        },
+        "spi2_phased_b64_c40": {
+          "completionCycles": {
+            "classification": "distribution",
+            "max": 5992,
+            "median": 5992,
+            "min": 5884,
+            "p90": 5992,
+            "samples": 9
+          },
+          "cycles": {
+            "classification": "distribution",
+            "max": 12528,
+            "median": 11629,
+            "min": 11596,
+            "p90": 12528,
+            "samples": 9
+          },
+          "submissionCycles": {
+            "classification": "distribution",
+            "max": 6644,
+            "median": 5637,
+            "min": 5637,
+            "p90": 6644,
+            "samples": 9
+          }
+        }
+      }
+    },
+    "perCaptureModels": {
+      "normal-boot-1": {
+        "msync": {
+          "classification": "affine",
+          "coefficients": {
+            "addressedLineCycles": 1.241912135,
+            "dirtyLineCyclesAt80MHz": 161.3274111,
+            "fixedCycles": 868.642748176,
+            "slow40MHzAddressedLineCycles": 0.014845734,
+            "slow40MHzDirtyLineCycles": 125.259880869,
+            "slow40MHzFixedCycles": -7.363961038
+          },
+          "designRank": 6,
+          "maxAbsoluteResidualCycles": 55.613087,
+          "observations": 12,
+          "observedRangeCycles": 147376,
+          "rSquared": 0.999999626102,
+          "rmseCycles": 27.284628
+        },
+        "spi2PhaseExpanded": {
+          "classification": "affine",
+          "coefficients": {
+            "completionByteCycles": 47.99485898,
+            "completionFixedCycles": 2762.282528328,
+            "completionSlow20MHzByteCycles": 48.00514102,
+            "completionSlow20MHzFixedCycles": -137.282528328,
+            "submissionByteCycles": 0.007815787,
+            "submissionFixedCycles": 5569.792867663,
+            "submissionSlow20MHzByteCycles": 0.0,
+            "submissionSlow20MHzFixedCycles": -1.0
+          },
+          "designRank": 8,
+          "maxAbsoluteResidualCycles": 131.224911,
+          "observations": 12,
+          "observedRangeCycles": 3142783,
+          "rSquared": 0.999999996985,
+          "rmseCycles": 50.596224
+        }
+      },
+      "normal-boot-2": {
+        "msync": {
+          "classification": "affine",
+          "coefficients": {
+            "addressedLineCycles": 1.241912135,
+            "dirtyLineCyclesAt80MHz": 161.3274111,
+            "fixedCycles": 868.642748176,
+            "slow40MHzAddressedLineCycles": 0.014845734,
+            "slow40MHzDirtyLineCycles": 125.259880869,
+            "slow40MHzFixedCycles": -7.363961038
+          },
+          "designRank": 6,
+          "maxAbsoluteResidualCycles": 55.613087,
+          "observations": 12,
+          "observedRangeCycles": 147376,
+          "rSquared": 0.999999626102,
+          "rmseCycles": 27.284628
+        },
+        "spi2PhaseExpanded": {
+          "classification": "affine",
+          "coefficients": {
+            "completionByteCycles": 47.99485898,
+            "completionFixedCycles": 2762.282528328,
+            "completionSlow20MHzByteCycles": 48.00514102,
+            "completionSlow20MHzFixedCycles": -137.282528328,
+            "submissionByteCycles": 0.007815787,
+            "submissionFixedCycles": 5569.792867663,
+            "submissionSlow20MHzByteCycles": 0.0,
+            "submissionSlow20MHzFixedCycles": -1.0
+          },
+          "designRank": 8,
+          "maxAbsoluteResidualCycles": 131.224911,
+          "observations": 12,
+          "observedRangeCycles": 3142783,
+          "rSquared": 0.999999996985,
+          "rmseCycles": 50.596224
+        }
+      },
+      "xip-psram-boot-1": {
+        "msync": {
+          "classification": "affine",
+          "coefficients": {
+            "addressedLineCycles": 1.24202961,
+            "dirtyLineCyclesAt80MHz": 161.341069584,
+            "fixedCycles": 869.584477158,
+            "slow40MHzAddressedLineCycles": 0.014594003,
+            "slow40MHzDirtyLineCycles": 125.230612688,
+            "slow40MHzFixedCycles": -7.239094572
+          },
+          "designRank": 6,
+          "maxAbsoluteResidualCycles": 55.54864,
+          "observations": 12,
+          "observedRangeCycles": 147368,
+          "rSquared": 0.999999626625,
+          "rmseCycles": 27.264905
+        },
+        "spi2PhaseExpanded": {
+          "classification": "affine",
+          "coefficients": {
+            "completionByteCycles": 47.994974509,
+            "completionFixedCycles": 2807.86044904,
+            "completionSlow20MHzByteCycles": 48.005025491,
+            "completionSlow20MHzFixedCycles": -133.86044904,
+            "submissionByteCycles": 0.007815787,
+            "submissionFixedCycles": 5635.792867663,
+            "submissionSlow20MHzByteCycles": 0.0,
+            "submissionSlow20MHzFixedCycles": -1.0
+          },
+          "designRank": 8,
+          "maxAbsoluteResidualCycles": 128.276036,
+          "observations": 12,
+          "observedRangeCycles": 3142766,
+          "rSquared": 0.999999997119,
+          "rmseCycles": 49.459317
+        }
+      },
+      "xip-psram-boot-2": {
+        "msync": {
+          "classification": "affine",
+          "coefficients": {
+            "addressedLineCycles": 1.24202961,
+            "dirtyLineCyclesAt80MHz": 161.341069584,
+            "fixedCycles": 869.584477158,
+            "slow40MHzAddressedLineCycles": 0.014594003,
+            "slow40MHzDirtyLineCycles": 125.230612688,
+            "slow40MHzFixedCycles": -7.239094572
+          },
+          "designRank": 6,
+          "maxAbsoluteResidualCycles": 55.54864,
+          "observations": 12,
+          "observedRangeCycles": 147368,
+          "rSquared": 0.999999626625,
+          "rmseCycles": 27.264905
+        },
+        "spi2PhaseExpanded": {
+          "classification": "affine",
+          "coefficients": {
+            "completionByteCycles": 47.994974509,
+            "completionFixedCycles": 2807.86044904,
+            "completionSlow20MHzByteCycles": 48.005025491,
+            "completionSlow20MHzFixedCycles": -133.86044904,
+            "submissionByteCycles": 0.007815787,
+            "submissionFixedCycles": 5635.792867663,
+            "submissionSlow20MHzByteCycles": 0.0,
+            "submissionSlow20MHzFixedCycles": -1.0
+          },
+          "designRank": 8,
+          "maxAbsoluteResidualCycles": 128.276036,
+          "observations": 12,
+          "observedRangeCycles": 3142766,
+          "rSquared": 0.999999997119,
+          "rmseCycles": 49.459317
+        }
+      }
+    },
+    "pooled": {
+      "msync_decompose_l16_d0_p40": {
+        "cycles": {
+          "classification": "interval",
+          "max": 938,
+          "median": 937.5,
+          "min": 937,
+          "p90": 938,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l16_d0_p80": {
+        "cycles": {
+          "classification": "interval",
+          "max": 938,
+          "median": 937.5,
+          "min": 937,
+          "p90": 938,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l16_d16_p40": {
+        "cycles": {
+          "classification": "interval",
+          "max": 5418,
+          "median": 5417.5,
+          "min": 5417,
+          "p90": 5418,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l16_d16_p80": {
+        "cycles": {
+          "classification": "interval",
+          "max": 3444,
+          "median": 3443.5,
+          "min": 3443,
+          "p90": 3444,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l1_d0_p40": {
+        "cycles": {
+          "classification": "distribution",
+          "max": 1022,
+          "median": 864,
+          "min": 863,
+          "p90": 1017,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l1_d0_p80": {
+        "cycles": {
+          "classification": "interval",
+          "max": 864,
+          "median": 863.5,
+          "min": 863,
+          "p90": 864,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l1_d1_p40": {
+        "cycles": {
+          "classification": "interval",
+          "max": 1144,
+          "median": 1143.5,
+          "min": 1143,
+          "p90": 1144,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l1_d1_p80": {
+        "cycles": {
+          "classification": "interval",
+          "max": 1018,
+          "median": 1017.5,
+          "min": 1017,
+          "p90": 1018,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l512_d0_p40": {
+        "cycles": {
+          "classification": "interval",
+          "max": 1504,
+          "median": 1503.5,
+          "min": 1503,
+          "p90": 1504,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l512_d0_p80": {
+        "cycles": {
+          "classification": "distribution",
+          "max": 2954,
+          "median": 1503.5,
+          "min": 1503,
+          "p90": 1504,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l512_d512_p40": {
+        "cycles": {
+          "classification": "distribution",
+          "max": 148239,
+          "median": 148237,
+          "min": 148232,
+          "p90": 148239,
+          "samples": 36
+        }
+      },
+      "msync_decompose_l512_d512_p80": {
+        "cycles": {
+          "classification": "distribution",
+          "max": 84113,
+          "median": 84105,
+          "min": 82647,
+          "p90": 84113,
+          "samples": 36
+        }
+      },
+      "spi2_phased_b32768_c20": {
+        "completionCycles": {
+          "classification": "distribution",
+          "max": 3148402,
+          "median": 3148377.5,
+          "min": 3148353,
+          "p90": 3148402,
+          "samples": 36
+        },
+        "cycles": {
+          "classification": "distribution",
+          "max": 3155300,
+          "median": 3154293,
+          "min": 3154178,
+          "p90": 3155186,
+          "samples": 36
+        },
+        "submissionCycles": {
+          "classification": "distribution",
+          "max": 6898,
+          "median": 5891,
+          "min": 5825,
+          "p90": 6833,
+          "samples": 36
+        }
+      },
+      "spi2_phased_b32768_c40": {
+        "completionCycles": {
+          "classification": "distribution",
+          "max": 1575523,
+          "median": 1575498.5,
+          "min": 1575474,
+          "p90": 1575523,
+          "samples": 36
+        },
+        "cycles": {
+          "classification": "distribution",
+          "max": 1582422,
+          "median": 1581415,
+          "min": 1581300,
+          "p90": 1582308,
+          "samples": 36
+        },
+        "submissionCycles": {
+          "classification": "distribution",
+          "max": 6899,
+          "median": 5892,
+          "min": 5826,
+          "p90": 6834,
+          "samples": 36
+        }
+      },
+      "spi2_phased_b4096_c20": {
+        "completionCycles": {
+          "classification": "distribution",
+          "max": 395890,
+          "median": 395865.5,
+          "min": 395841,
+          "p90": 395890,
+          "samples": 36
+        },
+        "cycles": {
+          "classification": "distribution",
+          "max": 402563,
+          "median": 401556,
+          "min": 401441,
+          "p90": 402449,
+          "samples": 36
+        },
+        "submissionCycles": {
+          "classification": "distribution",
+          "max": 6673,
+          "median": 5666,
+          "min": 5600,
+          "p90": 6608,
+          "samples": 36
+        }
+      },
+      "spi2_phased_b4096_c40": {
+        "completionCycles": {
+          "classification": "distribution",
+          "max": 199267,
+          "median": 199242.5,
+          "min": 199218,
+          "p90": 199267,
+          "samples": 36
+        },
+        "cycles": {
+          "classification": "distribution",
+          "max": 205941,
+          "median": 204934,
+          "min": 204819,
+          "p90": 205827,
+          "samples": 36
+        },
+        "submissionCycles": {
+          "classification": "distribution",
+          "max": 6674,
+          "median": 5667,
+          "min": 5601,
+          "p90": 6609,
+          "samples": 36
+        }
+      },
+      "spi2_phased_b64_c20": {
+        "completionCycles": {
+          "classification": "distribution",
+          "max": 9332,
+          "median": 8818,
+          "min": 8769,
+          "p90": 9191,
+          "samples": 36
+        },
+        "cycles": {
+          "classification": "distribution",
+          "max": 18901,
+          "median": 14454,
+          "min": 14339,
+          "p90": 17178,
+          "samples": 36
+        },
+        "submissionCycles": {
+          "classification": "distribution",
+          "max": 9680,
+          "median": 5636,
+          "min": 5570,
+          "p90": 7849,
+          "samples": 36
+        }
+      },
+      "spi2_phased_b64_c40": {
+        "completionCycles": {
+          "classification": "distribution",
+          "max": 5992,
+          "median": 5949,
+          "min": 5841,
+          "p90": 5992,
+          "samples": 36
+        },
+        "cycles": {
+          "classification": "distribution",
+          "max": 12528,
+          "median": 11596,
+          "min": 11487,
+          "p90": 12420,
+          "samples": 36
+        },
+        "submissionCycles": {
+          "classification": "distribution",
+          "max": 6644,
+          "median": 5637,
+          "min": 5571,
+          "p90": 6579,
+          "samples": 36
+        }
+      }
+    },
+    "psramServiceControlCycles": {
+      "40000000": {
+        "classification": "distribution",
+        "max": 19977,
+        "median": 19698,
+        "min": 19697,
+        "p90": 19700,
+        "samples": 216
+      },
+      "80000000": {
+        "classification": "distribution",
+        "max": 10862,
+        "median": 10860,
+        "min": 10670,
+        "p90": 10862,
+        "samples": 216
+      }
+    },
+    "spi2": {
+      "classification": "unexplained",
+      "coefficients": {
+        "completionByteCycles": 47.994916744,
+        "completionFixedCycles": 2785.071488684,
+        "completionSlow20MHzByteCycles": 48.005083256,
+        "completionSlow20MHzFixedCycles": -135.571488684,
+        "submissionByteCycles": 0.007815787,
+        "submissionFixedCycles": 5602.792867663,
+        "submissionSlow20MHzByteCycles": 0.0,
+        "submissionSlow20MHzFixedCycles": -1.0
+      },
+      "completionFixedCycles": {
+        "20MHz": {
+          "classification": "distribution",
+          "max": 2674,
+          "median": 2649.5,
+          "min": 2625,
+          "p90": 2674,
+          "samples": 12
+        },
+        "40MHz": {
+          "classification": "distribution",
+          "max": 2920,
+          "median": 2659,
+          "min": 2610,
+          "p90": 2920,
+          "samples": 12
+        }
+      },
+      "design": "phase-expanded [1,B,S20,B*S20] with disjoint submission and completion columns",
+      "designRank": 8,
+      "deviceSerializationCandidates": {
+        "20MHz": {
+          "cyclesPerByte": {
+            "classification": "exact",
+            "max": 96,
+            "median": 96,
+            "min": 96,
+            "p90": 96,
+            "samples": 8
+          },
+          "scope": "both adjacent intervals from 64 through 32768 bytes"
+        },
+        "40MHzShortTransition": {
+          "cyclesPerByte": {
+            "classification": "distribution",
+            "max": 47.935267857,
+            "median": 47.93452381,
+            "min": 47.933779762,
+            "p90": 47.935267857,
+            "samples": 4
+          },
+          "scope": "64 through 4096 bytes"
+        },
+        "40MHzSteadyState": {
+          "cyclesPerByte": {
+            "classification": "exact",
+            "max": 48,
+            "median": 48,
+            "min": 48,
+            "p90": 48,
+            "samples": 4
+          },
+          "scope": "4096 through 32768 bytes only"
+        }
+      },
+      "maxAbsoluteResidualCycles": 154.250473,
+      "observations": 48,
+      "observedRangeCycles": 3142832,
+      "phases": {
+        "completion": {
+          "affineFitClassification": "affine",
+          "classification": "unexplained",
+          "coefficients": {
+            "completionByteCycles": 47.994916744,
+            "completionFixedCycles": 2785.071488684,
+            "completionSlow20MHzByteCycles": 48.005083256,
+            "completionSlow20MHzFixedCycles": -135.571488684
+          },
+          "designRank": 4,
+          "maxAbsoluteResidualCycles": 154.250473,
+          "observations": 24,
+          "observedRangeCycles": 3142453,
+          "rSquared": 0.999999995733,
+          "rmseCycles": 74.715587
+        },
+        "submission": {
+          "affineFitClassification": "unexplained",
+          "classification": "distribution",
+          "coefficients": {
+            "submissionByteCycles": 0.007815787,
+            "submissionFixedCycles": 5602.792867663,
+            "submissionSlow20MHzByteCycles": 0.0,
+            "submissionSlow20MHzFixedCycles": -1.0
+          },
+          "designRank": 4,
+          "maxAbsoluteResidualCycles": 33.806333,
+          "observations": 24,
+          "observedRangeCycles": 322,
+          "rSquared": 0.922404216896,
+          "rmseCycles": 33.005857
+        }
+      },
+      "priorBlockingComparisonAt40MHz": {
+        "32768": {
+          "classification": "exact",
+          "max": -47,
+          "median": -47,
+          "min": -47,
+          "p90": -47,
+          "samples": 4
+        },
+        "4096": {
+          "classification": "exact",
+          "max": -47,
+          "median": -47,
+          "min": -47,
+          "p90": -47,
+          "samples": 4
+        },
+        "64": {
+          "classification": "distribution",
+          "max": -1541,
+          "median": -1862,
+          "min": -2165,
+          "p90": -1541,
+          "samples": 4
+        }
+      },
+      "productAdoptable": false,
+      "productDisposition": "submission and completion fixed costs remain non-affine; only scoped device serialization slopes are exact candidates, and neither IDF API phase is bound to a non-double-counted product transaction",
+      "rSquared": 0.999999996072,
+      "rawResiduals": {
+        "maxAbsoluteResidualCycles": 4077.706922,
+        "observations": 432,
+        "rmseCycles": 390.854517
+      },
+      "reconciliation": {
+        "exact": true,
+        "maximumDifferenceCycles": 0,
+        "samples": 216
+      },
+      "rmseCycles": 57.757275,
+      "transactionBoundary": {
+        "completion": "CCOUNT from queue return through spi_device_get_trans_result return",
+        "submission": "CCOUNT around spi_device_queue_trans"
+      }
+    }
+  },
+  "disposition": "candidate-evidence-only",
+  "manifestSha256": "27db825d24a7f046bc6de9f8722f46a89f8c00e08a2238523fbcd1e3fc4c3617",
+  "open": [
+    "bind cache-msync accounting to a product transaction without double counting CPU execution",
+    "resolve the non-affine SPI2 submission phase",
+    "bind SPI2 completion accounting to the product GDMA and peripheral transaction boundary",
+    "gpio21_edge"
+  ],
+  "schemaVersion": 1,
+  "sourceCommit": "7a157d44a9da3312b1ecda2b45b116af2de28e63",
+  "statistics": {
+    "median": "arithmetic midpoint of the two middle sorted values for even sample counts",
+    "modelInput": "one median for each cell in each independent boot and firmware variant",
+    "p90": "nearest rank ceil(0.90 * n) on ascending values"
+  },
+  "suite": "tier-b-decomposition"
+}
