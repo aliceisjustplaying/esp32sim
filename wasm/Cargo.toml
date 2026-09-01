@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "esp32sim compiled to WebAssembly: the emulator in the page, driven by web/wasm/worker.js"
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
