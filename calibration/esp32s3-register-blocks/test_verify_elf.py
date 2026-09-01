@@ -36,6 +36,14 @@ def fixture() -> str:
             for encoding, name, args in encodings:
                 lines.append(f"{address:08x}: {encoding} {name} {args}")
                 address += len(encoding) // 2
+    lines.extend(
+        [
+            "4037f000 <measure_once>:",
+            "4037f000: 002136 entry a1, 16",
+            "4037f003: 0008e0 callx8 a8",
+            "4037f006: f01d retw.n",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -65,4 +73,20 @@ def test_misaligned_block_fails_closed() -> None:
     )
     broken = broken.replace("40370000: 002136", "40370001: 002136", 1)
     with pytest.raises(MODULE.VerificationError, match="not 4-byte aligned"):
+        MODULE.verify(broken)
+
+
+def test_measurement_boundary_must_remain_in_iram() -> None:
+    broken = fixture().replace("4037f000 <measure_once>:", "4200f000 <measure_once>:")
+    broken = broken.replace("4037f000: 002136", "4200f000: 002136")
+    with pytest.raises(MODULE.VerificationError, match="not in IRAM"):
+        MODULE.verify(broken)
+
+
+def test_measurement_boundary_rejects_direct_flash_calls() -> None:
+    broken = fixture().replace(
+        "4037f003: 0008e0 callx8 a8",
+        "4037f003: 000005 call8 42001000 <flash_helper>",
+    )
+    with pytest.raises(MODULE.VerificationError, match="calls outside IRAM"):
         MODULE.verify(broken)
