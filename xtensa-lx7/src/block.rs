@@ -152,7 +152,7 @@ impl Clone for BlockCache {
 
 /// The instruction ends a block: control transfer, or a change to interrupt/timer/window state
 /// that the per-block checks depend on.
-fn ends_block(i: &Insn) -> bool {
+pub(crate) fn ends_block(i: &Insn) -> bool {
     use Op::*;
     match i.op {
         Ill | IllN | Break | BreakN | Syscall | Simcall | Waiti | Rsil | Isync | Rsync | Esync
@@ -167,7 +167,7 @@ fn ends_block(i: &Insn) -> bool {
 
 /// The instruction must be the first of its block: it reads or writes state that is only exact
 /// at a block boundary (`CCOUNT`, `CCOMPARE*`, `INTERRUPT`, `INTENABLE`, `PS`).
-fn must_start_block(i: &Insn) -> bool {
+pub(crate) fn must_start_block(i: &Insn) -> bool {
     matches!(i.op, Op::Rsr | Op::Wsr | Op::Xsr)
         && matches!(
             i.imm as u32,

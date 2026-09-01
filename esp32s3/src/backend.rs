@@ -685,9 +685,9 @@ impl Backend for Esp32SimBackend {
                 let _ = self.machine_mut().cpu.check_interrupts();
                 if !self.machine().cpu.waiting {
                     let planned = {
-                        let machine = self.machine();
+                        let machine = self.machine.as_mut().expect("ready");
                         let timing = self.timing.as_ref().expect("ready");
-                        plan_instruction(&machine.cpu, &machine.bus, timing, self.now)
+                        plan_instruction(&mut machine.cpu, &machine.bus, timing, self.now)
                     };
                     let pending = match planned {
                         Ok(pending) => pending,
@@ -988,6 +988,33 @@ mod tests {
             ["base", "cache-first"]
         );
         assert_eq!(slice.completed_instructions, 1);
+    }
+
+    #[test]
+    fn measured_block_cache_carries_base_cost_prefix_payloads() {
+        let entry = crate::bus::IRAM_LOW;
+        let mut backend = ready_backend(5, entry, None);
+        backend.run_until(request(5)).unwrap();
+        let first = backend
+            .machine()
+            .cpu
+            .measured_blocks
+            .payload(entry)
+            .unwrap();
+        let second = backend
+            .machine()
+            .cpu
+            .measured_blocks
+            .payload(entry + 3)
+            .unwrap();
+        assert_eq!(first.block_start, entry);
+        assert_eq!(first.instruction_index, 0);
+        assert_eq!(first.base_cycles, 5);
+        assert_eq!(first.base_prefix_cycles, 5);
+        assert_eq!(first.base_claims[0].id, "base");
+        assert_eq!(second.block_start, entry);
+        assert_eq!(second.instruction_index, 1);
+        assert_eq!(second.base_prefix_cycles, 10);
     }
 
     #[test]

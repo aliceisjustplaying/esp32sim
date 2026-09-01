@@ -986,15 +986,9 @@ impl SocBus {
 
 impl MeasuredBus for SocBus {
     fn measured_fetch(&self, pc: u32) -> Result<[u8; 4], Fault> {
-        let (source, offset) = self.measured_resolve(pc).ok_or(Fault::Unmapped)?;
-        let buffer = self.buf(source);
-        let mut bytes = [0; 4];
-        for (index, byte) in bytes.iter_mut().enumerate() {
-            if let Some(value) = buffer.get(offset + index) {
-                *byte = *value;
-            }
-        }
-        Ok(bytes)
+        self.measured_inspect(pc, 4)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or(Fault::Unmapped)
     }
 
     fn measured_memory_class(&self, address: u32) -> MemoryClass {
@@ -1011,6 +1005,12 @@ impl MeasuredBus for SocBus {
             Some(SRC_RTC_FAST | SRC_RTC_SLOW) => MemoryClass::Rtc,
             _ => MemoryClass::Unknown,
         }
+    }
+
+    fn measured_code_page(&self, pc: u32) -> u32 {
+        self.measured_resolve(pc)
+            .map(|(source, offset)| self.ver_base[source as usize] + (offset >> VPAGE_SHIFT) as u32)
+            .unwrap_or(self.page_ver.len() as u32 - 1)
     }
 }
 
@@ -1354,6 +1354,7 @@ impl SocBus {
 mod measured_deadline_tests {
     use super::*;
     use crate::measured::DeviceDeadline;
+    use xtensa_lx7::measured::MeasuredBus;
 
     #[test]
     fn connected_usb_surfaces_as_a_typed_exact_deadline() {
@@ -1379,6 +1380,15 @@ mod measured_deadline_tests {
                 cycle: 3200,
                 device: "rtc-watchdog".into(),
             }
+        );
+    }
+
+    #[test]
+    fn measured_fetch_rejects_a_word_crossing_a_mapped_region() {
+        let bus = SocBus::new(1024, 1024, [0; 6]);
+        assert_eq!(
+            bus.measured_fetch(IRAM_HIGH - 1),
+            Err(xtensa_lx7::bus::Fault::Unmapped)
         );
     }
 }

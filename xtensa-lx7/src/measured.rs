@@ -9,6 +9,61 @@ use crate::decode::{decode, Insn, Op};
 use crate::exec::{commit_decoded, Trap};
 use crate::state::Cpu;
 use backend_api::{CostClaim, TimingBlock, VirtualCycle};
+use std::collections::HashMap;
+
+#[cfg(not(target_arch = "wasm32"))]
+const MEASURED_BLOCK_CACHE_MAX_INSTRUCTIONS: usize = 1 << 20;
+#[cfg(target_arch = "wasm32")]
+const MEASURED_BLOCK_CACHE_MAX_INSTRUCTIONS: usize = 1 << 17;
+
+#[derive(Clone, Debug)]
+pub struct MeasuredBlockCostPayload {
+    pub block_start: u32,
+    pub instruction_index: u8,
+    pub base_cycles: u64,
+    pub base_prefix_cycles: u64,
+    pub base_claims: Vec<CostClaim>,
+    version_indices: [u32; 2],
+    versions: [u32; 2],
+}
+
+#[derive(Clone, Default)]
+pub struct MeasuredBlockCache {
+    entries: HashMap<u32, MeasuredBlockCostPayload>,
+}
+
+impl MeasuredBlockCache {
+    fn get_valid(&mut self, pc: u32, page_versions: &[u32]) -> Option<MeasuredBlockCostPayload> {
+        let valid = self.entries.get(&pc).is_some_and(|payload| {
+            payload
+                .version_indices
+                .iter()
+                .zip(payload.versions)
+                .all(|(index, version)| {
+                    page_versions.get(*index as usize).copied().unwrap_or(0) == version
+                })
+        });
+        if !valid {
+            self.entries.remove(&pc);
+        }
+        self.entries.get(&pc).cloned()
+    }
+
+    fn insert_block(
+        &mut self,
+        payloads: impl IntoIterator<Item = (u32, MeasuredBlockCostPayload)>,
+    ) {
+        let payloads: Vec<_> = payloads.into_iter().collect();
+        if self.entries.len() + payloads.len() > MEASURED_BLOCK_CACHE_MAX_INSTRUCTIONS {
+            self.entries.clear();
+        }
+        self.entries.extend(payloads);
+    }
+
+    pub fn payload(&self, pc: u32) -> Option<&MeasuredBlockCostPayload> {
+        self.entries.get(&pc)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AccessKind {
@@ -46,6 +101,7 @@ pub struct InstructionObservation {
     pub window_overflow_pair: bool,
     pub live_window_depth: u32,
     pub loop_back_edge_residue: Option<u8>,
+    pub block_base: Option<MeasuredBlockCostPayload>,
 }
 
 #[derive(Clone, Debug)]
@@ -58,6 +114,10 @@ pub struct Price {
 pub trait TimingSource {
     fn price(&self, observation: &InstructionObservation) -> Result<Price, TimingBlock>;
     fn commit(&mut self, staged_mutations: &[String]);
+
+    fn measured_block_base(&self) -> Result<Option<(u64, Vec<CostClaim>)>, TimingBlock> {
+        Ok(None)
+    }
 }
 
 /// Fetch used only during planning. Implementations must not mutate guest,
@@ -65,21 +125,16 @@ pub trait TimingSource {
 pub trait MeasuredBus: Bus {
     fn measured_fetch(&self, pc: u32) -> Result<[u8; 4], Fault>;
     fn measured_memory_class(&self, address: u32) -> MemoryClass;
+    fn measured_code_page(&self, pc: u32) -> u32;
 }
 
 impl MeasuredBus for FlatRam {
     fn measured_fetch(&self, pc: u32) -> Result<[u8; 4], Fault> {
         let offset = pc.wrapping_sub(self.base) as usize;
-        if offset >= self.mem.len() {
-            return Err(Fault::Unmapped);
-        }
-        let mut bytes = [0; 4];
-        for (index, byte) in bytes.iter_mut().enumerate() {
-            if let Some(value) = self.mem.get(offset + index) {
-                *byte = *value;
-            }
-        }
-        Ok(bytes)
+        self.mem
+            .get(offset..offset.saturating_add(4))
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or(Fault::Unmapped)
     }
 
     fn measured_memory_class(&self, address: u32) -> MemoryClass {
@@ -88,6 +143,10 @@ impl MeasuredBus for FlatRam {
         } else {
             MemoryClass::Unknown
         }
+    }
+
+    fn measured_code_page(&self, _pc: u32) -> u32 {
+        0
     }
 }
 
@@ -165,8 +224,92 @@ fn predicts_window_overflow(cpu: &Cpu, instruction: &Insn) -> bool {
     })
 }
 
+fn measured_block_payload<B: MeasuredBus, T: TimingSource>(
+    cpu: &mut Cpu,
+    bus: &B,
+    timing: &T,
+) -> Result<Option<MeasuredBlockCostPayload>, TimingBlock> {
+    let Some((base_cycles, base_claims)) = timing.measured_block_base()? else {
+        return Ok(None);
+    };
+    if let Some(payload) = cpu.measured_blocks.get_valid(cpu.pc, bus.page_versions()) {
+        return Ok(Some(payload));
+    }
+
+    let pc0 = cpu.pc;
+    let mut decoded = Vec::new();
+    let mut pc = pc0;
+    for index in 0..crate::block::MAX_LEN {
+        let bytes = match bus.measured_fetch(pc) {
+            Ok(bytes) => bytes,
+            Err(_) if index != 0 => break,
+            Err(_) => {
+                return Err(TimingBlock {
+                    claim_id: format!("fetch:{pc:08x}"),
+                    tier_candidate: "unexplained".into(),
+                    reason: "measured block cannot fetch its first instruction".into(),
+                })
+            }
+        };
+        let instruction = decode(pc, bytes);
+        if index != 0
+            && (crate::block::must_start_block(&instruction)
+                || cpu.boundary_bloom & crate::block::pc_bit(pc) != 0)
+        {
+            break;
+        }
+        decoded.push((pc, instruction));
+        pc = pc.wrapping_add(instruction.len as u32);
+        if crate::block::ends_block(&instruction) {
+            break;
+        }
+    }
+    let last = decoded
+        .last()
+        .expect("first measured block fetch succeeded");
+    let last_byte = last.0.wrapping_add(last.1.len.max(1) as u32 - 1);
+    let first_version = bus.measured_code_page(pc0);
+    let last_version = if last_byte >> 7 != pc0 >> 7 {
+        bus.measured_code_page(last_byte)
+    } else {
+        first_version
+    };
+    let version_indices = [first_version, last_version];
+    let versions = version_indices.map(|index| {
+        bus.page_versions()
+            .get(index as usize)
+            .copied()
+            .unwrap_or(0)
+    });
+    let mut prefix = 0u64;
+    let mut payloads = Vec::with_capacity(decoded.len());
+    for (index, (instruction_pc, _)) in decoded.into_iter().enumerate() {
+        prefix = prefix.checked_add(base_cycles).ok_or_else(|| TimingBlock {
+            claim_id: base_claims
+                .first()
+                .map_or_else(|| "block-base".into(), |claim| claim.id.clone()),
+            tier_candidate: "exact".into(),
+            reason: "measured block base-cost prefix overflows u64".into(),
+        })?;
+        payloads.push((
+            instruction_pc,
+            MeasuredBlockCostPayload {
+                block_start: pc0,
+                instruction_index: index as u8,
+                base_cycles,
+                base_prefix_cycles: prefix,
+                base_claims: base_claims.clone(),
+                version_indices,
+                versions,
+            },
+        ));
+    }
+    cpu.measured_blocks.insert_block(payloads);
+    Ok(cpu.measured_blocks.payload(pc0).cloned())
+}
+
 pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
-    cpu: &Cpu,
+    cpu: &mut Cpu,
     bus: &B,
     timing: &T,
     now: VirtualCycle,
@@ -191,6 +334,7 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         window_overflow_pair: predicts_window_overflow(cpu, &instruction),
         live_window_depth: cpu.windowstart.count_ones(),
         loop_back_edge_residue,
+        block_base: measured_block_payload(cpu, bus, timing).map_err(PlanError::Timing)?,
     };
     let price = timing.price(&observation).map_err(PlanError::Timing)?;
     let completion = now
@@ -260,10 +404,10 @@ mod tests {
 
     #[test]
     fn planning_and_partial_time_have_no_architectural_effect() {
-        let cpu = Cpu::new(0);
+        let mut cpu = Cpu::new(0);
         let ram = ram_with_instruction(&[0xf0, 0x20, 0x00]);
         let timing = FixedTiming::default();
-        let pending = plan_instruction(&cpu, &ram, &timing, 7).unwrap();
+        let pending = plan_instruction(&mut cpu, &ram, &timing, 7).unwrap();
         assert_eq!(pending.start, 7);
         assert_eq!(pending.completion, 17);
         assert_eq!(cpu.pc, 0x4000_0400);
@@ -275,7 +419,7 @@ mod tests {
         let mut cpu = Cpu::new(0);
         let mut ram = ram_with_instruction(&[0xf0, 0x20, 0x00]);
         let mut timing = FixedTiming::default();
-        let pending = plan_instruction(&cpu, &ram, &timing, 0).unwrap();
+        let pending = plan_instruction(&mut cpu, &ram, &timing, 0).unwrap();
         assert_eq!(
             complete_instruction(&mut cpu, &mut ram, &mut timing, pending.clone(), 9),
             Err(CompletionError::BeforeCompletion)
@@ -294,7 +438,7 @@ mod tests {
         let mut ram = ram_with_instruction(&[0x22, 0x23, 0x00]);
         ram.mem[0x800..0x804].copy_from_slice(&1u32.to_le_bytes());
         let mut timing = FixedTiming::default();
-        let pending = plan_instruction(&cpu, &ram, &timing, 0).unwrap();
+        let pending = plan_instruction(&mut cpu, &ram, &timing, 0).unwrap();
         assert_eq!(
             pending.observation.access,
             Some(AccessShape {
@@ -313,7 +457,7 @@ mod tests {
         let mut cpu = Cpu::new(0);
         let mut ram = ram_with_instruction(&[0xf0, 0x20, 0x00]);
         let mut timing = FixedTiming::default();
-        let pending = plan_instruction(&cpu, &ram, &timing, 0).unwrap();
+        let pending = plan_instruction(&mut cpu, &ram, &timing, 0).unwrap();
         ram.mem[0x400] = 0;
         complete_instruction(&mut cpu, &mut ram, &mut timing, pending, 10).unwrap();
         assert_eq!(cpu.pc, 0x4000_0403);
@@ -327,11 +471,18 @@ mod tests {
         cpu.set_ar(3, 0x5000_0000);
         let mut ram = ram_with_instruction(&[0x22, 0x23, 0x00]);
         let mut timing = FixedTiming::default();
-        let pending = plan_instruction(&cpu, &ram, &timing, 0).unwrap();
+        let pending = plan_instruction(&mut cpu, &ram, &timing, 0).unwrap();
         assert!(matches!(
             complete_instruction(&mut cpu, &mut ram, &mut timing, pending, 10),
             Err(CompletionError::Trap(Trap::Exception(_)))
         ));
         assert_eq!(timing.commits, 1);
+    }
+
+    #[test]
+    fn measured_fetch_rejects_a_trailing_partial_word() {
+        let bus = FlatRam::new(0x1000, 5);
+        assert_eq!(bus.measured_fetch(0x1002), Err(Fault::Unmapped));
+        assert_eq!(bus.measured_fetch(0x1001), Ok([0; 4]));
     }
 }

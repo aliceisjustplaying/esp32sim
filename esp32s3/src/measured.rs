@@ -151,13 +151,18 @@ impl TimingSource for Esp32TimingSource {
         let mut cycles = 0;
         let mut claims = Vec::new();
         let mut staged = Vec::new();
-        self.exact(
-            CostBinding::BlockBase {
-                class: "straight-line".into(),
-            },
-            &mut cycles,
-            &mut claims,
-        )?;
+        if let Some(payload) = &observation.block_base {
+            cycles = payload.base_cycles;
+            claims.extend(payload.base_claims.clone());
+        } else {
+            self.exact(
+                CostBinding::BlockBase {
+                    class: "straight-line".into(),
+                },
+                &mut cycles,
+                &mut claims,
+            )?;
+        }
 
         self.cache_cost(
             "instruction",
@@ -289,6 +294,16 @@ impl TimingSource for Esp32TimingSource {
             }
         }
     }
+
+    fn measured_block_base(&self) -> Result<Option<(u64, Vec<CostClaim>)>, TimingBlock> {
+        let binding = CostBinding::BlockBase {
+            class: "straight-line".into(),
+        };
+        Ok(Some((
+            self.profile.exact_cycles_for(&binding)?,
+            vec![self.profile.claim_for(&binding)?.clone()],
+        )))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -339,6 +354,7 @@ mod tests {
             window_overflow_pair: false,
             live_window_depth: 1,
             loop_back_edge_residue: None,
+            block_base: None,
         }
     }
 

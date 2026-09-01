@@ -200,6 +200,8 @@ pub struct Cpu {
     pub icache: Vec<crate::decode::CacheEntry>,
     /// basic-block cache used by `block::run_block` (the fast path)
     pub blocks: crate::block::BlockCache,
+    /// Separate measured-mode block cache with receipt-backed base-cost prefix sums.
+    pub measured_blocks: crate::measured::MeasuredBlockCache,
     /// pcs that must start a block (the machine's stubs and probes), as a bloom over `block::pc_bit`
     pub boundary_bloom: u64,
     /// trap raised inside native code, handed back to `block::run_block`
@@ -271,6 +273,7 @@ impl Cpu {
             insn_count: 0,
             icache: vec![crate::decode::CacheEntry::EMPTY; crate::decode::ICACHE_SIZE],
             blocks: crate::block::BlockCache::new(),
+            measured_blocks: crate::measured::MeasuredBlockCache::default(),
             boundary_bloom: 0,
             jit_trap: None,
         };
