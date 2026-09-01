@@ -362,11 +362,15 @@ impl SocBus {
     /// Replace the GP-SPI2 data phase with bytes from its active GDMA TX descriptor chain.
     /// ESP-IDF uses this path for both small panel commands and full color transfers.
     fn spi2_dma_payload(&mut self, transfer: &mut crate::periph::GpSpiTransfer) {
-        let Some(ch) = self.periph.gdma.out_channel_for(0) else { return };
+        let Some(ch) = self.periph.gdma.out_channel_for(0) else {
+            return;
+        };
         let mut payload = Vec::with_capacity(transfer.data_len);
         while payload.len() < transfer.data_len {
             let c = self.periph.gdma.out[ch];
-            if !c.running || c.desc == 0 { break; }
+            if !c.running || c.desc == 0 {
+                break;
+            }
             let dw0 = self.read32(c.desc).unwrap_or(0);
             let length = (dw0 >> 12) & 0xfff;
             let eof = dw0 & (1 << 30) != 0;
@@ -375,23 +379,44 @@ impl SocBus {
             let remaining = length.saturating_sub(c.buf_pos) as usize;
             if remaining != 0 {
                 let take = remaining.min(transfer.data_len - payload.len());
-                for i in 0..take { payload.push(self.read8(buf + c.buf_pos + i as u32).unwrap_or(0)); }
+                for i in 0..take {
+                    payload.push(self.read8(buf + c.buf_pos + i as u32).unwrap_or(0));
+                }
                 self.periph.gdma.out[ch].buf_pos += take as u32;
-                if take < remaining { continue; }
+                if take < remaining {
+                    continue;
+                }
             }
-            if self.periph.gdma.out[ch].conf0 & (1 << 2) != 0 { let _ = self.write32(c.desc, dw0 & !(1 << 31)); }
+            if self.periph.gdma.out[ch].conf0 & (1 << 2) != 0 {
+                let _ = self.write32(c.desc, dw0 & !(1 << 31));
+            }
             let out = &mut self.periph.gdma.out[ch];
             out.int_raw |= 1 << 0;
-            if eof { out.int_raw |= 1 << 1; out.eof_desc = c.desc; }
-            if next == 0 { out.running = false; out.desc = 0; out.int_raw |= 1 << 3; }
-            else { out.desc = next; out.buf_pos = 0; }
+            if eof {
+                out.int_raw |= 1 << 1;
+                out.eof_desc = c.desc;
+            }
+            if next == 0 {
+                out.running = false;
+                out.desc = 0;
+                out.int_raw |= 1 << 3;
+            } else {
+                out.desc = next;
+                out.buf_pos = 0;
+            }
             self.irq_dirty = true;
-            if eof { break; }
+            if eof {
+                break;
+            }
         }
         if !payload.is_empty() && transfer.tx.len() < transfer.data_offset + transfer.data_len {
-            transfer.tx.resize(transfer.data_offset + transfer.data_len, 0);
+            transfer
+                .tx
+                .resize(transfer.data_offset + transfer.data_len, 0);
         }
-        let n = payload.len().min(transfer.tx.len().saturating_sub(transfer.data_offset));
+        let n = payload
+            .len()
+            .min(transfer.tx.len().saturating_sub(transfer.data_offset));
         transfer.tx[transfer.data_offset..transfer.data_offset + n].copy_from_slice(&payload[..n]);
     }
 
@@ -997,68 +1022,6 @@ impl SocBus {
     }
 }
 
-#[cfg(test)]
-mod gp_spi_board_tests {
-    use super::*;
-    use std::sync::{Arc, Mutex};
-
-    struct ProbeBoard { events: Arc<Mutex<Vec<String>>> }
-    impl crate::board::BoardModel for ProbeBoard {
-        fn name(&self) -> &'static str { "probe" }
-        fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
-            self.events.lock().unwrap().push(format!("gpio:{changes:?}"));
-        }
-        fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
-            self.events.lock().unwrap().push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
-            vec![0x5a; rx_len]
-        }
-    }
-
-    #[test]
-    fn board_answers_before_usr_write_returns_and_after_pending_gpio_edges() {
-        const SPI2: u32 = 0x6002_4000;
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let mut bus = SocBus::new(1024, 1024, [0; 6]);
-        bus.board = Box::new(ProbeBoard { events: events.clone() });
-        bus.periph.gpio.changes.push((12, false));
-
-        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).unwrap();
-        bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).unwrap();
-        bus.write32(SPI2 + 0x20, 7).unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
-
-        assert_eq!(bus.periph.spi2.w[0] & 0xff, 0x5a);
-        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
-        assert_eq!(&*events.lock().unwrap(), &["gpio:[(12, false)]", "spi:2:[9f]:1"]);
-    }
-
-    #[test]
-    fn spi2_data_phase_comes_from_gdma_descriptor() {
-        const SPI2: u32 = 0x6002_4000;
-        const DESC: u32 = 0x3fc9_0100;
-        const DATA: u32 = 0x3fc9_0200;
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let mut bus = SocBus::new(1024, 1024, [0; 6]);
-        bus.board = Box::new(ProbeBoard { events: events.clone() });
-        bus.write32(DATA, 0x4433_2211).unwrap();
-        bus.write32(DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31)).unwrap();
-        bus.write32(DESC + 4, DATA).unwrap();
-        bus.write32(DESC + 8, 0).unwrap();
-        bus.periph.gdma.out[0].conf0 = 1 << 2;
-        bus.periph.gdma.out[0].peri_sel = 0;
-        bus.periph.gdma.out[0].desc = DESC;
-        bus.periph.gdma.out[0].running = true;
-
-        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
-        bus.write32(SPI2 + 0x1c, 31).unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
-
-        assert_eq!(&*events.lock().unwrap(), &["spi:2:[11, 22, 33, 44]:0"]);
-        assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
-        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
-    }
-}
-
 impl Bus for SocBus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault> {
         if Self::is_periph(addr) {
@@ -1257,7 +1220,9 @@ impl SocBus {
     fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.periph.tick(cycles as u64);
         for (pin, level) in self.board.input_changes(cycles as u64) {
-            if self.periph.gpio.set_input(pin, level) { self.irq_dirty = true; }
+            if self.periph.gpio.set_input(pin, level) {
+                self.irq_dirty = true;
+            }
         }
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
@@ -1305,5 +1270,85 @@ impl SocBus {
             self.irq_dirty = true;
         }
         0
+    }
+}
+
+#[cfg(test)]
+mod gp_spi_board_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    struct ProbeBoard {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+    impl crate::board::BoardModel for ProbeBoard {
+        fn name(&self) -> &'static str {
+            "probe"
+        }
+        fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("gpio:{changes:?}"));
+        }
+        fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
+            vec![0x5a; rx_len]
+        }
+    }
+
+    #[test]
+    fn board_answers_before_usr_write_returns_and_after_pending_gpio_edges() {
+        const SPI2: u32 = 0x6002_4000;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard {
+            events: events.clone(),
+        });
+        bus.periph.gpio.changes.push((12, false));
+
+        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).unwrap();
+        bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).unwrap();
+        bus.write32(SPI2 + 0x20, 7).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert_eq!(bus.periph.spi2.w[0] & 0xff, 0x5a);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(
+            &*events.lock().unwrap(),
+            &["gpio:[(12, false)]", "spi:2:[9f]:1"]
+        );
+    }
+
+    #[test]
+    fn spi2_data_phase_comes_from_gdma_descriptor() {
+        const SPI2: u32 = 0x6002_4000;
+        const DESC: u32 = 0x3fc9_0100;
+        const DATA: u32 = 0x3fc9_0200;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard {
+            events: events.clone(),
+        });
+        bus.write32(DATA, 0x4433_2211).unwrap();
+        bus.write32(DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31))
+            .unwrap();
+        bus.write32(DESC + 4, DATA).unwrap();
+        bus.write32(DESC + 8, 0).unwrap();
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+        bus.periph.gdma.out[0].peri_sel = 0;
+        bus.periph.gdma.out[0].desc = DESC;
+        bus.periph.gdma.out[0].running = true;
+
+        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
+        bus.write32(SPI2 + 0x1c, 31).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert_eq!(&*events.lock().unwrap(), &["spi:2:[11, 22, 33, 44]:0"]);
+        assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
     }
 }

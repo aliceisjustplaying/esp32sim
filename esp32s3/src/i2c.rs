@@ -583,36 +583,81 @@ impl I2cDevice for Gt911 {
 
 /// Hynitron CST820 touch controller used on the Waveshare Touch AMOLED 1.8 V2.
 /// Its report layout is compatible with the CST816S driver used by the board firmware.
-pub struct Cst820 { ptr: u8, first: bool, touch: std::sync::Arc<std::sync::Mutex<TouchState>>, pub reads: u64 }
+pub struct Cst820 {
+    ptr: u8,
+    first: bool,
+    touch: std::sync::Arc<std::sync::Mutex<TouchState>>,
+    pub reads: u64,
+}
 impl Cst820 {
-    pub fn new(touch: std::sync::Arc<std::sync::Mutex<TouchState>>) -> Self { Cst820 { ptr: 0, first: true, touch, reads: 0 } }
+    pub fn new(touch: std::sync::Arc<std::sync::Mutex<TouchState>>) -> Self {
+        Cst820 {
+            ptr: 0,
+            first: true,
+            touch,
+            reads: 0,
+        }
+    }
     fn reg(&self, a: u8) -> u8 {
-        let mut tl = self.touch.lock().unwrap();
+        let mut tl = self
+            .touch
+            .lock()
+            .expect("the CST820 touch-state mutex must remain usable");
         if a == 0x02 {
-            if tl.release_pending && tl.seen { tl.down = false; tl.release_pending = false; }
-            if tl.down { tl.seen = true; }
+            if tl.release_pending && tl.seen {
+                tl.down = false;
+                tl.release_pending = false;
+            }
+            if tl.down {
+                tl.seen = true;
+            }
         }
         let t = *tl;
         match a {
-            0x01 => 0, 0x02 => t.down as u8,
-            0x03 => ((t.x >> 8) as u8) & 0x0f, 0x04 => t.x as u8,
-            0x05 => ((t.y >> 8) as u8) & 0x0f, 0x06 => t.y as u8,
-            0xa7 => 0xb7, 0xa8 => 0x41, 0xa9 => 0x02,
+            0x01 => 0,
+            0x02 => t.down as u8,
+            0x03 => ((t.x >> 8) as u8) & 0x0f,
+            0x04 => t.x as u8,
+            0x05 => ((t.y >> 8) as u8) & 0x0f,
+            0x06 => t.y as u8,
+            0xa7 => 0xb7,
+            0xa8 => 0x41,
+            0xa9 => 0x02,
             _ => 0,
         }
     }
 }
 impl I2cDevice for Cst820 {
-    fn start(&mut self, read: bool) -> bool { if !read { self.first = true; } true }
-    fn write(&mut self, b: u8) -> bool { if self.first { self.ptr = b; self.first = false; } else { self.ptr = self.ptr.wrapping_add(1); } true }
-    fn read(&mut self) -> u8 { let v = self.reg(self.ptr); self.ptr = self.ptr.wrapping_add(1); self.reads += 1; v }
+    fn start(&mut self, read: bool) -> bool {
+        if !read {
+            self.first = true;
+        }
+        true
+    }
+    fn write(&mut self, b: u8) -> bool {
+        if self.first {
+            self.ptr = b;
+            self.first = false;
+        } else {
+            self.ptr = self.ptr.wrapping_add(1);
+        }
+        true
+    }
+    fn read(&mut self) -> u8 {
+        let v = self.reg(self.ptr);
+        self.ptr = self.ptr.wrapping_add(1);
+        self.reads += 1;
+        v
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     fn read_regs(dev: &mut Cst820, first: u8, count: usize) -> Vec<u8> {
-        assert!(dev.start(false)); assert!(dev.write(first)); assert!(dev.start(true));
+        assert!(dev.start(false));
+        assert!(dev.write(first));
+        assert!(dev.start(true));
         (0..count).map(|_| dev.read()).collect()
     }
     #[test]
@@ -622,7 +667,12 @@ mod tests {
     }
     #[test]
     fn cst820_reports_touch_coordinates() {
-        let touch = std::sync::Arc::new(std::sync::Mutex::new(TouchState { down: true, x: 0x167, y: 0x1bf, ..Default::default() }));
+        let touch = std::sync::Arc::new(std::sync::Mutex::new(TouchState {
+            down: true,
+            x: 0x167,
+            y: 0x1bf,
+            ..Default::default()
+        }));
         let mut dev = Cst820::new(touch);
         assert_eq!(read_regs(&mut dev, 0x02, 5), [1, 0x01, 0x67, 0x01, 0xbf]);
     }

@@ -1553,21 +1553,26 @@ mod gp_spi_tests {
         let mut spi = GpSpi::new();
         let user = (1 << 31) | (1 << 30) | (1 << 28) | (1 << 27) | (1 << 24);
         spi.write(0x10, user);
-        spi.write(0x14, 23 << 27);             // 24 address bits
-        spi.write(0x18, (7 << 28) | 0x02);     // 8 command bits
+        spi.write(0x14, 23 << 27); // 24 address bits
+        spi.write(0x18, (7 << 28) | 0x02); // 8 command bits
         spi.write(0x04, 0x0400_0000);
-        spi.write(0x1c, 23);                   // 3 MOSI bytes
-        spi.write(0x20, 23);                   // 3 MISO bytes
+        spi.write(0x1c, 23); // 3 MOSI bytes
+        spi.write(0x20, 23); // 3 MISO bytes
         spi.write(0x98, 0x4433_2211);
 
-        spi.write(0x00, 1 << 24);              // CMD.USR
-        let transfer = spi.take_transfer().expect("USR must issue one board transaction");
+        spi.write(0x00, 1 << 24); // CMD.USR
+        let transfer = spi
+            .take_transfer()
+            .expect("USR must issue one board transaction");
         assert_eq!(transfer.tx, [0x02, 0x04, 0x00, 0x00, 0x11, 0x22, 0x33]);
         assert_eq!(transfer.rx_len, 3);
         assert_eq!(spi.transfers, 0, "completion waits for the board response");
 
         spi.finish_transfer(transfer, &[0xa5, 0x5a]);
-        assert_eq!(spi.w[8], 0xffff_5aa5, "a short response leaves the unattached tail high");
+        assert_eq!(
+            spi.w[8], 0xffff_5aa5,
+            "a short response leaves the unattached tail high"
+        );
         assert_eq!(spi.transfers, 1);
         assert_ne!(spi.int_raw & (1 << 12), 0, "completion raises TRANS_DONE");
     }
