@@ -54,7 +54,7 @@ fn decoder_matches_objdump() {
                 continue;
             };
             let hex: String = bytes_s.chars().filter(|c| !c.is_whitespace()).collect();
-            if hex.len() % 2 != 0 || hex.is_empty() {
+            if !hex.len().is_multiple_of(2) || hex.is_empty() {
                 continue;
             }
             let mut raw: Vec<u8> = (0..hex.len() / 2)

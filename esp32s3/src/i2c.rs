@@ -199,6 +199,12 @@ impl I2c {
     }
 }
 
+impl Default for I2c {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ------------------------------------------------------------------ devices
 
 /// Generic 8-bit-register device (audio codecs etc.): first written byte selects the register,
@@ -267,6 +273,12 @@ impl Ch32v003 {
         }
     }
 }
+
+impl Default for Ch32v003 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl I2cDevice for Ch32v003 {
     fn start(&mut self, read: bool) -> bool {
         if !read {
@@ -325,7 +337,10 @@ impl Ov5640 {
         *self.regs.get(&r).unwrap_or(&0)
     }
     fn sync_state(&self) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self
+            .state
+            .lock()
+            .expect("OV5640 sensor state mutex poisoned");
         st.width = ((self.get(0x3808) as u32 & 0xf) << 8) | self.get(0x3809) as u32; // DVP output width
         st.height = ((self.get(0x380a) as u32 & 0x7) << 8) | self.get(0x380b) as u32; // DVP output height
         st.format = self.get(0x4300);
@@ -420,7 +435,10 @@ impl Tca9554 {
                 let b = self.shift as u8;
                 self.nbits = 0;
                 self.shift = 0;
-                let mut st = self.panel.lock().unwrap();
+                let mut st = self
+                    .panel
+                    .lock()
+                    .expect("ST7701 panel state mutex poisoned");
                 st.words += 1;
                 if !dc {
                     st.last_cmd = b;
@@ -494,7 +512,7 @@ impl Gt911 {
         }
     }
     fn reg(&self, a: u16) -> u8 {
-        let mut tl = self.touch.lock().unwrap();
+        let mut tl = self.touch.lock().expect("GT911 touch state mutex poisoned");
         if a == 0x814e {
             // like the real controller's buffer: a touch stays readable until the host has seen it once
             if tl.release_pending && tl.seen {

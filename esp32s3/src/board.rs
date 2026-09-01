@@ -6,6 +6,7 @@
 //!   - WS2812 12-LED ring on GPIO 8 (via RMT)
 //!   - rotary encoder CLK 5 / DT 4 / SW 9, buttons GPIO 17 / 16 (active low)
 //!   - MAX98357A I2S amp: BCLK 12, LRCLK 13, DIN 10
+//!
 //! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
 /// What a board does with the SoC's pin-level activity.
@@ -321,7 +322,7 @@ impl St7735 {
             }
         }
         let mut v: Vec<(u16, usize)> = m.into_iter().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|item| std::cmp::Reverse(item.1));
         v.truncate(top);
         v
     }
@@ -457,7 +458,10 @@ impl BoardModel for WaveshareCam {
     }
     fn camera_frame(&mut self) -> Option<(u32, u32, std::sync::Arc<Vec<u8>>)> {
         let (w, h) = {
-            let s = self.sensor.lock().unwrap();
+            let s = self
+                .sensor
+                .lock()
+                .expect("camera sensor state mutex must not be poisoned");
             (s.width, s.height)
         };
         if w == 0 || h == 0 {
@@ -550,7 +554,8 @@ impl BoardModel for WaveshareLcd4b {
             self.h = h;
             self.frame = vec![0; (w * h) as usize];
         }
-        for (i, px) in rgb565.chunks_exact(2).enumerate().take(self.frame.len()) {
+        let (pixels, _) = rgb565.as_chunks::<2>();
+        for (i, px) in pixels.iter().enumerate().take(self.frame.len()) {
             self.frame[i] = u16::from_le_bytes([px[0], px[1]]);
         }
         self.frames += 1;
@@ -559,7 +564,10 @@ impl BoardModel for WaveshareLcd4b {
         Some((self.w, self.h, self.frame.clone(), self.frames))
     }
     fn touch(&mut self, x: u16, y: u16, down: bool) {
-        let mut t = self.touch_state.lock().unwrap();
+        let mut t = self
+            .touch_state
+            .lock()
+            .expect("touch state mutex must not be poisoned");
         t.x = x;
         t.y = y;
         if down {
@@ -571,5 +579,29 @@ impl BoardModel for WaveshareLcd4b {
         } else {
             t.release_pending = true;
         }
+    }
+}
+
+impl Default for St7735 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for Atech14 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for WaveshareCam {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for WaveshareLcd4b {
+    fn default() -> Self {
+        Self::new()
     }
 }
