@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Full push gate: the complete safeguard battery (fmt, check, strict
+# clippy, debug and release tests, rustdoc with -D warnings).
+# Enable once per clone with: git config core.hooksPath .githooks
+set -euo pipefail
+
+if [ -x scripts/pre-commit.sh ]; then
+  ./scripts/pre-commit.sh
+else
+  echo "pre-push: scripts/pre-commit.sh not present yet (rust-safeguards" >&2
+  echo "pre-push: not harvested); full battery SKIPPED. Task 1 arms this gate." >&2
+fi

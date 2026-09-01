@@ -61,8 +61,9 @@ points there.
   as upstream-shaped pull requests; this fork carries only what
   upstream declines, recorded in `PROVENANCE.md`.
 - Granular commits with plain, specific messages; push at milestones.
-- Enable the commit gate once per clone: `git config core.hooksPath
-  .githooks`. Never commit with `--no-verify`.
+- Enable the git gates once per clone: `git config core.hooksPath
+  .githooks` (commit: format plus strict clippy; push: the full
+  safeguard battery). Never use `--no-verify`.
 - The physical board has one owner at a time. Hardware needs are
   queued in `docs/STATUS.md`; never open the serial port or JTAG
   opportunistically.
