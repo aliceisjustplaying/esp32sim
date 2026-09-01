@@ -818,14 +818,17 @@ impl Machine {
             );
             let wall = start.elapsed();
             if emulated > wall + std::time::Duration::from_millis(2) {
-                std::thread::sleep(emulated - wall);
+                std::thread::sleep(emulated.saturating_sub(wall));
                 self.rt_behind = 0.0;
             } else if wall > emulated + std::time::Duration::from_millis(50) {
-                self.rt_behind = (wall - emulated).as_secs_f64();
+                self.rt_behind = wall.saturating_sub(emulated).as_secs_f64();
                 // more than half a second behind: resynchronise (skip the lag) rather than flood the client while catching up
                 if wall > emulated + std::time::Duration::from_millis(500) {
                     self.rt_resyncs += 1;
-                    self.wall_start = Some(std::time::Instant::now() - emulated);
+                    self.wall_start =
+                        Some(std::time::Instant::now().checked_sub(emulated).expect(
+                            "emulated uptime must fit before the current monotonic instant",
+                        ));
                 }
             } else {
                 self.rt_behind = 0.0;
@@ -1185,7 +1188,7 @@ impl Machine {
             let mut it = line.splitn(2, char::is_whitespace);
             let t: f64 = it
                 .next()
-                .unwrap()
+                .expect("a nonempty script line always begins with a time token")
                 .parse()
                 .map_err(|_| format!("line {}: bad time", ln + 1))?;
             let after = it.next().unwrap_or("").trim_start();
@@ -1281,7 +1284,7 @@ impl Machine {
             return String::new();
         };
         let mut v: Vec<(u32, u64)> = h.iter().map(|(a, c)| (*a, *c)).collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|item| std::cmp::Reverse(item.1));
         let total: u64 = v.iter().map(|x| x.1).sum();
         let mut s = format!("[profile] top {} pcs of {} instructions\n", top, total);
         for (a, c) in v.iter().take(top) {
