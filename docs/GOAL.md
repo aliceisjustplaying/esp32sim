@@ -16,7 +16,8 @@ can observe, at the tiered bounds below. It covers:
 - MMIO access costs,
 - the display path: the CO5300-class QSPI AMOLED display controller
   and panel, including the tear signal,
-- the touch controller (identity pending the on-device ID probe).
+- the touch controller: CST820, adopted from the on-device identity
+  probe (receipt in `evidence/board-touch-identity-2026-09-01/`).
 
 The fidelity target is what firmware observes: CCOUNT deltas,
 interrupt timing, and register-visible device behavior. Wire-level
