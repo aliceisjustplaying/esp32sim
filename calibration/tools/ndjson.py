@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate one manifest-bound TinyDraw Tier-B capture."""
+"""Validate one manifest-bound ESP32-S3 calibration capture."""
 
 from __future__ import annotations
 
@@ -14,6 +14,10 @@ from typing import Any
 
 
 PREFIX = "TINYDRAW_TIER_B_NDJSON "
+CAL_PREFIX = "CAL_RECORD "
+CAL_DONE = "CALIBRATION_DONE"
+CAL_FAILED = "CALIBRATION_FAILED"
+CACHE_COUNTER_MISMATCH = re.compile(r"\bcache[- ]counters? mismatch\b", re.IGNORECASE)
 PROTOCOL_VERSION = 2
 REQUIRED_IDF_VERSION = "v6.1"
 ATTRIBUTION_ITERATIONS = 128
@@ -24,12 +28,7 @@ ATTRIBUTION_CHECKSUMS = {
     "flash": 0xE5C43380,
     "psram": 0x00003180,
 }
-DEFAULT_MANIFEST = (
-    Path(__file__).resolve().parents[1]
-    / "calibration"
-    / "esp32s3-tier-b"
-    / "probe-cells.json"
-)
+DEFAULT_MANIFEST = Path("probe-cells.json")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PSRAM_SERVICE_BYTES = 4096
 PSRAM_CLOCKS = (40_000_000, 80_000_000)
@@ -982,16 +981,211 @@ def validate_path(
     return tally, validator.metadata
 
 
+@dataclass(frozen=True)
+class CalibrationTally:
+    expected_cells: int
+    completed_cells: int
+    expected_samples: int
+    captured_samples: int
+    refusals: int
+    terminal_seen: bool
+    console_lines: int
+    dry_run: bool
+
+    def as_dict(self) -> dict[str, int | bool]:
+        samples_complete = self.dry_run or self.captured_samples == self.expected_samples
+        return {
+            "complete": (
+                self.completed_cells == self.expected_cells
+                and samples_complete
+                and self.terminal_seen
+                and (self.dry_run or self.refusals == 0)
+            ),
+            "dryRun": self.dry_run,
+            "expectedCells": self.expected_cells,
+            "completedCells": self.completed_cells,
+            "expectedSamples": self.expected_samples,
+            "capturedSamples": self.captured_samples,
+            "refusals": self.refusals,
+            "terminalSeen": self.terminal_seen,
+            "consoleLines": self.console_lines,
+        }
+
+
+class CalibrationValidator:
+    """Validate the shared CAL_RECORD format against an image contract."""
+
+    def __init__(
+        self,
+        contract: ManifestContract,
+        variant: str,
+        request: str,
+        dry_run: bool = False,
+    ) -> None:
+        selected = contract.select(variant, request)
+        self.contracts = {cell.id: cell for cell in selected}
+        self.expected = [cell.id for cell in selected]
+        self.dry_run = dry_run
+        self.configuration: dict[str, Any] | None = None
+        self.samples = {cell.id: 0 for cell in selected}
+        self.covered: set[str] = set()
+        self.record_kinds: dict[str, str] = {}
+        self.refusals = 0
+        self.terminal_seen = False
+        self.console_lines = 0
+
+    def feed_line(self, line: str, line_number: int) -> None:
+        self.console_lines += 1
+        if CAL_FAILED in line:
+            raise ValidationError(f"line {line_number} reports {CAL_FAILED}")
+        if CAL_DONE in line:
+            self.terminal_seen = True
+        prefix_index = line.find(CAL_PREFIX)
+        if prefix_index < 0:
+            return
+        payload = line[prefix_index + len(CAL_PREFIX) :].strip()
+        try:
+            record = _object(json.loads(payload), f"line {line_number}")
+        except json.JSONDecodeError as error:
+            raise ValidationError(
+                f"line {line_number} has malformed CAL_RECORD JSON: {error.msg}"
+            ) from error
+        record_type = _string(record.get("type"), f"line {line_number}.type")
+        if record_type == "configuration":
+            if self.configuration is not None:
+                raise ValidationError(f"line {line_number} repeats the configuration record")
+            self.configuration = record
+            return
+        if record_type == "refusal":
+            self._refusal(record, line_number)
+            return
+        if record_type not in {"metric", "sample"}:
+            raise ValidationError(
+                f"line {line_number}.type has unsupported value {record_type!r}"
+            )
+        cell = self._cell(record, line_number)
+        previous_kind = self.record_kinds.setdefault(cell, record_type)
+        if previous_kind != record_type:
+            raise ValidationError(f"line {line_number} mixes record types for {cell!r}")
+        if record_type == "metric":
+            if cell in self.covered:
+                raise ValidationError(f"line {line_number} repeats metric {cell!r}")
+            values = record.get("ccount_samples")
+            if not isinstance(values, list) or not values:
+                raise ValidationError(
+                    f"line {line_number}.ccount_samples must be a non-empty array"
+                )
+            if not self.dry_run:
+                for index, value in enumerate(values):
+                    _integer(value, f"line {line_number}.ccount_samples[{index}]", 1)
+                expected = self.contracts[cell].samples
+                if len(values) != expected:
+                    raise ValidationError(
+                        f"line {line_number} has {len(values)} samples for {cell!r}, expected {expected}"
+                    )
+            self.samples[cell] = len(values)
+        else:
+            if "cycles" not in record:
+                raise ValidationError(f"line {line_number}.cycles is missing")
+            if not self.dry_run:
+                _integer(record["cycles"], f"line {line_number}.cycles", 1)
+            self.samples[cell] += 1
+            if not self.dry_run and self.samples[cell] > self.contracts[cell].samples:
+                raise ValidationError(f"line {line_number} has too many samples for {cell!r}")
+        self.covered.add(cell)
+
+    def _cell(self, record: dict[str, Any], line_number: int) -> str:
+        name = record.get("name", record.get("cell"))
+        cell = _string(name, f"line {line_number}.name")
+        if cell not in self.contracts:
+            raise ValidationError(f"line {line_number} names unexpected cell {cell!r}")
+        return cell
+
+    def _refusal(self, record: dict[str, Any], line_number: int) -> None:
+        cell = self._cell(record, line_number)
+        reason = _string(record.get("reason"), f"line {line_number}.reason")
+        if not self.dry_run:
+            raise ValidationError(f"line {line_number} refused {cell!r}: {reason}")
+        if CACHE_COUNTER_MISMATCH.search(reason) is None:
+            raise ValidationError(
+                f"line {line_number} refusal for {cell!r} is not a cache-counter mismatch: {reason}"
+            )
+        if cell in self.covered:
+            raise ValidationError(f"line {line_number} repeats cell {cell!r}")
+        self.covered.add(cell)
+        self.refusals += 1
+
+    def finalize(self) -> CalibrationTally:
+        missing = [cell for cell in self.expected if cell not in self.covered]
+        if missing:
+            raise ValidationError(f"capture is missing cells: {', '.join(missing)}")
+        if not self.terminal_seen:
+            raise ValidationError(f"capture is missing {CAL_DONE}")
+        expected_samples = sum(cell.samples for cell in self.contracts.values())
+        captured_samples = sum(self.samples.values())
+        if not self.dry_run and captured_samples != expected_samples:
+            raise ValidationError(
+                f"capture has {captured_samples} samples, expected {expected_samples}"
+            )
+        return CalibrationTally(
+            expected_cells=len(self.expected),
+            completed_cells=len(self.covered),
+            expected_samples=expected_samples,
+            captured_samples=captured_samples,
+            refusals=self.refusals,
+            terminal_seen=self.terminal_seen,
+            console_lines=self.console_lines,
+            dry_run=self.dry_run,
+        )
+
+
+def validate_calibration_lines(
+    lines: list[str],
+    contract: ManifestContract,
+    variant: str,
+    request: str,
+    dry_run: bool,
+) -> CalibrationTally:
+    validator = CalibrationValidator(contract, variant, request, dry_run)
+    for line_number, line in enumerate(lines, 1):
+        validator.feed_line(line, line_number)
+    return validator.finalize()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("capture", type=Path)
-    parser.add_argument("--variant", choices=("normal", "xip-psram"), required=True)
+    parser.add_argument("capture", nargs="?", type=Path, default=Path("-"))
+    parser.add_argument("--variant", choices=("normal", "xip-psram"), default="normal")
     parser.add_argument("--cells", default="all")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     try:
         contract = ManifestContract.load(args.manifest)
-        tally, _ = validate_path(args.capture, contract, args.variant, args.cells)
+        if args.capture == Path("-"):
+            import sys
+
+            lines = sys.stdin.read().splitlines()
+            if not args.dry_run and not any(CAL_PREFIX in line for line in lines):
+                raise ValidationError("strict Tier-B validation requires a capture path")
+            tally = validate_calibration_lines(
+                lines, contract, args.variant, args.cells, args.dry_run
+            )
+        elif args.dry_run:
+            lines = args.capture.read_text(encoding="utf-8").splitlines()
+            tally = validate_calibration_lines(
+                lines, contract, args.variant, args.cells, True
+            )
+        else:
+            text = args.capture.read_text(encoding="utf-8")
+            if CAL_PREFIX in text:
+                tally = validate_calibration_lines(
+                    text.splitlines(), contract, args.variant, args.cells, False
+                )
+            else:
+                tally, _ = validate_path(
+                    args.capture, contract, args.variant, args.cells
+                )
     except (OSError, ValidationError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True))
         return 2

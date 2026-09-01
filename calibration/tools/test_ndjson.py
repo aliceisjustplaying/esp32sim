@@ -8,10 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from tier_b_ndjson import (
+from ndjson import (
     ATTRIBUTION_CHECKSUMS,
     ATTRIBUTION_ITERATIONS,
+    CAL_DONE,
     PREFIX,
+    CalibrationValidator,
     CaptureValidator,
     CellContract,
     ManifestContract,
@@ -311,62 +313,42 @@ class CaptureValidatorTest(unittest.TestCase):
     def test_committed_manifest_defines_variant_cells(self) -> None:
         root = Path(__file__).resolve().parents[1]
         actual = ManifestContract.load(
-            root / "calibration" / "esp32s3-tier-b" / "probe-cells.json"
+            root / "esp32s3-core-timing" / "probe-cells.json"
         )
-        self.assertIn("first_line_i_flash", [cell.id for cell in actual.available("normal")])
-        self.assertNotIn("instruction_psram_hot", [cell.id for cell in actual.available("normal")])
-        self.assertIn("instruction_psram_hot", [cell.id for cell in actual.available("xip-psram")])
-        self.assertNotIn("gpio21_edge", [cell.id for cell in actual.available("normal")])
+        cells = actual.available("normal")
+        self.assertEqual(len(cells), 29)
+        self.assertIn("intr_entry_level3", [cell.id for cell in cells])
 
-    def test_committed_decomposition_matrices_are_full_rank(self) -> None:
+    def test_committed_manifest_does_not_invoke_tier_b_design_ranks(self) -> None:
         root = Path(__file__).resolve().parents[1]
         actual = ManifestContract.load(
-            root / "calibration" / "esp32s3-tier-b" / "probe-cells.json"
+            root / "esp32s3-core-timing" / "probe-cells.json"
         )
-        self.assertEqual(
-            design_ranks(actual.cells),
-            {"msync-decomposition": 6, "spi2-decomposition": 8},
-        )
-        msync = [cell for cell in actual.cells if cell.family == "msync-decomposition"]
-        spi2 = [cell for cell in actual.cells if cell.family == "spi2-decomposition"]
-        self.assertEqual((len(msync), sum(cell.samples for cell in msync)), (12, 108))
-        self.assertEqual((len(spi2), sum(cell.samples for cell in spi2)), (6, 54))
-        normal = actual.available("normal")
-        xip = actual.available("xip-psram")
-        self.assertEqual((len(normal), sum(cell.samples for cell in normal)), (43, 360))
-        self.assertEqual((len(xip), sum(cell.samples for cell in xip)), (44, 373))
+        self.assertEqual(design_ranks(actual.cells), {})
+        self.assertEqual(sum(cell.samples for cell in actual.cells), 357)
 
     def test_manifest_rejects_a_missing_noop_control(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        path = root / "calibration" / "esp32s3-tier-b" / "probe-cells.json"
+        path = root / "esp32s3-core-timing" / "probe-cells.json"
         payload = json.loads(path.read_text())
-        payload["cells"] = [
-            cell
-            for cell in payload["cells"]
-            if cell["id"] != "msync_decompose_l512_d0_p40"
-        ]
-        with self.assertRaisesRegex(ValidationError, "incomplete or duplicated"):
+        payload["cells"].append(payload["cells"][0])
+        with self.assertRaisesRegex(ValidationError, "duplicate IDs"):
             ManifestContract.from_bytes(json.dumps(payload).encode())
 
     def test_manifest_rejects_coupled_service_factors(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        path = root / "calibration" / "esp32s3-tier-b" / "probe-cells.json"
+        path = root / "esp32s3-core-timing" / "probe-cells.json"
         payload = json.loads(path.read_text())
-        cell = next(
-            item for item in payload["cells"] if item["id"] == "msync_decompose_l1_d0_p40"
-        )
-        cell["factors"]["psramClockHz"] = 80_000_000
-        with self.assertRaisesRegex(ValidationError, "incomplete or duplicated"):
+        payload["cells"][0]["variants"] = ["other"]
+        with self.assertRaisesRegex(ValidationError, "unsupported variant"):
             ManifestContract.from_bytes(json.dumps(payload).encode())
 
     def test_manifest_rejects_a_missing_spi_clock_point(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        path = root / "calibration" / "esp32s3-tier-b" / "probe-cells.json"
+        path = root / "esp32s3-core-timing" / "probe-cells.json"
         payload = json.loads(path.read_text())
-        payload["cells"] = [
-            cell for cell in payload["cells"] if cell["id"] != "spi2_phased_b32768_c20"
-        ]
-        with self.assertRaisesRegex(ValidationError, "incomplete or duplicated"):
+        del payload["cells"][0]["samples"]
+        with self.assertRaisesRegex(ValidationError, "missing keys"):
             ManifestContract.from_bytes(json.dumps(payload).encode())
 
     def test_runtime_manifest_provenance_is_pinned(self) -> None:
@@ -799,6 +781,59 @@ class CaptureValidatorTest(unittest.TestCase):
         validator.feed_line(records[1], 2)
         with self.assertRaisesRegex(ValidationError, "baseline cycles and counters"):
             validator.feed_line(records[2], 3)
+
+    def test_calibration_dry_run_ignores_values_and_requires_terminal(self) -> None:
+        validator = CalibrationValidator(contract(), "normal", "store_hit_psram", True)
+        validator.feed_line(
+            'CAL_RECORD {"type":"metric","name":"store_hit_psram",'
+            '"ccount_samples":["ignored"]}',
+            1,
+        )
+        validator.feed_line(CAL_DONE, 2)
+        tally = validator.finalize()
+        self.assertTrue(tally.as_dict()["complete"])
+        self.assertEqual(tally.console_lines, 2)
+
+    def test_calibration_strict_mode_checks_sample_count(self) -> None:
+        validator = CalibrationValidator(contract(), "normal", "store_hit_psram")
+        with self.assertRaisesRegex(ValidationError, "expected 2"):
+            validator.feed_line(
+                'CAL_RECORD {"type":"metric","name":"store_hit_psram",'
+                '"ccount_samples":[17]}',
+                1,
+            )
+
+    def test_calibration_dry_run_allows_only_cache_counter_refusal(self) -> None:
+        accepted = CalibrationValidator(contract(), "normal", "store_hit_psram", True)
+        accepted.feed_line(
+            'CAL_RECORD {"type":"refusal","name":"store_hit_psram",'
+            '"reason":"cache-counter mismatch in emulator"}',
+            1,
+        )
+        accepted.feed_line(CAL_DONE, 2)
+        self.assertTrue(accepted.finalize().as_dict()["complete"])
+        rejected = CalibrationValidator(contract(), "normal", "store_hit_psram", True)
+        with self.assertRaisesRegex(ValidationError, "not a cache-counter mismatch"):
+            rejected.feed_line(
+                'CAL_RECORD {"type":"refusal","name":"store_hit_psram",'
+                '"reason":"DMA did not finish"}',
+                1,
+            )
+
+    def test_calibration_dry_run_rejects_missing_terminal(self) -> None:
+        validator = CalibrationValidator(contract(), "normal", "store_hit_psram", True)
+        validator.feed_line(
+            'CAL_RECORD {"type":"metric","name":"store_hit_psram",'
+            '"ccount_samples":[1]}',
+            1,
+        )
+        with self.assertRaisesRegex(ValidationError, CAL_DONE):
+            validator.finalize()
+
+    def test_calibration_dry_run_rejects_malformed_record(self) -> None:
+        validator = CalibrationValidator(contract(), "normal", "store_hit_psram", True)
+        with self.assertRaisesRegex(ValidationError, "malformed CAL_RECORD"):
+            validator.feed_line("CAL_RECORD {", 1)
 
 
 if __name__ == "__main__":
