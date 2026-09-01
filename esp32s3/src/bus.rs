@@ -1256,6 +1256,9 @@ impl SocBus {
 
     fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.periph.tick(cycles as u64);
+        for (pin, level) in self.board.input_changes(cycles as u64) {
+            if self.periph.gpio.set_input(pin, level) { self.irq_dirty = true; }
+        }
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);

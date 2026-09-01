@@ -56,6 +56,8 @@ pub trait BoardModel {
     }
     /// Touch input from the UI (panel coordinates).
     fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
+    /// Board-driven GPIO input changes during this cycle interval.
+    fn input_changes(&mut self, _cycles: u64) -> Vec<(u8, bool)> { Vec::new() }
 }
 
 pub type Board = Box<dyn BoardModel>;
@@ -655,9 +657,10 @@ pub struct WaveshareAmoled18V2 {
     pub gpio_events: u64, pub panel_display: Co5300,
     pub panel: std::sync::Arc<std::sync::Mutex<crate::i2c::St7701State>>,
     pub touch_state: std::sync::Arc<std::sync::Mutex<crate::i2c::TouchState>>,
+    te_acc: u64, te_level: bool,
 }
 impl WaveshareAmoled18V2 {
-    pub fn new() -> Self { WaveshareAmoled18V2 { gpio_events: 0, panel_display: Co5300::new(), panel: Default::default(), touch_state: Default::default() } }
+    pub fn new() -> Self { WaveshareAmoled18V2 { gpio_events: 0, panel_display: Co5300::new(), panel: Default::default(), touch_state: Default::default(), te_acc: 0, te_level: true } }
 }
 impl BoardModel for WaveshareAmoled18V2 {
     fn name(&self) -> &'static str { "waveshare-amoled18-v2" }
@@ -682,6 +685,13 @@ impl BoardModel for WaveshareAmoled18V2 {
         let mut t = self.touch_state.lock().unwrap(); t.x = x.min(367); t.y = y.min(447);
         if down { t.down = true; t.seen = false; t.release_pending = false; } else if t.seen { t.down = false; } else { t.release_pending = true; }
     }
+    fn input_changes(&mut self, cycles: u64) -> Vec<(u8, bool)> {
+        self.te_acc += cycles;
+        let half_period = crate::periph::CPU_HZ / 120;
+        let mut changes = Vec::new();
+        while self.te_acc >= half_period { self.te_acc -= half_period; self.te_level = !self.te_level; changes.push((13, self.te_level)); }
+        changes
+    }
 }
 
 #[cfg(test)]
@@ -696,5 +706,11 @@ mod co5300_tests {
         assert_eq!(panel.frame[3 * Co5300::WIDTH + 1], 0xf800);
         assert_eq!(panel.frame[3 * Co5300::WIDTH + 2], 0x07e0);
         assert_eq!(panel.pixels_written, 2);
+    }
+    #[test]
+    fn amoled_board_generates_sixty_hz_tear_signal() {
+        let mut board = WaveshareAmoled18V2::new();
+        assert_eq!(board.input_changes(crate::periph::CPU_HZ / 120), [(13, false)]);
+        assert_eq!(board.input_changes(crate::periph::CPU_HZ / 120), [(13, true)]);
     }
 }
