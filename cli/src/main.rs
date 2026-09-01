@@ -97,17 +97,36 @@ fn main() {
             "--peek" => {
                 let v = next();
                 let mut it = v.split(',');
-                let a = u32::from_str_radix(it.next().unwrap().trim_start_matches("0x"), 16)
-                    .expect("peek addr");
-                let n = it.next().map(|x| x.parse().unwrap()).unwrap_or(8);
+                let a = u32::from_str_radix(
+                    it.next()
+                        .expect("split always yields the address field")
+                        .trim_start_matches("0x"),
+                    16,
+                )
+                .expect("peek address must be hexadecimal");
+                let n = it
+                    .next()
+                    .map(|x| x.parse().expect("peek byte count must be an integer"))
+                    .unwrap_or(8);
                 peeks.push((a, n));
             }
             "--disasm" => {
                 let v = next();
                 let mut it = v.split(',');
-                let a = u32::from_str_radix(it.next().unwrap().trim_start_matches("0x"), 16)
-                    .expect("addr");
-                let n = it.next().map(|x| x.parse().unwrap()).unwrap_or(16);
+                let a = u32::from_str_radix(
+                    it.next()
+                        .expect("split always yields the address field")
+                        .trim_start_matches("0x"),
+                    16,
+                )
+                .expect("disassembly address must be hexadecimal");
+                let n = it
+                    .next()
+                    .map(|x| {
+                        x.parse()
+                            .expect("disassembly byte count must be an integer")
+                    })
+                    .unwrap_or(16);
                 disasms.push((a, n));
             }
             "--watch" => {
@@ -249,7 +268,7 @@ fn main() {
     m.bus.rebuild_page_table();
     if let Some(p) = &flash_image {
         m.write_flash(0, &std::fs::read(p).expect("flash image"))
-            .unwrap();
+            .expect("complete flash image must fit configured flash capacity");
     }
     for spec in &flash_at {
         let (off, path) = spec.split_once('=').unwrap_or_else(|| {
@@ -289,15 +308,15 @@ fn main() {
     }
     if let Some(p) = &bootloader {
         m.write_flash(0x0, &std::fs::read(p).expect("bootloader"))
-            .unwrap();
+            .expect("bootloader must fit configured flash capacity");
     }
     if let Some(p) = &ptable {
         m.write_flash(0x8000, &std::fs::read(p).expect("ptable"))
-            .unwrap();
+            .expect("partition table must fit configured flash capacity");
     }
     if let Some(p) = &app {
         m.write_flash(0x10000, &std::fs::read(p).expect("app"))
-            .unwrap();
+            .expect("application image must fit configured flash capacity");
     }
     for p in &elfs {
         m.add_symbols(&std::fs::read(p).expect("elf"))
@@ -430,13 +449,19 @@ fn main() {
     }
     if let Some(port) = web_port {
         let dir = web_dir.clone().unwrap_or_else(|| {
-            let exe = std::env::current_exe().unwrap();
-            let mut d = exe.parent().unwrap().to_path_buf();
+            let exe = std::env::current_exe().expect("current executable path must be available");
+            let mut d = exe
+                .parent()
+                .expect("current executable path must have a parent directory")
+                .to_path_buf();
             for _ in 0..3 {
                 if d.join("web").exists() {
                     break;
                 }
-                d = d.parent().unwrap().to_path_buf();
+                d = d
+                    .parent()
+                    .expect("web asset search must remain below the filesystem root")
+                    .to_path_buf();
             }
             d.join("web").to_string_lossy().to_string()
         });
@@ -544,7 +569,7 @@ fn main() {
     if let (Some(path), Some(st)) = (&regstat, &m.bus.periph.regstat) {
         use std::io::Write;
         let mut rows: Vec<_> = st.iter().collect();
-        rows.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.1 .0));
         let mut f = std::io::BufWriter::new(std::fs::File::create(path).expect("regstat file"));
         let _ = writeln!(f, "# count kind block+off addr last_value pc symbol");
         for (&(addr, pc, wr), &(n, val)) in rows {

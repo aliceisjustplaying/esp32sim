@@ -2,6 +2,18 @@
 //! `Peripherals` dispatches by 4 KiB block and logs first-touch unknown accesses.
 use std::collections::HashSet;
 
+macro_rules! impl_reset_default {
+    ($($type_name:ty),+ $(,)?) => {
+        $(
+            impl Default for $type_name {
+                fn default() -> Self {
+                    Self::new()
+                }
+            }
+        )+
+    };
+}
+
 pub const PERIPH_BASE: u32 = 0x6000_0000;
 pub const PERIPH_END: u32 = 0x600D_0000;
 
@@ -36,6 +48,10 @@ pub const APB_HZ: u64 = 80_000_000;
 pub const XTAL_HZ: u64 = 40_000_000;
 pub const SYSTIMER_HZ: u64 = 16_000_000;
 pub const RTC_SLOW_HZ: u64 = 150_000;
+
+pub type RegisterAccessKey = (u32, u32, bool);
+pub type RegisterAccessStats = (u64, u32);
+pub type RegisterAccessMap = std::collections::HashMap<RegisterAccessKey, RegisterAccessStats>;
 
 /// Generic 4 KiB register block backed by RAM (for devices we only need to "accept").
 #[derive(Clone)]
@@ -559,7 +575,7 @@ impl Gpio {
         Gpio {
             out: 0,
             enable: 0,
-            input: !0u64 & ((1u64 << 49) - 1),
+            input: (1u64 << 49) - 1,
             status: 0,
             pin: [0; 49],
             func_in_sel: [0x3c; 256],
@@ -633,7 +649,7 @@ impl Gpio {
             0x40 => (self.input >> 32) as u32,
             0x44 => self.status as u32,
             0x50 => (self.status >> 32) as u32,
-            0x5c => (self.status as u32),
+            0x5c => self.status as u32,
             0x68 => (self.status >> 32) as u32, // PCPU_INT: interrupt status seen by core 0
             0x74..=0x134 => self.pin[((off - 0x74) / 4) as usize],
             0x154..=0x550 => self.func_in_sel[((off - 0x154) / 4) as usize],
@@ -1034,7 +1050,7 @@ impl Rsa {
                 self.finish(z, n);
             }
             0x814 => {
-                let n = (self.length as usize + 1) / 2;
+                let n = (self.length as usize).div_ceil(2);
                 let z = crate::crypto::bn_mul(&self.block(384, n), &self.block(128 + n, n));
                 self.finish(z, 2 * n);
             }
@@ -1140,7 +1156,7 @@ impl WifiMac {
     }
     /// TX queue n has its PLCP0 register at 0xd08 - 8n (hal_mac_txq_enable: (0x0c0067a1 - n) << 3).
     fn txq_of(off: u32) -> Option<u8> {
-        if off <= 0xd08 && (0xd08 - off) % 8 == 0 && (0xd08 - off) / 8 < 16 {
+        if off <= 0xd08 && (0xd08 - off).is_multiple_of(8) && (0xd08 - off) / 8 < 16 {
             Some(((0xd08 - off) / 8) as u8)
         } else {
             None
@@ -1153,8 +1169,8 @@ impl WifiMac {
             (0x33, 0x088) => self.rx_base & 0xf_ffff,
             (0x33, 0x08c) => self.rx_next & 0xf_ffff,
             (0x33, 0x090) => self.rx_last,
-            (0x33, 0xca8) => (self.txq_error & 0x7ff), // txq state types 0/1 (errors/collisions)
-            (0x33, 0xcb0) => self.txq_complete & 0xf,  // txq state type 2: completed queues
+            (0x33, 0xca8) => self.txq_error & 0x7ff, // txq state types 0/1 (errors/collisions)
+            (0x33, 0xcb0) => self.txq_complete & 0xf, // txq state type 2: completed queues
             (0x35, 0x118) => self.pwr_events,
             (0x35, 0x18) => self.tsf_latched as u32,
             (0x35, 0x1c) => (self.tsf_latched >> 32) as u32,
@@ -1219,8 +1235,7 @@ impl WifiMac {
             (0x33, o) if Self::txq_of(o).is_some() => {
                 // MAC_TX_PLCP0[queue]
                 self.ram.write(off, v);
-                if v & (1 << 31) != 0 {
-                    let q = Self::txq_of(o).unwrap();
+                if let (true, Some(q)) = (v & (1 << 31) != 0, Self::txq_of(o)) {
                     self.tx_pending.push((q, DMA_ADDR_BASE | (v & 0xf_ffff)));
                 }
             }
@@ -1335,7 +1350,7 @@ impl Pcnt {
                     _ => 0,
                 };
                 if delta != 0 {
-                    let ctrl_level = sig(35 + 4 * u as u32 + ch).map_or(true, |(_, l)| l);
+                    let ctrl_level = sig(35 + 4 * u as u32 + ch).is_none_or(|(_, l)| l);
                     let cm = if ctrl_level {
                         (conf0 >> (sh + 4)) & 3
                     } else {
@@ -1447,7 +1462,7 @@ impl GpSpi {
         let start = self.tx.len();
         if user & (1 << 31) != 0 {
             // command phase, LSB byte first
-            let n = (((user2 >> 28) & 0xf) + 1 + 7) / 8;
+            let n = (((user2 >> 28) & 0xf) + 1).div_ceil(8);
             let c = user2 & 0xffff;
             for i in 0..n {
                 self.tx.push((c >> (8 * i)) as u8);
@@ -1456,7 +1471,7 @@ impl GpSpi {
         if user & (1 << 30) != 0 {
             // address phase, MSB first from the top of ADDR
             let bits = (user1 >> 27) + 1;
-            let n = (bits + 7) / 8;
+            let n = bits.div_ceil(8);
             let a = self.regs.read(0x04);
             for i in 0..n {
                 self.tx.push((a >> (24 - 8 * i)) as u8);
@@ -1465,7 +1480,7 @@ impl GpSpi {
         if user & (1 << 27) != 0 {
             // MOSI data phase from W0.. (or W8.. with HIGHPART)
             let bits = (self.regs.read(0x1c) & 0x3ffff) + 1;
-            let n = ((bits + 7) / 8) as usize;
+            let n = bits.div_ceil(8) as usize;
             let base = if user & (1 << 25) != 0 { 8 } else { 0 };
             for i in 0..n.min((16 - base) * 4) {
                 self.tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8);
@@ -1774,8 +1789,8 @@ pub struct Peripherals {
     pub generic: std::collections::HashMap<u32, RegRam>,
     pub log_unknown: bool,
     /// per-(address, pc, write) access statistics for register reverse engineering (`--regstat FILE`)
-    pub regstat: Option<std::collections::HashMap<(u32, u32, bool), (u64, u32)>>,
-    /// experiment hook: ESP_EMU_FAKE_READ=addr:or[:and],... applied to register reads
+    pub regstat: Option<RegisterAccessMap>,
+    /// Experiment hook: `ESP_EMU_FAKE_READ=addr:or[:and],...` applied to register reads.
     pub fake_reads: std::collections::HashMap<u32, (u32, u32)>,
     pub log_all: bool,
     seen: HashSet<(u32, bool)>,
@@ -1904,7 +1919,6 @@ impl Peripherals {
             0x2c => "PWM1",
             0x2d => "I2S1",
             0x2e => "UART2",
-            0x3a => "AES",
             0x33 => "WIFI_MAC",
             0x34 => "WIFI_MAC2",
             0x35 => "WDEV",
@@ -1974,11 +1988,7 @@ impl Peripherals {
         let status = self.source_status();
         let v = match block {
             0x06 if off == 0x174 && self.wifi.ap.is_some() => {
-                self.generic
-                    .entry(block)
-                    .or_insert_with(RegRam::new)
-                    .read(off)
-                    | (1 << 16)
+                self.generic.entry(block).or_default().read(off) | (1 << 16)
             } // FE: IQ estimation done (ram_iq_est_enable polls bit 16)
             0x00 => self.uart[0].read(off),
             0x10 => self.uart[1].read(off),
@@ -2024,10 +2034,7 @@ impl Peripherals {
             0x3c => self.rsa.read(off),
             _ => {
                 self.note(addr, false, 0);
-                self.generic
-                    .entry(block)
-                    .or_insert_with(RegRam::new)
-                    .read(off)
+                self.generic.entry(block).or_default().read(off)
             }
         };
         if self.log_all {
@@ -2122,10 +2129,7 @@ impl Peripherals {
             0x3c => self.rsa.write(off, v),
             _ => {
                 self.note(addr, true, v);
-                self.generic
-                    .entry(block)
-                    .or_insert_with(RegRam::new)
-                    .write(off, v)
+                self.generic.entry(block).or_default().write(off, v)
             }
         }
     }
@@ -2141,7 +2145,7 @@ impl Peripherals {
         match block {
             0x08 => self.rtc.ram.write(off, v),
             0xc0 => {
-                if off >= 0x30 && off <= 0x3c {
+                if (0x30..=0x3c).contains(&off) {
                     return false;
                 }
                 self.system.ram.write(off, v)
@@ -2161,11 +2165,7 @@ impl Peripherals {
                 self.spi0.regs.write(off, v)
             }
             0x0e => self.i2c_mst.ram.write(off, v),
-            0x26 | 0xc1 => self
-                .generic
-                .entry(block)
-                .or_insert_with(RegRam::new)
-                .write(off, v),
+            0x26 | 0xc1 => self.generic.entry(block).or_default().write(off, v),
             _ => return false,
         }
         true
@@ -2291,11 +2291,7 @@ impl Peripherals {
                     continue;
                 }
                 let elapsed = now.wrapping_sub(st.period_start[t]);
-                if elapsed >= period {
-                    0
-                } else {
-                    period - elapsed
-                }
+                period.saturating_sub(elapsed)
             } else if st.armed[t] {
                 st.target[t].saturating_sub(now)
             } else {
@@ -2340,8 +2336,7 @@ impl Peripherals {
     pub fn cpu_lines_both(&self) -> (u32, u32) {
         let st = self.last_status;
         let (mut l0, mut l1) = (0u32, 0u32);
-        for w in 0..4 {
-            let mut bits = st[w];
+        for (w, mut bits) in st.into_iter().enumerate() {
             while bits != 0 {
                 let b = bits.trailing_zeros();
                 bits &= bits - 1;
@@ -2472,7 +2467,7 @@ impl SpiMem {
             addr_reg & 0xff_ffff
         };
         let fsize = flash.len();
-        let mut rd = |a: u32, n: usize| -> Vec<u8> {
+        let rd = |a: u32, n: usize| -> Vec<u8> {
             (0..n)
                 .map(|i| {
                     let x = a as usize + i;
@@ -2604,24 +2599,24 @@ impl SpiMem {
                 }
                 0x20 => {
                     let a = (addr as usize) & !0xfff;
-                    for x in a..(a + 0x1000).min(fsize) {
-                        flash[x] = 0xff;
+                    for byte in flash.iter_mut().take((a + 0x1000).min(fsize)).skip(a) {
+                        *byte = 0xff;
                     }
                     self.dirty.push((crate::bus::SRC_FLASH, a, 0x1000));
                     self.status &= !0x02;
                 }
                 0x52 => {
                     let a = (addr as usize) & !0x7fff;
-                    for x in a..(a + 0x8000).min(fsize) {
-                        flash[x] = 0xff;
+                    for byte in flash.iter_mut().take((a + 0x8000).min(fsize)).skip(a) {
+                        *byte = 0xff;
                     }
                     self.dirty.push((crate::bus::SRC_FLASH, a, 0x8000));
                     self.status &= !0x02;
                 }
                 0xd8 => {
                     let a = (addr as usize) & !0xffff;
-                    for x in a..(a + 0x10000).min(fsize) {
-                        flash[x] = 0xff;
+                    for byte in flash.iter_mut().take((a + 0x10000).min(fsize)).skip(a) {
+                        *byte = 0xff;
                     }
                     self.dirty.push((crate::bus::SRC_FLASH, a, 0x10000));
                     self.status &= !0x02;
@@ -2679,16 +2674,16 @@ impl SpiMem {
         }
         if cmd & (1 << 24) != 0 {
             let a = (addr as usize) & !0xfff;
-            for x in a..(a + 0x1000).min(fsize) {
-                flash[x] = 0xff;
+            for byte in flash.iter_mut().take((a + 0x1000).min(fsize)).skip(a) {
+                *byte = 0xff;
             }
             self.dirty.push((crate::bus::SRC_FLASH, a, 0x1000));
             self.status &= !0x02;
         } // SE
         if cmd & (1 << 23) != 0 {
             let a = (addr as usize) & !0xffff;
-            for x in a..(a + 0x10000).min(fsize) {
-                flash[x] = 0xff;
+            for byte in flash.iter_mut().take((a + 0x10000).min(fsize)).skip(a) {
+                *byte = 0xff;
             }
             self.dirty.push((crate::bus::SRC_FLASH, a, 0x10000));
         } // BE
@@ -2791,8 +2786,8 @@ impl Sha {
     }
     fn h64(&self) -> [u64; 8] {
         let mut v = [0u64; 8];
-        for i in 0..8 {
-            v[i] = ((self.h[2 * i] as u64) << 32) | self.h[2 * i + 1] as u64;
+        for (i, value) in v.iter_mut().enumerate() {
+            *value = ((self.h[2 * i] as u64) << 32) | self.h[2 * i + 1] as u64;
         }
         v
     }
@@ -2800,8 +2795,8 @@ impl Sha {
         // message words are written by software as the bytes of the block; interpret big-endian per SHA
         if self.mode >= 3 {
             let mut w = [0u64; 16];
-            for j in 0..16 {
-                w[j] = ((self.m[2 * j].swap_bytes() as u64) << 32)
+            for (j, word) in w.iter_mut().enumerate() {
+                *word = ((self.m[2 * j].swap_bytes() as u64) << 32)
                     | self.m[2 * j + 1].swap_bytes() as u64;
             }
             let mut h = self.h64();
@@ -2959,14 +2954,14 @@ fn sha512_block(h: &mut [u64; 8], w0: &[u64; 16]) {
     }
     let (mut a, mut b, mut c, mut d) = (h[0], h[1], h[2], h[3]);
     let (mut e, mut f, mut g, mut hh) = (h[4], h[5], h[6], h[7]);
-    for i in 0..80 {
+    for (i, word) in w.iter().enumerate() {
         let s1 = e.rotate_right(14) ^ e.rotate_right(18) ^ e.rotate_right(41);
         let ch = (e & f) ^ (!e & g);
         let t1 = hh
             .wrapping_add(s1)
             .wrapping_add(ch)
             .wrapping_add(K[i])
-            .wrapping_add(w[i]);
+            .wrapping_add(*word);
         let s0 = a.rotate_right(28) ^ a.rotate_right(34) ^ a.rotate_right(39);
         let maj = (a & b) ^ (a & c) ^ (b & c);
         let t2 = s0.wrapping_add(maj);
@@ -3046,7 +3041,7 @@ fn sha1_block(h: &mut [u32; 16], w0: &[u32]) {
         w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
     }
     let (mut a, mut b, mut c, mut d, mut e) = (h[0], h[1], h[2], h[3], h[4]);
-    for i in 0..80 {
+    for (i, word) in w.iter().enumerate() {
         let (f, k) = match i {
             0..=19 => ((b & c) | (!b & d), 0x5A827999),
             20..=39 => (b ^ c ^ d, 0x6ED9EBA1),
@@ -3058,7 +3053,7 @@ fn sha1_block(h: &mut [u32; 16], w0: &[u32]) {
             .wrapping_add(f)
             .wrapping_add(e)
             .wrapping_add(k)
-            .wrapping_add(w[i]);
+            .wrapping_add(*word);
         e = d;
         d = c;
         c = b.rotate_left(30);
@@ -3343,7 +3338,8 @@ impl Gdma {
     }
 }
 
-/// One DMA descriptor (dma_descriptor_t): dw0 = size[11:0] length[23:12] suc_eof[30] owner[31]; dw1 = buffer; dw2 = next
+/// One DMA descriptor (`dma_descriptor_t`): `dw0 = size[11:0] length[23:12]
+/// suc_eof[30] owner[31]`; `dw1 = buffer`; `dw2 = next`.
 pub struct DmaDesc {
     pub addr: u32,
     pub size: u32,
@@ -3673,12 +3669,37 @@ impl Rmt {
                     c.since_thr = 0;
                     self.int_raw |= 1 << (8 + n);
                 } // TX_THR_EVENT
-                if d1 == 0 && !l1 && c.rd % mem_words == 0 && c.conf0 & (1 << 4) == 0 { /* no wrap: stop at end of memory */
+                if d1 == 0 && !l1 && c.rd.is_multiple_of(mem_words) && c.conf0 & (1 << 4) == 0 { /* no wrap: stop at end of memory */
                 }
             }
         }
     }
 }
+
+impl_reset_default!(
+    RegRam,
+    UsbSerialJtag,
+    Uart,
+    Systimer,
+    TimerGroup,
+    IntMatrix,
+    Gpio,
+    RtcCntl,
+    Aes,
+    Rsa,
+    WifiMac,
+    Pcnt,
+    GpSpi,
+    LcdCam,
+    SystemRegs,
+    Extmem,
+    Sha,
+    Wdev,
+    I2cMst,
+    Gdma,
+    I2s,
+    Rmt,
+);
 
 #[cfg(test)]
 mod rsa_tests {

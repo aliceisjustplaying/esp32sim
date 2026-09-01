@@ -183,8 +183,11 @@ impl SocBus {
 macro_rules! rd {
     ($self:ident, $addr:expr, $n:expr, $conv:expr) => {{
         let addr = $addr;
-        match $self.resolve(addr) {
-            Some((b, o, _)) if o + $n <= b.len() => Ok($conv(&b[o..o + $n])),
+        let bytes = $self
+            .resolve(addr)
+            .and_then(|(buffer, offset, _)| buffer.get(offset..)?.get(..$n));
+        match bytes {
+            Some(bytes) => Ok($conv(bytes)),
             _ => {
                 $self.last_fault = Some((addr, false));
                 Err(Fault::Unmapped)
@@ -205,7 +208,8 @@ impl Bus for SocBus {
             return Ok(self.periph_read(addr, 2) as u16);
         }
         rd!(self, addr, 2, |b: &[u8]| u16::from_le_bytes(
-            b.try_into().unwrap()
+            b.try_into()
+                .expect("read helper provided exactly two bytes")
         ))
     }
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
@@ -213,7 +217,8 @@ impl Bus for SocBus {
             return Ok(self.periph_read(addr, 4));
         }
         rd!(self, addr, 4, |b: &[u8]| u32::from_le_bytes(
-            b.try_into().unwrap()
+            b.try_into()
+                .expect("read helper provided exactly four bytes")
         ))
     }
     fn write8(&mut self, addr: u32, v: u8) -> Result<(), Fault> {

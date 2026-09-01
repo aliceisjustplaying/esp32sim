@@ -2,7 +2,7 @@
 //! registers, the 40-bit ACCX and the 2x160-bit QACC accumulators. Encodings come from the TRM's
 //! per-instruction "Instruction Word" layouts (`pie_table.rs`, generated), semantics from the
 //! "Operation" pseudo-code of the same chapter. 24-bit forms live in op0 = 4, 32-bit forms in op0 = 0xe/0xf.
-//! PIE is coprocessor 3: executing any of these with CPENABLE[3] clear raises the CP3-disabled exception,
+//! PIE is coprocessor 3: executing any of these with `CPENABLE[3]` clear raises the CP3-disabled exception,
 //! which is how FreeRTOS lazily saves/restores the state per task.
 use crate::bus::Bus;
 use crate::decode::Insn;
@@ -243,7 +243,7 @@ pub fn format(w: u32, idx: usize) -> String {
     let o = extract(w, p);
     let mut parts = Vec::new();
     for k in 0..o.n {
-        let r = o.r[k].unwrap();
+        let r = o.r[k].expect("decoded operand count only includes populated operand roles");
         parts.push(match r {
             Role::Qa
             | Role::Qa0
@@ -565,8 +565,8 @@ pub fn exec<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
             } else {
                 let v = ld(cpu, bus, a, 16)?;
                 let arr = if h { &mut cpu.qacc_h } else { &mut cpu.qacc_l };
-                for k in 0..4 {
-                    arr[k] = (v >> (32 * k)) as u32;
+                for (k, word) in arr.iter_mut().take(4).enumerate() {
+                    *word = (v >> (32 * k)) as u32;
                 }
             }
             post!(Mode::Ip);
@@ -601,8 +601,8 @@ pub fn exec<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
         Kind::Ldf { n, mode } => {
             let v = ld(cpu, bus, ar!(As), 4 * n as u32)?;
             let roles = [Fu0, Fu1, Fu2, Fu3];
-            for k in 0..n as usize {
-                let r = o.get(roles[k]) as usize & 15;
+            for (k, role) in roles.iter().take(n as usize).enumerate() {
+                let r = o.get(*role) as usize & 15;
                 cpu.fr[r] = (v >> (32 * k)) as u32;
             }
             post!(mode);
@@ -610,8 +610,8 @@ pub fn exec<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
         Kind::Stf { n, mode } => {
             let roles = [Fv0, Fv1, Fv2, Fv3];
             let mut v = 0u128;
-            for k in 0..n as usize {
-                v |= (cpu.fr[o.get(roles[k]) as usize & 15] as u128) << (32 * k);
+            for (k, role) in roles.iter().take(n as usize).enumerate() {
+                v |= (cpu.fr[o.get(*role) as usize & 15] as u128) << (32 * k);
             }
             st(cpu, bus, ar!(As), 4 * n as u32, v)?;
             post!(mode);

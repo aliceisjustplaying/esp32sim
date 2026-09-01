@@ -5,5 +5,8 @@ edition.workspace = true
 license.workspace = true
 description = "ESP32-S3 SoC emulation (memory map, cache MMU, peripherals) on the xtensa-lx7 core"
 
+[lints]
+workspace = true
+
 [dependencies]
 xtensa-lx7 = { path = "../xtensa-lx7" }

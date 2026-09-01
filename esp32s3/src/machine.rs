@@ -818,14 +818,17 @@ impl Machine {
             );
             let wall = start.elapsed();
             if emulated > wall + std::time::Duration::from_millis(2) {
-                std::thread::sleep(emulated - wall);
+                std::thread::sleep(emulated.saturating_sub(wall));
                 self.rt_behind = 0.0;
             } else if wall > emulated + std::time::Duration::from_millis(50) {
-                self.rt_behind = (wall - emulated).as_secs_f64();
+                self.rt_behind = wall.saturating_sub(emulated).as_secs_f64();
                 // more than half a second behind: resynchronise (skip the lag) rather than flood the client while catching up
                 if wall > emulated + std::time::Duration::from_millis(500) {
                     self.rt_resyncs += 1;
-                    self.wall_start = Some(std::time::Instant::now() - emulated);
+                    self.wall_start =
+                        Some(std::time::Instant::now().checked_sub(emulated).expect(
+                            "emulated uptime must fit before the current monotonic instant",
+                        ));
                 }
             } else {
                 self.rt_behind = 0.0;
@@ -1171,7 +1174,8 @@ impl Machine {
     }
 
     /// Parse a script: one action per line, `<seconds> <cmd> [args]`.
-    ///   press <pin> [ms]   release <pin>   gpio <pin> <0|1>   serial <text...>   knob <cw|ccw> [detents]   touch <x> <y> <0|1>   stop
+    /// `press <pin> [ms]`, `release <pin>`, `gpio <pin> <0|1>`, `serial <text...>`,
+    /// `knob <cw|ccw> [detents]`, `touch <x> <y> <0|1>`, or `stop`.
     /// Buttons/encoder are active-low with pull-ups (release = 1).
     pub fn load_script(&mut self, text: &str) -> Result<(), String> {
         use crate::board::*;
@@ -1185,7 +1189,7 @@ impl Machine {
             let mut it = line.splitn(2, char::is_whitespace);
             let t: f64 = it
                 .next()
-                .unwrap()
+                .expect("a nonempty script line always begins with a time token")
                 .parse()
                 .map_err(|_| format!("line {}: bad time", ln + 1))?;
             let after = it.next().unwrap_or("").trim_start();
@@ -1217,16 +1221,6 @@ impl Machine {
                     let pn = pin(p.next().unwrap_or(""))?;
                     let l = p.next().unwrap_or("1") == "1";
                     ev.push((c, ScriptAction::Gpio(pn, l)));
-                }
-                "poke" => {
-                    let mut p = rest.split_whitespace();
-                    let a =
-                        u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16)
-                            .map_err(|e| e.to_string())?;
-                    let v =
-                        u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16)
-                            .map_err(|e| e.to_string())?;
-                    ev.push((c, ScriptAction::Poke(a, v)));
                 }
                 "poke" => {
                     let mut p = rest.split_whitespace();
@@ -1291,7 +1285,7 @@ impl Machine {
             return String::new();
         };
         let mut v: Vec<(u32, u64)> = h.iter().map(|(a, c)| (*a, *c)).collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|item| std::cmp::Reverse(item.1));
         let total: u64 = v.iter().map(|x| x.1).sum();
         let mut s = format!("[profile] top {} pcs of {} instructions\n", top, total);
         for (a, c) in v.iter().take(top) {
@@ -1392,11 +1386,11 @@ pub fn write_png_rgb565(
         out.extend_from_slice(&td);
         out.extend_from_slice(&crc32(&td).to_be_bytes());
     }
-    let (W, H) = (w * scale, h * scale);
-    let mut raw = Vec::with_capacity(H * (W * 3 + 1));
-    for y in 0..H {
+    let (out_w, out_h) = (w * scale, h * scale);
+    let mut raw = Vec::with_capacity(out_h * (out_w * 3 + 1));
+    for y in 0..out_h {
         raw.push(0);
-        for x in 0..W {
+        for x in 0..out_w {
             let p = px[(y / scale) * w + x / scale] as u32;
             raw.push(((p >> 11) * 255 / 31) as u8);
             raw.push((((p >> 5) & 63) * 255 / 63) as u8);
@@ -1415,8 +1409,8 @@ pub fn write_png_rgb565(
     z.extend_from_slice(&adler(&raw).to_be_bytes());
     let mut out = vec![137, 80, 78, 71, 13, 10, 26, 10];
     let mut ihdr = Vec::new();
-    ihdr.extend_from_slice(&(W as u32).to_be_bytes());
-    ihdr.extend_from_slice(&(H as u32).to_be_bytes());
+    ihdr.extend_from_slice(&(out_w as u32).to_be_bytes());
+    ihdr.extend_from_slice(&(out_h as u32).to_be_bytes());
     ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
     chunk(&mut out, b"IHDR", &ihdr);
     chunk(&mut out, b"IDAT", &z);

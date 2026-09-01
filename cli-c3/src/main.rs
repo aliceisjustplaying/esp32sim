@@ -168,19 +168,19 @@ fn main() {
     }
     if let Some(p) = &flash_image {
         m.write_flash(0, &std::fs::read(p).expect("flash image"))
-            .unwrap();
+            .expect("complete flash image must fit configured flash capacity");
     }
     if let Some(p) = &bootloader {
         m.write_flash(0x0, &std::fs::read(p).expect("bootloader"))
-            .unwrap();
+            .expect("bootloader must fit configured flash capacity");
     }
     if let Some(p) = &ptable {
         m.write_flash(0x8000, &std::fs::read(p).expect("ptable"))
-            .unwrap();
+            .expect("partition table must fit configured flash capacity");
     }
     if let Some(p) = &app {
         m.write_flash(0x10000, &std::fs::read(p).expect("app"))
-            .unwrap();
+            .expect("application image must fit configured flash capacity");
     }
     for spec in &flash_at {
         let Some((off, path)) = spec.split_once('=') else {
@@ -195,7 +195,8 @@ fn main() {
             eprintln!("--flash-at: {}: {}", path, e);
             std::process::exit(2)
         });
-        m.write_flash(off, &data).unwrap();
+        m.write_flash(off, &data)
+            .expect("--flash-at payload must fit configured flash capacity");
         eprintln!("[emu] flash {:#x}: {} ({} bytes)", off, path, data.len());
     }
     for p in &elfs {

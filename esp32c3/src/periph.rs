@@ -386,10 +386,7 @@ impl Peripherals {
             0xc4 => self.extmem.read(off),
             _ => {
                 self.note(block, off, false);
-                self.generic
-                    .entry(block)
-                    .or_insert_with(RegRam::new)
-                    .read(off)
+                self.generic.entry(block).or_default().read(off)
             }
         }
     }
@@ -434,10 +431,7 @@ impl Peripherals {
             0xc4 => self.extmem.write(off, v),
             _ => {
                 self.note(block, off, true);
-                self.generic
-                    .entry(block)
-                    .or_insert_with(RegRam::new)
-                    .write(off, v)
+                self.generic.entry(block).or_default().write(off, v)
             }
         }
     }
