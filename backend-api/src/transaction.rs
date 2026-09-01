@@ -39,6 +39,8 @@ pub struct SchedulerState {
     pub committed_cache_fills: u64,
     pub committed_window_pairs: [u64; 2],
     pub committed_loop_edges: [u64; 2],
+    pub committed_interrupt_entries: [u64; 2],
+    pub committed_interrupt_resumes: [u64; 2],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -132,6 +134,26 @@ const fn format_free_class_code(class: crate::CostClass) -> u16 {
         crate::CostClass::LoopAlignment { .. } => 10,
         crate::CostClass::InternalInstruction => 11,
         crate::CostClass::UnknownMmio => 12,
+        crate::CostClass::Interrupt {
+            level: crate::InterruptLevel::Level1,
+            phase: crate::InterruptPhase::Entry,
+        } => 13,
+        crate::CostClass::Interrupt {
+            level: crate::InterruptLevel::Level1,
+            phase: crate::InterruptPhase::Resume,
+        } => 14,
+        crate::CostClass::Interrupt {
+            level: crate::InterruptLevel::Level3,
+            phase: crate::InterruptPhase::Entry,
+        } => 15,
+        crate::CostClass::Interrupt {
+            level: crate::InterruptLevel::Level3,
+            phase: crate::InterruptPhase::Resume,
+        } => 16,
+        crate::CostClass::Interrupt {
+            level: crate::InterruptLevel::Other(_),
+            ..
+        } => 17,
     }
 }
 
@@ -166,16 +188,6 @@ pub struct TraceReport {
     pub canonical_ledger: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
-struct PlannedTransaction {
-    core: CoreId,
-    pc: u32,
-    start: VirtualCycle,
-    completion: VirtualCycle,
-    component: CostComponent,
-    mutation: Option<TimingMutation>,
-}
-
 /// Shared transaction engine used by fake and real backends.
 #[derive(Clone, Debug, Default)]
 pub struct TransactionEngine {
@@ -192,44 +204,74 @@ impl TransactionEngine {
         &self.ledger
     }
 
-    fn plan(&self, event: TraceEvent) -> Result<PlannedTransaction, TimingRefusal> {
+    pub fn execute(&mut self, event: TraceEvent) -> Result<TransactionReceipt, TimingRefusal> {
         let (component, mutation) = price_operation(event.core, event.operation)?;
-        let cycles = component.cycles().ok_or(TimingRefusal {
-            class: component.class,
-            tier_candidate: crate::TierCandidate::Affine,
-            reason: crate::RefusalReason::InvalidAffineDomain,
-        })?;
-        let start = self.state.cores[event.core.index()].cycle;
-        let completion = start.checked_add(cycles).ok_or(TimingRefusal {
-            class: component.class,
+        self.execute_priced(
+            event.core,
+            event.pc,
+            event.outcome,
+            vec![component],
+            mutation.into_iter().collect(),
+        )
+    }
+
+    /// Commit a transaction priced by an interpreter adapter through the same
+    /// state and ledger path used by `execute`.
+    pub fn execute_priced(
+        &mut self,
+        core: CoreId,
+        pc: u32,
+        outcome: ExecutionOutcome,
+        components: Vec<CostComponent>,
+        mutations: Vec<TimingMutation>,
+    ) -> Result<TransactionReceipt, TimingRefusal> {
+        let start = self.state.cores[core.index()].cycle;
+        let cycles = components.iter().try_fold(0u64, |total, component| {
+            total.checked_add(component.cycles()?)
+        });
+        let cycles = cycles.ok_or(TimingRefusal {
+            class: components
+                .first()
+                .map_or(crate::CostClass::InternalInstruction, |component| {
+                    component.class
+                }),
             tier_candidate: crate::TierCandidate::Unexplained,
             reason: crate::RefusalReason::CycleOverflow,
         })?;
-        Ok(PlannedTransaction {
-            core: event.core,
-            pc: event.pc,
-            start,
-            completion,
-            component,
-            mutation,
-        })
-    }
-
-    pub fn execute(&mut self, event: TraceEvent) -> Result<TransactionReceipt, TimingRefusal> {
-        let planned = self.plan(event)?;
-        if event.outcome == ExecutionOutcome::Faulted {
+        let completion = start.checked_add(cycles).ok_or(TimingRefusal {
+            class: components
+                .first()
+                .map_or(crate::CostClass::InternalInstruction, |component| {
+                    component.class
+                }),
+            tier_candidate: crate::TierCandidate::Unexplained,
+            reason: crate::RefusalReason::CycleOverflow,
+        })?;
+        if outcome == ExecutionOutcome::Faulted {
             return Ok(TransactionReceipt { entry: None });
         }
-        self.commit_mutation(planned.mutation);
-        let core = &mut self.state.cores[planned.core.index()];
-        core.cycle = planned.completion;
-        core.committed_instructions = core.committed_instructions.saturating_add(1);
+        for mutation in mutations {
+            self.commit_mutation(Some(mutation));
+        }
+        let state = &mut self.state.cores[core.index()];
+        state.cycle = completion;
+        if !components.iter().all(|component| {
+            matches!(
+                component.class,
+                crate::CostClass::Interrupt {
+                    phase: crate::InterruptPhase::Entry,
+                    ..
+                }
+            )
+        }) {
+            state.committed_instructions = state.committed_instructions.saturating_add(1);
+        }
         let entry = LedgerEntry {
-            core: planned.core,
-            pc: planned.pc,
-            start: planned.start,
-            completion: planned.completion,
-            components: vec![planned.component],
+            core,
+            pc,
+            start,
+            completion,
+            components,
         };
         self.ledger.push(entry.clone());
         Ok(TransactionReceipt { entry: Some(entry) })
@@ -253,6 +295,13 @@ impl TransactionEngine {
             Some(TimingMutation::RecordLoopBackEdge { core, .. }) => {
                 let count = &mut self.state.committed_loop_edges[core.index()];
                 *count = count.saturating_add(1);
+            }
+            Some(TimingMutation::RecordInterrupt { core, phase, .. }) => {
+                let counts = match phase {
+                    crate::InterruptPhase::Entry => &mut self.state.committed_interrupt_entries,
+                    crate::InterruptPhase::Resume => &mut self.state.committed_interrupt_resumes,
+                };
+                counts[core.index()] = counts[core.index()].saturating_add(1);
             }
             None => {}
         }

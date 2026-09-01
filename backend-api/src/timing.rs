@@ -62,6 +62,23 @@ pub enum CostClass {
     },
     InternalInstruction,
     UnknownMmio,
+    Interrupt {
+        level: InterruptLevel,
+        phase: InterruptPhase,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum InterruptLevel {
+    Level1,
+    Level3,
+    Other(u8),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum InterruptPhase {
+    Entry,
+    Resume,
 }
 
 /// A scalar expression retained in block metadata for later JIT compilation.
@@ -131,6 +148,10 @@ pub enum Operation {
     UnknownMmio {
         address: u32,
     },
+    Interrupt {
+        level: InterruptLevel,
+        phase: InterruptPhase,
+    },
 }
 
 /// Typed state changes staged by pricing and committed after architectural
@@ -153,6 +174,11 @@ pub enum TimingMutation {
     RecordLoopBackEdge {
         core: CoreId,
         body_residue: u8,
+    },
+    RecordInterrupt {
+        core: CoreId,
+        level: InterruptLevel,
+        phase: InterruptPhase,
     },
 }
 
@@ -286,5 +312,25 @@ pub fn price_operation(
             tier_candidate: TierCandidate::Unexplained,
             reason: RefusalReason::UnknownMmioRegister,
         }),
+        Operation::Interrupt { level, phase } => {
+            let class = CostClass::Interrupt { level, phase };
+            let cycles = match (level, phase) {
+                (InterruptLevel::Level1, InterruptPhase::Entry) => 227,
+                (InterruptLevel::Level1, InterruptPhase::Resume) => 143,
+                (InterruptLevel::Level3, InterruptPhase::Entry) => 222,
+                (InterruptLevel::Level3, InterruptPhase::Resume) => 139,
+                (InterruptLevel::Other(_), _) => {
+                    return Err(TimingRefusal {
+                        class,
+                        tier_candidate: TierCandidate::Exact,
+                        reason: RefusalReason::CostNotAdopted,
+                    });
+                }
+            };
+            Ok((
+                exact(class, cycles, ReceiptId::Idf61ToolchainDelta),
+                Some(TimingMutation::RecordInterrupt { core, level, phase }),
+            ))
+        }
     }
 }
