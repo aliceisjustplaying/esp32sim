@@ -117,8 +117,9 @@ The board has one owner at a time. Front-load everything USB-C can
 reach (CCOUNT probes, GPIO interrupt timestamps, hardware cache
 counters, USB Serial/JTAG capture) as one early batch, in tiers:
 
-TinyDraw `main` at `5f38ca5` is ready for the capture work below. Its
-fail-closed NDJSON path covers 28 Tier B cells across six families. A
+TinyDraw `main` at `5f38ca5` is ready for Tier A capture and has Tier B
+probe drafts ready for review. Its fail-closed NDJSON path covers 28 Tier B
+cells across six families. A
 committed objdump gate verifies the probe issue-block encodings and all
 four loop-body residues modulo 4 before capture; mismatch exits nonzero
 without a result file. Task 5-prep did not flash the board or open serial.
@@ -138,8 +139,8 @@ Tier A, capture now with committed TinyDraw assets:
 5. PSRAM long-window: assemble the existing cells offline first;
    re-capture only the cells that fall short of two eligible boots.
 
-Tier B, probe code is reviewed and committed (one unified timing image
-where practical, two clean independent boots each):
+Tier B, probe drafts are committed and ready for review (one unified
+timing image where practical, two clean independent boots each):
 
 6. Arbitration aggressors (internal, flash, PSRAM) with a start
    barrier and attributable cache counters.
