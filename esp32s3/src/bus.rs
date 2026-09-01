@@ -2,6 +2,7 @@
 //! memories, external flash + PSRAM through the 512-entry cache MMU, peripherals.
 use crate::periph::{Peripherals, PERIPH_BASE, PERIPH_END};
 use crate::board::Board;
+use std::collections::HashSet;
 use xtensa_lx7::bus::{Bus, Fault};
 
 pub const SRAM_SIZE: usize = 512 * 1024;
@@ -27,6 +28,35 @@ pub const MMU_INVALID: u32 = 1 << 14;
 pub const MMU_SPIRAM: u32 = 1 << 15;
 pub const PAGE: u32 = 0x1_0000;
 
+const SPI2_DMA_DESCRIPTOR_STEP_BUDGET: usize = 1024;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DmaDescriptorWord {
+    Control,
+    Buffer,
+    Next,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DmaDescriptorFault {
+    Read {
+        descriptor: u32,
+        word: DmaDescriptorWord,
+        fault: Fault,
+    },
+    BufferRead {
+        descriptor: u32,
+        address: u32,
+        fault: Fault,
+    },
+    Cycle {
+        descriptor: u32,
+    },
+    StepBudgetExceeded {
+        budget: usize,
+    },
+}
+
 pub struct SocBus {
     pub sram: Vec<u8>,
     pub irom: Vec<u8>,
@@ -40,6 +70,8 @@ pub struct SocBus {
     pub board: Board,
     pub cycles: u64,
     pub last_fault: Option<(u32, bool)>,
+    pub spi2_dma_fault: Option<DmaDescriptorFault>,
+    pub board_deadline_fault: Option<crate::board::BoardDeadlineError>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
     /// GPIO edges for observers, while one wants them: (cycle, pin, level)
@@ -83,7 +115,8 @@ impl SocBus {
         let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
-            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
+            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None,
+            spi2_dma_fault: None, board_deadline_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
         let mut b = bus_uninit;
@@ -194,7 +227,8 @@ impl SocBus {
     }
     fn periph_write(&mut self, addr: u32, v: u32, size: u32) {
         self.periph_write_inner(addr, v, size);
-        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);   // the write may have armed something
+        self.refresh_tick_budget();
+        // the write may have armed something
     }
     fn periph_write_inner(&mut self, addr: u32, v: u32, size: u32) {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
@@ -210,6 +244,20 @@ impl SocBus {
             _ => { let old = self.periph.read32(a); let sh = (addr & 3) * 8; (old & !(0xff << sh)) | ((v & 0xff) << sh) }
         };
         self.periph.write32(a, w);
+        if let Some(mut transfer) = self.periph.spi2.take_transfer() {
+            if let Err(fault) = self.spi2_dma_payload(&mut transfer) {
+                self.spi2_dma_fault = Some(fault);
+                return;
+            }
+            // GPIO carries chip select and command/data pins for existing boards. Deliver every
+            // preceding edge before the synchronous SPI transaction so the board observes bus order.
+            if !self.periph.gpio.changes.is_empty() {
+                let changes = std::mem::take(&mut self.periph.gpio.changes);
+                self.board.gpio_changes(&changes);
+            }
+            let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
+            self.periph.spi2.finish_transfer(transfer, &rx);
+        }
         // GPIO output registers (OUT/W1TS/W1TC/OUT1...) are hammered by bit-banged SPI and never change an
         // interrupt line directly; the periodic 32-cycle poll still sees any indirect effect
         if !(0x6000_4004..=0x6000_4018).contains(&a) { self.irq_dirty = true; }
@@ -218,6 +266,107 @@ impl SocBus {
             self.periph.spi1.execute(&mut self.flash, &mut self.psram);
             for (m, off, len) in std::mem::take(&mut self.periph.spi1.dirty) { self.note_written(match m { crate::periph::DirtyMem::Flash => SRC_FLASH, crate::periph::DirtyMem::Psram => SRC_PSRAM }, off, len); }
         }
+    }
+
+    /// Replace the GP-SPI2 data phase with bytes from its active GDMA TX descriptor chain.
+    /// ESP-IDF uses this path for both small panel commands and full color transfers.
+    fn spi2_dma_payload(
+        &mut self,
+        transfer: &mut crate::periph::GpSpiTransfer,
+    ) -> Result<(), DmaDescriptorFault> {
+        let Some(ch) = self.periph.gdma.out_channel_for(0) else {
+            return Ok(());
+        };
+        let mut payload = Vec::with_capacity(transfer.data_len);
+        let mut visited = HashSet::new();
+        let mut steps = 0;
+        while payload.len() < transfer.data_len {
+            let c = self.periph.gdma.out[ch];
+            if !c.running || c.desc == 0 {
+                break;
+            }
+            if steps == SPI2_DMA_DESCRIPTOR_STEP_BUDGET {
+                return Err(DmaDescriptorFault::StepBudgetExceeded {
+                    budget: SPI2_DMA_DESCRIPTOR_STEP_BUDGET,
+                });
+            }
+            steps += 1;
+            if !visited.insert(c.desc) {
+                return Err(DmaDescriptorFault::Cycle { descriptor: c.desc });
+            }
+            let dw0 = self
+                .read32(c.desc)
+                .map_err(|fault| DmaDescriptorFault::Read {
+                    descriptor: c.desc,
+                    word: DmaDescriptorWord::Control,
+                    fault,
+                })?;
+            let length = (dw0 >> 12) & 0xfff;
+            let eof = dw0 & (1 << 30) != 0;
+            let buf = self
+                .read32(c.desc + 4)
+                .map_err(|fault| DmaDescriptorFault::Read {
+                    descriptor: c.desc,
+                    word: DmaDescriptorWord::Buffer,
+                    fault,
+                })?;
+            let next = self
+                .read32(c.desc + 8)
+                .map_err(|fault| DmaDescriptorFault::Read {
+                    descriptor: c.desc,
+                    word: DmaDescriptorWord::Next,
+                    fault,
+                })?;
+            let remaining = length.saturating_sub(c.buf_pos) as usize;
+            if remaining != 0 {
+                let take = remaining.min(transfer.data_len - payload.len());
+                for i in 0..take {
+                    let address = buf + c.buf_pos + i as u32;
+                    payload.push(self.read8(address).map_err(|fault| {
+                        DmaDescriptorFault::BufferRead {
+                            descriptor: c.desc,
+                            address,
+                            fault,
+                        }
+                    })?);
+                }
+                self.periph.gdma.out[ch].buf_pos += take as u32;
+                if take < remaining {
+                    continue;
+                }
+            }
+            if self.periph.gdma.out[ch].conf0 & (1 << 2) != 0 {
+                let _ = self.write32(c.desc, dw0 & !(1 << 31));
+            }
+            let out = &mut self.periph.gdma.out[ch];
+            out.int_raw |= 1 << 0;
+            if eof {
+                out.int_raw |= 1 << 1;
+                out.eof_desc = c.desc;
+            }
+            if next == 0 {
+                out.running = false;
+                out.desc = 0;
+                out.int_raw |= 1 << 3;
+            } else {
+                out.desc = next;
+                out.buf_pos = 0;
+            }
+            self.irq_dirty = true;
+            if eof {
+                break;
+            }
+        }
+        if !payload.is_empty() && transfer.tx.len() < transfer.data_offset + transfer.data_len {
+            transfer
+                .tx
+                .resize(transfer.data_offset + transfer.data_len, 0);
+        }
+        let n = payload
+            .len()
+            .min(transfer.tx.len().saturating_sub(transfer.data_offset));
+        transfer.tx[transfer.data_offset..transfer.data_offset + n].copy_from_slice(&payload[..n]);
+        Ok(())
     }
 
     /// Move I2S TX data out of DMA descriptors at the sample rate.
@@ -633,16 +782,42 @@ impl Bus for SocBus {
 }
 
 impl SocBus {
+    fn refresh_tick_budget(&mut self) {
+        let mut budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        if let Some(deadline) = self.board.next_deadline() {
+            let until_deadline = deadline
+                .saturating_sub(self.cycles)
+                .clamp(1, MAX_TICK_DEFER as u64);
+            budget = budget.min(until_deadline as u32);
+        }
+        self.tick_budget = budget;
+    }
+
     /// Deliver the deferred cycles to the device models now.
     pub fn flush_ticks(&mut self) {
         let c = std::mem::take(&mut self.tick_pending);
         if c == 0 { return; }
         self.tick_impl(c);
-        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        self.refresh_tick_budget();
     }
 
     fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.periph.tick(cycles as u64);
+        match self.board.advance_to(self.cycles) {
+            Ok(()) => {}
+            Err(fault) => {
+                self.board_deadline_fault = Some(fault);
+                return 0;
+            }
+        }
+        for edge in self.board.take_edges() {
+            if let Some(events) = &mut self.gpio_events {
+                events.push((edge.cycle, edge.pin, edge.level));
+            }
+            if self.periph.gpio.set_input(edge.pin, edge.level) {
+                self.irq_dirty = true;
+            }
+        }
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
@@ -671,8 +846,155 @@ impl SocBus {
             if let Some(ev) = &mut self.gpio_events { for &(pin, level) in &ch { ev.push((self.cycles, pin, level)); } }
             self.board.gpio_changes(&ch);
         }
-        if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
-        if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
+        if !self.periph.rmt.done.is_empty() {
+            for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) {
+                self.board.rmt_frame(ch, &bits);
+            }
+            self.irq_dirty = true;
+        }
         0
+    }
+}
+
+#[cfg(test)]
+mod gp_spi_board_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    struct ProbeBoard {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+    impl crate::board::BoardModel for ProbeBoard {
+        fn name(&self) -> &'static str {
+            "probe"
+        }
+        fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("gpio:{changes:?}"));
+        }
+        fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
+            vec![0x5a; rx_len]
+        }
+    }
+
+    #[test]
+    fn board_answers_before_usr_write_returns_and_after_pending_gpio_edges() {
+        const SPI2: u32 = 0x6002_4000;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard {
+            events: events.clone(),
+        });
+        bus.periph.gpio.changes.push((12, false));
+
+        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).unwrap();
+        bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).unwrap();
+        bus.write32(SPI2 + 0x20, 7).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert_eq!(bus.periph.spi2.w[0] & 0xff, 0x5a);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(
+            &*events.lock().unwrap(),
+            &["gpio:[(12, false)]", "spi:2:[9f]:1"]
+        );
+    }
+
+    #[test]
+    fn spi2_data_phase_comes_from_gdma_descriptor() {
+        const SPI2: u32 = 0x6002_4000;
+        const DESC: u32 = 0x3fc9_0100;
+        const DATA: u32 = 0x3fc9_0200;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard {
+            events: events.clone(),
+        });
+        bus.write32(DATA, 0x4433_2211).unwrap();
+        bus.write32(DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31))
+            .unwrap();
+        bus.write32(DESC + 4, DATA).unwrap();
+        bus.write32(DESC + 8, 0).unwrap();
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+        bus.periph.gdma.out[0].peri_sel = 0;
+        bus.periph.gdma.out[0].desc = DESC;
+        bus.periph.gdma.out[0].running = true;
+
+        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
+        bus.write32(SPI2 + 0x1c, 31).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert_eq!(&*events.lock().unwrap(), &["spi:2:[11, 22, 33, 44]:0"]);
+        assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+    }
+
+    #[test]
+    fn spi2_dma_descriptor_cycle_is_a_typed_fault() {
+        const SPI2: u32 = 0x6002_4000;
+        const DESC: u32 = 0x3fc9_0100;
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.write32(DESC, 1 << 31).unwrap();
+        bus.write32(DESC + 4, 0).unwrap();
+        bus.write32(DESC + 8, DESC).unwrap();
+        bus.periph.gdma.out[0].peri_sel = 0;
+        bus.periph.gdma.out[0].desc = DESC;
+        bus.periph.gdma.out[0].running = true;
+
+        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
+        bus.write32(SPI2 + 0x1c, 7).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert_eq!(
+            bus.spi2_dma_fault,
+            Some(DmaDescriptorFault::Cycle { descriptor: DESC })
+        );
+    }
+
+    #[test]
+    fn spi2_dma_descriptor_step_budget_is_a_typed_fault() {
+        const SPI2: u32 = 0x6002_4000;
+        const FIRST_DESC: u32 = 0x3fc9_0100;
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        for step in 0..=SPI2_DMA_DESCRIPTOR_STEP_BUDGET {
+            let descriptor = FIRST_DESC + (step as u32) * 12;
+            bus.write32(descriptor, 1 << 31).unwrap();
+            bus.write32(descriptor + 4, 0).unwrap();
+            bus.write32(descriptor + 8, descriptor + 12).unwrap();
+        }
+        bus.periph.gdma.out[0].peri_sel = 0;
+        bus.periph.gdma.out[0].desc = FIRST_DESC;
+        bus.periph.gdma.out[0].running = true;
+
+        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
+        bus.write32(SPI2 + 0x1c, 0x3ffff).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert_eq!(
+            bus.spi2_dma_fault,
+            Some(DmaDescriptorFault::StepBudgetExceeded {
+                budget: SPI2_DMA_DESCRIPTOR_STEP_BUDGET,
+            })
+        );
+    }
+
+    #[test]
+    fn amoled_touch_edge_reaches_gpio21_interrupt_logic() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.periph.gpio.pin[21] = (2 << 7) | (1 << 13);
+
+        bus.board.touch(100, 200, true);
+        Bus::tick(&mut bus, 1);
+
+        assert!(!bus.periph.gpio.level(21));
+        assert!(bus.periph.gpio.irq());
+        assert!(bus.irq_dirty);
     }
 }
