@@ -1,9 +1,26 @@
-//! Differential decoder test: every instruction in objdump's disassembly of the
-//! firmware and the mask ROM must decode to the same mnemonic + operands.
-//! Set XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis (skipped if unset).
-use std::collections::BTreeMap;
+//! Differential decoder test against a mandatory committed objdump corpus.
+//! XTENSA_DIS_FILES may add larger local corpora; every named file is required.
+#[path = "../../test-support/conformance.rs"]
+mod conformance;
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 use xtensa_lx7::decode::{decode, Op};
 use xtensa_lx7::disasm;
+
+const MANDATORY_CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/corpus/mandatory.dis");
+const MANDATORY_PROVENANCE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/corpus/mandatory.provenance"
+);
+
+fn corpus_files() -> Vec<PathBuf> {
+    let mut files = vec![PathBuf::from(MANDATORY_CORPUS)];
+    if let Some(extra) = std::env::var_os("XTENSA_DIS_FILES") {
+        files.extend(std::env::split_paths(&extra));
+    }
+    files
+}
 
 fn norm_num(tok: &str) -> Option<i64> {
     let t = tok.trim();
@@ -30,15 +47,15 @@ fn same_operand(mine: &str, theirs: &str) -> bool {
 
 #[test]
 fn decoder_matches_objdump() {
-    let Ok(files) = std::env::var("XTENSA_DIS_FILES") else {
-        eprintln!("XTENSA_DIS_FILES unset — skipping");
-        return;
-    };
     let mut total = 0usize;
     let mut bad = 0usize;
     let mut by_mnemonic: BTreeMap<String, (usize, usize, String)> = BTreeMap::new();
-    for file in files.split(':') {
-        let text = std::fs::read_to_string(file).expect("read dis file");
+    for (file_index, file) in corpus_files().into_iter().enumerate() {
+        let corpus_bytes = conformance::read_required_corpus(&file);
+        let text = std::str::from_utf8(&corpus_bytes)
+            .unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+        let mut file_total = 0usize;
+        let mut file_mnemonics = BTreeSet::new();
         for line in text.lines() {
             // "40374404:\t36 41 00 \tentry\ta1, 32"   (objdump prints bytes reversed as one hex string on xtensa)
             let mut parts = line.splitn(3, '\t');
@@ -71,8 +88,10 @@ fn decoder_matches_objdump() {
             }
             let insn = decode(pc, bytes);
             total += 1;
+            file_total += 1;
             let mut exp_parts = expect.splitn(2, char::is_whitespace);
             let exp_mn = exp_parts.next().unwrap_or("");
+            file_mnemonics.insert(exp_mn.to_string());
             let exp_ops: Vec<String> = exp_parts
                 .next()
                 .unwrap_or("")
@@ -116,6 +135,28 @@ fn decoder_matches_objdump() {
                 }
             }
         }
+        assert!(
+            file_total > 0,
+            "{}: no decoder cases parsed",
+            file.display()
+        );
+        let digest = conformance::sha256_hex(&corpus_bytes);
+        eprintln!(
+            "decoder corpus={} sha256={} cases={}",
+            file.display(),
+            digest,
+            file_total
+        );
+        if file_index == 0 {
+            conformance::verify_provenance(
+                std::path::Path::new(MANDATORY_PROVENANCE),
+                "xtensa-lx7",
+                &file,
+                &corpus_bytes,
+                file_total,
+                &file_mnemonics,
+            );
+        }
     }
     for (m, (n, b, ex)) in &by_mnemonic {
         if *b > 0 {
@@ -123,5 +164,6 @@ fn decoder_matches_objdump() {
         }
     }
     eprintln!("total {} instructions, {} mismatches", total, bad);
+    assert!(total > 0, "no decoder conformance cases executed");
     assert_eq!(bad, 0, "decoder mismatches vs objdump");
 }
