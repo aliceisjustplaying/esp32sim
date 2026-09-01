@@ -1,3 +1,4 @@
+pub mod backend;
 pub mod board;
 pub mod bus;
 pub mod crypto;
@@ -12,4 +13,5 @@ pub mod periph;
 pub mod picture;
 pub mod web;
 pub mod wifi;
+pub use backend::{Esp32Backend, MeasuredStep, MeasuredStepError};
 pub use machine::{Machine, Stop};

@@ -4,6 +4,7 @@ use crate::board::Board;
 use crate::periph::{Peripherals, PERIPH_BASE, PERIPH_END};
 use std::collections::HashSet;
 use xtensa_lx7::bus::{Bus, Fault};
+use xtensa_lx7::measured::{MeasuredBus, MemoryClass};
 
 pub const SRAM_SIZE: usize = 512 * 1024;
 pub const IRAM_LOW: u32 = 0x4037_0000;
@@ -144,6 +145,70 @@ impl SocBus {
         let mut b = bus_uninit;
         b.rebuild_page_table();
         b
+    }
+
+    fn measured_mapping(&self, address: u32) -> Option<(u8, usize)> {
+        let direct = match address {
+            DRAM_LOW..=0x3fcf_ffff => Some((SRC_SRAM, (address - DRAM_LOW + 0x8000) as usize)),
+            IRAM_LOW..=0x403d_ffff => Some((SRC_SRAM, (address - IRAM_LOW) as usize)),
+            IROM_MASK_LOW..=0x4005_ffff => Some((SRC_IROM, (address - IROM_MASK_LOW) as usize)),
+            DROM_MASK_LOW..=0x3ff1_ffff => Some((SRC_DROM, (address - DROM_MASK_LOW) as usize)),
+            RTC_FAST_LOW..=0x600f_ffff => Some((SRC_RTC_FAST, (address - RTC_FAST_LOW) as usize)),
+            RTC_SLOW_LOW..=0x5000_1fff => Some((SRC_RTC_SLOW, (address - RTC_SLOW_LOW) as usize)),
+            _ => None,
+        };
+        if direct.is_some() {
+            return direct;
+        }
+        if !(DBUS_LOW..DBUS_HIGH).contains(&address) && !(IBUS_LOW..IBUS_HIGH).contains(&address) {
+            return None;
+        }
+        let linear = address & 0x1ff_ffff;
+        let entry = self.mmu[(linear >> 16) as usize];
+        if entry & MMU_INVALID != 0 {
+            return None;
+        }
+        let offset = (entry & 0x3fff) as usize * PAGE as usize + (address & 0xffff) as usize;
+        let source = if entry & MMU_SPIRAM != 0 {
+            SRC_PSRAM
+        } else {
+            SRC_FLASH
+        };
+        (offset < self.buf(source).len()).then_some((source, offset))
+    }
+
+    fn deliver_board_edges(&mut self) {
+        for edge in self.board.take_edges() {
+            if self.periph.gpio.set_input(edge.pin, edge.level) {
+                self.irq_dirty = true;
+            }
+        }
+    }
+
+    /// Advance every device and board model to an absolute measured cycle.
+    pub fn advance_measured_to(
+        &mut self,
+        target: backend_api::VirtualCycle,
+    ) -> Result<(), crate::board::BoardDeadlineError> {
+        if target < self.cycles {
+            return Err(crate::board::BoardDeadlineError::TimeReversed {
+                current: self.cycles,
+                requested: target,
+            });
+        }
+        self.board_deadline_fault = None;
+        while self.cycles < target {
+            let step = (target - self.cycles).min(u64::from(u32::MAX)) as u32;
+            <Self as Bus>::tick(self, step);
+            self.flush_ticks();
+            if let Some(fault) = self.board_deadline_fault.take() {
+                return Err(fault);
+            }
+        }
+        self.board.advance_to(target)?;
+        self.deliver_board_edges();
+        self.refresh_tick_budget();
+        Ok(())
     }
 
     /// Size the per-page version table to the buffers. Call after replacing `flash` or `psram`.
@@ -1314,11 +1379,7 @@ impl SocBus {
                 return 0;
             }
         }
-        for edge in self.board.take_edges() {
-            if self.periph.gpio.set_input(edge.pin, edge.level) {
-                self.irq_dirty = true;
-            }
-        }
+        self.deliver_board_edges();
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
@@ -1368,6 +1429,36 @@ impl SocBus {
     }
 }
 
+impl MeasuredBus for SocBus {
+    fn measured_fetch(&self, pc: u32) -> Result<[u8; 4], Fault> {
+        let Some((source, offset)) = self.measured_mapping(pc) else {
+            return Err(Fault::Unmapped);
+        };
+        let bytes = self.buf(source);
+        let mut result = [0u8; 4];
+        for (index, byte) in result.iter_mut().enumerate() {
+            if let Some(source_byte) = bytes.get(offset + index) {
+                *byte = *source_byte;
+            }
+        }
+        Ok(result)
+    }
+
+    fn measured_memory_class(&self, address: u32) -> MemoryClass {
+        if Self::is_periph(address) {
+            return MemoryClass::Mmio;
+        }
+        match self.measured_mapping(address).map(|(source, _)| source) {
+            Some(SRC_SRAM) => MemoryClass::InternalSram,
+            Some(SRC_IROM | SRC_DROM) => MemoryClass::MaskRom,
+            Some(SRC_FLASH) => MemoryClass::Flash,
+            Some(SRC_PSRAM) => MemoryClass::Psram,
+            Some(SRC_RTC_FAST | SRC_RTC_SLOW) => MemoryClass::Rtc,
+            _ => MemoryClass::Unknown,
+        }
+    }
+}
+
 #[cfg(test)]
 mod gp_spi_board_tests {
     use super::*;
@@ -1375,6 +1466,18 @@ mod gp_spi_board_tests {
 
     struct ProbeBoard {
         events: Arc<Mutex<Vec<String>>>,
+    }
+    impl backend_api::DeadlineModel for ProbeBoard {
+        fn next_deadline(&self) -> Option<backend_api::VirtualCycle> {
+            None
+        }
+
+        fn advance_to(
+            &mut self,
+            _cycle: backend_api::VirtualCycle,
+        ) -> Result<(), backend_api::DeadlineError> {
+            Ok(())
+        }
     }
     impl crate::board::BoardModel for ProbeBoard {
         fn name(&self) -> &'static str {

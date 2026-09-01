@@ -9,7 +9,8 @@
 //!
 //! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
-pub type VirtualCycle = u64;
+use backend_api::DeadlineModel;
+pub use backend_api::{DeadlineError as BoardDeadlineError, VirtualCycle};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BoardEdge {
@@ -18,16 +19,8 @@ pub struct BoardEdge {
     pub level: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BoardDeadlineError {
-    TimeReversed {
-        current: VirtualCycle,
-        requested: VirtualCycle,
-    },
-}
-
 /// What a board does with the SoC's pin-level activity.
-pub trait BoardModel {
+pub trait BoardModel: DeadlineModel {
     fn name(&self) -> &'static str;
     /// GPIO output level changes, in order.
     fn gpio_changes(&mut self, _changes: &[(u8, bool)]) {}
@@ -73,14 +66,6 @@ pub trait BoardModel {
     }
     /// Touch input from the UI (panel coordinates).
     fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
-    /// Earliest autonomous transition strictly after the board's current cycle.
-    fn next_deadline(&self) -> Option<VirtualCycle> {
-        None
-    }
-    /// Advance monotonically through every transition due by `cycle`.
-    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
-        Ok(())
-    }
     /// Exactly timestamped GPIO edges emitted by the last advance.
     fn take_edges(&mut self) -> Vec<BoardEdge> {
         Vec::new()
@@ -102,6 +87,15 @@ pub fn make_board(name: &str) -> Option<Board> {
 }
 
 pub struct NoBoard;
+impl DeadlineModel for NoBoard {
+    fn next_deadline(&self) -> Option<VirtualCycle> {
+        None
+    }
+
+    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
+        Ok(())
+    }
+}
 impl BoardModel for NoBoard {
     fn name(&self) -> &'static str {
         "none"
@@ -410,6 +404,16 @@ impl Atech14 {
     }
 }
 
+impl DeadlineModel for Atech14 {
+    fn next_deadline(&self) -> Option<VirtualCycle> {
+        None
+    }
+
+    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
+        Ok(())
+    }
+}
+
 impl BoardModel for Atech14 {
     fn name(&self) -> &'static str {
         "atech14"
@@ -462,6 +466,15 @@ impl WaveshareCam {
             frame: None,
             frames: 0,
         }
+    }
+}
+impl DeadlineModel for WaveshareCam {
+    fn next_deadline(&self) -> Option<VirtualCycle> {
+        None
+    }
+
+    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
+        Ok(())
     }
 }
 impl BoardModel for WaveshareCam {
@@ -554,6 +567,15 @@ impl WaveshareLcd4b {
             panel: Default::default(),
             touch_state: Default::default(),
         }
+    }
+}
+impl DeadlineModel for WaveshareLcd4b {
+    fn next_deadline(&self) -> Option<VirtualCycle> {
+        None
+    }
+
+    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
+        Ok(())
     }
 }
 impl BoardModel for WaveshareLcd4b {
@@ -777,6 +799,53 @@ impl Default for WaveshareAmoled18V2 {
     }
 }
 
+impl DeadlineModel for WaveshareAmoled18V2 {
+    fn next_deadline(&self) -> Option<VirtualCycle> {
+        Some(
+            self.pending_touch_irq
+                .map_or(self.next_te_cycle, |(cycle, _)| {
+                    cycle.min(self.next_te_cycle)
+                }),
+        )
+    }
+
+    fn advance_to(&mut self, cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
+        if cycle < self.cycle {
+            return Err(BoardDeadlineError::TimeReversed {
+                current: self.cycle,
+                requested: cycle,
+            });
+        }
+        let half_period = crate::periph::CPU_HZ / 120;
+        while self
+            .next_deadline()
+            .is_some_and(|deadline| deadline <= cycle)
+        {
+            let deadline = self
+                .next_deadline()
+                .expect("a due board transition must have a deadline");
+            if self.next_te_cycle == deadline {
+                self.te_level = !self.te_level;
+                self.emit_due_edge(deadline, 13, self.te_level);
+                self.next_te_cycle = self.next_te_cycle.saturating_add(half_period);
+            }
+            if self
+                .pending_touch_irq
+                .is_some_and(|(touch_cycle, _)| touch_cycle == deadline)
+            {
+                let (_, level) = self
+                    .pending_touch_irq
+                    .take()
+                    .expect("the due touch interrupt must remain pending");
+                self.touch_irq_level = level;
+                self.emit_due_edge(deadline, 21, level);
+            }
+        }
+        self.cycle = cycle;
+        Ok(())
+    }
+}
+
 impl BoardModel for WaveshareAmoled18V2 {
     fn name(&self) -> &'static str {
         "waveshare-amoled18-v2"
@@ -848,49 +917,6 @@ impl BoardModel for WaveshareAmoled18V2 {
         } else {
             self.pending_touch_irq = Some((self.cycle.saturating_add(1), level));
         }
-    }
-    fn next_deadline(&self) -> Option<VirtualCycle> {
-        Some(
-            self.pending_touch_irq
-                .map_or(self.next_te_cycle, |(cycle, _)| {
-                    cycle.min(self.next_te_cycle)
-                }),
-        )
-    }
-    fn advance_to(&mut self, cycle: VirtualCycle) -> Result<(), BoardDeadlineError> {
-        if cycle < self.cycle {
-            return Err(BoardDeadlineError::TimeReversed {
-                current: self.cycle,
-                requested: cycle,
-            });
-        }
-        let half_period = crate::periph::CPU_HZ / 120;
-        while self
-            .next_deadline()
-            .is_some_and(|deadline| deadline <= cycle)
-        {
-            let deadline = self
-                .next_deadline()
-                .expect("a due board transition must have a deadline");
-            if self.next_te_cycle == deadline {
-                self.te_level = !self.te_level;
-                self.emit_due_edge(deadline, 13, self.te_level);
-                self.next_te_cycle = self.next_te_cycle.saturating_add(half_period);
-            }
-            if self
-                .pending_touch_irq
-                .is_some_and(|(touch_cycle, _)| touch_cycle == deadline)
-            {
-                let (_, level) = self
-                    .pending_touch_irq
-                    .take()
-                    .expect("the due touch interrupt must remain pending");
-                self.touch_irq_level = level;
-                self.emit_due_edge(deadline, 21, level);
-            }
-        }
-        self.cycle = cycle;
-        Ok(())
     }
     fn take_edges(&mut self) -> Vec<BoardEdge> {
         std::mem::take(&mut self.edges)
