@@ -189,6 +189,9 @@ pub enum RefusalReason {
     CostNotAdopted,
     InvalidAffineDomain,
     CycleOverflow,
+    InterruptResumeWithoutAcceptance,
+    InterruptResumeLevelMismatch,
+    NonInterruptExceptionReturn,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
