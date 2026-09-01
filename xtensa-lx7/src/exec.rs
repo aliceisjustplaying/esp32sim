@@ -1191,6 +1191,21 @@ pub(crate) fn exec_insn<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<
     Ok(())
 }
 
+/// Commit one already decoded instruction without changing CCOUNT.
+///
+/// Measured execution advances CCOUNT from virtual time before calling this
+/// completion-phase operation. The data access and all architectural effects
+/// occur here exactly once.
+pub fn commit_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, instruction: &Insn) -> Result<(), Trap> {
+    bus.note_pc(cpu.pc);
+    if let Some(trap) = cpu.check_overflow(max_ar(instruction)) {
+        return Err(trap);
+    }
+    let result = exec_insn(cpu, bus, instruction);
+    cpu.insn_count += 1;
+    result
+}
+
 fn exec_mac16<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
     let op1 = (i.raw >> 16) & 0xf;
     let op2 = (i.raw >> 20) & 0xf;
