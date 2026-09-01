@@ -65,6 +65,48 @@ fn artifacts_are_hash_checked_before_load() {
 }
 
 #[test]
+fn fake_output_byte_quota_stops_before_the_overflowing_commit() {
+    let mut backend = FakeBackend::new(
+        BackendConfig::default(),
+        vec![
+            FakeInstruction {
+                pc: 0x4000_0400,
+                cost: Ok(test_claim("first", 1)),
+                output: Some(vec![0; MAX_QUEUED_OUTPUT_BYTES - 1]),
+            },
+            FakeInstruction {
+                pc: 0x4000_0403,
+                cost: Ok(test_claim("second", 1)),
+                output: Some(vec![1, 2]),
+            },
+        ],
+    )
+    .unwrap();
+    backend.load(vec![]).unwrap();
+    backend.reset(ResetKind::PowerOn).unwrap();
+    assert_eq!(
+        backend
+            .run_until(request(1))
+            .unwrap()
+            .completed_instructions,
+        1
+    );
+
+    assert!(matches!(
+        backend.run_until(request(2)),
+        Err(BackendError::BackendFault(message)) if message.contains("byte limit")
+    ));
+    assert_eq!(backend.drain_events(usize::MAX).unwrap().events.len(), 1);
+    assert_eq!(
+        backend
+            .run_until(request(2))
+            .unwrap()
+            .completed_instructions,
+        1
+    );
+}
+
+#[test]
 fn pending_instruction_survives_cycle_slice() {
     let mut backend = fake_backend(&[10]);
     let first = backend.run_until(request(4)).unwrap();

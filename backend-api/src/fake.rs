@@ -227,6 +227,44 @@ impl FakeBackend {
             .sum()
     }
 
+    fn current_cycle_output_bytes(&self) -> usize {
+        if self
+            .inputs
+            .iter()
+            .take_while(|event| event.cycle == self.now)
+            .any(|event| matches!(event.payload, InputPayload::Reset(_)))
+        {
+            return 0;
+        }
+        let input_bytes: usize = self
+            .inputs
+            .iter()
+            .take_while(|event| event.cycle == self.now)
+            .map(|event| match &event.payload {
+                InputPayload::Bytes(bytes) => bytes.len(),
+                InputPayload::Reset(_) => 0,
+            })
+            .sum();
+        let instruction_bytes = self
+            .pending
+            .as_ref()
+            .filter(|pending| pending.completion == self.now)
+            .and_then(|pending| pending.instruction.output.as_ref())
+            .map_or(0, Vec::len);
+        input_bytes.saturating_add(instruction_bytes)
+    }
+
+    fn check_output_byte_quota(&self) -> Result<(), BackendError> {
+        if self.current_cycle_output_bytes()
+            > MAX_QUEUED_OUTPUT_BYTES.saturating_sub(self.queued_output_bytes())
+        {
+            return Err(BackendError::BackendFault(
+                "output queue byte limit exceeded".into(),
+            ));
+        }
+        Ok(())
+    }
+
     fn current_cycle_ledger_entries(&self) -> usize {
         if self
             .inputs
@@ -329,6 +367,7 @@ impl Backend for FakeBackend {
         let endpoint = request.deadline.min(cycle_endpoint);
         let mut completed = 0u64;
         loop {
+            self.check_output_byte_quota()?;
             if let Some(kind) = self.budget_stop(&request, ledger_start) {
                 return Ok(self.slice(
                     start,
@@ -440,6 +479,7 @@ impl Backend for FakeBackend {
             if target > self.now {
                 self.advance_time(target);
             }
+            self.check_output_byte_quota()?;
             if let Some(kind) = self.budget_stop(&request, ledger_start) {
                 return Ok(self.slice(
                     start,
