@@ -145,8 +145,10 @@ Tier A, capture now with committed TinyDraw assets:
    `te_period_us` and `te_high_us` across the reset cohort
    (diagnostic only; interrupt latency means it is not adopted panel
    timing).
-5. PSRAM long-window: assemble the existing cells offline first;
-   re-capture only the cells that fall short of two eligible boots.
+5. PSRAM long-window (complete offline): the four cold PSRAM cohorts have
+   3, 4, 4, and 4 eligible independent boots. They are retained as
+   distribution candidates only, with no recapture needed. Receipt:
+   [`evidence/timing/psram-long-window-idf61-3db3985/`](evidence/timing/psram-long-window-idf61-3db3985/README.md).
 
 Tier B, probe drafts are committed and ready for review (one unified
 timing image where practical, two clean independent boots each):
