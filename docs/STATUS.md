@@ -30,7 +30,7 @@ Read-only inputs. Harvest under review; do not resume.
 | Branch | Head | Contents | Known defects to review before harvest |
 | --- | --- | --- | --- |
 | `salvage/core-measured-phase1` | `516b1ad` | `backend-api` crate with fake backend, measured interpreter scheduler, schema-2 profile importer, ledger; 58 tests passing in isolation | Single-core; cache model is an unbounded lifetime set (no eviction, no per-core state); timing mutations are strings in the hot path; timing commits on trapped instructions; interrupt acceptance is unledgered; differential-gate test reverted at HEAD |
-| `salvage/board-tinydraw-v2` | `b7c9b87` | Waveshare AMOLED 1.8 V2 board model: generic GP-SPI with MISO, GP-SPI2 DMA delivery, CST820 touch, CO5300 panel, TCA9554, tear line on GPIO 13, board-driven GPIO input, browser touch, one-command TinyDraw workflows; wasm builds; passes the safeguards script; passed the TinyDraw V2 normal-product stroke gate in the browser with the same source validated on hardware (receipt: `evidence/board-tinydraw-v2-normal-2026-09-01/`) | Touch interrupt (GPIO 21) not driven (stroke gate passes via polling); DMA descriptor walker unbounded (guest can hang the host); dead ST7701 state wired into the IO expander; modeled 60 Hz TE is an approximate compatibility signal, not adopted timing; PMIC/RTC/IMU are register-RAM stubs (acceptable per GOAL, label them) |
+| `salvage/board-tinydraw-v2` | `b7c9b87` | Harvested at `30b7c8e` and `8dee48d`. Taken: generic GP-SPI with MISO, GP-SPI2 DMA delivery, CST820 touch, CO5300 panel, TCA9554, timestamped GPIO 13 tear and GPIO 21 touch edges, browser touch, and the one-command TinyDraw paced-stroke workflow. Dropped: the retrospective `input_changes(cycles)` API, the AMOLED board's dead ST7701 coupling, and the separate example script. | Dispositioned: the DMA walker has a 1,024-descriptor step budget, visited set, and typed read, cycle, and budget faults; GPIO 21 drives an active-low interrupt edge; the 60 Hz TE model remains explicitly an approximate compatibility signal with no adopted timing claim; PMIC, RTC, and IMU devices are labeled register-RAM stubs. The paced stroke and wasm build pass. |
 | `salvage/rust-safeguards` | `b138473` | `scripts/pre-commit.sh`: fmt, check, strict clippy, debug and release tests, rustdoc | Harvested under review; frozen source retained |
 | `salvage/gp-spi-device-hook` | `246c699` | Upstream-shaped synchronous GP-SPI board-response hook | Candidate for an upstream PR |
 | `salvage/ci-spec`, `salvage/upstream-ci` | `6ba6a6d`, `3b58cc6` | CI workflow material | Not yet reviewed in place |
@@ -151,8 +151,8 @@ mode (needs GOAL milestone 2).
 
 ## Next steps
 
-1. Integration trunk: harvest the board model and the measured-mode
-   material that survives review.
+1. Integration trunk: board harvest is complete; harvest the measured-mode
+   material that survives review, then wire it to the board deadline contract.
 2. Receipt-correlation tests against the adopted numbers above.
 3. Wasm JIT cost-accounting spike (GOAL milestone 3).
 4. Hardware batch: maintainer tests and merges TinyDraw pull request
