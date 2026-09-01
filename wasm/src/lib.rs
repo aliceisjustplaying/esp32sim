@@ -19,8 +19,8 @@ mod ffi {
     /// cores, different peripherals — so the C ABI dispatches over this rather than pretending they
     /// share an interface they do not.
     enum Chip {
-        S3(Machine),
-        C3(esp32c3::Machine),
+        S3(Box<Machine>),
+        C3(Box<esp32c3::Machine>),
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -56,7 +56,7 @@ mod ffi {
         fn s3(&mut self) -> Option<&mut Machine> {
             match &mut self.chip {
                 Chip::S3(m) => Some(m),
-                _ => None,
+                Chip::C3(_) => None,
             }
         }
         fn text_msg(&mut self, s: &str) {
@@ -82,8 +82,7 @@ mod ffi {
     #[no_mangle]
     pub extern "C" fn esp32sim_alloc(len: usize) -> *mut u8 {
         let mut v = std::mem::ManuallyDrop::new(vec![0u8; len.max(1)]);
-        let p = v.as_mut_ptr();
-        p
+        v.as_mut_ptr()
     }
     /// Release a buffer returned by [`esp32sim_alloc`].
     ///
@@ -125,7 +124,7 @@ mod ffi {
             m.console_mask = 2;
             m.capture_console = true;
             return Box::into_raw(Box::new(Emu {
-                chip: Chip::C3(m),
+                chip: Chip::C3(Box::new(m)),
                 out: Vec::new(),
                 queue: Vec::new(),
                 booted: false,
@@ -151,7 +150,7 @@ mod ffi {
         m.web = Some(esp32s3::web::WebServer::queued());
         m.realtime = false; // the worker paces; std::time does not exist here
         Box::into_raw(Box::new(Emu {
-            chip: Chip::S3(m),
+            chip: Chip::S3(Box::new(m)),
             out: Vec::new(),
             queue: Vec::new(),
             booted: false,
@@ -296,9 +295,10 @@ mod ffi {
                 "open"
             }
         ));
-        let m = e.s3().unwrap();
-        m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg));
-        m.bus.periph.wifi.net = Some(esp32s3::net::VirtualNet::new());
+        if let Some(m) = e.s3() {
+            m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg));
+            m.bus.periph.wifi.net = Some(esp32s3::net::VirtualNet::new());
+        }
     }
 
     /// `--stub NAME[=value]`: return `value` immediately when execution reaches the function's entry.
@@ -480,6 +480,8 @@ mod ffi {
                 // the C3 machine has no WebServer: turn its console into the same protocol by hand
                 m.drain_console();
                 let out = std::mem::take(&mut m.console);
+                let t = m.seconds();
+                let insns = m.cpu.insn_count;
                 if !out.is_empty() {
                     let txt = String::from_utf8_lossy(&out).to_string();
                     e.text_msg(&format!(
@@ -494,10 +496,6 @@ mod ffi {
                         esp32s3::web::json_escape(&n)
                     ));
                 }
-                let (t, insns) = match &e.chip {
-                    Chip::C3(m) => (m.seconds(), m.cpu.insn_count),
-                    _ => (0.0, 0),
-                };
                 e.text_msg(&format!("{{\"t\":\"stat\",\"time\":{:.2},\"insns\":{},\"frames\":0,\"behind\":0,\"resyncs\":0,\"cam\":0,\"gpio_in\":\"0\"}}", t, insns));
                 rc
             }
