@@ -41,8 +41,19 @@ impl TlbEntry {
         src: 0,
     };
 }
-// Entries only ever point into the owning bus's buffers, which live as long as the bus.
+#[expect(
+    unsafe_code,
+    reason = "the software TLB stores synchronized raw buffer pointers"
+)]
+// SAFETY: Entries only point into their owning bus's buffers, and access remains synchronized
+// through the bus that owns those buffers.
 unsafe impl Send for TlbEntry {}
+#[expect(
+    unsafe_code,
+    reason = "the software TLB stores synchronized raw buffer pointers"
+)]
+// SAFETY: Entries only point into their owning bus's buffers, and access remains synchronized
+// through the bus that owns those buffers.
 unsafe impl Sync for TlbEntry {}
 
 /// What generated code needs to access memory without calling back: the TLB and the
@@ -136,7 +147,9 @@ impl Bus for FlatRam {
     }
     fn read32(&mut self, a: u32) -> Result<u32, Fault> {
         let o = self.off(a, 4)?;
-        Ok(u32::from_le_bytes(self.mem[o..o + 4].try_into().unwrap()))
+        Ok(u32::from_le_bytes(self.mem[o..o + 4].try_into().expect(
+            "the checked four-byte RAM range has the required width",
+        )))
     }
     fn write8(&mut self, a: u32, v: u8) -> Result<(), Fault> {
         let o = self.off(a, 1)?;
@@ -162,9 +175,9 @@ impl Bus for FlatRam {
     fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
         let o = self.off(pc, 1)?;
         let mut b = [0u8; 4];
-        for i in 0..4 {
+        for (i, byte) in b.iter_mut().enumerate() {
             if o + i < self.mem.len() {
-                b[i] = self.mem[o + i];
+                *byte = self.mem[o + i];
             }
         }
         Ok(b)

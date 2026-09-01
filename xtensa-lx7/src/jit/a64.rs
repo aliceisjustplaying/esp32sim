@@ -1,6 +1,9 @@
 //! A tiny AArch64 encoder: only the instructions the block compiler emits. Every encoding is
 //! checked against clang's assembler in `tests::encodings_match_clang`.
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "the encoder exposes the complete subset used across platform-specific JIT paths"
+)]
 
 pub type Reg = u32;
 pub const ZR: Reg = 31;
@@ -64,6 +67,12 @@ pub struct Asm {
     fixups: Vec<(usize, usize, Fix)>,
 }
 
+impl Default for Asm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Asm {
     pub fn new() -> Self {
         Asm {
@@ -74,6 +83,9 @@ impl Asm {
     }
     pub fn len(&self) -> usize {
         self.code.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.code.is_empty()
     }
     pub fn here(&self) -> usize {
         self.code.len()
@@ -258,11 +270,11 @@ impl Asm {
     }
     /// `and` with a contiguous mask `((1 << ones) - 1) << shift` (32-bit).
     pub fn and_mask(&mut self, rd: Reg, rn: Reg, ones: u32, shift: u32) {
-        debug_assert!(ones >= 1 && ones <= 31 && ones + shift <= 32);
+        debug_assert!((1..=31).contains(&ones) && ones + shift <= 32);
         self.e(0x1200_0000 | ((32 - shift) & 31) << 16 | (ones - 1) << 10 | rn << 5 | rd);
     }
     pub fn tst_mask(&mut self, rn: Reg, ones: u32, shift: u32) {
-        debug_assert!(ones >= 1 && ones <= 31 && ones + shift <= 32);
+        debug_assert!((1..=31).contains(&ones) && ones + shift <= 32);
         self.e(0x7200_0000 | ((32 - shift) & 31) << 16 | (ones - 1) << 10 | rn << 5 | ZR);
     }
     pub fn lsl_imm(&mut self, rd: Reg, rn: Reg, sh: u32) {
@@ -340,19 +352,19 @@ impl Asm {
 
     // ---------------------------------------------------------------- memory
     pub fn ldr(&mut self, rt: Reg, rn: Reg, off: u32) {
-        debug_assert!(off % 4 == 0 && off < 16384);
+        debug_assert!(off.is_multiple_of(4) && off < 16384);
         self.e(0xb940_0000 | (off / 4) << 10 | rn << 5 | rt);
     }
     pub fn str(&mut self, rt: Reg, rn: Reg, off: u32) {
-        debug_assert!(off % 4 == 0 && off < 16384);
+        debug_assert!(off.is_multiple_of(4) && off < 16384);
         self.e(0xb900_0000 | (off / 4) << 10 | rn << 5 | rt);
     }
     pub fn ldr_x(&mut self, rt: Reg, rn: Reg, off: u32) {
-        debug_assert!(off % 8 == 0 && off < 32768);
+        debug_assert!(off.is_multiple_of(8) && off < 32768);
         self.e(0xf940_0000 | (off / 8) << 10 | rn << 5 | rt);
     }
     pub fn str_x(&mut self, rt: Reg, rn: Reg, off: u32) {
-        debug_assert!(off % 8 == 0 && off < 32768);
+        debug_assert!(off.is_multiple_of(8) && off < 32768);
         self.e(0xf900_0000 | (off / 8) << 10 | rn << 5 | rt);
     }
     /// `ldr wt, [xn, wm, uxtw #2]`

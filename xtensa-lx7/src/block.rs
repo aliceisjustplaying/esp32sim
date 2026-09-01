@@ -180,7 +180,13 @@ fn must_start_block(i: &Insn) -> bool {
 /// unmapped instruction simply ends the block and faults when it is reached as a block start.
 fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16), Trap> {
     let code_short = cpu.blocks.jit_active()
-        && cpu.blocks.code.as_ref().unwrap().remaining() < crate::jit::MAX_BLOCK_CODE;
+        && cpu
+            .blocks
+            .code
+            .as_ref()
+            .expect("an active JIT always owns its code cache")
+            .remaining()
+            < crate::jit::MAX_BLOCK_CODE;
     if cpu.blocks.arena.len() + MAX_LEN > ARENA_MAX || code_short {
         cpu.blocks.flush();
     }
@@ -236,9 +242,11 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
     if cpu.blocks.jit_active() {
         let b = &mut cpu.blocks;
         let (s, e) = (start as usize, start as usize + n as usize);
-        if let Some(c) =
-            crate::jit::compile(b.code.as_mut().unwrap(), &mut b.arena[s..e], pc0, fast)
-        {
+        let code_cache = b
+            .code
+            .as_mut()
+            .expect("an active JIT always owns its code cache");
+        if let Some(c) = crate::jit::compile(code_cache, &mut b.arena[s..e], pc0, fast) {
             code = c;
             b.compiled += 1;
         }
@@ -258,6 +266,10 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
 /// Run one block (or the rest of a cut block) at `cpu.pc`, at most `budget` instructions.
 /// Returns `(iterations, trap)` where iterations is what a loop over `step()` would have
 /// consumed: executed instructions, plus one for a trap taken before an instruction ran.
+#[expect(
+    unsafe_code,
+    reason = "the JIT call requires stable raw pointers into CPU state"
+)]
 pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
     if let Some(t) = cpu.check_interrupts() {
         return (1, Some(t));
@@ -309,20 +321,22 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
             cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>());
         }
         let entry = cpu.blocks.arena[k as usize].off;
-        let r = unsafe {
-            let b = &*(&cpu.blocks as *const BlockCache); // the code reads nothing from the cache itself
-            let fm = bus.fast_mem();
-            crate::jit::run(
-                b.code.as_ref().unwrap(),
-                code,
-                cpu,
-                bus,
-                b.helpers.as_ref().unwrap(),
-                limit,
-                entry,
-                fm,
-            )
-        };
+        let blocks = std::ptr::addr_of!(cpu.blocks);
+        // SAFETY: Generated code observes CPU state but does not mutate the block cache, and the
+        // cache remains live for the duration of this call.
+        let b = unsafe { &*blocks };
+        let code_cache = b
+            .code
+            .as_ref()
+            .expect("compiled blocks always retain their code cache");
+        let helpers = b
+            .helpers
+            .as_ref()
+            .expect("the JIT helper table is initialized before compiled code runs");
+        let fm = bus.fast_mem();
+        // SAFETY: `code` names a compiled entry in `code_cache`; CPU, bus, helpers, and fast-memory
+        // pointers remain live and exclusively accessible for the call.
+        let r = unsafe { crate::jit::run(code_cache, code, cpu, bus, helpers, limit, entry, fm) };
         let (done, exit) = (r & 0xffff, r >> 16);
         cpu.insn_count += done as u64;
         cpu.advance_ccount(done);
