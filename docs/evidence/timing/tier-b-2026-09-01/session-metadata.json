@@ -1,0 +1,84 @@
+{
+  "sessionDate": "2026-09-01",
+  "repository": "https://github.com/aliceisjustplaying/tinydraw",
+  "gitCommit": "fc6d9347549730a0e57aa926f8f6935e12636844",
+  "gitDirty": false,
+  "capturePort": "/dev/cu.usbmodem101",
+  "chip": "ESP32-S3 QFN56 revision v0.2",
+  "toolchain": {
+    "espIdf": "v6.1",
+    "gcc": "xtensa-esp-elf-gcc 15.2.0, crosstool-NG esp-15.2.0_20251204",
+    "objdump": "GNU objdump 2.45, crosstool-NG esp-15.2.0_20251204",
+    "python": "3.14.7",
+    "esptool": "5.3.1",
+    "host": "Darwin arm64 T6000"
+  },
+  "selection": "all",
+  "excludedOpenCell": "gpio21_edge",
+  "canonicalCaptures": [
+    {
+      "variant": "normal",
+      "boot": 1,
+      "bootIdentity": "11-e2a567863778958d",
+      "cells": 25,
+      "samples": 198,
+      "refusals": 0,
+      "captureSha256": "3e857c4d491b3ea4f2fc1c60dee8d9cb76c886d9bfd26a2e7457259bd2fe4148",
+      "receiptSha256": "cfdb119cb19def370c50ad705f19ae6754f0e80cbc510ae6de01fb12511f45da"
+    },
+    {
+      "variant": "normal",
+      "boot": 2,
+      "bootIdentity": "11-d04491648c82d894",
+      "cells": 25,
+      "samples": 198,
+      "refusals": 0,
+      "captureSha256": "e96aa32d54efd59ad3f1a2de81f7773b26362c8de6a35a60d17f873000cf3faa",
+      "receiptSha256": "ec890c55a57a072d0b968e858ddb7211bebc8a7485dab698101b8be7393f5158"
+    },
+    {
+      "variant": "xip-psram",
+      "boot": 1,
+      "bootIdentity": "11-878cb8beaa06294f",
+      "cells": 26,
+      "samples": 211,
+      "refusals": 0,
+      "captureSha256": "1a5020dc19112a63e5fe2e69b247c58fdc3a96393144c857b991b0ae41376fe0",
+      "receiptSha256": "87d86692e47183cf6e30ed6ac949ba11ae51bf7ef1c64bad8f8b11c19650adec"
+    },
+    {
+      "variant": "xip-psram",
+      "boot": 2,
+      "bootIdentity": "11-951f35cbfbd360f8",
+      "cells": 26,
+      "samples": 211,
+      "refusals": 0,
+      "captureSha256": "2bc080b899e7eabb5664fe7fa48ffc51176a0ffc5f755d9060bbd0772b817540",
+      "receiptSha256": "a846c9182cd34bbc1272d42138b5c7931d81ecfa157a8e9a34bffc0b07c9d6a7"
+    }
+  ],
+  "builds": {
+    "normalElfSha256": "77292b718b508aca07b6546b4673195ab2db1f71f5912cf1c37a11b12e59452d",
+    "normalBinSha256": "9085728111a53eb8c2d6c11a7c40bd3b67f283d7e04ec82442e671901019e335",
+    "normalSdkconfigSha256": "a36922ba0580ae2a0242965641b9da5c437545eb2442e70bcdac22a0c1ef2ab9",
+    "normalPreflightSha256": "0907981255835510c288aa55e9ae6264f2921a926322b6106ff3b9feec3cbf2d",
+    "xipElfSha256": "7e2dc16aece081ede635cb0c63407b7e30ef269cb0235744306d1f8fb3990cad",
+    "xipBinSha256": "99e8c9d15c1790e1f41a2bbfaaec141387f54c8c3adb1f126fecdc4cc5c75339",
+    "xipSdkconfigSha256": "48db2477ef0a1957334a67ed9ae0a8a7fd07c25e615f8e8d56a204d30c48a841",
+    "xipPreflightSha256": "dd13ab91e524b3854c466ec4a4f9cad59ddd04974eae59c37559f8cc5674ee7b"
+  },
+  "noncanonicalAttempts": {
+    "count": 7,
+    "location": "noncanonical/",
+    "attempt7Failure": "instruction_psram_hot ordinal 0 refused because expected instruction-cache counters were not observed",
+    "attempt7CaptureSha256": "861232d509572e9fd01d0db748ad9520bda44218ba6c85a39ef26cf645e4b317"
+  },
+  "productRestore": {
+    "variant": "product",
+    "elfSha256": "ecccf7c6b717c58a672259adbd5bc06867d48a57a41e94485ca0b9e0a39e8d17",
+    "binSha256": "dfd14fcf5bb7877f01461574476eb5455b52abfe9aba1d36d2f9d126f264bb46",
+    "serialSha256": "345fe467b3e618d3ae8c4c4598b2d58690a463bf2e3e99e4ba53a3bef6738d61",
+    "readyMarkerSeen": true,
+    "failureMarkerSeen": false
+  }
+}
