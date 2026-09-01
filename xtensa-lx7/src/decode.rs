@@ -5,7 +5,10 @@
 //! For 16-bit (density) instructions: b0 = t<<4 | op0, b1 = r<<4 | s.
 //! Branch/call targets are resolved to absolute addresses at decode time.
 
-#[allow(non_camel_case_types)]
+#[allow(
+    non_camel_case_types,
+    reason = "instruction variant names preserve the Xtensa ISA mnemonics"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Op {
     // --- illegal / control
@@ -291,6 +294,10 @@ fn sext(v: u32, bits: u32) -> i32 {
 }
 
 impl Insn {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the decoder constructor mirrors the compact hardware instruction fields"
+    )]
     fn new(op: Op, r: u8, s: u8, t: u8, imm: i32, imm2: i32, len: u8, raw: u32) -> Self {
         Insn {
             op,

@@ -88,6 +88,10 @@ impl Nat {
     // -------------------------------------------------------------- UDP
 
     /// Forward a UDP datagram and remember the flow so replies find their way back.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the parameters are the complete source, destination, payload, and timestamp of a UDP datagram"
+    )]
     pub fn udp_out(
         &mut self,
         gmac: &[u8; 6],
@@ -415,6 +419,12 @@ impl Nat {
         let ck = tcp_checksum(&c.dst_ip, &c.guest_ip, &t);
         t[16..18].copy_from_slice(&ck.to_be_bytes());
         eth_ip(&c.guest_mac, &c.dst_ip, &c.guest_ip, 6, &t)
+    }
+}
+
+impl Default for Nat {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
