@@ -40,8 +40,10 @@ def fixture() -> str:
         [
             "4037f000 <measure_once>:",
             "4037f000: 002136 entry a1, 16",
-            "4037f003: 0008e0 callx8 a8",
-            "4037f006: f01d retw.n",
+            "4037f003: 000081 l32r a8, 4037eff0 (600c40c4)",
+            "4037f006: 08c9 s32i.n a12, a8, 0",
+            "4037f008: 0008e0 callx8 a8",
+            "4037f00b: f01d retw.n",
         ]
     )
     return "\n".join(lines)
@@ -85,8 +87,17 @@ def test_measurement_boundary_must_remain_in_iram() -> None:
 
 def test_measurement_boundary_rejects_direct_flash_calls() -> None:
     broken = fixture().replace(
-        "4037f003: 0008e0 callx8 a8",
-        "4037f003: 000005 call8 42001000 <flash_helper>",
+        "4037f008: 0008e0 callx8 a8",
+        "4037f008: 000005 call8 42001000 <flash_helper>",
     )
     with pytest.raises(MODULE.VerificationError, match="calls outside IRAM"):
+        MODULE.verify(broken)
+
+
+def test_measurement_boundary_rejects_dispatch_reload_after_counter_clear() -> None:
+    broken = fixture().replace(
+        "4037f008: 0008e0 callx8 a8",
+        "4037f008: 2288 l32i.n a8, a2, 8\n4037f00a: 0008e0 callx8 a8",
+    )
+    with pytest.raises(MODULE.VerificationError, match="reloads access dispatch"):
         MODULE.verify(broken)
