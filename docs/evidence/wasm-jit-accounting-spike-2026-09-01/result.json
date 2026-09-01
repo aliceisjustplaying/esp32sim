@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "status": "measured",
+  "measuredAtUtc": "2026-09-01T15:51:39.695899Z",
+  "host": {
+    "cpu": "Apple M1 Pro",
+    "architecture": "arm64",
+    "os": "macOS 27.0 (26A5421a)"
+  },
+  "browser": {
+    "version": "Google Chrome 151.0.7922.174",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+    "language": "en-US"
+  },
+  "toolchain": {
+    "compiler": "zig 0.16.0",
+    "sourceSha256": "465eddfe0c6c729a99218a5abdf27c0003bc7e74047de438e0d43e9ef995bc6a",
+    "benchmarkJsSha256": "0a283880c37af7f5379de448f2e9e99587bcd5347998e816e5af49f6a09fa07f",
+    "benchmarkSpecSha256": "345c7fd8559130b16812c66ccc03d36103f39e2dee6d36c2a15daf30dd698066",
+    "indexHtmlSha256": "7dea0c049a57828b064f3d7e4800c3b4bc46dd27919e597579024d4350c3c361",
+    "runnerSha256": "46b2ee256efb261922801d8f4187e90c694652e0e36f84d90c0b7dfc5d4b5402",
+    "smokeSha256": "e6931493bdf8b728c4df7a2ead88a1004ad3aa16548648aaaf9fd29af1a25fa3",
+    "accountingOffWasmSha256": "a463764e90d4cc05773cbf4ceaf9bba3d2d915df9ab4d2d46cdfa4484e373ec6",
+    "accountingOnWasmSha256": "68b1b651004fd59af80128bc1190695a89dd4d08500fdb1abf967f168313a61e"
+  },
+  "parameters": {
+    "pixelsPerIteration": 2048,
+    "emulatedInstructionsPerIteration": 16387,
+    "targetSecondsPerSample": 1.5,
+    "sampleOrder": [
+      "off",
+      "on",
+      "on",
+      "off",
+      "off",
+      "on",
+      "on",
+      "off",
+      "off",
+      "on",
+      "on",
+      "off",
+      "off",
+      "on"
+    ]
+  },
+  "methodology": {
+    "clock": "performance.now",
+    "summaryStatistic": "median of seven samples per mode",
+    "ordering": "paired ABBA-style interleave",
+    "accountingOn": "inlined D-cache tag checks, miss classification, and 64-bit synthetic cycle ledger",
+    "accountingOff": "identical architectural kernel with accounting compiled out",
+    "timingScope": "cache misses counted but unpriced; first-line fill remains blocked"
+  },
+  "raw": {
+    "calibration": {
+      "off": {
+        "probeIterations": 4000,
+        "probeElapsedMilliseconds": 6.4000000059604645,
+        "selectedIterations": 937500
+      },
+      "on": {
+        "probeIterations": 4000,
+        "probeElapsedMilliseconds": 15,
+        "selectedIterations": 400000
+      }
+    },
+    "accountingOff": [
+      {
+        "orderIndex": 0,
+        "iterations": 937500,
+        "emulatedInstructions": 15362812500,
+        "elapsedMilliseconds": 1476.2000000029802,
+        "mips": 10406.999390305504,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 0,
+        "cacheMisses": 0
+      },
+      {
+        "orderIndex": 3,
+        "iterations": 937500,
+        "emulatedInstructions": 15362812500,
+        "elapsedMilliseconds": 1465,
+        "mips": 10486.5614334471,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 0,
+        "cacheMisses": 0
+      },
+      {
+        "orderIndex": 4,
+        "iterations": 937500,
+        "emulatedInstructions": 15362812500,
+        "elapsedMilliseconds": 1468.2000000029802,
+        "mips": 10463.70555780467,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 0,
+        "cacheMisses": 0
+      },
+      {
+        "orderIndex": 7,
+        "iterations": 937500,
+        "emulatedInstructions": 15362812500,
+        "elapsedMilliseconds": 1470.7999999970198,
+        "mips": 10445.208390013006,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 0,
+        "cacheMisses": 0
+      },
+      {
+        "orderIndex": 8,
+        "iterations": 937500,
+        "emulatedInstructions": 15362812500,
+        "elapsedMilliseconds": 1456.2000000029802,
+        "mips": 10549.933044889822,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 0,
+        "cacheMisses": 0
+      },
+      {
+        "orderIndex": 11,
+        "iterations": 937500,
+        "emulatedInstructions": 15362812500,
+        "elapsedMilliseconds": 1459.3999999910593,
+        "mips": 10526.800397488088,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 0,
+        "cacheMisses": 0
+      },
+      {
+        "orderIndex": 12,
+        "iterations": 937500,
+        "emulatedInstructions": 15362812500,
+        "elapsedMilliseconds": 1457.3999999910593,
+        "mips": 10541.246397759192,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 0,
+        "cacheMisses": 0
+      }
+    ],
+    "accountingOn": [
+      {
+        "orderIndex": 1,
+        "iterations": 400000,
+        "emulatedInstructions": 6554800000,
+        "elapsedMilliseconds": 1475.5,
+        "mips": 4442.42629617079,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 6554800000,
+        "cacheMisses": 128
+      },
+      {
+        "orderIndex": 2,
+        "iterations": 400000,
+        "emulatedInstructions": 6554800000,
+        "elapsedMilliseconds": 1454.6000000089407,
+        "mips": 4506.256015371725,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 6554800000,
+        "cacheMisses": 128
+      },
+      {
+        "orderIndex": 5,
+        "iterations": 400000,
+        "emulatedInstructions": 6554800000,
+        "elapsedMilliseconds": 1463.699999988079,
+        "mips": 4478.2400765548855,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 6554800000,
+        "cacheMisses": 128
+      },
+      {
+        "orderIndex": 6,
+        "iterations": 400000,
+        "emulatedInstructions": 6554800000,
+        "elapsedMilliseconds": 1455,
+        "mips": 4505.017182130585,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 6554800000,
+        "cacheMisses": 128
+      },
+      {
+        "orderIndex": 9,
+        "iterations": 400000,
+        "emulatedInstructions": 6554800000,
+        "elapsedMilliseconds": 1464.9000000059605,
+        "mips": 4474.571643097364,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 6554800000,
+        "cacheMisses": 128
+      },
+      {
+        "orderIndex": 10,
+        "iterations": 400000,
+        "emulatedInstructions": 6554800000,
+        "elapsedMilliseconds": 1468.4000000059605,
+        "mips": 4463.9062925452145,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 6554800000,
+        "cacheMisses": 128
+      },
+      {
+        "orderIndex": 13,
+        "iterations": 400000,
+        "emulatedInstructions": 6554800000,
+        "elapsedMilliseconds": 1457.4000000059605,
+        "mips": 4497.598462997937,
+        "checksum": 1830,
+        "outputFnv1a32": 188767685,
+        "cycleLedger": 6554800000,
+        "cacheMisses": 128
+      }
+    ]
+  },
+  "derived": {
+    "accountingOffMedianMips": 10486.5614334471,
+    "accountingOnMedianMips": 4478.2400765548855,
+    "accountingCostPercent": 57.29543850025569,
+    "realTimeBudgetMips": 480.0,
+    "clearsBudget": true,
+    "marginMips": 3998.2400765548855,
+    "marginPercent": 832.966682615601
+  }
+}
