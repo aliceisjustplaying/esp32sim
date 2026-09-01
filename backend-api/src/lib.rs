@@ -247,7 +247,7 @@ pub struct LedgerEntry {
     pub cycle: VirtualCycle,
     pub sequence: u64,
     pub kind: LedgerKind,
-    pub cost: Option<CostClaim>,
+    pub costs: Vec<CostClaim>,
 }
 
 impl LedgerEntry {
@@ -280,8 +280,10 @@ impl LedgerEntry {
             }
             LedgerKind::IdleAdvance => out.extend_from_slice(&5u16.to_le_bytes()),
         }
-        if let Some(cost) = &self.cost {
-            out.push(1);
+        let mut costs: Vec<&CostClaim> = self.costs.iter().collect();
+        costs.sort_by(|left, right| left.id.cmp(&right.id));
+        out.extend_from_slice(&(costs.len() as u32).to_le_bytes());
+        for cost in costs {
             encode_bytes(&mut out, cost.id.as_bytes());
             encode_tier(&mut out, &cost.tier);
             let mut receipts: Vec<&ReceiptRef> = cost.receipts.iter().collect();
@@ -296,8 +298,6 @@ impl LedgerEntry {
             for receipt in receipts {
                 encode_receipt(&mut out, receipt);
             }
-        } else {
-            out.push(0);
         }
         out
     }

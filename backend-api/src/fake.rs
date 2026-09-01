@@ -87,13 +87,13 @@ impl FakeBackend {
         Ok(())
     }
 
-    fn record(&mut self, cycle: u64, kind: LedgerKind, cost: Option<CostClaim>) {
+    fn record(&mut self, cycle: u64, kind: LedgerKind, costs: Vec<CostClaim>) {
         let entry = LedgerEntry {
             epoch: self.epoch,
             cycle,
             sequence: self.next_sequence,
             kind,
-            cost,
+            costs,
         };
         self.next_sequence += 1;
         self.ledger.push(entry);
@@ -117,7 +117,7 @@ impl FakeBackend {
                     LedgerKind::CcompareAssert {
                         comparator: index as u8,
                     },
-                    None,
+                    vec![],
                 );
             }
         }
@@ -136,7 +136,11 @@ impl FakeBackend {
             });
         if let Some((index, kind, caller_sequence)) = reset {
             self.inputs.remove(index);
-            self.record(self.now, LedgerKind::InputApplied { caller_sequence }, None);
+            self.record(
+                self.now,
+                LedgerKind::InputApplied { caller_sequence },
+                vec![],
+            );
             return Some(kind);
         }
         while self
@@ -150,7 +154,7 @@ impl FakeBackend {
                 LedgerKind::InputApplied {
                     caller_sequence: event.caller_sequence,
                 },
-                None,
+                vec![],
             );
             match event.payload {
                 InputPayload::Bytes(bytes) => {
@@ -289,7 +293,7 @@ impl Backend for FakeBackend {
                         let next_input = self.inputs.front().map(|event| event.cycle);
                         let target = next_input.unwrap_or(endpoint).min(endpoint);
                         self.advance_time(target);
-                        self.record(self.now, LedgerKind::IdleAdvance, None);
+                        self.record(self.now, LedgerKind::IdleAdvance, vec![]);
                         if let Some(kind) = self.apply_inputs() {
                             self.pending = None;
                             return Ok(self.slice(
@@ -367,7 +371,7 @@ impl Backend for FakeBackend {
                         pc: instruction.pc,
                         completion,
                     },
-                    Some(claim),
+                    vec![claim],
                 );
                 self.pending = Some(Pending {
                     instruction,
@@ -410,7 +414,7 @@ impl Backend for FakeBackend {
                     LedgerKind::InstructionCommit {
                         pc: pending.instruction.pc,
                     },
-                    None,
+                    vec![],
                 );
                 if let Some(bytes) = pending.instruction.output {
                     self.outputs.push_back(BackendEvent {

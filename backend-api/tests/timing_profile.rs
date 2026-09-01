@@ -159,11 +159,11 @@ fn canonical_ledger_covers_tier_causes_and_full_receipts() {
         cycle: 2,
         sequence: 3,
         kind: LedgerKind::InstructionCommit { pc: 0x4000_0400 },
-        cost: Some(CostClaim {
+        costs: vec![CostClaim {
             id: "claim".into(),
             tier,
             receipts: vec![receipt],
-        }),
+        }],
     };
     let original = canonical_ledger_bytes(&[entry(
         CostTier::Interval {
@@ -197,7 +197,7 @@ fn canonical_ledger_covers_tier_causes_and_full_receipts() {
 
     let additional_receipt = receipts()[2].clone();
     let with_additional = LedgerEntry {
-        cost: Some(CostClaim {
+        costs: vec![CostClaim {
             id: "claim".into(),
             tier: CostTier::Interval {
                 minimum: 4,
@@ -205,7 +205,7 @@ fn canonical_ledger_covers_tier_causes_and_full_receipts() {
                 cause: "understood cause".into(),
             },
             receipts: vec![base_receipt, additional_receipt],
-        }),
+        }],
         ..entry(
             CostTier::Unexplained {
                 reason: "unused".into(),
@@ -214,4 +214,22 @@ fn canonical_ledger_covers_tier_causes_and_full_receipts() {
         )
     };
     assert_ne!(original, canonical_ledger_bytes(&[with_additional]));
+}
+
+#[test]
+fn canonical_ledger_carries_every_cost_component() {
+    let entry = LedgerEntry {
+        epoch: 1,
+        cycle: 20,
+        sequence: 4,
+        kind: LedgerKind::InstructionStart {
+            pc: 0x4200_0000,
+            completion: 421,
+        },
+        costs: vec![test_claim("base", 1), test_claim("cache-fill", 400)],
+    };
+    let combined = canonical_ledger_bytes(&[entry.clone()]);
+    let mut base_only = entry;
+    base_only.costs.pop();
+    assert_ne!(combined, canonical_ledger_bytes(&[base_only]));
 }

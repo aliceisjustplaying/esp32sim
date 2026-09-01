@@ -98,7 +98,6 @@ pub struct PendingInstruction {
     pub observation: InstructionObservation,
     pub claims: Vec<CostClaim>,
     staged_mutations: Vec<String>,
-    terminally_blocked: bool,
 }
 
 impl PendingInstruction {
@@ -107,19 +106,6 @@ impl PendingInstruction {
             pc: self.observation.pc,
             start: self.start,
             completion: self.completion,
-        }
-    }
-
-    pub fn is_terminally_blocked(&self) -> bool {
-        self.terminally_blocked
-    }
-
-    pub fn block_for_intervening_impact(&mut self) -> TimingBlock {
-        self.terminally_blocked = true;
-        TimingBlock {
-            claim_id: format!("instruction:{:08x}", self.observation.pc),
-            tier_candidate: "unexplained".into(),
-            reason: "intervening event changed an unresolved access dependency".into(),
         }
     }
 }
@@ -216,15 +202,12 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         observation,
         claims: price.claims,
         staged_mutations: price.staged_mutations,
-        terminally_blocked: false,
     })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompletionError {
     BeforeCompletion,
-    TerminallyBlocked,
-    InterveningCodeWrite(TimingBlock),
     Trap(Trap),
 }
 
@@ -238,19 +221,9 @@ pub fn complete_instruction<B: MeasuredBus, T: TimingSource>(
     if now < pending.completion {
         return Err(CompletionError::BeforeCompletion);
     }
-    if pending.terminally_blocked {
-        return Err(CompletionError::TerminallyBlocked);
-    }
-    if bus.measured_fetch(pending.observation.pc).ok() != Some(pending.observation.bytes) {
-        return Err(CompletionError::InterveningCodeWrite(TimingBlock {
-            claim_id: format!("instruction:{:08x}", pending.observation.pc),
-            tier_candidate: "unexplained".into(),
-            reason: "instruction bytes changed while the instruction was pending".into(),
-        }));
-    }
-    commit_decoded(cpu, bus, &pending.observation.instruction).map_err(CompletionError::Trap)?;
+    let result = commit_decoded(cpu, bus, &pending.observation.instruction);
     timing.commit(&pending.staged_mutations);
-    Ok(())
+    result.map_err(CompletionError::Trap)
 }
 
 #[cfg(test)]
@@ -336,16 +309,29 @@ mod tests {
     }
 
     #[test]
-    fn code_write_during_pending_blocks_before_commit() {
+    fn code_write_during_pending_commits_originally_decoded_instruction() {
         let mut cpu = Cpu::new(0);
         let mut ram = ram_with_instruction(&[0xf0, 0x20, 0x00]);
         let mut timing = FixedTiming::default();
         let pending = plan_instruction(&cpu, &ram, &timing, 0).unwrap();
         ram.mem[0x400] = 0;
+        complete_instruction(&mut cpu, &mut ram, &mut timing, pending, 10).unwrap();
+        assert_eq!(cpu.pc, 0x4000_0403);
+        assert_eq!(cpu.insn_count, 1);
+        assert_eq!(timing.commits, 1);
+    }
+
+    #[test]
+    fn trap_outcome_commits_staged_timing_once() {
+        let mut cpu = Cpu::new(0);
+        cpu.set_ar(3, 0x5000_0000);
+        let mut ram = ram_with_instruction(&[0x22, 0x23, 0x00]);
+        let mut timing = FixedTiming::default();
+        let pending = plan_instruction(&cpu, &ram, &timing, 0).unwrap();
         assert!(matches!(
             complete_instruction(&mut cpu, &mut ram, &mut timing, pending, 10),
-            Err(CompletionError::InterveningCodeWrite(_))
+            Err(CompletionError::Trap(Trap::Exception(_)))
         ));
-        assert_eq!(cpu.insn_count, 0);
+        assert_eq!(timing.commits, 1);
     }
 }
