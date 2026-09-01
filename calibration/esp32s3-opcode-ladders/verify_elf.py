@@ -215,6 +215,7 @@ def main() -> int:
         type=Path,
         default=Path(__file__).with_name("probe-cells.json"),
     )
+    parser.add_argument("--objdump", default="xtensa-esp32s3-elf-objdump")
     args = parser.parse_args()
     if args.result.exists():
         print(f"refusing to overwrite result: {args.result}", file=sys.stderr)
