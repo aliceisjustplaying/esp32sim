@@ -10,6 +10,7 @@ pub mod state;
 
 pub mod block;
 pub mod jit;
+pub mod measured;
 pub use bus::{Bus, Fault, FlatRam};
 pub use decode::{decode, Insn, Op};
 pub use exec::{step, Trap};
