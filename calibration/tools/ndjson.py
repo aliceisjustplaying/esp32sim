@@ -30,6 +30,9 @@ ATTRIBUTION_CHECKSUMS = {
 }
 DEFAULT_MANIFEST = Path("probe-cells.json")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+REGISTER_OR_RANGE = re.compile(
+    r"^0x([0-9a-fA-F]{8})(?:-0x([0-9a-fA-F]{8}))?$"
+)
 PSRAM_SERVICE_BYTES = 4096
 PSRAM_CLOCKS = (40_000_000, 80_000_000)
 MSYNC_BYTES = (64, 1024, 32768)
@@ -166,9 +169,17 @@ class CellContract:
     status: str = "ready"
     family: str = ""
     factors: tuple[tuple[str, int], ...] = ()
+    clock_domain: str | None = None
 
     def factor_map(self) -> dict[str, int]:
         return dict(self.factors)
+
+
+@dataclass(frozen=True)
+class RegisterExclusion:
+    register: str
+    block: str
+    reason: str
 
 
 def _matrix_rank(rows: list[list[int]]) -> int:
@@ -275,6 +286,7 @@ class ManifestContract:
     chip_revision: int
     cells: tuple[CellContract, ...]
     manifest_sha256: str = ""
+    exclusions: tuple[RegisterExclusion, ...] = ()
 
     @classmethod
     def load(cls, path: Path = DEFAULT_MANIFEST) -> "ManifestContract":
@@ -294,6 +306,7 @@ class ManifestContract:
             payload,
             label,
             {"protocolVersion", "harnessVersion", "chipModel", "chipRevision", "cells"},
+            {"exclusions"},
         )
         protocol_version = _integer(payload["protocolVersion"], "manifest.protocolVersion", 1)
         if protocol_version != PROTOCOL_VERSION:
@@ -311,7 +324,7 @@ class ManifestContract:
                 cell,
                 path_name,
                 {"id", "family", "samples", "variants"},
-                {"status", "factors"},
+                {"status", "factors", "clockDomain"},
             )
             family = _string(cell["family"], f"{path_name}.family")
             if "status" in cell:
@@ -337,6 +350,13 @@ class ManifestContract:
                         for key, value in raw_factors.items()
                     )
                 )
+            clock_domain = None
+            if "clockDomain" in cell:
+                clock_domain = _string(cell["clockDomain"], f"{path_name}.clockDomain")
+                if clock_domain != "rtc":
+                    raise ValidationError(
+                        f"{path_name}.clockDomain has unsupported value {clock_domain!r}"
+                    )
             cells.append(
                 CellContract(
                     id=_string(cell["id"], f"{path_name}.id"),
@@ -345,17 +365,46 @@ class ManifestContract:
                     status=status,
                     family=family,
                     factors=factors,
+                    clock_domain=clock_domain,
                 )
             )
         ids = [cell.id for cell in cells]
         if len(ids) != len(set(ids)):
             raise ValidationError("manifest.cells contains duplicate IDs")
+        exclusions: list[RegisterExclusion] = []
+        raw_exclusions = payload.get("exclusions", [])
+        if not isinstance(raw_exclusions, list):
+            raise ValidationError("manifest.exclusions must be an array")
+        for index, raw_exclusion in enumerate(raw_exclusions):
+            path_name = f"manifest.exclusions[{index}]"
+            exclusion = _object(raw_exclusion, path_name)
+            _exact_keys(exclusion, path_name, {"register", "block", "reason"})
+            register = _string(exclusion["register"], f"{path_name}.register")
+            match = REGISTER_OR_RANGE.fullmatch(register)
+            if match is None:
+                raise ValidationError(
+                    f"{path_name}.register must be an 8-digit hexadecimal address or range"
+                )
+            if match.group(2) is not None and int(match.group(1), 16) > int(
+                match.group(2), 16
+            ):
+                raise ValidationError(f"{path_name}.register range is reversed")
+            exclusions.append(
+                RegisterExclusion(
+                    register=register,
+                    block=_string(exclusion["block"], f"{path_name}.block"),
+                    reason=_string(exclusion["reason"], f"{path_name}.reason"),
+                )
+            )
+        if len(exclusions) != len(set(exclusions)):
+            raise ValidationError("manifest.exclusions contains duplicates")
         contract = cls(
             protocol_version=protocol_version,
             harness_version=_string(payload["harnessVersion"], "manifest.harnessVersion"),
             chip_model=_string(payload["chipModel"], "manifest.chipModel"),
             chip_revision=_integer(payload["chipRevision"], "manifest.chipRevision"),
             cells=tuple(cells),
+            exclusions=tuple(exclusions),
             manifest_sha256=hashlib.sha256(data).hexdigest(),
         )
         design_ranks(contract.cells)
