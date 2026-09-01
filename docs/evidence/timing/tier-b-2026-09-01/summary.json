@@ -863,12 +863,389 @@
       "variant": "xip-psram"
     }
   ],
+  "crossVariant": {
+    "affineFits": {
+      "cache_msync_invalidate_clean_sweep": {
+        "classification": "unexplained",
+        "interceptCycles": 848.007643,
+        "maxAbsoluteResidualCycles": 248.95102,
+        "points": 24,
+        "rSquared": 0.786229714,
+        "slopeCyclesPerUnit": 0.02423348,
+        "unit": "bytes"
+      },
+      "cache_msync_writeback_sweep": {
+        "classification": "affine",
+        "interceptCycles": 1212.005784,
+        "maxAbsoluteResidualCycles": 602.230892,
+        "points": 24,
+        "rSquared": 0.999872516,
+        "slopeCyclesPerUnit": 2.472458699,
+        "unit": "bytes"
+      },
+      "gdma_transfer_sweep": {
+        "classification": "unexplained",
+        "interceptCycles": 18508.659351,
+        "maxAbsoluteResidualCycles": 21257.997983,
+        "points": 24,
+        "rSquared": 0.974729496,
+        "slopeCyclesPerUnit": 3.614729153,
+        "unit": "bytes"
+      },
+      "panel_qspi_flush_sweep": {
+        "classification": "unexplained",
+        "interceptCycles": 105677.505837,
+        "maxAbsoluteResidualCycles": 122747.242768,
+        "points": 24,
+        "rSquared": 0.725591004,
+        "slopeCyclesPerUnit": 11.110597065,
+        "unit": "bytes"
+      },
+      "spi2_transfer_sweep": {
+        "classification": "affine",
+        "interceptCycles": 8831.207786,
+        "maxAbsoluteResidualCycles": 1504.689924,
+        "points": 24,
+        "rSquared": 0.999998706,
+        "slopeCyclesPerUnit": 47.98597328,
+        "unit": "bytes"
+      },
+      "writeback-clean-lines": {
+        "classification": "unexplained",
+        "interceptCycles": 855.166667,
+        "maxAbsoluteResidualCycles": 3.274194,
+        "points": 20,
+        "rSquared": 0.995593715,
+        "slopeCyclesPerUnit": 5.053763441,
+        "unit": "cache-lines"
+      },
+      "writeback-dirty-lines": {
+        "classification": "affine",
+        "interceptCycles": 854.0,
+        "maxAbsoluteResidualCycles": 7.903226,
+        "points": 20,
+        "rSquared": 0.999971892,
+        "slopeCyclesPerUnit": 161.951612903,
+        "unit": "cache-lines"
+      }
+    },
+    "families": {
+      "arbitration-aggressors": {
+        "cellClassifications": {
+          "arbitration_psram_victim_flash_aggressor": "distribution",
+          "arbitration_psram_victim_internal_aggressor": "distribution",
+          "arbitration_psram_victim_psram_aggressor": "distribution"
+        },
+        "cells": [
+          "arbitration_psram_victim_flash_aggressor",
+          "arbitration_psram_victim_internal_aggressor",
+          "arbitration_psram_victim_psram_aggressor"
+        ],
+        "classification": "distribution"
+      },
+      "display-path": {
+        "cellClassifications": {
+          "cache_msync_invalidate_clean_sweep": "unexplained",
+          "cache_msync_writeback_sweep": "affine",
+          "flash_bandwidth_cross_core": "distribution",
+          "gdma_transfer_sweep": "unexplained",
+          "panel_qspi_flush_sweep": "unexplained",
+          "psram_bandwidth_cross_core": "distribution",
+          "spi2_transfer_sweep": "affine",
+          "touch_i2c_transaction": "distribution"
+        },
+        "cells": [
+          "cache_msync_invalidate_clean_sweep",
+          "cache_msync_writeback_sweep",
+          "flash_bandwidth_cross_core",
+          "gdma_transfer_sweep",
+          "panel_qspi_flush_sweep",
+          "psram_bandwidth_cross_core",
+          "spi2_transfer_sweep",
+          "touch_i2c_transaction"
+        ],
+        "classification": "unexplained"
+      },
+      "first-line-pooling": {
+        "cellClassifications": {
+          "first_line_d_flash": "exact",
+          "first_line_d_psram": "distribution"
+        },
+        "cells": [
+          "first_line_d_flash",
+          "first_line_d_psram"
+        ],
+        "classification": "unexplained"
+      },
+      "store-hit": {
+        "cellClassifications": {
+          "store_hit_psram": "distribution"
+        },
+        "cells": [
+          "store_hit_psram"
+        ],
+        "classification": "distribution"
+      },
+      "writeback-ladders": {
+        "cellClassifications": {
+          "writeback_clean_16_lines": "interval",
+          "writeback_clean_1_lines": "distribution",
+          "writeback_clean_2_lines": "interval",
+          "writeback_clean_4_lines": "interval",
+          "writeback_clean_8_lines": "interval",
+          "writeback_dirty_16_lines": "interval",
+          "writeback_dirty_1_lines": "interval",
+          "writeback_dirty_2_lines": "interval",
+          "writeback_dirty_4_lines": "interval",
+          "writeback_dirty_8_lines": "interval"
+        },
+        "cells": [
+          "writeback_clean_16_lines",
+          "writeback_clean_1_lines",
+          "writeback_clean_2_lines",
+          "writeback_clean_4_lines",
+          "writeback_clean_8_lines",
+          "writeback_dirty_16_lines",
+          "writeback_dirty_1_lines",
+          "writeback_dirty_2_lines",
+          "writeback_dirty_4_lines",
+          "writeback_dirty_8_lines"
+        ],
+        "classification": "unexplained"
+      }
+    },
+    "identifiability": {
+      "cache-msync-writeback": {
+        "componentClassification": "unexplained",
+        "observedTotalClassification": "affine",
+        "productAdoptable": false,
+        "reason": "Byte count changes cache scan work and PSRAM writeback traffic together, so the fitted total does not identify either component independently.",
+        "requiredProbe": "Measure matched clean and dirty residency at the same byte counts while independently varying the number of dirty lines and PSRAM service rate.",
+        "separableCpuCacheDeviceCosts": false
+      },
+      "dirty-writeback": {
+        "componentClassification": "unexplained",
+        "observedTotalClassification": "affine",
+        "productAdoptable": false,
+        "reason": "The single cache-line-count axis identifies an end-to-end intercept and aggregate per-line slope only; CPU, cache-controller, and PSRAM transaction coefficients are rank-deficient.",
+        "requiredProbe": "Cross dirty-line count with a controlled PSRAM service-rate change and add a no-op cache-msync control that isolates fixed CPU and API overhead.",
+        "separableCpuCacheDeviceCosts": false
+      },
+      "spi2-transfer": {
+        "componentClassification": "unexplained",
+        "observedTotalClassification": "affine",
+        "productAdoptable": false,
+        "reason": "Payload size varies while the CPU driver path, DMA path, and 40 MHz SPI2 device transfer remain coupled in one blocking interval.",
+        "requiredProbe": "Repeat the payload sweep at two verified SPI clocks and pair it with a submission-only control that reports DMA completion separately.",
+        "separableCpuCacheDeviceCosts": false
+      }
+    },
+    "pooledPerCell": {
+      "arbitration_psram_victim_flash_aggressor": {
+        "classification": "distribution",
+        "max": 2632360,
+        "median": 2632358,
+        "min": 2630938,
+        "p90": 2632360,
+        "samples": 36
+      },
+      "arbitration_psram_victim_internal_aggressor": {
+        "classification": "distribution",
+        "max": 704489,
+        "median": 704074,
+        "min": 704053,
+        "p90": 704232,
+        "samples": 36
+      },
+      "arbitration_psram_victim_psram_aggressor": {
+        "classification": "distribution",
+        "max": 1400238,
+        "median": 1399127,
+        "min": 1398014,
+        "p90": 1399212,
+        "samples": 36
+      },
+      "cache_msync_invalidate_clean_sweep": {
+        "classification": "unexplained",
+        "max": 1500,
+        "median": 968.5,
+        "min": 733,
+        "p90": 1499,
+        "samples": 24
+      },
+      "cache_msync_writeback_sweep": {
+        "classification": "affine",
+        "max": 81909,
+        "median": 7665.5,
+        "min": 1180,
+        "p90": 81894,
+        "samples": 24
+      },
+      "first_line_d_flash": {
+        "classification": "exact",
+        "max": 128,
+        "median": 128,
+        "min": 128,
+        "p90": 128,
+        "samples": 20
+      },
+      "first_line_d_psram": {
+        "classification": "distribution",
+        "max": 96,
+        "median": 96,
+        "min": 94,
+        "p90": 96,
+        "samples": 20
+      },
+      "flash_bandwidth_cross_core": {
+        "classification": "distribution",
+        "max": 2648067,
+        "median": 2648066,
+        "min": 2647724,
+        "p90": 2648066,
+        "samples": 36
+      },
+      "gdma_transfer_sweep": {
+        "classification": "unexplained",
+        "max": 138738,
+        "median": 29660.5,
+        "min": 15221,
+        "p90": 137951,
+        "samples": 24
+      },
+      "panel_qspi_flush_sweep": {
+        "classification": "unexplained",
+        "max": 479802,
+        "median": 239802,
+        "min": 17972,
+        "p90": 479523,
+        "samples": 24
+      },
+      "psram_bandwidth_cross_core": {
+        "classification": "distribution",
+        "max": 1401579,
+        "median": 1399211,
+        "min": 1398014,
+        "p90": 1401301,
+        "samples": 36
+      },
+      "spi2_transfer_sweep": {
+        "classification": "affine",
+        "max": 1581462,
+        "median": 131180.5,
+        "min": 13122,
+        "p90": 1581347,
+        "samples": 24
+      },
+      "store_hit_psram": {
+        "classification": "distribution",
+        "max": 386,
+        "median": 272,
+        "min": 272,
+        "p90": 357,
+        "samples": 36
+      },
+      "touch_i2c_transaction": {
+        "classification": "distribution",
+        "max": 97163,
+        "median": 62241,
+        "min": 61085,
+        "p90": 76937,
+        "samples": 36
+      },
+      "writeback_clean_16_lines": {
+        "classification": "interval",
+        "max": 937,
+        "median": 936.5,
+        "min": 936,
+        "p90": 937,
+        "samples": 36
+      },
+      "writeback_clean_1_lines": {
+        "classification": "distribution",
+        "max": 999,
+        "median": 863,
+        "min": 862,
+        "p90": 954,
+        "samples": 36
+      },
+      "writeback_clean_2_lines": {
+        "classification": "interval",
+        "max": 863,
+        "median": 862.5,
+        "min": 862,
+        "p90": 863,
+        "samples": 36
+      },
+      "writeback_clean_4_lines": {
+        "classification": "interval",
+        "max": 877,
+        "median": 876.5,
+        "min": 876,
+        "p90": 877,
+        "samples": 36
+      },
+      "writeback_clean_8_lines": {
+        "classification": "interval",
+        "max": 895,
+        "median": 894.5,
+        "min": 894,
+        "p90": 895,
+        "samples": 36
+      },
+      "writeback_dirty_16_lines": {
+        "classification": "interval",
+        "max": 3443,
+        "median": 3442.5,
+        "min": 3442,
+        "p90": 3443,
+        "samples": 36
+      },
+      "writeback_dirty_1_lines": {
+        "classification": "interval",
+        "max": 1017,
+        "median": 1016.5,
+        "min": 1016,
+        "p90": 1017,
+        "samples": 36
+      },
+      "writeback_dirty_2_lines": {
+        "classification": "interval",
+        "max": 1171,
+        "median": 1170.5,
+        "min": 1170,
+        "p90": 1171,
+        "samples": 36
+      },
+      "writeback_dirty_4_lines": {
+        "classification": "interval",
+        "max": 1507,
+        "median": 1506.5,
+        "min": 1506,
+        "p90": 1507,
+        "samples": 36
+      },
+      "writeback_dirty_8_lines": {
+        "classification": "interval",
+        "max": 2155,
+        "median": 2154.5,
+        "min": 2154,
+        "p90": 2155,
+        "samples": 36
+      }
+    },
+    "sharedCells": 24,
+    "variants": [
+      "normal",
+      "xip-psram"
+    ]
+  },
   "disposition": "candidate-evidence-only",
   "manifestSha256": "7aa707c8ea6d176d9556eb4e2de3dcfb90754dc5e4107b891fb64da76651c1b7",
   "open": [
     "gpio21_edge"
   ],
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceCommit": "fc6d9347549730a0e57aa926f8f6935e12636844",
   "statistics": {
     "median": "arithmetic midpoint of the two middle sorted values for even sample counts",
