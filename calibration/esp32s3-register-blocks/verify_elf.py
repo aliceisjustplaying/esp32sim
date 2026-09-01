@@ -18,6 +18,8 @@ INSTRUCTION = re.compile(
     r"^\s*([0-9a-fA-F]+):\s+([0-9a-fA-F]+)\s+([a-zA-Z0-9_.]+)(?:\s+(.*))?$"
 )
 RUN_LENGTHS = (1, 2, 4, 8, 16, 256)
+IRAM_START = 0x40370000
+IRAM_END = 0x403E0000
 
 
 class VerificationError(ValueError):
@@ -100,6 +102,34 @@ def verify_block(
     }
 
 
+def verify_measurement_boundary(
+    functions: dict[str, list[Instruction]],
+) -> dict[str, int | str]:
+    symbol = "measure_once"
+    instructions = functions.get(symbol)
+    if not instructions:
+        raise VerificationError(f"missing disassembly for {symbol}")
+    address = instructions[0].address
+    if not IRAM_START <= address < IRAM_END:
+        raise VerificationError(f"{symbol} is not in IRAM")
+    for instruction in instructions:
+        if not instruction.mnemonic.startswith("call") or instruction.mnemonic == "callx8":
+            continue
+        target = re.search(r"\b([0-9a-fA-F]{8})\s+<", instruction.operands)
+        if target is not None and not IRAM_START <= int(target.group(1), 16) < IRAM_END:
+            raise VerificationError(
+                f"{symbol} calls outside IRAM at {instruction.address:#010x}"
+            )
+    if not any(instruction.mnemonic == "callx8" for instruction in instructions):
+        raise VerificationError(f"{symbol} does not call an access ladder")
+    return {
+        "symbol": symbol,
+        "address": address,
+        "memory": "iram",
+        "endAddress": instructions[-1].address,
+    }
+
+
 def verify(disassembly: str) -> dict[str, object]:
     functions = parse_disassembly(disassembly)
     blocks = [
@@ -107,7 +137,11 @@ def verify(disassembly: str) -> dict[str, object]:
         for kind in ("read", "write")
         for operations in RUN_LENGTHS
     ]
-    return {"ok": True, "accessBlocks": blocks}
+    return {
+        "ok": True,
+        "accessBlocks": blocks,
+        "measurementBoundary": verify_measurement_boundary(functions),
+    }
 
 
 def main() -> int:
