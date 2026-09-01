@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "status": "adopted",
+  "firmware": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "0b187a0d84a75b5a86b9043b0396e1c6eed9fa53",
+    "evidenceCommit": "eded23aa95264bbca76554c456e5bbb2349b441e",
+    "dirty": false,
+    "elfSha256": "32e568fd772ebb18d39ac9630b685cce1ae57e8a02db060f0ed3762d9893ad25",
+    "sdkconfigSha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68"
+  },
+  "bootLogs": [
+    { "bootId": "device-a-64e53f34-0001871b", "sha256": "336f9e1cf8524529c6fac128b69020d922bf5ce1060164132aa4e14f31c7d4e6" },
+    { "bootId": "device-a-b6596919-00018722", "sha256": "c7e3c393d1099654c3e2679d4baae9d663324026a3455a5b16d5114c6070ed94" }
+  ],
+  "strictReceipts": {
+    "samplesPerCellPerBoot": 100,
+    "cells": [
+      {
+        "role": "baseline-memset-length-0",
+        "cycles": 26,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_baseline_memset_zero_length_single_core.json", "rom-callback-0b187a0/boot-2/rom_baseline_memset_zero_length_single_core.json"],
+        "sha256": ["173b8d00a0bd87ef1229495f99026721cf9f9dc9fad127901552d2364425fcb1", "19a53d121e49b95fda6943f8e20409b50371f956fc82f2a780d7f2d5b3f6f066"]
+      },
+      {
+        "role": "target-memset-length-0",
+        "cycles": 57,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_memset_zero_length_single_core.json", "rom-callback-0b187a0/boot-2/rom_memset_zero_length_single_core.json"],
+        "sha256": ["95a27338c31580818ec02dc873f096c4d6abdcbbea7ebeb0e21d9be26c79b9c7", "00fdb522618e2e17021de561b9da0cedc3b403e2af55d4ddfc1b8895a3341271"]
+      },
+      {
+        "role": "baseline-memset-length-0x52e0",
+        "cycles": 26,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_baseline_memset_0x52e0_single_core.json", "rom-callback-0b187a0/boot-2/rom_baseline_memset_0x52e0_single_core.json"],
+        "sha256": ["e271ae03297b59eb1eca3c0bd502e22fb01ca094cade3913d53172692bf70f5c", "b1fea88efedf3ffc914759e6cf68527bcac30e5363641a54b7ef817e9d737b8e"]
+      },
+      {
+        "role": "target-memset-length-0x52e0",
+        "cycles": 6685,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_memset_0x52e0_single_core.json", "rom-callback-0b187a0/boot-2/rom_memset_0x52e0_single_core.json"],
+        "sha256": ["437f2cd899c6adaa311177d3757a257a0a753e062f05f714a5ee9aaeed16ec86", "8f3177ac21e3b830674eabd7b91fc94273fc01b07201225fd4c1132e16534619"]
+      },
+      {
+        "role": "baseline-set-cpu-ticks",
+        "cycles": 23,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_baseline_set_cpu_ticks_per_us_single_core.json", "rom-callback-0b187a0/boot-2/rom_baseline_set_cpu_ticks_per_us_single_core.json"],
+        "sha256": ["66debfbfb6454dbda102b160d81febac31f2da23dbc0c03a6a28525bc7d3a9cb", "134a3fb315c5cf56c4e92078587ebad172a17cf478174835c100e834ac4f4c6e"]
+      },
+      {
+        "role": "target-set-cpu-ticks-same-value",
+        "cycles": 32,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_set_cpu_ticks_per_us_same_value_single_core.json", "rom-callback-0b187a0/boot-2/rom_set_cpu_ticks_per_us_same_value_single_core.json"],
+        "sha256": ["c02f492635edd765a8cf6ad8932bd733ecdd392b32be0243e395ce9687d09ee6", "393f39c3d55f3eb506de918cdbe45833cfdca80116701c2ae3f3106753db932d"]
+      },
+      {
+        "role": "baseline-reset-reason-core-0",
+        "cycles": 25,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_baseline_reset_reason_core0_single_core.json", "rom-callback-0b187a0/boot-2/rom_baseline_reset_reason_core0_single_core.json"],
+        "sha256": ["8b5194a376afba094c6f02077124f2810565c3accece1ee94754f4e89ea322a4", "4e24034ad54d61b89736e6530fcd672aa87baf489446d7418bee72cb6dad0e6b"]
+      },
+      {
+        "role": "target-reset-reason-core-0-excluded",
+        "cycles": null,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_reset_reason_core0_single_core.json", "rom-callback-0b187a0/boot-2/rom_reset_reason_core0_single_core.json"],
+        "sha256": ["e4d4276933494368de249348dc10ab110e1341aada9c9431d02953d8eee50ba0", "206e837c9cf144b43a2cf2ea7169bac5c74d904013ec953aaf594d9ba189df9b"]
+      },
+      {
+        "role": "baseline-reset-reason-core-1",
+        "cycles": 25,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_baseline_reset_reason_core1_single_core.json", "rom-callback-0b187a0/boot-2/rom_baseline_reset_reason_core1_single_core.json"],
+        "sha256": ["abf8f816365c1bedcedaddeb3b21dfe20b161c4e4920a642d1660a6a62ee25f7", "868e58772b19207fe96b99b4662b2a783eeb2b8a4f84632d7378f07c3450bf39"]
+      },
+      {
+        "role": "target-reset-reason-core-1-excluded",
+        "cycles": null,
+        "paths": ["rom-callback-0b187a0/boot-1/rom_reset_reason_core1_single_core.json", "rom-callback-0b187a0/boot-2/rom_reset_reason_core1_single_core.json"],
+        "sha256": ["74d7e7f976516520a1178b3203d1a0e57fc3c5f3cccd67130289cb3078bc3db1", "62d1f7ee745a983588f3f2d5247614397b500ae3fcc9ae96e833fa73eef52df9"]
+      }
+    ]
+  },
+  "adoptedCallbacks": [
+    { "kind": "memset", "pc": "0x400011e8", "destination": "0x3fcabe60", "value": 0, "length": 21216, "cycles": 6659 },
+    { "kind": "memset", "pc": "0x400011e8", "destination": "0x50000000", "value": 0, "length": 0, "cycles": 31 },
+    { "kind": "cpuTicksPerUs", "pc": "0x40001a4c", "ticksPerUs": 40, "callinc": 2, "cycles": 9 }
+  ],
+  "claimBoundary": {
+    "exactCallbackPcAndArgumentsOnly": true,
+    "matchedCallShapeBaselineSubtracted": true,
+    "allAdoptedCacheCountersZero": true,
+    "resetReasonExcludedForNonScalarDuration": true,
+    "otherRomCallbacksCalibrated": false,
+    "architectureCycleAccurate": false
+  }
+}

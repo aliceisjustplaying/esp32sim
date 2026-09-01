@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "capturedAtUtc": "2026-08-31",
+  "board": {
+    "chip": "ESP32-S3 QFN56",
+    "revision": "v0.2",
+    "psram": "8MB AP_3v3",
+    "xtalMHz": 40,
+    "mac": "1c:db:d4:7b:85:c8"
+  },
+  "toolchain": {
+    "espIdf": "v6.1",
+    "compiler": "xtensa-esp-elf 15.2.0",
+    "objdumpSha256": "90a91caa519b895bd457f4eb7c5fd6b14a9c64c0c7d946e78e7f332ea57d7466",
+    "tinyDrawCommit": "3db39856f0a04266a42aef8cd5ead1be6fc8eca4",
+    "timingElfSha256": "4d70b3bea29c88f1d56f026b09b72f6949e861a27e08016660dbc543d3e4c233",
+    "timingSdkconfigSha256": "20ba6a9133738c3ab131cf19679984580b3180f5f28704a7d164e5989e8fbe02"
+  },
+  "receiptCoverage": {
+    "measurementIdentities": 210,
+    "atLeastTwoIndependentReceipts": 204,
+    "fourReceipts": 186,
+    "threeReceipts": 18,
+    "zeroReceipts": [
+      "mmio_read_rtc_xtal_freq_4096_aligned_core1_contended",
+      "reset_reason_core1_read_rtc_state_4096_core1_contended"
+    ],
+    "oneReceipt": [
+      "mmio_read_rtc_date_4096_aligned_core1_contended",
+      "mmio_read_rtc_date_4096_aligned_single_core",
+      "mmio_read_rtc_store1_4096_aligned_core1_contended",
+      "reset_reason_core0_read_rtc_state_4096_core1_contended"
+    ]
+  },
+  "siliconArchitectural": {
+    "windowOverflowUnderflowPairCyclesPastDepth6": 35,
+    "straightLineIssueCyclesPerInstruction": 1,
+    "loopResiduePlus3AdditionalCyclesPerIteration": 1,
+    "mmioReadSramCycles": 12306,
+    "mmioReadRegisterCycles": 45074,
+    "mmioReadSlopeCyclesPerAccess": 8,
+    "mmioWriteSramCycles": 4120,
+    "mmioWriteRegisterCycles": 16400,
+    "mmioWriteSlopeCyclesPerAccess": 2.998046875,
+    "assessment": "architectural headline values unchanged"
+  },
+  "idfOwned": {
+    "interruptDispatcherCycles": {
+      "level1": {
+        "entryV602": 228,
+        "entryV61": 227,
+        "resumeV602": 142,
+        "resumeV61": 143,
+        "roundTripV602": 370,
+        "roundTripV61": 370
+      },
+      "level3": {
+        "entryV602": 223,
+        "entryV61": 222,
+        "resumeV602": 138,
+        "resumeV61": 139,
+        "roundTripV602": 361,
+        "roundTripV61": 361
+      }
+    },
+    "bootToFirstOutputSeconds": {
+      "v602Median": 0.582,
+      "v61Samples": [0.431604541001434, 0.4723518749997311, 0.47639533300025505],
+      "v61Median": 0.4723518749997311,
+      "medianDeltaSeconds": -0.1096481250002689,
+      "medianDeltaPercent": -18.83988316155823
+    }
+  },
+  "cacheProbeDiagnostic": {
+    "instructionFlashFirstLineV602": 204,
+    "instructionFlashFirstLineV61": 203,
+    "dataFlashFirstLineV602": 115,
+    "dataFlashFirstLineV61": 114,
+    "dataPsramFirstLineV602": 82,
+    "dataPsramFirstLineV61": 81,
+    "roundedSubsequentLineValuesChanged": false,
+    "adopted": false,
+    "assessment": "systematic minus-one probe-level toolchain sensitivity"
+  }
+}

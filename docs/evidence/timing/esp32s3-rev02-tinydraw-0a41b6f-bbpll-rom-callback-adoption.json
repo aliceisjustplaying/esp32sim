@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "status": "adopted",
+  "priorAdoption": {
+    "path": "esp32s3-rev02-tinydraw-0b187a0-rom-callback-adoption.json",
+    "sha256": "d6387c3796eac5f3aea1b187ea0ec2477e367f892dfb5ab9194671dc1e905154"
+  },
+  "firmware": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "0a41b6fede59c0e061a5e5c1901e0d3009b21518",
+    "evidenceCommit": "5834f94f8fda111cca6717e36749a6b4ceb71038",
+    "dirty": false,
+    "elfSha256": "b881de8a7f73151aba59d47cbabcd47b88c9589495c7b6500ec4ab859030a297",
+    "sdkconfigSha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68"
+  },
+  "readme": {
+    "path": "rom-i2c-bbpll-0a41b6f/README.md",
+    "sha256": "c81cd50f0ecf6feda58e9f5fe1ab259a73a1b91c449712994c4214158dda295a"
+  },
+  "bootLogs": [
+    { "bootId": "device-a-e7c7bc9d-0001a3ff", "sha256": "9767c0e7fbf9a6111796b2acd6248e935e6f0f0373e46ef96f6f9ce48d8cc289" },
+    { "bootId": "device-a-a694ccde-0001a3ff", "sha256": "f592aac15fc494b2c87ee89ffd18c58e2478c2afda376092f2fdf63ce2980115" }
+  ],
+  "strictReceipts": {
+    "samplesPerCellPerBoot": 100,
+    "cells": [
+      {
+        "role": "baseline",
+        "paths": [
+          "rom-i2c-bbpll-0a41b6f/boot-1/rom_i2c_baseline_write_same_bbpll_mode_single_core.json",
+          "rom-i2c-bbpll-0a41b6f/boot-2/rom_i2c_baseline_write_same_bbpll_mode_single_core.json"
+        ],
+        "sha256": [
+          "6b6838fe96399679aa90249915a62aa61842ae7cfeaef437849913710301ca89",
+          "b7b2a7b4058be085534e88b99f31d1a0bfbd9617c8aaa08474419d4cdbef9468"
+        ]
+      },
+      {
+        "role": "target",
+        "paths": [
+          "rom-i2c-bbpll-0a41b6f/boot-1/rom_i2c_write_same_bbpll_mode_single_core.json",
+          "rom-i2c-bbpll-0a41b6f/boot-2/rom_i2c_write_same_bbpll_mode_single_core.json"
+        ],
+        "sha256": [
+          "a12981b5932c5448c587a1a388e7b023a0881f78abcd0a6c8fd2edfdb7760643",
+          "362c602d348da83d2abb4c373d6ff561c66a0e473e0d5e6a9f1b14c67f5fdf2a"
+        ]
+      }
+    ]
+  },
+  "adoptedCallback": {
+    "kind": "bbpllRomWrite",
+    "pc": "0x40005d60",
+    "block": 102,
+    "hostId": 1,
+    "register": 4,
+    "data": 107,
+    "callinc": 2,
+    "currentIntlevel": 3,
+    "priorIntlevelRestoreCount": 1,
+    "priorWriteCount": 0,
+    "cycles": 836
+  },
+  "claimBoundary": {
+    "exactCallbackPcAndArgumentsOnly": true,
+    "oneShotResetStateInvocationOnly": true,
+    "preflightAndPostReadValue": 107,
+    "matchedBaselineSubtracted": true,
+    "allAdoptedCacheCountersZero": true,
+    "warmedRepeatGeneralized": false,
+    "otherRomCallbacksCalibrated": false,
+    "architectureCycleAccurate": false
+  }
+}
