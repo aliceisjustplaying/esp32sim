@@ -4,9 +4,9 @@ pub mod bus;
 pub mod decode;
 pub mod disasm;
 pub mod exec;
-pub mod state;
 pub mod pie;
 pub mod pie_table;
+pub mod state;
 
 pub mod block;
 pub mod jit;
