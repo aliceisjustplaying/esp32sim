@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "status": "awaiting-target-run",
+  "provenance": {
+    "priorProbeRepository": "https://github.com/aliceisjustplaying/esp32s3-cycle-accurate-wasm",
+    "priorProbeCommit": "f00de0222812fb406eec22006dc1ea4b01382622",
+    "priorProbePath": "experiments/esp32s3-browser-speed/jit_ceiling.c"
+  },
+  "target": {
+    "cpu": "Apple M1 Pro",
+    "architecture": "arm64",
+    "browser": "Google Chrome",
+    "realTimeBudgetMips": 480
+  },
+  "probe": {
+    "kernel": "TinyDraw RGB565 scalar byte-swap loop",
+    "pixelsPerIteration": 2048,
+    "emulatedInstructionsPerIteration": 16387,
+    "accountingOff": "architectural work only",
+    "accountingOn": "architectural work plus direct-mapped D-cache tag checks, a miss counter, and an inlined 64-bit synthetic cycle ledger",
+    "timingScope": "The ledger charges only the probe's instruction-count schedule. Cache misses are counted but unpriced because first-line fill is a blocked exact-tier candidate and is not adopted.",
+    "samplesPerMode": 7,
+    "targetSecondsPerSample": 1.5,
+    "order": ["off", "on", "on", "off", "off", "on", "on", "off", "off", "on", "on", "off", "off", "on"]
+  },
+  "derivation": {
+    "modeMips": "median(emulatedInstructions / elapsedSeconds / 1000000)",
+    "accountingCostPercent": "100 * (1 - accountingOnMedianMips / accountingOffMedianMips)",
+    "marginMips": "accountingOnMedianMips - 480",
+    "marginPercent": "100 * (accountingOnMedianMips / 480 - 1)",
+    "clearsBudget": "accountingOnMedianMips >= 480"
+  }
+}
