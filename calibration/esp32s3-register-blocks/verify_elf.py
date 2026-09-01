@@ -20,6 +20,7 @@ INSTRUCTION = re.compile(
 RUN_LENGTHS = (1, 2, 4, 8, 16, 256)
 IRAM_START = 0x40370000
 IRAM_END = 0x403E0000
+CACHE_COUNTER_CTRL = "600c40c4"
 
 
 class VerificationError(ValueError):
@@ -120,13 +121,52 @@ def verify_measurement_boundary(
             raise VerificationError(
                 f"{symbol} calls outside IRAM at {instruction.address:#010x}"
             )
-    if not any(instruction.mnemonic == "callx8" for instruction in instructions):
+    access_calls = [
+        index
+        for index, instruction in enumerate(instructions)
+        if instruction.mnemonic == "callx8"
+    ]
+    if len(access_calls) != 1:
         raise VerificationError(f"{symbol} does not call an access ladder")
+    access_call_index = access_calls[0]
+    counter_control_loads = [
+        index
+        for index, instruction in enumerate(instructions[:access_call_index])
+        if instruction.mnemonic == "l32r"
+        and CACHE_COUNTER_CTRL in instruction.operands.lower()
+    ]
+    if len(counter_control_loads) != 1:
+        raise VerificationError(f"{symbol} does not load the cache-counter control")
+    counter_control_load_index = counter_control_loads[0]
+    counter_clear_stores = [
+        index
+        for index, instruction in enumerate(
+            instructions[counter_control_load_index + 1 : access_call_index],
+            counter_control_load_index + 1,
+        )
+        if instruction.mnemonic.startswith("s32i")
+    ]
+    if len(counter_clear_stores) != 1:
+        raise VerificationError(f"{symbol} does not have one cache-counter clear")
+    counter_clear_index = counter_clear_stores[0]
+    dispatch_loads = [
+        instruction
+        for instruction in instructions[counter_clear_index + 1 : access_call_index]
+        if instruction.mnemonic.startswith("l")
+    ]
+    if dispatch_loads:
+        raise VerificationError(
+            f"{symbol} reloads access dispatch after counter clear at "
+            f"{dispatch_loads[0].address:#010x}"
+        )
     return {
         "symbol": symbol,
         "address": address,
         "memory": "iram",
         "endAddress": instructions[-1].address,
+        "counterClearAddress": instructions[counter_clear_index].address,
+        "accessCallAddress": instructions[access_call_index].address,
+        "dispatchLoadsAfterClear": 0,
     }
 
 
