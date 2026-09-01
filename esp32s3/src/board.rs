@@ -1,13 +1,13 @@
 //! Boards around the SoC. The SoC model emits generic events (GPIO edges, RMT symbol streams,
 //! I2S samples); a `BoardModel` interprets them as the devices wired to the pins.
 //!
-//! `Atech14` — the Atech 14-port board:
+//! `Atech14`, the Atech 14-port board:
 //!   - ST7735 160x80 TFT on bit-banged SPI: SCLK 2, CS 41, MOSI 1, DC 40
 //!   - WS2812 12-LED ring on GPIO 8 (via RMT)
 //!   - rotary encoder CLK 5 / DT 4 / SW 9, buttons GPIO 17 / 16 (active low)
 //!   - MAX98357A I2S amp: BCLK 12, LRCLK 13, DIN 10
 //!
-//! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
+//! `NoBoard`, a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
 pub use esp_soc::board::{
     Board, BoardDeadlineError, BoardEdge, BoardModel, NoBoard, VirtualCycle,

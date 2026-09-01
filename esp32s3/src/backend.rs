@@ -171,7 +171,7 @@ impl MeasuredMachine for crate::Machine {
         backend: &mut Esp32Backend,
         core: CoreId,
     ) -> Result<MeasuredStep, MeasuredStepError> {
-        refresh_measured_interrupt_lines(self);
+        self.advance_measured_devices(self.bus.cycles)?;
         let index = core_index(core);
         let before_cycle = backend.engine().state().cores[index].cycle;
         let interrupt = {
@@ -226,7 +226,7 @@ impl MeasuredMachine for crate::Machine {
         &mut self,
         cycle: backend_api::VirtualCycle,
     ) -> Result<(), MeasuredStepError> {
-        if cycle > self.bus.cycles {
+        if cycle >= self.bus.cycles {
             self.bus
                 .advance_measured_to(cycle)
                 .map_err(MeasuredStepError::Deadline)?;
