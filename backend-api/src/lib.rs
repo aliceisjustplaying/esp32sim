@@ -5,11 +5,15 @@
 //! unknown.
 
 mod fake;
+mod timing_profile;
 
 pub use fake::{test_claim, FakeBackend, FakeInstruction};
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+pub use timing_profile::{
+    import_timing_profile_v2, CostBinding, ImportedTimingProfile, ProfileError, ReceiptManifest,
+};
 
 pub const ADAPTER_VERSION: ProtocolVersion = ProtocolVersion::new(1, 0, 0);
 pub const EVENT_SCHEMA_VERSION: u16 = 1;
