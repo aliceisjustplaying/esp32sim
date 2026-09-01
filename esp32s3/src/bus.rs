@@ -972,6 +972,16 @@ impl SocBus {
             _ => None,
         }
     }
+
+    pub fn measured_inspect(&self, address: u32, length: usize) -> Option<Vec<u8>> {
+        let mut bytes = Vec::with_capacity(length);
+        for offset in 0..length {
+            let current = address.checked_add(offset as u32)?;
+            let (source, index) = self.measured_resolve(current)?;
+            bytes.push(*self.buf(source).get(index)?);
+        }
+        Some(bytes)
+    }
 }
 
 impl MeasuredBus for SocBus {

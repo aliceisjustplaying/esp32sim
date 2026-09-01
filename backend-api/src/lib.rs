@@ -4,6 +4,7 @@
 //! must fail closed when a measured cost or autonomous device deadline is
 //! unknown.
 
+pub mod contract_suite;
 mod fake;
 mod timing_profile;
 

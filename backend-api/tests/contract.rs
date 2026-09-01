@@ -32,6 +32,12 @@ fn request(deadline: u64) -> RunRequest {
 }
 
 #[test]
+fn fake_passes_the_shared_backend_contract() {
+    let mut factory = || Box::new(fake_backend(&[5; 16])) as Box<dyn Backend>;
+    backend_api::contract_suite::run_shared_contract(&mut factory);
+}
+
+#[test]
 fn version_and_capability_refusals_are_typed() {
     let mut incompatible = BackendConfig::default();
     incompatible.requested_adapter.major = 2;

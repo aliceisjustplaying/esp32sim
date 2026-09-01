@@ -9,7 +9,7 @@
 //! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
 /// What a board does with the SoC's pin-level activity.
-pub trait BoardModel {
+pub trait BoardModel: Send {
     fn name(&self) -> &'static str;
     /// GPIO output level changes, in order.
     fn gpio_changes(&mut self, _changes: &[(u8, bool)]) {}

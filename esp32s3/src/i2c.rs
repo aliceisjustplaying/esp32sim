@@ -5,7 +5,7 @@
 use crate::periph::RegRam;
 use std::collections::{HashMap, VecDeque};
 
-pub trait I2cDevice {
+pub trait I2cDevice: Send {
     /// Address phase: the master addressed this device for a read (`read`) or a write. Return ACK.
     fn start(&mut self, _read: bool) -> bool {
         true
