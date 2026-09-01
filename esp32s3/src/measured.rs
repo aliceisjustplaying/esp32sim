@@ -293,7 +293,7 @@ impl TimingSource for Esp32TimingSource {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeviceDeadline {
-    At(u64),
+    At { cycle: u64, device: String },
     None,
     Unknown { device: String, reason: String },
 }

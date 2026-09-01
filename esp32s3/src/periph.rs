@@ -100,6 +100,13 @@ impl UsbSerialJtag {
             }
         } /* 4x per tick: HWCDC's tick hook clears it each tick */
     }
+
+    pub fn measured_deadline(&self) -> Option<u64> {
+        self.connected.then(|| {
+            let period = CPU_HZ / 4000;
+            period.saturating_sub(self.sof_acc)
+        })
+    }
     pub fn read(&mut self, off: u32) -> u32 {
         match off {
             0x0 => self.rx.pop_front().map(|b| b as u32).unwrap_or(0),
@@ -765,6 +772,21 @@ impl RtcCntl {
         if self.wdt_stage >= 4 {
             self.wdt_stage = 0;
         }
+    }
+
+    fn measured_wdt_deadline_ticks(&self) -> Option<u64> {
+        let conf0 = self.ram.read(0x98);
+        if conf0 & (1 << 31) == 0 {
+            return None;
+        }
+        for stage in self.wdt_stage..4 {
+            let action = (conf0 >> (28 - 3 * stage as u32)) & 7;
+            if action != 0 {
+                let timeout = self.ram.read(0x9c + 4 * stage as u32) as u64;
+                return Some(timeout.saturating_sub(self.wdt_count));
+            }
+        }
+        None
     }
     pub fn new() -> Self {
         let mut r = RtcCntl {
@@ -2330,8 +2352,13 @@ impl Peripherals {
 
     /// Exact CPU-cycle distance to the next modeled timer transition.
     /// Measured mode uses the derived-clock phase retained in `cycle_total`.
-    pub fn measured_timer_deadline(&self) -> Result<Option<u64>, &'static str> {
-        let mut best = u64::MAX;
+    pub fn measured_deadline(&self) -> Result<Option<(u64, &'static str)>, &'static str> {
+        let mut best: Option<(u64, &'static str)> = None;
+        let mut consider = |cycles: u64, device: &'static str| {
+            if best.is_none_or(|candidate| (cycles, device) < candidate) {
+                best = Some((cycles, device));
+            }
+        };
         let st = &self.systimer;
         for timer in 0..3 {
             if st.conf & (1 << (24 + timer as u32)) == 0 {
@@ -2367,7 +2394,7 @@ impl Peripherals {
                     .and_then(|cycles| cycles.checked_sub(phase))
                     .ok_or("systimer deadline exceeds the virtual-cycle range")?
             };
-            best = best.min(cpu_cycles);
+            consider(cpu_cycles, "systimer");
         }
         for group in &self.timg {
             for timer in &group.t {
@@ -2400,14 +2427,33 @@ impl Peripherals {
                         .and_then(|cycles| cycles.checked_sub(phase))
                         .ok_or("timer-group deadline exceeds the virtual-cycle range")?
                 };
-                best = best.min(cpu_cycles);
+                consider(cpu_cycles, "timer-group");
             }
         }
-        Ok((best != u64::MAX).then_some(best))
+        if let Some(cpu_cycles) = self.usb.measured_deadline() {
+            consider(cpu_cycles, "usb-serial-jtag");
+        }
+        if let Some(ticks) = self.rtc.measured_wdt_deadline_ticks() {
+            let phase = self.cycle_total % 1600;
+            let cpu_cycles = if ticks == 0 {
+                0
+            } else {
+                ticks
+                    .checked_mul(1600)
+                    .and_then(|cycles| cycles.checked_sub(phase))
+                    .ok_or("RTC watchdog deadline exceeds the virtual-cycle range")?
+            };
+            consider(cpu_cycles, "rtc-watchdog");
+        }
+        if !self.gpio.input_changes.is_empty() {
+            consider(0, "gpio-input");
+        }
+        Ok(best)
     }
 
     pub fn measured_deliver_due_now(&mut self) {
         self.systimer.tick(0);
+        self.tick(0);
     }
     pub fn lines_dirty(&mut self) -> bool {
         let st = self.source_status();
@@ -3769,33 +3815,61 @@ mod measured_timer_tests {
     #[test]
     fn systimer_deadline_accounts_for_derived_clock_phase() {
         let mut peripherals = Peripherals::new([0; 6]);
+        peripherals.usb.connected = false;
         peripherals.cycle_total = 5;
         peripherals.systimer.conf = (1 << 30) | (1 << 24);
         peripherals.systimer.armed[0] = true;
         peripherals.systimer.unit[0] = 10;
         peripherals.systimer.target[0] = 12;
-        assert_eq!(peripherals.measured_timer_deadline(), Ok(Some(25)));
+        assert_eq!(peripherals.measured_deadline(), Ok(Some((25, "systimer"))));
     }
 
     #[test]
     fn timer_group_deadline_accounts_for_prescaler_and_apb_phase() {
         let mut peripherals = Peripherals::new([0; 6]);
+        peripherals.usb.connected = false;
         peripherals.cycle_total = 2;
         let timer = &mut peripherals.timg[0].t[0];
         timer.config = (1 << 31) | (1 << 30) | (1 << 10) | (4 << 13);
         timer.count = 7;
         timer.alarm = 10;
         timer.prescale_acc = 1;
-        assert_eq!(peripherals.measured_timer_deadline(), Ok(Some(31)));
+        assert_eq!(
+            peripherals.measured_deadline(),
+            Ok(Some((31, "timer-group")))
+        );
     }
 
     #[test]
     fn timer_group_overflow_fails_closed() {
         let mut peripherals = Peripherals::new([0; 6]);
+        peripherals.usb.connected = false;
         let timer = &mut peripherals.timg[0].t[0];
         timer.config = (1 << 31) | (1 << 30) | (1 << 10);
         timer.alarm = (1 << 54) - 1;
-        assert!(peripherals.measured_timer_deadline().is_err());
+        assert!(peripherals.measured_deadline().is_err());
+    }
+
+    #[test]
+    fn connected_usb_has_an_exact_sof_deadline() {
+        let peripherals = Peripherals::new([0; 6]);
+        assert_eq!(
+            peripherals.measured_deadline(),
+            Ok(Some((CPU_HZ / 4000, "usb-serial-jtag")))
+        );
+    }
+
+    #[test]
+    fn active_rtc_watchdog_has_an_exact_phase_aware_deadline() {
+        let mut peripherals = Peripherals::new([0; 6]);
+        peripherals.usb.connected = false;
+        peripherals.cycle_total = 300;
+        peripherals.rtc.ram.write(0x98, (1 << 31) | (2 << 28));
+        peripherals.rtc.ram.write(0x9c, 3);
+        assert_eq!(
+            peripherals.measured_deadline(),
+            Ok(Some((4500, "rtc-watchdog")))
+        );
     }
 }
 

@@ -1290,12 +1290,28 @@ impl SocBus {
                 reason: "active path has no exact measured deadline model".into(),
             };
         }
-        match peripherals.measured_timer_deadline() {
-            Ok(Some(delta)) => match self.cycles.checked_add(delta) {
-                Some(deadline) => crate::measured::DeviceDeadline::At(deadline),
+        let immediate = if !peripherals.gpio.changes.is_empty() {
+            Some("gpio-output")
+        } else if !peripherals.spi2.tx.is_empty() {
+            Some("spi2-output")
+        } else {
+            None
+        };
+        if let Some(device) = immediate {
+            return crate::measured::DeviceDeadline::At {
+                cycle: self.cycles,
+                device: device.into(),
+            };
+        }
+        match peripherals.measured_deadline() {
+            Ok(Some((delta, device))) => match self.cycles.checked_add(delta) {
+                Some(cycle) => crate::measured::DeviceDeadline::At {
+                    cycle,
+                    device: device.into(),
+                },
                 None => crate::measured::DeviceDeadline::Unknown {
-                    device: "timer".into(),
-                    reason: "timer deadline exceeds the virtual-cycle range".into(),
+                    device: device.into(),
+                    reason: "device deadline exceeds the virtual-cycle range".into(),
                 },
             },
             Ok(None) => crate::measured::DeviceDeadline::None,
@@ -1310,6 +1326,7 @@ impl SocBus {
         self.flush_ticks();
         if cycles == 0 {
             self.periph.measured_deliver_due_now();
+            self.tick_impl(0);
             self.irq_dirty = true;
             return;
         }
@@ -1320,5 +1337,38 @@ impl SocBus {
             cycles -= u64::from(step);
         }
         self.irq_dirty = true;
+    }
+}
+
+#[cfg(test)]
+mod measured_deadline_tests {
+    use super::*;
+    use crate::measured::DeviceDeadline;
+
+    #[test]
+    fn connected_usb_surfaces_as_a_typed_exact_deadline() {
+        let bus = SocBus::new(1024, 1024, [0; 6]);
+        assert_eq!(
+            bus.measured_device_deadline(),
+            DeviceDeadline::At {
+                cycle: crate::periph::CPU_HZ / 4000,
+                device: "usb-serial-jtag".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn active_rtc_watchdog_surfaces_as_a_typed_exact_deadline() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.periph.usb.connected = false;
+        bus.periph.rtc.ram.write(0x98, (1 << 31) | (2 << 28));
+        bus.periph.rtc.ram.write(0x9c, 2);
+        assert_eq!(
+            bus.measured_device_deadline(),
+            DeviceDeadline::At {
+                cycle: 3200,
+                device: "rtc-watchdog".into(),
+            }
+        );
     }
 }
