@@ -1,0 +1,8 @@
+diff --git a/esp32s3/src/periph.rs b/esp32s3/src/periph.rs
+index 286d094..80f4904 100644
+--- a/esp32s3/src/periph.rs
++++ b/esp32s3/src/periph.rs
+@@ -2044,0 +2045 @@ impl Peripherals {
++        self.note(addr, false, 0);
+@@ -2126,0 +2128 @@ impl Peripherals {
++        self.note(addr, true, v);
