@@ -3,6 +3,23 @@
 //! the pins and offers what the UI and the scripts need back.
 use esp_periph::i2c::I2cDevice;
 
+pub type VirtualCycle = u64;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BoardEdge {
+    pub cycle: VirtualCycle,
+    pub pin: u8,
+    pub level: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoardDeadlineError {
+    TimeReversed {
+        current: VirtualCycle,
+        requested: VirtualCycle,
+    },
+}
+
 /// What a board does with the SoC's pin-level activity.
 pub trait BoardModel {
     fn name(&self) -> &'static str;
@@ -44,6 +61,12 @@ pub trait BoardModel {
     fn leds(&self) -> Option<(&[[u8; 3]], u64)> { None }
     /// Touch input from the UI (panel coordinates).
     fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
+    /// Earliest autonomous transition strictly after the board's current cycle.
+    fn next_deadline(&self) -> Option<VirtualCycle> { None }
+    /// Advance monotonically through every transition due by `cycle`.
+    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> { Ok(()) }
+    /// Exactly timestamped GPIO edges emitted by the last advance.
+    fn take_edges(&mut self) -> Vec<BoardEdge> { Vec::new() }
     /// A pin by the name scripts and the UI use (`btn1`, `sw`, ...).
     fn named_pin(&self, _name: &str) -> Option<u8> { None }
     /// The rotary encoder's (CLK, DT) pins, if there is one.
