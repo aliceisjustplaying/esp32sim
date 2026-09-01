@@ -3,6 +3,7 @@
 use crate::board::Board;
 use crate::periph::{Peripherals, PERIPH_BASE, PERIPH_END};
 use xtensa_lx7::bus::{Bus, Fault};
+use xtensa_lx7::measured::{MeasuredBus, MemoryClass};
 
 pub const SRAM_SIZE: usize = 512 * 1024;
 pub const IRAM_LOW: u32 = 0x4037_0000;
@@ -944,6 +945,75 @@ impl SocBus {
     }
 }
 
+impl SocBus {
+    fn measured_resolve(&self, address: u32) -> Option<(u8, usize)> {
+        match address {
+            DRAM_LOW..=0x3fcf_ffff => Some((SRC_SRAM, (address - DRAM_LOW) as usize + 0x8000)),
+            IRAM_LOW..=0x403d_ffff => Some((SRC_SRAM, (address - IRAM_LOW) as usize)),
+            IROM_MASK_LOW..=0x4005_ffff => Some((SRC_IROM, (address - IROM_MASK_LOW) as usize)),
+            DROM_MASK_LOW..=0x3ff1_ffff => Some((SRC_DROM, (address - DROM_MASK_LOW) as usize)),
+            RTC_FAST_LOW..=0x600f_ffff => Some((SRC_RTC_FAST, (address - RTC_FAST_LOW) as usize)),
+            RTC_SLOW_LOW..=0x5000_1fff => Some((SRC_RTC_SLOW, (address - RTC_SLOW_LOW) as usize)),
+            DBUS_LOW..=0x3dff_ffff | IBUS_LOW..=0x43ff_ffff => {
+                let linear = address & 0x1ff_ffff;
+                let entry = self.mmu[(linear >> 16) as usize];
+                if entry & MMU_INVALID != 0 {
+                    return None;
+                }
+                let offset =
+                    (entry & 0x3fff) as usize * PAGE as usize + (address & (PAGE - 1)) as usize;
+                let source = if entry & MMU_SPIRAM != 0 {
+                    SRC_PSRAM
+                } else {
+                    SRC_FLASH
+                };
+                (offset < self.buf(source).len()).then_some((source, offset))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl MeasuredBus for SocBus {
+    fn measured_fetch(&self, pc: u32) -> Result<[u8; 4], Fault> {
+        let (source, offset) = self.measured_resolve(pc).ok_or(Fault::Unmapped)?;
+        let buffer = self.buf(source);
+        let mut bytes = [0; 4];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            if let Some(value) = buffer.get(offset + index) {
+                *byte = *value;
+            }
+        }
+        Ok(bytes)
+    }
+
+    fn measured_memory_class(&self, address: u32) -> MemoryClass {
+        if Self::is_periph(address) {
+            return MemoryClass::Mmio {
+                peripheral: measured_peripheral_name(address).into(),
+            };
+        }
+        match self.measured_resolve(address).map(|(source, _)| source) {
+            Some(SRC_SRAM) => MemoryClass::InternalSram,
+            Some(SRC_IROM | SRC_DROM) => MemoryClass::MaskRom,
+            Some(SRC_FLASH) => MemoryClass::Flash,
+            Some(SRC_PSRAM) => MemoryClass::Psram,
+            Some(SRC_RTC_FAST | SRC_RTC_SLOW) => MemoryClass::Rtc,
+            _ => MemoryClass::Unknown,
+        }
+    }
+}
+
+fn measured_peripheral_name(address: u32) -> &'static str {
+    match address {
+        0x6000_8000..=0x6000_8fff => "rtc-controller",
+        0x6000_e000..=0x6000_efff => "regi2c-controller",
+        0x600c_0000..=0x600c_0fff => "system-controller",
+        0x600c_4000..=0x600c_4fff => "cache-controller",
+        _ => "unclassified-peripheral",
+    }
+}
+
 impl Bus for SocBus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault> {
         if Self::is_periph(addr) {
@@ -1186,5 +1256,69 @@ impl SocBus {
             self.irq_dirty = true;
         }
         0
+    }
+
+    pub fn measured_device_deadline(&self) -> crate::measured::DeviceDeadline {
+        let peripherals = &self.periph;
+        let unknown = if peripherals.spi_exec {
+            Some("spi-memory")
+        } else if peripherals.gdma.out.iter().any(|channel| channel.running)
+            || peripherals.gdma.inp.iter().any(|channel| channel.running)
+        {
+            Some("gdma")
+        } else if peripherals.lcd_cam.running || peripherals.lcd_cam.lcd_running() {
+            Some("lcd-cam")
+        } else if peripherals.i2s0.tx_running() || peripherals.i2s1.tx_running() {
+            Some("i2s")
+        } else if peripherals.rmt.ch.iter().any(|channel| channel.running) {
+            Some("rmt")
+        } else if peripherals.aes.dma_pending {
+            Some("aes-dma")
+        } else if peripherals.sha.dma_pending {
+            Some("sha-dma")
+        } else if !peripherals.wifi.tx_pending.is_empty()
+            || peripherals.wifi.ap.is_some()
+            || peripherals.wifi.net.is_some()
+        {
+            Some("wifi")
+        } else {
+            None
+        };
+        if let Some(device) = unknown {
+            return crate::measured::DeviceDeadline::Unknown {
+                device: device.into(),
+                reason: "active path has no exact measured deadline model".into(),
+            };
+        }
+        match peripherals.measured_timer_deadline() {
+            Ok(Some(delta)) => match self.cycles.checked_add(delta) {
+                Some(deadline) => crate::measured::DeviceDeadline::At(deadline),
+                None => crate::measured::DeviceDeadline::Unknown {
+                    device: "timer".into(),
+                    reason: "timer deadline exceeds the virtual-cycle range".into(),
+                },
+            },
+            Ok(None) => crate::measured::DeviceDeadline::None,
+            Err(reason) => crate::measured::DeviceDeadline::Unknown {
+                device: "timer".into(),
+                reason: reason.into(),
+            },
+        }
+    }
+
+    pub fn measured_advance(&mut self, mut cycles: u64) {
+        self.flush_ticks();
+        if cycles == 0 {
+            self.periph.measured_deliver_due_now();
+            self.irq_dirty = true;
+            return;
+        }
+        while cycles != 0 {
+            let step = cycles.min(u32::MAX as u64) as u32;
+            self.cycles += u64::from(step);
+            self.tick_impl(step);
+            cycles -= u64::from(step);
+        }
+        self.irq_dirty = true;
     }
 }

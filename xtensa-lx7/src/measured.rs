@@ -24,13 +24,27 @@ pub struct AccessShape {
     pub width: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MemoryClass {
+    InternalSram,
+    MaskRom,
+    Flash,
+    Psram,
+    Rtc,
+    Mmio { peripheral: String },
+    Unknown,
+}
+
 #[derive(Clone, Debug)]
 pub struct InstructionObservation {
     pub pc: u32,
     pub bytes: [u8; 4],
     pub instruction: Insn,
+    pub fetch_memory: MemoryClass,
     pub access: Option<AccessShape>,
+    pub access_memory: Option<MemoryClass>,
     pub window_overflow_pair: bool,
+    pub live_window_depth: u32,
     pub loop_back_edge_residue: Option<u8>,
 }
 
@@ -50,6 +64,7 @@ pub trait TimingSource {
 /// device, cache, fault, or timing state.
 pub trait MeasuredBus: Bus {
     fn measured_fetch(&self, pc: u32) -> Result<[u8; 4], Fault>;
+    fn measured_memory_class(&self, address: u32) -> MemoryClass;
 }
 
 impl MeasuredBus for FlatRam {
@@ -65,6 +80,14 @@ impl MeasuredBus for FlatRam {
             }
         }
         Ok(bytes)
+    }
+
+    fn measured_memory_class(&self, address: u32) -> MemoryClass {
+        if address.wrapping_sub(self.base) < self.mem.len() as u32 {
+            MemoryClass::InternalSram
+        } else {
+            MemoryClass::Unknown
+        }
     }
 }
 
@@ -176,8 +199,11 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         pc,
         bytes,
         instruction,
+        fetch_memory: bus.measured_memory_class(pc),
+        access_memory: access.map(|shape| bus.measured_memory_class(shape.address)),
         access,
         window_overflow_pair: predicts_window_overflow(cpu, &instruction),
+        live_window_depth: cpu.windowstart.count_ones(),
         loop_back_edge_residue,
     };
     let price = timing.price(&observation).map_err(PlanError::Timing)?;

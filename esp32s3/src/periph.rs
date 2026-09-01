@@ -2327,6 +2327,88 @@ impl Peripherals {
         }
         best.min(u32::MAX as u64) as u32
     }
+
+    /// Exact CPU-cycle distance to the next modeled timer transition.
+    /// Measured mode uses the derived-clock phase retained in `cycle_total`.
+    pub fn measured_timer_deadline(&self) -> Result<Option<u64>, &'static str> {
+        let mut best = u64::MAX;
+        let st = &self.systimer;
+        for timer in 0..3 {
+            if st.conf & (1 << (24 + timer as u32)) == 0 {
+                continue;
+            }
+            let unit = ((st.target_conf[timer] >> 31) & 1) as usize;
+            if st.conf & (1 << (30 - unit as u32)) == 0 {
+                continue;
+            }
+            let now = st.unit[unit];
+            let ticks = if st.target_conf[timer] & (1 << 30) != 0 {
+                let period = (st.target_conf[timer] & 0x03ff_ffff) as u64;
+                if period == 0 {
+                    continue;
+                }
+                let elapsed = now.wrapping_sub(st.period_start[timer]);
+                if elapsed >= period {
+                    0
+                } else {
+                    period - elapsed
+                }
+            } else if st.armed[timer] {
+                st.target[timer].saturating_sub(now)
+            } else {
+                continue;
+            };
+            let phase = self.cycle_total % 15;
+            let cpu_cycles = if ticks == 0 {
+                0
+            } else {
+                ticks
+                    .checked_mul(15)
+                    .and_then(|cycles| cycles.checked_sub(phase))
+                    .ok_or("systimer deadline exceeds the virtual-cycle range")?
+            };
+            best = best.min(cpu_cycles);
+        }
+        for group in &self.timg {
+            for timer in &group.t {
+                if timer.config & (1 << 31) == 0 || timer.config & (1 << 10) == 0 {
+                    continue;
+                }
+                let divisor = ((timer.config >> 13) & 0xffff) as u64;
+                let divisor = if divisor == 0 { 65536 } else { divisor };
+                let steps = if timer.config & (1 << 30) != 0 {
+                    if timer.count >= timer.alarm {
+                        continue;
+                    }
+                    timer.alarm - timer.count
+                } else {
+                    if timer.count <= timer.alarm {
+                        continue;
+                    }
+                    timer.count - timer.alarm
+                };
+                let apb_ticks = steps
+                    .checked_mul(divisor)
+                    .and_then(|ticks| ticks.checked_sub(timer.prescale_acc))
+                    .ok_or("timer-group deadline exceeds the virtual-cycle range")?;
+                let phase = self.cycle_total % 3;
+                let cpu_cycles = if apb_ticks == 0 {
+                    0
+                } else {
+                    apb_ticks
+                        .checked_mul(3)
+                        .and_then(|cycles| cycles.checked_sub(phase))
+                        .ok_or("timer-group deadline exceeds the virtual-cycle range")?
+                };
+                best = best.min(cpu_cycles);
+            }
+        }
+        Ok((best != u64::MAX).then_some(best))
+    }
+
+    pub fn measured_deliver_due_now(&mut self) {
+        self.systimer.tick(0);
+    }
     pub fn lines_dirty(&mut self) -> bool {
         let st = self.source_status();
         if st != self.last_status {
@@ -3677,6 +3759,43 @@ impl Rmt {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod measured_timer_tests {
+    use super::*;
+
+    #[test]
+    fn systimer_deadline_accounts_for_derived_clock_phase() {
+        let mut peripherals = Peripherals::new([0; 6]);
+        peripherals.cycle_total = 5;
+        peripherals.systimer.conf = (1 << 30) | (1 << 24);
+        peripherals.systimer.armed[0] = true;
+        peripherals.systimer.unit[0] = 10;
+        peripherals.systimer.target[0] = 12;
+        assert_eq!(peripherals.measured_timer_deadline(), Ok(Some(25)));
+    }
+
+    #[test]
+    fn timer_group_deadline_accounts_for_prescaler_and_apb_phase() {
+        let mut peripherals = Peripherals::new([0; 6]);
+        peripherals.cycle_total = 2;
+        let timer = &mut peripherals.timg[0].t[0];
+        timer.config = (1 << 31) | (1 << 30) | (1 << 10) | (4 << 13);
+        timer.count = 7;
+        timer.alarm = 10;
+        timer.prescale_acc = 1;
+        assert_eq!(peripherals.measured_timer_deadline(), Ok(Some(31)));
+    }
+
+    #[test]
+    fn timer_group_overflow_fails_closed() {
+        let mut peripherals = Peripherals::new([0; 6]);
+        let timer = &mut peripherals.timg[0].t[0];
+        timer.config = (1 << 31) | (1 << 30) | (1 << 10);
+        timer.alarm = (1 << 54) - 1;
+        assert!(peripherals.measured_timer_deadline().is_err());
     }
 }
 

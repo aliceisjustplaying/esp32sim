@@ -6,6 +6,7 @@ pub mod host;
 pub mod i2c;
 pub mod image;
 pub mod machine;
+pub mod measured;
 pub mod nat;
 pub mod net;
 pub mod periph;

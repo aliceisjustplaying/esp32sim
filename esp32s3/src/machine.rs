@@ -162,6 +162,17 @@ impl Machine {
         }
     }
 
+    pub fn measured_refresh_interrupts(&mut self) {
+        if self.bus.irq_dirty && (self.bus.periph.lines_dirty() || self.bus.periph.intmatrix_dirty)
+        {
+            let (core0, core1) = self.bus.periph.cpu_lines_both();
+            self.cpu.interrupt = (self.cpu.interrupt & !INTTYPE_LEVEL) | (core0 & INTTYPE_LEVEL);
+            self.cpu1.interrupt = (self.cpu1.interrupt & !INTTYPE_LEVEL) | (core1 & INTTYPE_LEVEL);
+        }
+        self.bus.irq_dirty = false;
+        self.bus.periph.intmatrix_dirty = false;
+    }
+
     pub fn load_rom(&mut self, rom_elf: &[u8]) -> Result<(), String> {
         let e = elf::parse(rom_elf)?;
         for s in &e.segments {
