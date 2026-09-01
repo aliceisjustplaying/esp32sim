@@ -124,7 +124,7 @@ impl FakeBackend {
         self.now = target;
     }
 
-    fn apply_inputs(&mut self) -> Option<ResetKind> {
+    fn apply_inputs(&mut self) -> Result<Option<ResetKind>, BackendError> {
         let reset = self
             .inputs
             .iter()
@@ -141,7 +141,7 @@ impl FakeBackend {
                 LedgerKind::InputApplied { caller_sequence },
                 vec![],
             );
-            return Some(kind);
+            return Ok(Some(kind));
         }
         while self
             .inputs
@@ -158,6 +158,13 @@ impl FakeBackend {
             );
             match event.payload {
                 InputPayload::Bytes(bytes) => {
+                    if bytes.len()
+                        > MAX_QUEUED_OUTPUT_BYTES.saturating_sub(self.queued_output_bytes())
+                    {
+                        return Err(BackendError::BackendFault(
+                            "output queue byte limit exceeded".into(),
+                        ));
+                    }
                     self.outputs.push_back(BackendEvent {
                         schema_version: EVENT_SCHEMA_VERSION,
                         epoch: self.epoch,
@@ -167,10 +174,10 @@ impl FakeBackend {
                     });
                     self.next_output_sequence += 1;
                 }
-                InputPayload::Reset(kind) => return Some(kind),
+                InputPayload::Reset(kind) => return Ok(Some(kind)),
             }
         }
-        None
+        Ok(None)
     }
 
     fn delta(&self, start_index: usize) -> LedgerDelta {
@@ -198,6 +205,65 @@ impl FakeBackend {
             stop,
             ledger: self.delta(ledger_start),
         }
+    }
+
+    fn queued_input_bytes(&self) -> usize {
+        self.inputs
+            .iter()
+            .map(|event| match &event.payload {
+                InputPayload::Bytes(bytes) => bytes.len(),
+                InputPayload::Reset(_) => 0,
+            })
+            .sum()
+    }
+
+    fn queued_output_bytes(&self) -> usize {
+        self.outputs
+            .iter()
+            .map(|event| match &event.payload {
+                EventPayload::Bytes(bytes) => bytes.len(),
+                EventPayload::Reset(_) => 0,
+            })
+            .sum()
+    }
+
+    fn current_cycle_ledger_entries(&self) -> usize {
+        if self
+            .inputs
+            .iter()
+            .take_while(|event| event.cycle == self.now)
+            .any(|event| matches!(event.payload, InputPayload::Reset(_)))
+        {
+            return 1;
+        }
+        let inputs = self
+            .inputs
+            .iter()
+            .take_while(|event| event.cycle == self.now)
+            .count();
+        let commit = usize::from(
+            self.pending
+                .as_ref()
+                .is_some_and(|pending| pending.completion == self.now),
+        );
+        inputs + commit
+    }
+
+    fn budget_stop(&self, request: &RunRequest, ledger_start: usize) -> Option<BudgetKind> {
+        if request.cancellation.is_cancelled() {
+            return Some(BudgetKind::WallCancellation);
+        }
+        let used = self.ledger.len() - ledger_start;
+        if used >= request.budget.max_ledger_entries as usize
+            || self.current_cycle_ledger_entries()
+                > request.budget.max_ledger_entries as usize - used
+        {
+            return Some(BudgetKind::LedgerEntries);
+        }
+        if self.outputs.len() >= request.budget.max_output_events as usize {
+            return Some(BudgetKind::OutputEvents);
+        }
+        None
     }
 }
 
@@ -263,27 +329,11 @@ impl Backend for FakeBackend {
         let endpoint = request.deadline.min(cycle_endpoint);
         let mut completed = 0u64;
         loop {
-            if request.cancellation.is_cancelled() {
+            if let Some(kind) = self.budget_stop(&request, ledger_start) {
                 return Ok(self.slice(
                     start,
                     completed,
-                    RunStop::BudgetExhausted(BudgetKind::WallCancellation),
-                    ledger_start,
-                ));
-            }
-            if self.ledger.len() - ledger_start >= request.budget.max_ledger_entries as usize {
-                return Ok(self.slice(
-                    start,
-                    completed,
-                    RunStop::BudgetExhausted(BudgetKind::LedgerEntries),
-                    ledger_start,
-                ));
-            }
-            if self.outputs.len() >= request.budget.max_output_events as usize {
-                return Ok(self.slice(
-                    start,
-                    completed,
-                    RunStop::BudgetExhausted(BudgetKind::OutputEvents),
+                    RunStop::BudgetExhausted(kind),
                     ledger_start,
                 ));
             }
@@ -294,7 +344,7 @@ impl Backend for FakeBackend {
                         let target = next_input.unwrap_or(endpoint).min(endpoint);
                         self.advance_time(target);
                         self.record(self.now, LedgerKind::IdleAdvance, vec![]);
-                        if let Some(kind) = self.apply_inputs() {
+                        if let Some(kind) = self.apply_inputs()? {
                             self.pending = None;
                             return Ok(self.slice(
                                 start,
@@ -390,7 +440,15 @@ impl Backend for FakeBackend {
             if target > self.now {
                 self.advance_time(target);
             }
-            if let Some(kind) = self.apply_inputs() {
+            if let Some(kind) = self.budget_stop(&request, ledger_start) {
+                return Ok(self.slice(
+                    start,
+                    completed,
+                    RunStop::BudgetExhausted(kind),
+                    ledger_start,
+                ));
+            }
+            if let Some(kind) = self.apply_inputs()? {
                 self.pending = None;
                 return Ok(self.slice(
                     start,
@@ -409,6 +467,16 @@ impl Backend for FakeBackend {
                     ));
                 }
                 let pending = self.pending.take().unwrap();
+                if let Some(bytes) = &pending.instruction.output {
+                    if bytes.len()
+                        > MAX_QUEUED_OUTPUT_BYTES.saturating_sub(self.queued_output_bytes())
+                    {
+                        self.pending = Some(pending);
+                        return Err(BackendError::BackendFault(
+                            "output queue byte limit exceeded".into(),
+                        ));
+                    }
+                }
                 self.record(
                     self.now,
                     LedgerKind::InstructionCommit {
@@ -463,6 +531,15 @@ impl Backend for FakeBackend {
         }
         if self.inputs.len() >= MAX_QUEUED_INPUT_EVENTS {
             return Err(BackendError::InvalidInput("input queue is full".into()));
+        }
+        let additional = match &event.payload {
+            InputPayload::Bytes(bytes) => bytes.len(),
+            InputPayload::Reset(_) => 0,
+        };
+        if additional > MAX_QUEUED_INPUT_BYTES.saturating_sub(self.queued_input_bytes()) {
+            return Err(BackendError::InvalidInput(
+                "input queue byte limit exceeded".into(),
+            ));
         }
         self.last_input_sequence = Some(event.caller_sequence);
         let index = self

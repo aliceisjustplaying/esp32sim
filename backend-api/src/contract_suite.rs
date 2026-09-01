@@ -13,6 +13,43 @@ fn request(deadline: u64) -> RunRequest {
 /// Runs the shared behavioral contract. The factory must return a loaded,
 /// reset backend whose first instructions each cost five cycles.
 pub fn run_shared_contract(factory: &mut dyn FnMut() -> Box<dyn Backend>) {
+    let mut cancelled = factory();
+    let cancellation = CancellationFlag::new();
+    cancellation.cancel();
+    let cancelled_slice = cancelled
+        .run_until(RunRequest {
+            deadline: 5,
+            budget: RunBudget::default(),
+            cancellation,
+        })
+        .unwrap();
+    assert_eq!(cancelled_slice.end_cycle, 0);
+    assert_eq!(cancelled_slice.pending_instruction, None);
+    assert!(cancelled_slice.ledger.entries.is_empty());
+    assert!(matches!(
+        cancelled_slice.stop,
+        RunStop::BudgetExhausted(BudgetKind::WallCancellation)
+    ));
+
+    let mut output_saturated = factory();
+    let output_stop = output_saturated
+        .run_until(RunRequest {
+            deadline: 5,
+            budget: RunBudget {
+                max_output_events: 0,
+                ..RunBudget::default()
+            },
+            cancellation: CancellationFlag::new(),
+        })
+        .unwrap();
+    assert_eq!(output_stop.end_cycle, 0);
+    assert_eq!(output_stop.pending_instruction, None);
+    assert!(output_stop.ledger.entries.is_empty());
+    assert!(matches!(
+        output_stop.stop,
+        RunStop::BudgetExhausted(BudgetKind::OutputEvents)
+    ));
+
     let mut sliced = factory();
     let first = sliced.run_until(request(3)).unwrap();
     assert_eq!(first.end_cycle, 3);
@@ -79,6 +116,56 @@ pub fn run_shared_contract(factory: &mut dyn FnMut() -> Box<dyn Backend>) {
         .position(|entry| matches!(entry.kind, LedgerKind::InstructionCommit { .. }))
         .unwrap();
     assert!(input < commit);
+
+    let mut atomic_budget = factory();
+    atomic_budget.run_until(request(4)).unwrap();
+    atomic_budget
+        .inject(InputEvent {
+            epoch: 1,
+            cycle: 5,
+            caller_sequence: 1,
+            payload: InputPayload::Bytes(vec![0x66]),
+        })
+        .unwrap();
+    let stopped = atomic_budget
+        .run_until(RunRequest {
+            deadline: 5,
+            budget: RunBudget {
+                max_ledger_entries: 1,
+                ..RunBudget::default()
+            },
+            cancellation: CancellationFlag::new(),
+        })
+        .unwrap();
+    assert_eq!(stopped.end_cycle, 5);
+    assert!(stopped.ledger.entries.is_empty());
+    assert!(stopped.pending_instruction.is_some());
+    assert!(matches!(
+        stopped.stop,
+        RunStop::BudgetExhausted(BudgetKind::LedgerEntries)
+    ));
+    let resumed = atomic_budget.run_until(request(5)).unwrap();
+    assert_eq!(resumed.completed_instructions, 1);
+    assert_eq!(
+        resumed
+            .ledger
+            .entries
+            .iter()
+            .filter(|entry| matches!(entry.kind, LedgerKind::InputApplied { .. }))
+            .count(),
+        1
+    );
+
+    let mut byte_bounded = factory();
+    assert!(matches!(
+        byte_bounded.inject(InputEvent {
+            epoch: 1,
+            cycle: 1,
+            caller_sequence: 1,
+            payload: InputPayload::Bytes(vec![0; MAX_QUEUED_INPUT_BYTES + 1]),
+        }),
+        Err(BackendError::InvalidInput(message)) if message.contains("byte limit")
+    ));
 
     let mut reset_first = factory();
     reset_first
