@@ -15,25 +15,36 @@ use xtensa_lx7::{Op, Trap};
 #[derive(Clone, Debug, Default)]
 pub struct Esp32Backend {
     engine: TransactionEngine,
+    accepted_interrupts: [Vec<AcceptedInterrupt>; 2],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AcceptedInterrupt {
+    level: InterruptLevel,
 }
 
 impl Esp32Backend {
-    fn operation_for(observation: &InstructionObservation) -> Operation {
+    fn operation_for(
+        &self,
+        observation: &InstructionObservation,
+    ) -> Result<Operation, TimingRefusal> {
         match observation.instruction.op {
-            Op::Beqz | Op::BeqzN => Operation::BranchZero {
+            Op::Beqz | Op::BeqzN => Ok(Operation::BranchZero {
                 taken: observation
                     .branch_taken
                     .expect("a decoded zero branch records its outcome"),
-            },
-            Op::Rfe | Op::Rfue => Operation::Interrupt {
-                level: InterruptLevel::Level1,
-                phase: InterruptPhase::Resume,
-            },
-            Op::Rfi => Operation::Interrupt {
-                level: interrupt_level(observation.instruction.imm as u8),
-                phase: InterruptPhase::Resume,
-            },
-            _ => observation
+            }),
+            Op::Rfe => self.resume_operation(observation.core, InterruptLevel::Level1),
+            Op::Rfue => Err(TimingRefusal {
+                class: backend_api::CostClass::InternalInstruction,
+                tier_candidate: TierCandidate::Exact,
+                reason: RefusalReason::NonInterruptExceptionReturn,
+            }),
+            Op::Rfi => self.resume_operation(
+                observation.core,
+                interrupt_level(observation.instruction.imm as u8),
+            ),
+            _ => Ok(observation
                 .access_memory
                 .map_or(Operation::InternalInstruction, |memory| {
                     if memory == MemoryClass::Mmio {
@@ -46,7 +57,59 @@ impl Esp32Backend {
                     } else {
                         Operation::InternalInstruction
                     }
-                }),
+                })),
+        }
+    }
+
+    fn resume_operation(
+        &self,
+        core: CoreId,
+        returned_level: InterruptLevel,
+    ) -> Result<Operation, TimingRefusal> {
+        let class = backend_api::CostClass::Interrupt {
+            level: returned_level,
+            phase: InterruptPhase::Resume,
+        };
+        let Some(active) = self.accepted_interrupts[core_index(core)].last() else {
+            return Err(TimingRefusal {
+                class,
+                tier_candidate: TierCandidate::Exact,
+                reason: RefusalReason::InterruptResumeWithoutAcceptance,
+            });
+        };
+        if active.level != returned_level {
+            return Err(TimingRefusal {
+                class,
+                tier_candidate: TierCandidate::Exact,
+                reason: RefusalReason::InterruptResumeLevelMismatch,
+            });
+        }
+        Ok(Operation::Interrupt {
+            level: returned_level,
+            phase: InterruptPhase::Resume,
+        })
+    }
+
+    fn matching_resume_level(
+        &self,
+        observation: &InstructionObservation,
+    ) -> Result<Option<InterruptLevel>, TimingRefusal> {
+        match observation.instruction.op {
+            Op::Rfe => {
+                self.resume_operation(observation.core, InterruptLevel::Level1)?;
+                Ok(Some(InterruptLevel::Level1))
+            }
+            Op::Rfue => Err(TimingRefusal {
+                class: backend_api::CostClass::InternalInstruction,
+                tier_candidate: TierCandidate::Exact,
+                reason: RefusalReason::NonInterruptExceptionReturn,
+            }),
+            Op::Rfi => {
+                let level = interrupt_level(observation.instruction.imm as u8);
+                self.resume_operation(observation.core, level)?;
+                Ok(Some(level))
+            }
+            _ => Ok(None),
         }
     }
 
@@ -71,7 +134,12 @@ impl Esp32Backend {
             operation,
             outcome: ExecutionOutcome::Committed,
         }) {
-            Ok(receipt) => Ok(Some((irq, receipt))),
+            Ok(receipt) => {
+                self.accepted_interrupts[core_index(core)].push(AcceptedInterrupt {
+                    level: interrupt_level(INT_LEVEL[irq as usize]),
+                });
+                Ok(Some((irq, receipt)))
+            }
             Err(refusal) => {
                 *cpu = before;
                 Err(refusal)
@@ -100,7 +168,7 @@ impl Backend for Esp32Backend {
 
 impl TimingSource for Esp32Backend {
     fn price(&self, observation: &InstructionObservation) -> Result<TimingPlan, TimingRefusal> {
-        let operation = Self::operation_for(observation);
+        let operation = self.operation_for(observation)?;
         let (component, mutation) = price_operation(observation.core, operation)?;
         let cycles = component.cycles().ok_or(TimingRefusal {
             class: component.class,
@@ -120,6 +188,7 @@ impl TimingSource for Esp32Backend {
         components: &[CostComponent],
         mutations: &[TimingMutation],
     ) -> Result<(), TimingRefusal> {
+        let resume_level = self.matching_resume_level(observation)?;
         self.engine.execute_priced(
             observation.core,
             observation.pc,
@@ -127,6 +196,12 @@ impl TimingSource for Esp32Backend {
             components.to_vec(),
             mutations.to_vec(),
         )?;
+        if let Some(level) = resume_level {
+            let popped = self.accepted_interrupts[core_index(observation.core)]
+                .pop()
+                .expect("a validated interrupt resume has active context");
+            debug_assert_eq!(popped.level, level);
+        }
         Ok(())
     }
 }
@@ -275,6 +350,9 @@ mod tests {
 
     const RESET_PC: u32 = 0x4000_0400;
     const BEQZ_N_A6: [u8; 2] = [0x8c, 0x06];
+    const RFE: [u8; 3] = [0x00, 0x30, 0x00];
+    const RFUE: [u8; 3] = [0x00, 0x31, 0x00];
+    const RFI3: [u8; 3] = [0x10, 0x33, 0x00];
 
     fn branch_machine(register: u32) -> crate::Machine {
         let mut machine = crate::machine([0; 6]);
@@ -297,6 +375,26 @@ mod tests {
             .run_trace(&[])
             .expect("empty suffix preserves the completed ledger")
             .canonical_ledger
+    }
+
+    fn machine_with_instruction(pc: u32, instruction: &[u8]) -> crate::Machine {
+        let mut machine = crate::Machine::new([0; 6]);
+        machine
+            .bus
+            .load_bytes(pc, instruction)
+            .expect("test instruction maps in mask ROM");
+        machine
+    }
+
+    fn interrupt_machine(irq: u32, vector: u32, return_instruction: &[u8]) -> crate::Machine {
+        let mut machine = machine_with_instruction(vector, return_instruction);
+        machine.cpu.ps = 0;
+        machine
+            .advance_measured_devices(0)
+            .expect("initial device state synchronizes");
+        machine.cpu.intenable = 1 << irq;
+        machine.cpu.interrupt = 1 << irq;
+        machine
     }
 
     #[test]
@@ -412,6 +510,139 @@ mod tests {
                 [0, 0]
             );
             assert_eq!(backend.engine().state().committed_interrupt_entries[0], 1);
+            assert_eq!(backend.accepted_interrupts[0].len(), 1);
+        }
+    }
+
+    #[test]
+    fn accepted_interrupts_resume_only_through_matching_product_return() {
+        for (irq, vector, instruction, entry, resume) in [
+            (0, 0x4000_0300, RFE.as_slice(), 227, 143),
+            (11, 0x4000_01c0, RFI3.as_slice(), 222, 139),
+        ] {
+            let mut machine = interrupt_machine(irq, vector, instruction);
+            let mut backend = Esp32Backend::default();
+            assert_eq!(
+                machine.step_measured(&mut backend, CoreId::Core0),
+                Ok(MeasuredStep::Interrupt(irq))
+            );
+            assert_eq!(machine.cpu.pc, vector);
+            assert_eq!(backend.accepted_interrupts[0].len(), 1);
+            assert_eq!(
+                machine.step_measured(&mut backend, CoreId::Core0),
+                Ok(MeasuredStep::Instruction)
+            );
+            assert_eq!(machine.cpu.pc, RESET_PC);
+            assert!(backend.accepted_interrupts[0].is_empty());
+            assert_eq!(backend.engine().ledger().len(), 2);
+            assert_eq!(backend.engine().ledger()[0].completion, entry);
+            assert_eq!(backend.engine().ledger()[1].start, entry);
+            assert_eq!(backend.engine().ledger()[1].completion, entry + resume);
+            assert_eq!(
+                backend.engine().ledger()[1].components[0].class,
+                CostClass::Interrupt {
+                    level: interrupt_level(INT_LEVEL[irq as usize]),
+                    phase: InterruptPhase::Resume,
+                }
+            );
+            assert_eq!(
+                backend.engine().ledger()[1].components[0].receipt,
+                ReceiptId::Idf61ToolchainDelta
+            );
+            assert_eq!(backend.engine().state().committed_interrupt_resumes[0], 1);
+        }
+    }
+
+    #[test]
+    fn mismatched_return_preserves_active_context_cpu_and_entry_ledger() {
+        let mut machine = interrupt_machine(0, 0x4000_0300, &RFI3);
+        let mut backend = Esp32Backend::default();
+        assert_eq!(
+            machine.step_measured(&mut backend, CoreId::Core0),
+            Ok(MeasuredStep::Interrupt(0))
+        );
+        let before = machine.cpu.clone();
+        let before_state = backend.engine().state().clone();
+        assert!(matches!(
+            machine.step_measured(&mut backend, CoreId::Core0),
+            Err(MeasuredStepError::Plan(PlanError::Timing(TimingRefusal {
+                reason: RefusalReason::InterruptResumeLevelMismatch,
+                ..
+            })))
+        ));
+        assert_eq!(machine.cpu.pc, before.pc);
+        assert_eq!(machine.cpu.ps, before.ps);
+        assert_eq!(machine.cpu.ccount, before.ccount);
+        assert_eq!(backend.engine().state(), &before_state);
+        assert_eq!(backend.engine().ledger().len(), 1);
+        assert_eq!(backend.accepted_interrupts[0].len(), 1);
+
+        machine
+            .bus
+            .load_bytes(machine.cpu.pc, &RFE)
+            .expect("matching return replaces the mismatched test instruction");
+        assert_eq!(
+            machine.step_measured(&mut backend, CoreId::Core0),
+            Ok(MeasuredStep::Instruction)
+        );
+        assert!(backend.accepted_interrupts[0].is_empty());
+    }
+
+    #[test]
+    fn rfue_never_consumes_an_active_interrupt_context() {
+        let mut machine = interrupt_machine(0, 0x4000_0300, &RFUE);
+        let mut backend = Esp32Backend::default();
+        assert_eq!(
+            machine.step_measured(&mut backend, CoreId::Core0),
+            Ok(MeasuredStep::Interrupt(0))
+        );
+        let before = machine.cpu.clone();
+        let before_state = backend.engine().state().clone();
+        assert!(matches!(
+            machine.step_measured(&mut backend, CoreId::Core0),
+            Err(MeasuredStepError::Plan(PlanError::Timing(TimingRefusal {
+                reason: RefusalReason::NonInterruptExceptionReturn,
+                ..
+            })))
+        ));
+        assert_eq!(machine.cpu.pc, before.pc);
+        assert_eq!(machine.cpu.ps, before.ps);
+        assert_eq!(machine.cpu.ccount, before.ccount);
+        assert_eq!(backend.engine().state(), &before_state);
+        assert_eq!(backend.engine().ledger().len(), 1);
+        assert_eq!(backend.accepted_interrupts[0].len(), 1);
+    }
+
+    #[test]
+    fn unmatched_exception_returns_refuse_without_any_mutation() {
+        for (instruction, reason) in [
+            (
+                RFE.as_slice(),
+                RefusalReason::InterruptResumeWithoutAcceptance,
+            ),
+            (RFUE.as_slice(), RefusalReason::NonInterruptExceptionReturn),
+        ] {
+            let mut machine = machine_with_instruction(RESET_PC, instruction);
+            let before = machine.cpu.clone();
+            let mut backend = Esp32Backend::default();
+            let result = machine.step_measured(&mut backend, CoreId::Core0);
+            assert!(matches!(
+                result,
+                Err(MeasuredStepError::Plan(PlanError::Timing(TimingRefusal {
+                    reason: observed,
+                    ..
+                }))) if observed == reason
+            ));
+            assert_eq!(machine.cpu.pc, before.pc);
+            assert_eq!(machine.cpu.ps, before.ps);
+            assert_eq!(machine.cpu.ccount, before.ccount);
+            assert_eq!(machine.cpu.insn_count, before.insn_count);
+            assert_eq!(
+                backend.engine().state(),
+                &TransactionEngine::default().state().clone()
+            );
+            assert!(backend.engine().ledger().is_empty());
+            assert!(backend.accepted_interrupts[0].is_empty());
         }
     }
 
@@ -436,6 +667,7 @@ mod tests {
         assert_eq!(cpu.pc, before.pc);
         assert_eq!(cpu.ps, before.ps);
         assert!(backend.engine().ledger().is_empty());
+        assert!(backend.accepted_interrupts[0].is_empty());
     }
 
     #[test]
