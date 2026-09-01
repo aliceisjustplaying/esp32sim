@@ -20,8 +20,14 @@ The command fails closed on another CPU or browser, builds both modules with
 Zig, runs seven 1.5-second samples per mode in paired order, verifies matching
 full architectural-output hashes and exact synthetic ledgers, and writes `result.json`.
 That file contains every raw sample and recomputable medians, accounting cost,
-and clearance plus margin against the 480 MIPS real-time budget. Until that
-file exists, no performance claim is made.
+and clearance plus margin against the 480 MIPS real-time budget.
+
+On the target Apple M1 Pro in Google Chrome 151.0.7922.174, the accounting-off
+median was 10,486.56 MIPS and the accounting-on median was 4,478.24 MIPS, a
+57.30 percent accounting cost. The accounted JIT spike clears the 480 MIPS
+real-time budget by 3,998.24 MIPS, a margin of 832.97 percent. This is a
+feasibility ceiling for the compiled block shape described above, not a
+product-JIT throughput claim.
 
 The kernel is the prior browser-speed probe's eight-instruction-per-pixel
 model, extended with a compile-time accounting switch. Its source receipt is
