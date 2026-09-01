@@ -184,7 +184,7 @@ fn main() {
     let mut m = Machine::new([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
     m.bus.board = esp32s3::board::make_board(&board).unwrap_or_else(|| {
         eprintln!(
-            "unknown board '{}' (atech14, waveshare-cam, waveshare-lcd4b, none)",
+            "unknown board '{}' (atech14, waveshare-cam, waveshare-lcd4b, waveshare-amoled18-v2, none)",
             board
         );
         std::process::exit(2)
