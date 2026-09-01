@@ -11,7 +11,10 @@
 //!   budget is kept in the frame at `[sp, #96]`.
 //! Guest register `n` lives at `ar[(w22 + n) & 63]`. Anything the fast path does not implement
 //! is executed by calling back into `exec_insn` through `Helpers::exec`.
-#![allow(clippy::too_many_arguments)]
+#![allow(
+    clippy::too_many_arguments,
+    reason = "JIT emitters mirror complete instruction fields and calling-convention registers"
+)]
 
 #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
 pub mod a64;
@@ -26,7 +29,7 @@ mod native {
     use crate::block::BlockInsn;
     use crate::bus::{Bus, FastMem, TLB_ENTRIES};
     use crate::decode::Op;
-    use crate::exec::{exec_insn, Trap};
+    use crate::exec::exec_insn;
     use crate::state::{exc, Cpu};
     use std::ffi::{c_int, c_void};
 
@@ -1102,8 +1105,6 @@ mod native {
     pub const CODE_TRAP: u32 = EXIT_TRAP;
     pub const CODE_CUT: u32 = EXIT_CUT;
     pub const CODE_TRAP_PRE: u32 = EXIT_TRAP_PRE;
-    #[allow(dead_code)]
-    fn _uses(_: Label, _: Trap) {}
 }
 
 #[cfg(not(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux"))))]
