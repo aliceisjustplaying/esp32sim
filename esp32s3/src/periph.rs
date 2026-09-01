@@ -1407,6 +1407,8 @@ impl Pcnt {
 pub(crate) struct GpSpiTransfer {
     pub tx: Vec<u8>,
     pub rx_len: usize,
+    pub data_offset: usize,
+    pub data_len: usize,
     rx_word_base: usize,
 }
 
@@ -1485,10 +1487,13 @@ impl GpSpi {
                 tx.push((a >> (24 - 8 * i)) as u8);
             }
         }
+        let data_offset = tx.len();
+        let mut data_len = 0;
         if user & (1 << 27) != 0 {
             // MOSI data phase from W0.. (or W8.. with HIGHPART)
             let bits = (self.regs.read(0x1c) & 0x3ffff) + 1;
             let n = bits.div_ceil(8) as usize;
+            data_len = n;
             let base = if user & (1 << 25) != 0 { 8 } else { 0 };
             for i in 0..n.min((16 - base) * 4) {
                 tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8);
@@ -1503,6 +1508,8 @@ impl GpSpi {
         self.pending = Some(GpSpiTransfer {
             tx,
             rx_len,
+            data_offset,
+            data_len,
             rx_word_base,
         });
     }

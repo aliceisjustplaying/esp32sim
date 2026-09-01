@@ -334,7 +334,8 @@ impl SocBus {
             }
         };
         self.periph.write32(a, w);
-        if let Some(transfer) = self.periph.spi2.take_transfer() {
+        if let Some(mut transfer) = self.periph.spi2.take_transfer() {
+            self.spi2_dma_payload(&mut transfer);
             // GPIO carries chip select and command/data pins for existing boards. Deliver every
             // preceding edge before the synchronous SPI transaction so the board observes bus order.
             if !self.periph.gpio.changes.is_empty() {
@@ -356,6 +357,42 @@ impl SocBus {
                 self.note_written(src, off, len);
             }
         }
+    }
+
+    /// Replace the GP-SPI2 data phase with bytes from its active GDMA TX descriptor chain.
+    /// ESP-IDF uses this path for both small panel commands and full color transfers.
+    fn spi2_dma_payload(&mut self, transfer: &mut crate::periph::GpSpiTransfer) {
+        let Some(ch) = self.periph.gdma.out_channel_for(0) else { return };
+        let mut payload = Vec::with_capacity(transfer.data_len);
+        while payload.len() < transfer.data_len {
+            let c = self.periph.gdma.out[ch];
+            if !c.running || c.desc == 0 { break; }
+            let dw0 = self.read32(c.desc).unwrap_or(0);
+            let length = (dw0 >> 12) & 0xfff;
+            let eof = dw0 & (1 << 30) != 0;
+            let buf = self.read32(c.desc + 4).unwrap_or(0);
+            let next = self.read32(c.desc + 8).unwrap_or(0);
+            let remaining = length.saturating_sub(c.buf_pos) as usize;
+            if remaining != 0 {
+                let take = remaining.min(transfer.data_len - payload.len());
+                for i in 0..take { payload.push(self.read8(buf + c.buf_pos + i as u32).unwrap_or(0)); }
+                self.periph.gdma.out[ch].buf_pos += take as u32;
+                if take < remaining { continue; }
+            }
+            if self.periph.gdma.out[ch].conf0 & (1 << 2) != 0 { let _ = self.write32(c.desc, dw0 & !(1 << 31)); }
+            let out = &mut self.periph.gdma.out[ch];
+            out.int_raw |= 1 << 0;
+            if eof { out.int_raw |= 1 << 1; out.eof_desc = c.desc; }
+            if next == 0 { out.running = false; out.desc = 0; out.int_raw |= 1 << 3; }
+            else { out.desc = next; out.buf_pos = 0; }
+            self.irq_dirty = true;
+            if eof { break; }
+        }
+        if !payload.is_empty() && transfer.tx.len() < transfer.data_offset + transfer.data_len {
+            transfer.tx.resize(transfer.data_offset + transfer.data_len, 0);
+        }
+        let n = payload.len().min(transfer.tx.len().saturating_sub(transfer.data_offset));
+        transfer.tx[transfer.data_offset..transfer.data_offset + n].copy_from_slice(&payload[..n]);
     }
 
     /// Move I2S TX data out of DMA descriptors at the sample rate.
@@ -993,6 +1030,32 @@ mod gp_spi_board_tests {
         assert_eq!(bus.periph.spi2.w[0] & 0xff, 0x5a);
         assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
         assert_eq!(&*events.lock().unwrap(), &["gpio:[(12, false)]", "spi:2:[9f]:1"]);
+    }
+
+    #[test]
+    fn spi2_data_phase_comes_from_gdma_descriptor() {
+        const SPI2: u32 = 0x6002_4000;
+        const DESC: u32 = 0x3fc9_0100;
+        const DATA: u32 = 0x3fc9_0200;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        bus.write32(DATA, 0x4433_2211).unwrap();
+        bus.write32(DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31)).unwrap();
+        bus.write32(DESC + 4, DATA).unwrap();
+        bus.write32(DESC + 8, 0).unwrap();
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+        bus.periph.gdma.out[0].peri_sel = 0;
+        bus.periph.gdma.out[0].desc = DESC;
+        bus.periph.gdma.out[0].running = true;
+
+        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
+        bus.write32(SPI2 + 0x1c, 31).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert_eq!(&*events.lock().unwrap(), &["spi:2:[11, 22, 33, 44]:0"]);
+        assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
     }
 }
 
