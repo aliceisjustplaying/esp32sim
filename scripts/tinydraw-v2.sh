@@ -30,7 +30,7 @@ build_all() {
 }
 
 run_emulator() {
-  exec "$repo_root/target/release/esp32sim" \
+  "$repo_root/target/release/esp32sim" \
     --boot rom \
     --bootloader "$build_root/bootloader/bootloader.bin" \
     --ptable "$build_root/partition_table/partition-table.bin" \
@@ -57,7 +57,15 @@ case "$action" in
     ;;
   smoke)
     build_all
-    run_emulator --max-seconds 120
+    smoke_log="$(mktemp "${TMPDIR:-/tmp}/tinydraw-v2-smoke.XXXXXX")"
+    trap 'rm -f "$smoke_log"' EXIT
+    run_emulator --max-seconds 120 2>&1 | tee "$smoke_log"
+    grep -q 'TINYDRAW_VECTOR_V2_READY' "$smoke_log"
+    if grep -qE 'Guru Meditation|task_wdt|TG1WDT_SYS_RST|stack overflow|TINYDRAW_LIVE_FAIL' "$smoke_log"; then
+      echo "TinyDraw V2 smoke test reported a crash or product failure" >&2
+      exit 1
+    fi
+    echo "TinyDraw V2 smoke test passed"
     ;;
   flash)
     require_tinydraw
