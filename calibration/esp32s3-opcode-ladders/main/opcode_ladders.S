@@ -130,26 +130,55 @@
   function_end \name
 .endm
 
-/* Not-taken branches fall through a nop and a jump to the aligned target. */
+/* Not-taken branches fall through groups ending at aligned targets. */
 .macro branch_not_taken name, emitter, value8, value9, narrow=0
   function_start \name
   _movi a8, \value8
   _movi a9, \value9
   body_start \name
-  .rept 256
+  .if \narrow
+  .rept 8
     \emitter 1f
-    .if \narrow
-      nop.n
-    .else
-      nop.n
-    .endif
-    j 1f
-    .if \narrow
-      .byte 0
-    .endif
+  .endr
+  .rept 15
+    .rept 2
+      \emitter 2f
+    .endr
+1:
+    .rept 6
+      \emitter 2f
+    .endr
+    .rept 2
+      \emitter 1f
+    .endr
+2:
+    .rept 6
+      \emitter 1f
+    .endr
+  .endr
+  .rept 2
+    \emitter 2f
+  .endr
+1:
+  .rept 6
+    \emitter 2f
+  .endr
+  body_end \name
+  j 3f
+  .byte 0
+2:
+  j 3f
+3:
+  .else
+  .rept 64
+    \emitter 1f
+    \emitter 1f
+    \emitter 1f
+    \emitter 1f
 1:
   .endr
   body_end \name
+  .endif
   function_end \name
 .endm
 
