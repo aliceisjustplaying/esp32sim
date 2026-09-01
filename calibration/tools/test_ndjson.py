@@ -40,6 +40,23 @@ def contract() -> ManifestContract:
     )
 
 
+def manifest_payload() -> dict[str, object]:
+    return {
+        "protocolVersion": 2,
+        "harnessVersion": "1.0.0",
+        "chipModel": "ESP32-S3",
+        "chipRevision": 2,
+        "cells": [
+            {
+                "id": "rtc_read",
+                "family": "register-read",
+                "samples": 100,
+                "variants": ["normal"],
+            }
+        ],
+    }
+
+
 def contention_contract() -> ManifestContract:
     return ManifestContract(
         protocol_version=2,
@@ -326,6 +343,105 @@ class CaptureValidatorTest(unittest.TestCase):
         )
         self.assertEqual(design_ranks(actual.cells), {})
         self.assertEqual(sum(cell.samples for cell in actual.cells), 357)
+
+    def test_manifest_accepts_rtc_domain_and_register_exclusions(self) -> None:
+        payload = manifest_payload()
+        payload["cells"][0]["clockDomain"] = "rtc"
+        payload["exclusions"] = [
+            {
+                "register": "0x60038000",
+                "block": "USB_SERIAL_JTAG",
+                "reason": "EP1 FIFO write changes device state",
+            },
+            {
+                "register": "0x60007000-0x60007028",
+                "block": "EFUSE",
+                "reason": "Programming bank changes one-time state",
+            },
+        ]
+        actual = ManifestContract.from_bytes(json.dumps(payload).encode())
+        self.assertEqual(actual.cells[0].clock_domain, "rtc")
+        self.assertEqual(actual.exclusions[0].register, "0x60038000")
+        self.assertEqual(actual.exclusions[1].block, "EFUSE")
+
+    def test_manifest_keeps_new_fields_optional(self) -> None:
+        without_exclusions = ManifestContract.from_bytes(
+            json.dumps(manifest_payload()).encode()
+        )
+        self.assertIsNone(without_exclusions.cells[0].clock_domain)
+        self.assertEqual(without_exclusions.exclusions, ())
+        payload = manifest_payload()
+        payload["exclusions"] = []
+        with_empty_exclusions = ManifestContract.from_bytes(
+            json.dumps(payload).encode()
+        )
+        self.assertEqual(with_empty_exclusions.exclusions, ())
+        positional = ManifestContract(2, "1.0.0", "ESP32-S3", 2, (), "a" * 64)
+        self.assertEqual(positional.manifest_sha256, "a" * 64)
+        self.assertEqual(positional.exclusions, ())
+
+    def test_manifest_rejects_unsupported_clock_domain(self) -> None:
+        for value in ("apb", ""):
+            with self.subTest(value=value):
+                payload = manifest_payload()
+                payload["cells"][0]["clockDomain"] = value
+                with self.assertRaisesRegex(ValidationError, "clockDomain"):
+                    ManifestContract.from_bytes(json.dumps(payload).encode())
+
+    def test_manifest_rejects_malformed_exclusions(self) -> None:
+        malformed = (
+            "not-an-array",
+            [{}],
+            [{"register": "0x60038000", "block": "USB_SERIAL_JTAG"}],
+            [
+                {
+                    "register": "0x60038000",
+                    "block": "USB_SERIAL_JTAG",
+                    "reason": "side effect",
+                    "extra": "rejected",
+                }
+            ],
+            [{"register": "0x60038000", "block": "", "reason": "side effect"}],
+        )
+        for exclusions in malformed:
+            with self.subTest(exclusions=exclusions):
+                payload = manifest_payload()
+                payload["exclusions"] = exclusions
+                with self.assertRaises(ValidationError):
+                    ManifestContract.from_bytes(json.dumps(payload).encode())
+
+    def test_manifest_rejects_invalid_or_duplicate_register_exclusions(self) -> None:
+        for register in ("0x6003800", "60038000", "0x60007028-0x60007000", 0x60038000):
+            with self.subTest(register=register):
+                payload = manifest_payload()
+                payload["exclusions"] = [
+                    {
+                        "register": register,
+                        "block": "SYSTEM",
+                        "reason": "side effect",
+                    }
+                ]
+                with self.assertRaises(ValidationError):
+                    ManifestContract.from_bytes(json.dumps(payload).encode())
+        payload = manifest_payload()
+        exclusion = {
+            "register": "0x60038000",
+            "block": "USB_SERIAL_JTAG",
+            "reason": "side effect",
+        }
+        payload["exclusions"] = [exclusion, exclusion]
+        with self.assertRaisesRegex(ValidationError, "duplicates"):
+            ManifestContract.from_bytes(json.dumps(payload).encode())
+
+    def test_manifest_new_fields_preserve_unknown_key_rejection(self) -> None:
+        payload = manifest_payload()
+        payload["unknown"] = []
+        with self.assertRaisesRegex(ValidationError, "unexpected keys"):
+            ManifestContract.from_bytes(json.dumps(payload).encode())
+        payload = manifest_payload()
+        payload["cells"][0]["clock_domain"] = "rtc"
+        with self.assertRaisesRegex(ValidationError, "unexpected keys"):
+            ManifestContract.from_bytes(json.dumps(payload).encode())
 
     def test_manifest_rejects_a_missing_noop_control(self) -> None:
         root = Path(__file__).resolve().parents[1]
