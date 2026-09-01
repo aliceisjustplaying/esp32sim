@@ -240,15 +240,11 @@ static uint32_t issue_independent_trial(void) { return bench_issue(issue_indepen
 
 static void run_interrupt_probe(const char *suffix, int flags) {
   intr_handle_t handle = NULL;
-  esp_err_t err = esp_intr_alloc(ETS_INTERNAL_SW0_INTR_SOURCE,
-                                 flags | ESP_INTR_FLAG_IRAM,
+  const int source = (flags & ESP_INTR_FLAG_LEVEL3) != 0
+                         ? ETS_INTERNAL_SW1_INTR_SOURCE
+                         : ETS_INTERNAL_SW0_INTR_SOURCE;
+  esp_err_t err = esp_intr_alloc(source, flags | ESP_INTR_FLAG_IRAM,
                                  sw_interrupt_handler, NULL, &handle);
-  if (err != ESP_OK) {
-    /* SW0 can be owned by the FreeRTOS port; fall back to SW1. */
-    err = esp_intr_alloc(ETS_INTERNAL_SW1_INTR_SOURCE,
-                         flags | ESP_INTR_FLAG_IRAM,
-                         sw_interrupt_handler, NULL, &handle);
-  }
   if (err != ESP_OK) {
     printf("CALIBRATION_FAILED intr_alloc %s err=%d\n", suffix, (int)err);
     return;
