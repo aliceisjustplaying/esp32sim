@@ -12,11 +12,15 @@ import datetime
 import hashlib
 import json
 import re
+import shlex
+import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
-from tier_b_ndjson import (
+from ndjson import (
     DBUS_FLASH_CLASSIFIER_ALIGNMENT,
     DBUS_FLASH_CLASSIFIER_BYTES,
     DEFAULT_MANIFEST,
@@ -24,6 +28,7 @@ from tier_b_ndjson import (
     CaptureValidator,
     ManifestContract,
     ValidationError,
+    validate_calibration_lines,
 )
 
 
@@ -193,7 +198,7 @@ def write_receipt(
     temporary.replace(path)
 
 
-def main() -> int:
+def legacy_main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("port")
     parser.add_argument("output", type=Path)
@@ -367,6 +372,142 @@ def main() -> int:
         )
     )
     return 0
+
+
+def _one_artifact(build: Path, suffix: str) -> Path:
+    matches = list(build.glob(f"*{suffix}"))
+    if len(matches) != 1:
+        raise ValidationError(
+            f"build directory must contain exactly one top-level {suffix} file"
+        )
+    return matches[0]
+
+
+def _capture_boot(port: str, output: Path, timeout_s: float) -> list[str]:
+    import serial
+
+    device = serial.Serial(port, 115200, timeout=0.25)
+    lines: list[str] = []
+    buffer = b""
+    done_at: float | None = None
+    try:
+        device.dtr = False
+        device.rts = True
+        time.sleep(0.2)
+        device.rts = False
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if done_at is not None and time.monotonic() >= done_at + 1.0:
+                break
+            data = device.read(4096)
+            if not data:
+                continue
+            buffer += data
+            while b"\n" in buffer:
+                raw, buffer = buffer.split(b"\n", 1)
+                line = raw.decode(errors="strict").rstrip("\r")
+                lines.append(line)
+                if failure_marker(raw) is not None:
+                    raise ValidationError(f"hardware failure marker: {line}")
+                if "CALIBRATION_DONE" in line:
+                    done_at = time.monotonic()
+        if buffer.strip():
+            lines.append(buffer.decode(errors="strict").rstrip("\r"))
+    except UnicodeDecodeError as error:
+        raise ValidationError("serial capture is not valid UTF-8") from error
+    finally:
+        device.close()
+    output.write_text("".join(f"{line}\n" for line in lines))
+    return lines
+
+
+def _sha256sums(directory: Path) -> None:
+    entries = []
+    for path in sorted(item for item in directory.rglob("*") if item.is_file()):
+        if path.name == "SHA256SUMS":
+            continue
+        relative = path.relative_to(directory)
+        entries.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {relative}")
+    (directory / "SHA256SUMS").write_text("\n".join(entries) + "\n")
+
+
+def session_main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--image", type=Path, required=True)
+    parser.add_argument("--build", type=Path, required=True)
+    parser.add_argument("--boots", type=int, required=True)
+    parser.add_argument("--port", required=True)
+    parser.add_argument("--timeout-s", type=float, default=120.0)
+    parser.add_argument(
+        "--archive-root", type=Path, default=Path("~/Archives/esp32s3").expanduser()
+    )
+    args = parser.parse_args()
+    try:
+        if args.boots < 1:
+            raise ValidationError("--boots must be at least 1")
+        image = args.image.resolve(strict=True)
+        build = args.build.resolve(strict=True)
+        manifest = image / "probe-cells.json"
+        verifier = image / "verify_elf.py"
+        bootloader = build / "bootloader" / "bootloader.bin"
+        partition_table = build / "partition_table" / "partition-table.bin"
+        app_elf = _one_artifact(build, ".elf")
+        app_bin = app_elf.with_suffix(".bin")
+        for path in (manifest, verifier, bootloader, partition_table, app_bin):
+            if not path.is_file():
+                raise ValidationError(f"missing capture input: {path}")
+        contract = ManifestContract.load(manifest)
+        stamp_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        archive = args.archive_root / f"{image.name}-{stamp_name}"
+        archive.mkdir(parents=True, exist_ok=False)
+        verification = archive / "elf-verification.json"
+        verify_command = (
+            f"python3 {shlex.quote(str(verifier))} {shlex.quote(str(app_elf))} "
+            f"{shlex.quote(str(verification))} "
+            '--objdump "$(command -v xtensa-esp32s3-elf-objdump)"'
+        )
+        subprocess.run(["eim", "run", verify_command, "v6.1"], check=True)
+        for path in (manifest, bootloader, partition_table, app_bin, app_elf):
+            shutil.copy2(path, archive / path.name)
+        flash_command = (
+            f"idf.py -C {shlex.quote(str(image))} -B {shlex.quote(str(build))} "
+            f"-p {shlex.quote(args.port)} flash"
+        )
+        subprocess.run(["eim", "run", flash_command, "v6.1"], check=True)
+        boots = []
+        for number in range(1, args.boots + 1):
+            capture = archive / f"boot-{number}.log"
+            lines = _capture_boot(args.port, capture, args.timeout_s)
+            tally = validate_calibration_lines(lines, contract, "normal", "all", False)
+            boots.append(
+                {
+                    "boot": number,
+                    "capture": capture.name,
+                    "captureSha256": hashlib.sha256(capture.read_bytes()).hexdigest(),
+                    "tally": tally.as_dict(),
+                }
+            )
+        session = {
+            "schemaVersion": 1,
+            "image": image.name,
+            "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "boots": boots,
+        }
+        (archive / "session.json").write_text(
+            json.dumps(session, indent=2, sort_keys=True) + "\n"
+        )
+        _sha256sums(archive)
+    except (OSError, subprocess.CalledProcessError, ValidationError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True))
+        return 2
+    print(json.dumps({"ok": True, "archive": str(archive)}, sort_keys=True))
+    return 0
+
+
+def main() -> int:
+    if "--image" in sys.argv[1:]:
+        return session_main()
+    return legacy_main()
 
 
 if __name__ == "__main__":
