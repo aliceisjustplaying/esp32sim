@@ -27,7 +27,7 @@ Read-only inputs. Harvest under review; do not resume.
 | Branch | Head | Contents | Known defects to review before harvest |
 | --- | --- | --- | --- |
 | `salvage/core-measured-phase1` | `516b1ad` | `backend-api` crate with fake backend, measured interpreter scheduler, schema-2 profile importer, ledger; 58 tests passing in isolation | Single-core; cache model is an unbounded lifetime set (no eviction, no per-core state); timing mutations are strings in the hot path; timing commits on trapped instructions; interrupt acceptance is unledgered; differential-gate test reverted at HEAD |
-| `salvage/board-tinydraw-v2` | `b7c9b87` | Waveshare AMOLED 1.8 board model: GP-SPI DMA, CO5300 command parsing, TCA9554, tear line on GPIO 13, touch state; wasm builds; passes the safeguards script | Touch interrupt (GPIO 21) not driven; DMA descriptor walker unbounded (guest can hang the host); dead ST7701 state wired into the IO expander; PMIC/RTC/IMU are register-RAM stubs (acceptable per GOAL, label them) |
+| `salvage/board-tinydraw-v2` | `b7c9b87` | Waveshare AMOLED 1.8 V2 board model: generic GP-SPI with MISO, GP-SPI2 DMA delivery, CST820 touch, CO5300 panel, TCA9554, tear line on GPIO 13, board-driven GPIO input, browser touch, one-command TinyDraw workflows; wasm builds; passes the safeguards script; passed the TinyDraw V2 normal-product stroke gate in the browser with the same source validated on hardware (receipt: `evidence/board-tinydraw-v2-normal-2026-09-01/`) | Touch interrupt (GPIO 21) not driven (stroke gate passes via polling); DMA descriptor walker unbounded (guest can hang the host); dead ST7701 state wired into the IO expander; modeled 60 Hz TE is an approximate compatibility signal, not adopted timing; PMIC/RTC/IMU are register-RAM stubs (acceptable per GOAL, label them) |
 | `salvage/rust-safeguards` | `b138473` | `scripts/pre-commit.sh`: fmt, check, strict clippy, debug and release tests, rustdoc | None known; harvest first |
 | `salvage/gp-spi-device-hook` | `246c699` | Upstream-shaped synchronous GP-SPI board-response hook | Candidate for an upstream PR |
 | `salvage/ci-spec`, `salvage/upstream-ci` | `6ba6a6d`, `3b58cc6` | CI workflow material | Not yet reviewed in place |
@@ -37,6 +37,15 @@ Read-only inputs. Harvest under review; do not resume.
 `salvage/core-measured-phase1` and `salvage/board-tinydraw-v2`
 diverge from the same ancestor with a 30-file conflict surface; the
 integration trunk milestone resolves that once, on `alice`.
+
+## Board identity
+
+- Touch controller: CST820, adopted for the exact V2 board from the
+  on-device identity probe (I2C `0x15`, identity registers `0xA7/0xA8/0xA9`
+  returned `0xB7/0x41/0x02`). Receipt:
+  [`evidence/board-touch-identity-2026-09-01/`](evidence/board-touch-identity-2026-09-01/README.md).
+- Panel controller: CO5300-class QSPI AMOLED.
+- Chip: ESP32-S3 QFN56 revision v0.2.
 
 ## Adopted timing numbers
 
@@ -79,43 +88,63 @@ machine-local to the maintainer (not committed); hashes pin them:
 - Gate-harness ELF SHA-256
   `4e121a3642a6f18766cfe96c2be6adc8a0017fba4afa82105d642168ea40e2c8`
 
-Known gap: TinyDraw commit `3db39856` (the IDF 6.1 probe fix) is on a
-side branch, not TinyDraw main; merging it is part of hardware-batch
-preparation.
+The fixture source is published on TinyDraw branch
+`codex/lane-0-idf61-probes` at `632c966`. TinyDraw pull request 4
+(branch `maintenance/idf61-probes` at `0835e5b`) carries the IDF 6.1
+probe and receipt commits plus review fixes and is pending maintainer
+test and merge; normal-product validation used TinyDraw `2643aa7`.
 
 ## Hardware queue
 
-The board has one owner at a time. Everything below needs only the
-USB-C cable (CCOUNT probes, GPIO interrupt timestamps, performance
-counters, USB Serial/JTAG capture) and should be powered through as
-one early batch:
+The board has one owner at a time. Front-load everything USB-C can
+reach (CCOUNT probes, GPIO interrupt timestamps, hardware cache
+counters, USB Serial/JTAG capture) as one early batch, in tiers:
 
-1. Touch controller identity probe: read the I2C ID registers, adopt
-   the name (unnamed until then).
-2. Tear line timing: GPIO 13 interrupt CCOUNT timestamps for panel
-   refresh period and phase.
-3. Touch interrupt and transaction timing: GPIO 21 edges plus CCOUNT
-   around I2C reads.
-4. Panel flush cost: CCOUNT around QSPI flushes of swept sizes, for a
-   cycles-per-byte display-path model.
-5. GDMA and SPI2 transfer timing sweeps.
-6. PSRAM and flash bandwidth under contention: memcpy sweeps with the
-   second core active versus idle.
-7. Cache maintenance costs: `esp_cache_msync` writeback and invalidate
-   by size.
-8. Re-capture the six identities below the strict two-receipt bar
-   (repeated USB truncation; add capture-side per-line validation
-   first).
-9. PSRAM long-window cells to strict two-boot status.
-10. First-line cache pooling diagnosis (unblocks the first-line cost
-    class).
-11. Arbitration and cache store/writeback probes (probe code needs
-    review first).
-12. CCOUNT lock-step against measured mode (needs milestone 2).
+Tier A, capture now with existing or PR-4 assets:
 
-Equipment-gated, deferred indefinitely: wire-level QSPI, tear, and I2C
-capture (a DSLogic Plus class logic analyzer, roughly 105 to 190 USD,
-is the identified buy if panel-side validation is ever needed).
+1. Close the six IDF 6.1 receipt-gap identities (full-suite boots;
+   no selective rerun mode exists yet).
+2. Second independent IDF 6.1 core-timing boot: window pair,
+   straight-line issue, loop alignment, interrupt entry and resume.
+3. Boot-to-product reset cohort (about 30 resets, kept as a
+   distribution, not an acceptance bound).
+4. Diagnostic TE telemetry: the normal product's internally measured
+   `te_period_us` and `te_high_us` across the reset cohort
+   (diagnostic only; interrupt latency means it is not adopted panel
+   timing).
+5. PSRAM long-window: assemble the existing cells offline first;
+   re-capture only the cells that fall short of two eligible boots.
+
+Tier B, needs reviewed probe code first (one unified timing image
+where practical, two clean independent boots each):
+
+6. Arbitration aggressors (internal, flash, PSRAM) with a start
+   barrier and attributable cache counters.
+7. Hot external-cache store-hit probe.
+8. Clean-versus-dirty writeback ladders (1, 2, 4, 8, 16 lines).
+9. Instruction-PSRAM hot and cold fetch probes.
+10. First-line cache pooling probe (diagnoses the one-cycle IDF 6.1
+    shift; unblocks the first-line cost class).
+11. Selective cohort rerun mode (so USB truncation recovery stops
+    costing full-suite boots).
+12. Display-path and DMA cost families for GOAL's cost classes:
+    panel QSPI flush sweeps (cycles per byte), GDMA and SPI2
+    transfer sweeps, touch I2C transaction timing, GPIO 21 edge
+    timing, `esp_cache_msync` writeback and invalidate by size, and
+    PSRAM and flash bandwidth under cross-core contention.
+13. Optional DMA descriptor marker hook to correlate GP-SPI2/GDMA
+    activity with a later electrical capture.
+
+Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
+capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
+SDA/SCL, GPIO 21 touch interrupt) resolving the 40 MHz bus, cold
+reset through one known frame, at least 120 TE edges, plus
+human-held touch landmarks. A DSLogic Plus class analyzer (roughly
+105 to 190 USD) is the identified buy. The full capture contract is
+in the archived predecessor repository (request A-01).
+
+Tier D, blocked on emulator work: CCOUNT lock-step against measured
+mode (needs GOAL milestone 2).
 
 ## Next steps
 
@@ -124,5 +153,6 @@ is the identified buy if panel-side validation is ever needed).
    material that survives review.
 3. Receipt-correlation tests against the adopted numbers above.
 4. Wasm JIT cost-accounting spike (GOAL milestone 3).
-5. Hardware batch prep: merge TinyDraw `3db39856`, add capture-side
-   line validation, write the new probe families (queue items 1 to 7).
+5. Hardware batch: maintainer tests and merges TinyDraw pull request
+   4, then tier A captures, then tier B probe development under
+   review.
