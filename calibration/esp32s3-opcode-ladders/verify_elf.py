@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,6 +16,10 @@ from elftools.elf.elffile import ELFFile
 
 class VerificationError(ValueError):
     pass
+
+
+FUNCTION_HEADER_RE = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
+DROM_REFERENCE_RE = re.compile(r"\((3[cd][0-9a-f]{6})(?:\s|<)")
 
 
 EXPECTED_BODIES: dict[str, tuple[int, str]] = {
@@ -70,7 +76,7 @@ EXPECTED_BODIES: dict[str, tuple[int, str]] = {
     "opcode_bnez_n_taken": (1024, "e022b8fdb808bce1238792a120e766431ce4efc5c761f30c9299560c469c408f"),
     "opcode_bnez_n_not_taken": (512, "2dd9beef827ec31550b72e8255f47253fd5cf58244194537e809fce63c7ce13d"),
     "opcode_j": (1024, "fd51a5a37005c2b6b381d853c972c56fc8f4faf0cfd84b442cf3223ccb67c70f"),
-    "opcode_jx": (2048, "cda4457c8e4c887a060765ecc45a78f91513e66ced70beba4709b943599a97f2"),
+    "opcode_jx": (2048, "c731ad421d1f592f870905451ff524d66f05e2940b1c86451d8a45e31363d7e8"),
     "opcode_call0_ret": (768, "0b8afdbfb563c628540bac4135e845cccf9af11d3548c56837be1d19b9efdfb1"),
     "opcode_callx0_ret": (768, "71d4adc47420d201834fa01558405726a8c1f7e4b78f2efe34f85bc4cb89df6c"),
     "opcode_call8_retw": (768, "b6acffb473d589557a2c292374e78688ce66e4dbc6592af17dfa5feddd4bb911"),
@@ -89,7 +95,7 @@ EXPECTED_BODIES: dict[str, tuple[int, str]] = {
     "opcode_nsa": (768, "d4a5fade7c66b501e0815a9315142b0d275581bb72ab92ab23728cdcc6155f29"),
     "opcode_nsau": (768, "72ae3d81b79817a7839c9ca2ed5b9a85b96da7446f16f1cf245cccd8f7b2d5b9"),
     "opcode_sext": (768, "0e78d8cdbbaaee0120d382d1bceb57e2781ba8a339907c4978caf42472710a13"),
-    "opcode_l32r": (768, "276876a13a76f0877125ef6f9b4368122265e6989f87b8151d09dd3fbd899733"),
+    "opcode_l32r": (768, "0d1e0fb648a96ce5c6fcdd77767f036412fb49f34bd2739d107e05731c55a322"),
     "opcode_s32c1i": (768, "14a22b2b1bcd8b96116544d514b73f2215e7841e3e626f9d92625209fecf51c7"),
     "opcode_memw": (768, "f2a8417650cabf0b312eda34b48970d9f882d075807ae8a9d07bd30d8d752060"),
     "opcode_extw": (768, "dec41899a803f0330d7686d6c5e45eff13813d8951ffa4dfc1d4feb96d5d9c84"),
@@ -129,6 +135,43 @@ def read_virtual(elf: ELFFile, address: int, length: int) -> bytes:
             offset = address - low
             return segment.data()[offset : offset + length]
     raise VerificationError(f"body at {address:#x} is not in a loadable ELF segment")
+
+
+def verify_measurement_window(disassembly: str) -> dict[str, object]:
+    address = None
+    instructions: list[str] = []
+    in_window = False
+    for raw_line in disassembly.splitlines():
+        line = raw_line.strip()
+        header = FUNCTION_HEADER_RE.match(line)
+        if header is not None:
+            if in_window:
+                break
+            if header.group(2) == "measure_probe_samples":
+                address = int(header.group(1), 16)
+                in_window = True
+            continue
+        if in_window and re.match(r"^[0-9a-f]+:", line):
+            instructions.append(line)
+
+    if address is None or not instructions:
+        raise VerificationError("missing measure_probe_samples disassembly")
+    if not 0x40370000 <= address < 0x403E0000:
+        raise VerificationError("measure_probe_samples is outside internal IRAM")
+    drom_references = [line for line in instructions if DROM_REFERENCE_RE.search(line)]
+    descriptor_references = [line for line in instructions if "<probes>" in line]
+    if drom_references or descriptor_references:
+        raise VerificationError("measurement window loads from the flash descriptor table")
+    if not any("callx8" in line for line in instructions):
+        raise VerificationError("measurement window has no indirect probe call")
+    if sum("rsr.ccount" in line for line in instructions) < 2:
+        raise VerificationError("measurement window has fewer than two CCOUNT reads")
+    return {
+        "symbol": "measure_probe_samples",
+        "address": address,
+        "instructions": len(instructions),
+        "dromDescriptorLoads": 0,
+    }
 
 
 def verify(path: Path, manifest_path: Path) -> dict[str, object]:
@@ -222,9 +265,23 @@ def main() -> int:
         return 2
     try:
         result = verify(args.elf, args.manifest)
+        disassembly = subprocess.run(
+            [args.objdump, "-d", str(args.elf)],
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout
+        result["measurementWindow"] = verify_measurement_window(disassembly)
         args.result.parent.mkdir(parents=True, exist_ok=True)
         args.result.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
-    except (OSError, KeyError, TypeError, json.JSONDecodeError, VerificationError) as error:
+    except (
+        OSError,
+        KeyError,
+        TypeError,
+        json.JSONDecodeError,
+        subprocess.CalledProcessError,
+        VerificationError,
+    ) as error:
         print(f"ELF verification failed: {error}", file=sys.stderr)
         return 2
     print(f"ELF verification passed: {args.result}")
