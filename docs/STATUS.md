@@ -130,11 +130,12 @@ The Tier A batch captured product firmware at TinyDraw `5f38ca5` with capture
 tooling at `fe0ee64`; both are contained in current TinyDraw `main` at
 `6ecc1fd`. The accepted receipt is
 [`evidence/timing/tier-a-2026-09-01/`](evidence/timing/tier-a-2026-09-01/README.md).
-Tier B probe drafts remain ready for review. Their fail-closed NDJSON path
-covers 28 Tier B cells across six families. A
-committed objdump gate verifies the probe issue-block encodings and all
-four loop-body residues modulo 4 before capture; mismatch exits nonzero
-without a result file. Task 5-prep did not flash the board or open serial.
+The Tier B batch is complete from TinyDraw
+`fc6d9347549730a0e57aa926f8f6935e12636844`. Its candidate receipt is
+[`evidence/timing/tier-b-2026-09-01/`](evidence/timing/tier-b-2026-09-01/README.md).
+Two normal boots each completed 25 cells and 198 samples; two XIP PSRAM boots
+each completed 26 cells and 211 samples. All four have distinct boot identities
+and zero refusals. These captures adopt no measured-mode costs.
 
 Tier A dispositions:
 
@@ -161,25 +162,25 @@ Tier A dispositions:
    distribution candidates only, with no recapture needed. Receipt:
    [`evidence/timing/psram-long-window-idf61-3db3985/`](evidence/timing/psram-long-window-idf61-3db3985/README.md).
 
-Tier B, probe drafts are committed and ready for review (one unified
-timing image where practical, two clean independent boots each):
+Tier B dispositions:
 
-6. Arbitration aggressors (internal, flash, PSRAM) with a start
-   barrier and attributable cache counters.
-7. Hot external-cache store-hit probe.
-8. Clean-versus-dirty writeback ladders (1, 2, 4, 8, 16 lines).
-9. Instruction-PSRAM hot and cold fetch probes.
-10. First-line cache pooling probe (diagnoses the one-cycle IDF 6.1
-    shift; unblocks the first-line cost class).
-11. Selective cohort rerun mode (so USB truncation recovery stops
-    costing full-suite boots).
-12. Display-path and DMA cost families for GOAL's cost classes:
-    panel QSPI flush sweeps (cycles per byte), GDMA and SPI2
-    transfer sweeps, touch I2C transaction timing, GPIO 21 edge
-    timing, `esp_cache_msync` writeback and invalidate by size, and
-    PSRAM and flash bandwidth under cross-core contention.
-13. Optional DMA descriptor marker hook to correlate GP-SPI2/GDMA
-    activity with a later electrical capture.
+6. Complete: arbitration aggressors for internal, flash, and PSRAM sources
+   were captured with a start barrier and attributable cache counters.
+7. Complete: the hot external-cache store-hit probe was captured.
+8. Complete: clean and dirty writeback ladders at 1, 2, 4, 8, and 16 lines
+   were captured.
+9. Complete: instruction-PSRAM hot and cold fetch probes were captured in the
+   XIP PSRAM image.
+10. Complete as candidate evidence: first-line cache pooling was captured. It
+    does not yet unblock the adopted first-line cost class.
+11. Complete: selective cohort rerun is implemented and validated. The
+    canonical cohort used full clean boots.
+12. Complete except GPIO 21: panel QSPI, GDMA, SPI2, touch I2C, cache msync,
+    and cross-core PSRAM and flash bandwidth families were captured. GPIO 21
+    edge timing remains open because the session excluded its open-refusal
+    cell.
+13. Deferred as optional: the DMA descriptor marker remains available for a
+    later electrical capture and is not part of this canonical cohort.
 
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
 capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
@@ -201,8 +202,8 @@ mode (needs GOAL milestone 2).
 
 ## Next steps
 
-1. Extend measured interpreter coverage as additional cost classes are adopted.
-2. Execute the maintainer-owned hardware batch from TinyDraw `5f38ca5`: tier A,
-   then the prepared Tier B cells.
+1. Review the Tier B candidate evidence and adopt supported values into measured
+   cost classes; unexplained families remain fail-closed.
+2. Extend measured interpreter coverage as additional cost classes are adopted.
 3. Attach the architectural interpreter-versus-JIT conformance gate to the
    first costed-JIT task before product-JIT work begins.
