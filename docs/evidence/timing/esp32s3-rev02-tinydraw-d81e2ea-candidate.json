@@ -1,0 +1,2897 @@
+{
+  "reportVersion": 1,
+  "status": "candidate",
+  "review": {
+    "microbenchmarkToArchitecturalCost": "unreviewed",
+    "cacheClaim": "not-claimed",
+    "isaClaim": "not-claimed"
+  },
+  "receiptCount": 56,
+  "candidateCount": 28,
+  "candidates": [
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_instruction_cold_core1_contended",
+        "memoryPath": "other",
+        "bytesPerIteration": 0,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "db11e90e06ca92a1e2530e0fef6123c8353d9678eebd7b8341f84920af70cd75",
+          "928921c921dd2ab29dafba74620bb0c65bd72d4490461366133fd0f2db396986"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "db11e90e06ca92a1e2530e0fef6123c8353d9678eebd7b8341f84920af70cd75",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "928921c921dd2ab29dafba74620bb0c65bd72d4490461366133fd0f2db396986",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "4212",
+          "p50": "4214",
+          "p90": "4215",
+          "p99": "4215",
+          "max": "4215"
+        },
+        "bytesPerSample": "0",
+        "cyclesPerByte": null
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_instruction_cold_single_core",
+        "memoryPath": "other",
+        "bytesPerIteration": 0,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "5bd2313c773eba093444b6e7360f25fe09ee50ae43dfbaea1818a9212d33764a",
+          "fc9fcf8698f41f07e916b1cb78a272e52a8c6184cabc798842e01975e10472e9"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "5bd2313c773eba093444b6e7360f25fe09ee50ae43dfbaea1818a9212d33764a",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "fc9fcf8698f41f07e916b1cb78a272e52a8c6184cabc798842e01975e10472e9",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "3874",
+          "p50": "3875",
+          "p90": "3875",
+          "p99": "3875",
+          "max": "3875"
+        },
+        "bytesPerSample": "0",
+        "cyclesPerByte": null
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_instruction_hot_core1_contended",
+        "memoryPath": "other",
+        "bytesPerIteration": 0,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "efd2e426c2b951278f739c0dfba4d213796b0506156b243e89ddda18938285e8",
+          "6b2fe80a909d2a2aa7f58f0d39496dec71aaa7f7ccec1deab2d2b05a3b6fc1a1"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "efd2e426c2b951278f739c0dfba4d213796b0506156b243e89ddda18938285e8",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "6b2fe80a909d2a2aa7f58f0d39496dec71aaa7f7ccec1deab2d2b05a3b6fc1a1",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "3349",
+          "p50": "3349",
+          "p90": "3349",
+          "p99": "3358",
+          "max": "3358"
+        },
+        "bytesPerSample": "0",
+        "cyclesPerByte": null
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_instruction_hot_single_core",
+        "memoryPath": "other",
+        "bytesPerIteration": 0,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "6d7f8fdf4b89cf3273231591d0a0ab65a8867395999726bf11f63a729ed0b693",
+          "6b217335c33c2ab44e10505faba273567313dca84fc7a8e0c1484838b6fa52e5"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "6d7f8fdf4b89cf3273231591d0a0ab65a8867395999726bf11f63a729ed0b693",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "6b217335c33c2ab44e10505faba273567313dca84fc7a8e0c1484838b6fa52e5",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "3349",
+          "p50": "3349",
+          "p90": "3349",
+          "p99": "3349",
+          "max": "3349"
+        },
+        "bytesPerSample": "0",
+        "cyclesPerByte": null
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_cold_random_core1_contended",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 65536,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "bfada264c4c22e7fc6e5ae2d912e7518a911652e1e7cb612ebe0570e417f0ac3",
+          "ada5724e1b59b8f0f6ad52fc571a3e2bd9f35181144b27f9b03dc31e5cb5116a"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "bfada264c4c22e7fc6e5ae2d912e7518a911652e1e7cb612ebe0570e417f0ac3",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "ada5724e1b59b8f0f6ad52fc571a3e2bd9f35181144b27f9b03dc31e5cb5116a",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "9963222",
+          "p50": "9981890",
+          "p90": "9990213",
+          "p99": "9998490",
+          "max": "10003956"
+        },
+        "bytesPerSample": "65536",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "4981611",
+            "denominator": "32768"
+          },
+          "p50": {
+            "numerator": "4990945",
+            "denominator": "32768"
+          },
+          "p90": {
+            "numerator": "9990213",
+            "denominator": "65536"
+          },
+          "p99": {
+            "numerator": "4999245",
+            "denominator": "32768"
+          },
+          "max": {
+            "numerator": "2500989",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_cold_random_single_core",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 65536,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "2bd9e09cbe89560ca1ec47cd1d1c087a259acbf45df9c9bdb7aeb79ce152b9c1",
+          "dd608f7c2b76e73206a55cc6c6a0cff64f18daf656bf790807d32aca49487e9a"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "2bd9e09cbe89560ca1ec47cd1d1c087a259acbf45df9c9bdb7aeb79ce152b9c1",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "dd608f7c2b76e73206a55cc6c6a0cff64f18daf656bf790807d32aca49487e9a",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "6830936",
+          "p50": "6854252",
+          "p90": "6862181",
+          "p99": "6867512",
+          "max": "6868415"
+        },
+        "bytesPerSample": "65536",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "853867",
+            "denominator": "8192"
+          },
+          "p50": {
+            "numerator": "1713563",
+            "denominator": "16384"
+          },
+          "p90": {
+            "numerator": "6862181",
+            "denominator": "65536"
+          },
+          "p99": {
+            "numerator": "858439",
+            "denominator": "8192"
+          },
+          "max": {
+            "numerator": "6868415",
+            "denominator": "65536"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_cold_sequential_core1_contended",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 262144,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "4622b48f3531002ffb4ce25a66960b171be0780c2d787f5020d41a6bb91e17d1",
+          "c7fcb4b335597a390e2a91aca4df98186ea3ebbecfe29605ec6e29cb41461c16"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "4622b48f3531002ffb4ce25a66960b171be0780c2d787f5020d41a6bb91e17d1",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "c7fcb4b335597a390e2a91aca4df98186ea3ebbecfe29605ec6e29cb41461c16",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "2651153",
+          "p50": "2652482",
+          "p90": "2653160",
+          "p99": "2653670",
+          "max": "2653871"
+        },
+        "bytesPerSample": "262144",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "2651153",
+            "denominator": "262144"
+          },
+          "p50": {
+            "numerator": "1326241",
+            "denominator": "131072"
+          },
+          "p90": {
+            "numerator": "331645",
+            "denominator": "32768"
+          },
+          "p99": {
+            "numerator": "1326835",
+            "denominator": "131072"
+          },
+          "max": {
+            "numerator": "2653871",
+            "denominator": "262144"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_cold_sequential_single_core",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 262144,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "abcfa5bd19d8d73ca8f193c7a7422280e3fcc3c8528c01a4c54e1f2a93a51de5",
+          "d5e2984774c32c36e4558ec86e1c00e36e090f1e2898623ed270524693b28384"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "abcfa5bd19d8d73ca8f193c7a7422280e3fcc3c8528c01a4c54e1f2a93a51de5",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "d5e2984774c32c36e4558ec86e1c00e36e090f1e2898623ed270524693b28384",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "1962008",
+          "p50": "1962112",
+          "p90": "1962112",
+          "p99": "1962112",
+          "max": "1962562"
+        },
+        "bytesPerSample": "262144",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "245251",
+            "denominator": "32768"
+          },
+          "p50": {
+            "numerator": "15329",
+            "denominator": "2048"
+          },
+          "p90": {
+            "numerator": "15329",
+            "denominator": "2048"
+          },
+          "p99": {
+            "numerator": "15329",
+            "denominator": "2048"
+          },
+          "max": {
+            "numerator": "981281",
+            "denominator": "131072"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_hot_random_core1_contended",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "a7888a82d2a25dab76c996f8badea475e516d2f09a6a5f91a4d5e9a82b61f827",
+          "96ae638f0bc452018c496733a052f66a7a277e798281e1bf03a3de505cf8cffd"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "a7888a82d2a25dab76c996f8badea475e516d2f09a6a5f91a4d5e9a82b61f827",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "96ae638f0bc452018c496733a052f66a7a277e798281e1bf03a3de505cf8cffd",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "52956",
+          "p50": "75034",
+          "p90": "76146",
+          "p99": "77030",
+          "max": "78143"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "13239",
+            "denominator": "4096"
+          },
+          "p50": {
+            "numerator": "37517",
+            "denominator": "8192"
+          },
+          "p90": {
+            "numerator": "38073",
+            "denominator": "8192"
+          },
+          "p99": {
+            "numerator": "38515",
+            "denominator": "8192"
+          },
+          "max": {
+            "numerator": "78143",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_hot_random_single_core",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "921a780bdfaf2bd2288e826ade1a14e3a9078f588f4b8faa6bc8832f3e106fcd",
+          "ef02473b4de75b5c98ede0550129b60d07b740c2c8977bf6da3da196885ec0d3"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "921a780bdfaf2bd2288e826ade1a14e3a9078f588f4b8faa6bc8832f3e106fcd",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "ef02473b4de75b5c98ede0550129b60d07b740c2c8977bf6da3da196885ec0d3",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "40982",
+          "p50": "40982",
+          "p90": "40982",
+          "p99": "40982",
+          "max": "40983"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "p50": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "p90": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "p99": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "max": {
+            "numerator": "40983",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_hot_sequential_core1_contended",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 4096,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "c81d624ce4c4a99e8b52ad4a55bfb3da47db3c62721771b195e21cc31dca813b",
+          "bd0f6199bd67ead9174d422ff06672f3232f95133eaa5d9087874182c8e19ffe"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "c81d624ce4c4a99e8b52ad4a55bfb3da47db3c62721771b195e21cc31dca813b",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "bd0f6199bd67ead9174d422ff06672f3232f95133eaa5d9087874182c8e19ffe",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "4167",
+          "p50": "4184",
+          "p90": "4200",
+          "p99": "4207",
+          "max": "4211"
+        },
+        "bytesPerSample": "4096",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "4167",
+            "denominator": "4096"
+          },
+          "p50": {
+            "numerator": "523",
+            "denominator": "512"
+          },
+          "p90": {
+            "numerator": "525",
+            "denominator": "512"
+          },
+          "p99": {
+            "numerator": "4207",
+            "denominator": "4096"
+          },
+          "max": {
+            "numerator": "4211",
+            "denominator": "4096"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "flash_mmap_hot_sequential_single_core",
+        "memoryPath": "flash-to-internal",
+        "bytesPerIteration": 4096,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "dfe06bc3967c4b01ce82380afe2bf14e36956c087204cf150dcc79281524ecc7",
+          "73a8aa80ea20c9b00f8c6e2f33532bb847852a205822f8e625faa5d2bc49215f"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "dfe06bc3967c4b01ce82380afe2bf14e36956c087204cf150dcc79281524ecc7",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "73a8aa80ea20c9b00f8c6e2f33532bb847852a205822f8e625faa5d2bc49215f",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "4111",
+          "p50": "4111",
+          "p90": "4111",
+          "p99": "4111",
+          "max": "4111"
+        },
+        "bytesPerSample": "4096",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "p50": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "p90": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "p99": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "max": {
+            "numerator": "4111",
+            "denominator": "4096"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_cold_random_core1_contended",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 65536,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "188946f51071fdf8b25bf98438f9b472423a6f85e5675a520694f6d641ebf742",
+          "692025492083dbe1647c4e89fa27770b6b700428c7ccd63dced24c48bf205b1f"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "188946f51071fdf8b25bf98438f9b472423a6f85e5675a520694f6d641ebf742",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "692025492083dbe1647c4e89fa27770b6b700428c7ccd63dced24c48bf205b1f",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "5436555",
+          "p50": "5447325",
+          "p90": "5453487",
+          "p99": "5457587",
+          "max": "5458953"
+        },
+        "bytesPerSample": "65536",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "5436555",
+            "denominator": "65536"
+          },
+          "p50": {
+            "numerator": "5447325",
+            "denominator": "65536"
+          },
+          "p90": {
+            "numerator": "5453487",
+            "denominator": "65536"
+          },
+          "p99": {
+            "numerator": "5457587",
+            "denominator": "65536"
+          },
+          "max": {
+            "numerator": "5458953",
+            "denominator": "65536"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_cold_random_single_core",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 65536,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "73f0f8a612d4f5f6004390b7302db6a07335db1f958624e492cd53dcbafa3072",
+          "ab07d7410fec65db922992dcd9497dd073ab3c0e8c4a37bb6455b6e7acfcfe1b"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "73f0f8a612d4f5f6004390b7302db6a07335db1f958624e492cd53dcbafa3072",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "ab07d7410fec65db922992dcd9497dd073ab3c0e8c4a37bb6455b6e7acfcfe1b",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "2652095",
+          "p50": "2658647",
+          "p90": "2661539",
+          "p99": "2662766",
+          "max": "2662940"
+        },
+        "bytesPerSample": "65536",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "2652095",
+            "denominator": "65536"
+          },
+          "p50": {
+            "numerator": "2658647",
+            "denominator": "65536"
+          },
+          "p90": {
+            "numerator": "2661539",
+            "denominator": "65536"
+          },
+          "p99": {
+            "numerator": "1331383",
+            "denominator": "32768"
+          },
+          "max": {
+            "numerator": "665735",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_cold_sequential_core1_contended",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 524288,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "b393c00a36d7482e227d9e8b03715f02deef8182f36f0e4b2953f71df97c5390",
+          "bd15b6a49f72d5209e33b45829d5746d1e9ebf761d81f807dbee23b7160ee7b1"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "b393c00a36d7482e227d9e8b03715f02deef8182f36f0e4b2953f71df97c5390",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "bd15b6a49f72d5209e33b45829d5746d1e9ebf761d81f807dbee23b7160ee7b1",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "2806492",
+          "p50": "2806507",
+          "p90": "2806997",
+          "p99": "2807342",
+          "max": "2808367"
+        },
+        "bytesPerSample": "524288",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "701623",
+            "denominator": "131072"
+          },
+          "p50": {
+            "numerator": "2806507",
+            "denominator": "524288"
+          },
+          "p90": {
+            "numerator": "2806997",
+            "denominator": "524288"
+          },
+          "p99": {
+            "numerator": "1403671",
+            "denominator": "262144"
+          },
+          "max": {
+            "numerator": "2808367",
+            "denominator": "524288"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_cold_sequential_single_core",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 524288,
+        "iterationsPerSample": 1,
+        "warmupIterations": 0
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "b237f5ec55f8c8e9a7f80a85e24847a9bb5184a57a3e347ae11fc98cf013f1c7",
+          "1074ad2528937f0e1e4796acc9e36054970bd72024b75aa2038831770e37e796"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "b237f5ec55f8c8e9a7f80a85e24847a9bb5184a57a3e347ae11fc98cf013f1c7",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "1074ad2528937f0e1e4796acc9e36054970bd72024b75aa2038831770e37e796",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "1432156",
+          "p50": "1432225",
+          "p90": "1432225",
+          "p99": "1432225",
+          "max": "1433591"
+        },
+        "bytesPerSample": "524288",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "358039",
+            "denominator": "131072"
+          },
+          "p50": {
+            "numerator": "1432225",
+            "denominator": "524288"
+          },
+          "p90": {
+            "numerator": "1432225",
+            "denominator": "524288"
+          },
+          "p99": {
+            "numerator": "1432225",
+            "denominator": "524288"
+          },
+          "max": {
+            "numerator": "1433591",
+            "denominator": "524288"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_hot_random_core1_contended",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "b5be4b5830da0d56c6582b9c4bd8daf1483436fd6e423326391c917e8ec8d24a",
+          "caf03d8a07ae9ad7c3c196060e3120b2ac7d056ae2c88798df48c8e66ab6a580"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "b5be4b5830da0d56c6582b9c4bd8daf1483436fd6e423326391c917e8ec8d24a",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "caf03d8a07ae9ad7c3c196060e3120b2ac7d056ae2c88798df48c8e66ab6a580",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "55946",
+          "p50": "58262",
+          "p90": "58822",
+          "p99": "59153",
+          "max": "59351"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "27973",
+            "denominator": "8192"
+          },
+          "p50": {
+            "numerator": "29131",
+            "denominator": "8192"
+          },
+          "p90": {
+            "numerator": "29411",
+            "denominator": "8192"
+          },
+          "p99": {
+            "numerator": "59153",
+            "denominator": "16384"
+          },
+          "max": {
+            "numerator": "59351",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_hot_random_single_core",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "794cc3b03c795c4da5811aca9f971f7b9738591ac139b750d9544d17a47bbf90",
+          "39d52d9622d2ae8a2ebcb8d065e0bc39036607820ea0196bd232bbfd903e8b19"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "794cc3b03c795c4da5811aca9f971f7b9738591ac139b750d9544d17a47bbf90",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "39d52d9622d2ae8a2ebcb8d065e0bc39036607820ea0196bd232bbfd903e8b19",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "40982",
+          "p50": "40982",
+          "p90": "40982",
+          "p99": "40982",
+          "max": "40982"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "p50": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "p90": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "p99": {
+            "numerator": "20491",
+            "denominator": "8192"
+          },
+          "max": {
+            "numerator": "20491",
+            "denominator": "8192"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_hot_sequential_core1_contended",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 4096,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "1480997358ec498f8d36ffdf5f7c9c7b68b49ffb21cd83e4239148f9c452fb10",
+          "a9eee418a4e0b20d34cda9cce2232a9d05d5a96b54904b231e2dec34b4651f95"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "1480997358ec498f8d36ffdf5f7c9c7b68b49ffb21cd83e4239148f9c452fb10",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "a9eee418a4e0b20d34cda9cce2232a9d05d5a96b54904b231e2dec34b4651f95",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "4183",
+          "p50": "4184",
+          "p90": "4200",
+          "p99": "4211",
+          "max": "4211"
+        },
+        "bytesPerSample": "4096",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "4183",
+            "denominator": "4096"
+          },
+          "p50": {
+            "numerator": "523",
+            "denominator": "512"
+          },
+          "p90": {
+            "numerator": "525",
+            "denominator": "512"
+          },
+          "p99": {
+            "numerator": "4211",
+            "denominator": "4096"
+          },
+          "max": {
+            "numerator": "4211",
+            "denominator": "4096"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "psram_hot_sequential_single_core",
+        "memoryPath": "psram-to-internal",
+        "bytesPerIteration": 4096,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "229636a39e4f7a0b156695cbbc07dc5467e7cd4988d4d866dce75b92f01dbe72",
+          "c59871c43ae0cd3ea262d9d02e39c19dfe39e066b1af6bf2c03f72746f56c166"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "229636a39e4f7a0b156695cbbc07dc5467e7cd4988d4d866dce75b92f01dbe72",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "c59871c43ae0cd3ea262d9d02e39c19dfe39e066b1af6bf2c03f72746f56c166",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "4111",
+          "p50": "4111",
+          "p90": "4111",
+          "p99": "4111",
+          "max": "4111"
+        },
+        "bytesPerSample": "4096",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "p50": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "p90": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "p99": {
+            "numerator": "4111",
+            "denominator": "4096"
+          },
+          "max": {
+            "numerator": "4111",
+            "denominator": "4096"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_aligned_dependent_core1_contended",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "e235f91498dd70a9864b67997745a197e9180e8c0b7d1f5f315855bfd743f104",
+          "cb61912d794f853f6a47f10e16b9ed91ce3797d0ee7f92396d2bbabe6306d608"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "e235f91498dd70a9864b67997745a197e9180e8c0b7d1f5f315855bfd743f104",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "cb61912d794f853f6a47f10e16b9ed91ce3797d0ee7f92396d2bbabe6306d608",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "16398",
+          "p50": "16398",
+          "p90": "16398",
+          "p99": "16415",
+          "max": "16415"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "8199",
+            "denominator": "8192"
+          },
+          "p50": {
+            "numerator": "8199",
+            "denominator": "8192"
+          },
+          "p90": {
+            "numerator": "8199",
+            "denominator": "8192"
+          },
+          "p99": {
+            "numerator": "16415",
+            "denominator": "16384"
+          },
+          "max": {
+            "numerator": "16415",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_aligned_dependent_single_core",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "4b6dfad6bb72feaaa1cf96ce993064425fb8e69b637fd00a402e002af8d0660d",
+          "84f3ceec53f0e09f60db19609b33e05262630f6454099406bd550703da317247"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "4b6dfad6bb72feaaa1cf96ce993064425fb8e69b637fd00a402e002af8d0660d",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "84f3ceec53f0e09f60db19609b33e05262630f6454099406bd550703da317247",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "16398",
+          "p50": "16398",
+          "p90": "16398",
+          "p99": "16398",
+          "max": "16398"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "8199",
+            "denominator": "8192"
+          },
+          "p50": {
+            "numerator": "8199",
+            "denominator": "8192"
+          },
+          "p90": {
+            "numerator": "8199",
+            "denominator": "8192"
+          },
+          "p99": {
+            "numerator": "8199",
+            "denominator": "8192"
+          },
+          "max": {
+            "numerator": "8199",
+            "denominator": "8192"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_aligned_stream_core1_contended",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 32768,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "761b7a1d07d8b6f134f7fc10560ff3021fe7f99e48987ccb61041548280c8e5e",
+          "c45afaa71f19f8efc7f6bee27a2c0b85cb10b3ff249382c0178b21f5738af802"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "761b7a1d07d8b6f134f7fc10560ff3021fe7f99e48987ccb61041548280c8e5e",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "c45afaa71f19f8efc7f6bee27a2c0b85cb10b3ff249382c0178b21f5738af802",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "49169",
+          "p50": "49169",
+          "p90": "49171",
+          "p99": "49185",
+          "max": "50604"
+        },
+        "bytesPerSample": "32768",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "49169",
+            "denominator": "32768"
+          },
+          "p50": {
+            "numerator": "49169",
+            "denominator": "32768"
+          },
+          "p90": {
+            "numerator": "49171",
+            "denominator": "32768"
+          },
+          "p99": {
+            "numerator": "49185",
+            "denominator": "32768"
+          },
+          "max": {
+            "numerator": "12651",
+            "denominator": "8192"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_aligned_stream_single_core",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 32768,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "e6748de81f6b4bd99b868ba3e6fde163e6f91f1c482d2b69e5a52845895f287f",
+          "18a81892605581bd72d600726d79fc1e89c27eecb44733442de70dfd46ddcccc"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "e6748de81f6b4bd99b868ba3e6fde163e6f91f1c482d2b69e5a52845895f287f",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "18a81892605581bd72d600726d79fc1e89c27eecb44733442de70dfd46ddcccc",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "49169",
+          "p50": "49169",
+          "p90": "49169",
+          "p99": "49169",
+          "max": "49169"
+        },
+        "bytesPerSample": "32768",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "49169",
+            "denominator": "32768"
+          },
+          "p50": {
+            "numerator": "49169",
+            "denominator": "32768"
+          },
+          "p90": {
+            "numerator": "49169",
+            "denominator": "32768"
+          },
+          "p99": {
+            "numerator": "49169",
+            "denominator": "32768"
+          },
+          "max": {
+            "numerator": "49169",
+            "denominator": "32768"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_unaligned_dependent_core1_contended",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "f59b494c2c79af063a428e7aa99344972d43496a00dd7e5f29c6a05ee8b211bc",
+          "795354f1493a2366dc921869c115bc02c95afea6d9093e4c1b2f4a8fc9b9111d"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "f59b494c2c79af063a428e7aa99344972d43496a00dd7e5f29c6a05ee8b211bc",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "795354f1493a2366dc921869c115bc02c95afea6d9093e4c1b2f4a8fc9b9111d",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "81936",
+          "p50": "81936",
+          "p90": "81978",
+          "p99": "81978",
+          "max": "83555"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "5121",
+            "denominator": "1024"
+          },
+          "p50": {
+            "numerator": "5121",
+            "denominator": "1024"
+          },
+          "p90": {
+            "numerator": "40989",
+            "denominator": "8192"
+          },
+          "p99": {
+            "numerator": "40989",
+            "denominator": "8192"
+          },
+          "max": {
+            "numerator": "83555",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_unaligned_dependent_single_core",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 16384,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "738150b71ca1a1aa37033cb95a452018c0b2422e18b601626cda9472081c8e88",
+          "cc87054f713fec34acb0b0b4f3cb27e07adb1da3de03695ded97b14747164c98"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "738150b71ca1a1aa37033cb95a452018c0b2422e18b601626cda9472081c8e88",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "cc87054f713fec34acb0b0b4f3cb27e07adb1da3de03695ded97b14747164c98",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "81936",
+          "p50": "81936",
+          "p90": "81936",
+          "p99": "81936",
+          "max": "81937"
+        },
+        "bytesPerSample": "16384",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "5121",
+            "denominator": "1024"
+          },
+          "p50": {
+            "numerator": "5121",
+            "denominator": "1024"
+          },
+          "p90": {
+            "numerator": "5121",
+            "denominator": "1024"
+          },
+          "p99": {
+            "numerator": "5121",
+            "denominator": "1024"
+          },
+          "max": {
+            "numerator": "81937",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_unaligned_stream_core1_contended",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 32768,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "faffc5f7bf59d427a1f3e26a2dc91a0e405cd944b49a4fa96a7d2b8f788dc32b",
+          "659d34acfc7734ca4169d24ecd8b9cbd706c7b7e8060368345f948588e4ec839"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "faffc5f7bf59d427a1f3e26a2dc91a0e405cd944b49a4fa96a7d2b8f788dc32b",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "659d34acfc7734ca4169d24ecd8b9cbd706c7b7e8060368345f948588e4ec839",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "155665",
+          "p50": "155665",
+          "p90": "155673",
+          "p99": "155694",
+          "max": "157102"
+        },
+        "bytesPerSample": "32768",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "155665",
+            "denominator": "32768"
+          },
+          "p50": {
+            "numerator": "155665",
+            "denominator": "32768"
+          },
+          "p90": {
+            "numerator": "155673",
+            "denominator": "32768"
+          },
+          "p99": {
+            "numerator": "77847",
+            "denominator": "16384"
+          },
+          "max": {
+            "numerator": "78551",
+            "denominator": "16384"
+          }
+        }
+      }
+    },
+    {
+      "candidateVersion": 1,
+      "status": "candidate",
+      "review": {
+        "microbenchmarkToArchitecturalCost": "unreviewed",
+        "cacheClaim": "not-claimed",
+        "isaClaim": "not-claimed"
+      },
+      "measurement": {
+        "kind": "ccount-kernel",
+        "kernel": "sram_unaligned_stream_single_core",
+        "memoryPath": "internal-to-internal",
+        "bytesPerIteration": 32768,
+        "iterationsPerSample": 1,
+        "warmupIterations": 8
+      },
+      "cohort": {
+        "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+        "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+        "toolchain": {
+          "target": "esp32s3",
+          "espIdfVersion": "v6.0.2",
+          "compiler": "GNU",
+          "compilerVersion": "15.2.0"
+        },
+        "sdkconfig": {
+          "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+          "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+          "cpuHz": 240000000,
+          "psramMode": "octal",
+          "psramBusHz": 80000000,
+          "flashMode": "qio",
+          "flashBusHz": 80000000
+        },
+        "chipRevision": 2,
+        "psramBytes": 8388608,
+        "flashBytes": 16777216,
+        "counter": {
+          "source": "xtensa-ccount",
+          "bits": 32,
+          "hz": 240000000,
+          "core": 0
+        }
+      },
+      "evidence": {
+        "bootIds": [
+          "1cdbd47b85c8-02e3261c-00010423",
+          "1cdbd47b85c8-7d76ac81-00010423"
+        ],
+        "receiptSha256": [
+          "8a087534c1c8bf9fd7ccd7c08ff2262e0c0812cc00b5eacdce5f96c9ea4971b2",
+          "5fe1d2288954db8120c40fb2e13f4c3a4d62d496fd4e32c4d4744181fe3396c4"
+        ],
+        "bootLogSha256": [
+          "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8",
+          "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+        ],
+        "receipts": [
+          {
+            "bootId": "1cdbd47b85c8-02e3261c-00010423",
+            "capturedAt": "2026-08-30T23:41:05.758Z",
+            "receiptSha256": "8a087534c1c8bf9fd7ccd7c08ff2262e0c0812cc00b5eacdce5f96c9ea4971b2",
+            "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+          },
+          {
+            "bootId": "1cdbd47b85c8-7d76ac81-00010423",
+            "capturedAt": "2026-08-30T23:42:22.129Z",
+            "receiptSha256": "5fe1d2288954db8120c40fb2e13f4c3a4d62d496fd4e32c4d4744181fe3396c4",
+            "bootLogSha256": "abffeb233f3f43a4f17e4face77e2ade934eaeaf701c781bd29559864d08b907"
+          }
+        ]
+      },
+      "samples": {
+        "count": 200,
+        "cycles": {
+          "min": "155665",
+          "p50": "155665",
+          "p90": "155665",
+          "p99": "155665",
+          "max": "155665"
+        },
+        "bytesPerSample": "32768",
+        "cyclesPerByte": {
+          "min": {
+            "numerator": "155665",
+            "denominator": "32768"
+          },
+          "p50": {
+            "numerator": "155665",
+            "denominator": "32768"
+          },
+          "p90": {
+            "numerator": "155665",
+            "denominator": "32768"
+          },
+          "p99": {
+            "numerator": "155665",
+            "denominator": "32768"
+          },
+          "max": {
+            "numerator": "155665",
+            "denominator": "32768"
+          }
+        }
+      }
+    }
+  ]
+}

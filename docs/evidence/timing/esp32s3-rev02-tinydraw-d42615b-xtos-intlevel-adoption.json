@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "status": "adopted",
+  "priorAdoption": {
+    "path": "esp32s3-rev02-tinydraw-0a41b6f-bbpll-rom-callback-adoption.json",
+    "sha256": "ba0a77820be34031eaf2294cf73c129ede520c488499a91a7f1421bbca238cc4"
+  },
+  "firmware": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "d42615bc3145c13c2b5855f53962ecf5e7d25f47",
+    "evidenceCommit": "4b5385af65a1933a896d9ec68aee451bfaa57104",
+    "dirty": false,
+    "elfSha256": "cc447f5074c27a0fec74f6c9fd4c6491542de04cbf00bf31200b5423a3c11669",
+    "sdkconfigSha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68"
+  },
+  "readme": {
+    "path": "xtos-intlevel-d42615b/README.md",
+    "sha256": "5dca4d3db213b57e036b675f705ce39399f3d78954ea6831f6c5e6ed62f74026"
+  },
+  "bootLogs": [
+    { "bootId": "device-a-8ce10c68-0001986e", "sha256": "ae501e97fc8d06f42f04dd8ac58ae6e175af07c63bee7f870571ea12abc724e0" },
+    { "bootId": "device-a-af0f04ba-0001986e", "sha256": "8195689005023702f6b4e9278a8b68b36260061b1fb51783ef3020e9d3928c2f" }
+  ],
+  "strictReceipts": {
+    "samplesPerCellPerBoot": 100,
+    "cells": [
+      {
+        "role": "baseline",
+        "paths": [
+          "xtos-intlevel-d42615b/boot-1/rom_baseline_xtos_set_intlevel_restore_ps_40c00_single_core.json",
+          "xtos-intlevel-d42615b/boot-2/rom_baseline_xtos_set_intlevel_restore_ps_40c00_single_core.json"
+        ],
+        "sha256": [
+          "288b7e957222dfee162f85bdee687a7b25b857e0155ba252cd2825b837ad85f2",
+          "ff29ad85b9596c2664dbb626b9263259eb0d5a5e67d709c16bb00c4b95ceb206"
+        ]
+      },
+      {
+        "role": "target",
+        "paths": [
+          "xtos-intlevel-d42615b/boot-1/rom_xtos_set_intlevel_restore_ps_40c00_single_core.json",
+          "xtos-intlevel-d42615b/boot-2/rom_xtos_set_intlevel_restore_ps_40c00_single_core.json"
+        ],
+        "sha256": [
+          "de1c65455add28a39f72adcbad67fa9757ff789a3511eaaad634a7c78a5cb33b",
+          "f8a6abfc1b96379a1c0bc3e51c07837fd69e6b7e12783acb74bff1e2d2c42fe8"
+        ]
+      }
+    ]
+  },
+  "adoptedCallback": {
+    "kind": "intlevelRestore",
+    "pc": "0x40001c38",
+    "restorePs": "0x00040c00",
+    "previousPs": "0x00040c03",
+    "callinc": 2,
+    "cycles": 15
+  },
+  "claimBoundary": {
+    "exactCallbackPcAndArgumentsOnly": true,
+    "callerInterruptLevel": 3,
+    "immediateCallerPsRestoreChecked": true,
+    "matchedBaselineSubtracted": true,
+    "allAdoptedCacheCountersZero": true,
+    "otherPsValuesGeneralized": false,
+    "otherRomCallbacksCalibrated": false,
+    "architectureCycleAccurate": false
+  }
+}
