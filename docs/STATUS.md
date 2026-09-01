@@ -135,7 +135,10 @@ The Tier B batch is complete from TinyDraw
 [`evidence/timing/tier-b-2026-09-01/`](evidence/timing/tier-b-2026-09-01/README.md).
 Two normal boots each completed 25 cells and 198 samples; two XIP PSRAM boots
 each completed 26 cells and 211 samples. All four have distinct boot identities
-and zero refusals. These captures adopt no measured-mode costs.
+and zero refusals. Cross-variant analysis classifies all 24 shared cells and
+their families. The dirty-writeback, SPI2, and cache-msync writeback totals are
+affine, but their CPU, cache, and device components are mathematically
+underdetermined. These captures adopt no measured-mode costs.
 
 Tier A dispositions:
 
@@ -202,8 +205,12 @@ mode (needs GOAL milestone 2).
 
 ## Next steps
 
-1. Review the Tier B candidate evidence and adopt supported values into measured
-   cost classes; unexplained families remain fail-closed.
-2. Extend measured interpreter coverage as additional cost classes are adopted.
-3. Attach the architectural interpreter-versus-JIT conformance gate to the
+1. Add the independent Tier B controls named in the receipt: crossed dirty-line
+   count and PSRAM service rate with a no-op cache-msync control, plus SPI2
+   payload sweeps at two verified clocks with separate submission and DMA
+   completion timing.
+2. Reclassify the refused dirty-writeback, SPI2, and cache-msync components only
+   after those controls make the decomposition identifiable.
+3. Extend measured interpreter coverage as additional cost classes are adopted.
+4. Attach the architectural interpreter-versus-JIT conformance gate to the
    first costed-JIT task before product-JIT work begins.

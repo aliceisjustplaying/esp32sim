@@ -37,6 +37,7 @@ SWEEPS = (
     "cache_msync_writeback_sweep",
     "cache_msync_invalidate_clean_sweep",
 )
+CLASSIFICATIONS = {"exact", "interval", "distribution", "affine", "unexplained"}
 
 
 def fail(condition: bool, message: str) -> None:
@@ -260,7 +261,35 @@ def affine_fit(points: list[tuple[int, float]]) -> dict[str, Any]:
     }
 
 
+def family_classification(classifications: list[str]) -> str:
+    """Retain a common classification, or refuse a mixed family."""
+    fail(bool(classifications), "cannot classify an empty family")
+    fail(set(classifications) <= CLASSIFICATIONS, "unknown family classification")
+    return classifications[0] if len(set(classifications)) == 1 else "unexplained"
+
+
+def analysis_self_check() -> None:
+    fail(median([4, 1, 3, 2]) == 2.5, "median self-check failed")
+    fail(fixed_classification([7, 7]) == "exact", "exact self-check failed")
+    fail(fixed_classification([7, 8]) == "interval", "interval self-check failed")
+    fail(fixed_classification([7, 9]) == "distribution", "distribution self-check failed")
+    fit = affine_fit([(1, 5.0), (2, 8.0), (4, 14.0)])
+    fail(fit["classification"] == "affine", "affine self-check failed")
+    fail(fit["interceptCycles"] == 2.0, "affine intercept self-check failed")
+    fail(fit["slopeCyclesPerUnit"] == 3.0, "affine slope self-check failed")
+    fail(
+        affine_fit([(1, 1.0), (2, 4.0), (3, 9.0)])["classification"]
+        == "unexplained",
+        "unexplained self-check failed",
+    )
+    fail(
+        family_classification(["exact", "interval"]) == "unexplained",
+        "mixed-family self-check failed",
+    )
+
+
 def main() -> None:
+    analysis_self_check()
     manifest, selected, expected_samples = manifest_contract()
     session = read_json("session-metadata.json")
     fail(session["gitCommit"] == SOURCE_COMMIT and session["gitDirty"] is False, "session source provenance mismatch")
@@ -336,8 +365,144 @@ def main() -> None:
             "affineFits": fits,
         }
 
+    shared_cells = sorted(set(selected["normal"]) & set(selected["xip-psram"]))
+    fail(len(shared_cells) == 24, "cross-variant pool does not contain 24 shared cells")
+    cross_pooled: dict[str, Any] = {}
+    for cell in shared_cells:
+        values = [
+            sample["cycles"]
+            for variant in ("normal", "xip-psram")
+            for boot in (1, 2)
+            for sample in capture_samples[(variant, boot)][cell]
+        ]
+        cross_pooled[cell] = {
+            **stats(values),
+            "classification": fixed_classification(values),
+        }
+
+    cross_fits: dict[str, Any] = {}
+    for label, prefix in (
+        ("writeback-clean-lines", "writeback_clean_"),
+        ("writeback-dirty-lines", "writeback_dirty_"),
+    ):
+        points: list[tuple[int, float]] = []
+        for variant in ("normal", "xip-psram"):
+            for boot in (1, 2):
+                for lines in (1, 2, 4, 8, 16):
+                    cell = f"{prefix}{lines}_lines"
+                    values = [
+                        sample["cycles"]
+                        for sample in capture_samples[(variant, boot)][cell]
+                    ]
+                    points.append((lines, float(median(values))))
+        cross_fits[label] = {"unit": "cache-lines", **affine_fit(points)}
+
+    for cell in SWEEPS:
+        points = [
+            (sample["bytes"], float(sample["cycles"]))
+            for variant in ("normal", "xip-psram")
+            for boot in (1, 2)
+            for sample in capture_samples[(variant, boot)][cell]
+        ]
+        fit = {"unit": "bytes", **affine_fit(points)}
+        cross_fits[cell] = fit
+        cross_pooled[cell]["classification"] = fit["classification"]
+
+    cells_by_family: dict[str, list[str]] = {}
+    manifest_cells = {cell["id"]: cell for cell in manifest["cells"]}
+    for cell in shared_cells:
+        family = manifest_cells[cell]["family"]
+        cells_by_family.setdefault(family, []).append(cell)
+    cross_families = {
+        family: {
+            "cells": cells,
+            "classification": family_classification(
+                [cross_pooled[cell]["classification"] for cell in cells]
+            ),
+            "cellClassifications": {
+                cell: cross_pooled[cell]["classification"] for cell in cells
+            },
+        }
+        for family, cells in sorted(cells_by_family.items())
+    }
+
+    identifiability = {
+        "dirty-writeback": {
+            "observedTotalClassification": cross_fits["writeback-dirty-lines"][
+                "classification"
+            ],
+            "componentClassification": "unexplained",
+            "separableCpuCacheDeviceCosts": False,
+            "reason": (
+                "The single cache-line-count axis identifies an end-to-end intercept and "
+                "aggregate per-line slope only; CPU, cache-controller, and PSRAM transaction "
+                "coefficients are rank-deficient."
+            ),
+            "requiredProbe": (
+                "Cross dirty-line count with a controlled PSRAM service-rate change and add "
+                "a no-op cache-msync control that isolates fixed CPU and API overhead."
+            ),
+            "productAdoptable": False,
+        },
+        "spi2-transfer": {
+            "observedTotalClassification": cross_fits["spi2_transfer_sweep"][
+                "classification"
+            ],
+            "componentClassification": "unexplained",
+            "separableCpuCacheDeviceCosts": False,
+            "reason": (
+                "Payload size varies while the CPU driver path, DMA path, and 40 MHz SPI2 "
+                "device transfer remain coupled in one blocking interval."
+            ),
+            "requiredProbe": (
+                "Repeat the payload sweep at two verified SPI clocks and pair it with a "
+                "submission-only control that reports DMA completion separately."
+            ),
+            "productAdoptable": False,
+        },
+        "cache-msync-writeback": {
+            "observedTotalClassification": cross_fits[
+                "cache_msync_writeback_sweep"
+            ]["classification"],
+            "componentClassification": "unexplained",
+            "separableCpuCacheDeviceCosts": False,
+            "reason": (
+                "Byte count changes cache scan work and PSRAM writeback traffic together, "
+                "so the fitted total does not identify either component independently."
+            ),
+            "requiredProbe": (
+                "Measure matched clean and dirty residency at the same byte counts while "
+                "independently varying the number of dirty lines and PSRAM service rate."
+            ),
+            "productAdoptable": False,
+        },
+    }
+    fail(
+        all(
+            item["observedTotalClassification"] in CLASSIFICATIONS
+            and item["componentClassification"] in CLASSIFICATIONS
+            and item["separableCpuCacheDeviceCosts"] is False
+            and item["productAdoptable"] is False
+            for item in identifiability.values()
+        ),
+        "identifiability disposition is incomplete",
+    )
+    fail(
+        set(cross_pooled) == set(shared_cells),
+        "cross-variant cell classification is incomplete",
+    )
+    fail(
+        set(cross_fits)
+        == {
+            "writeback-clean-lines",
+            "writeback-dirty-lines",
+            *SWEEPS,
+        },
+        "cross-variant family classification is incomplete",
+    )
+
     output = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "suite": "tier-b",
         "disposition": "candidate-evidence-only",
         "sourceCommit": SOURCE_COMMIT,
@@ -349,6 +514,14 @@ def main() -> None:
         },
         "captures": capture_summaries,
         "variants": variants,
+        "crossVariant": {
+            "variants": ["normal", "xip-psram"],
+            "sharedCells": len(shared_cells),
+            "pooledPerCell": cross_pooled,
+            "affineFits": cross_fits,
+            "families": cross_families,
+            "identifiability": identifiability,
+        },
         "open": ["gpio21_edge"],
         "adoptedMeasuredModeCosts": [],
     }
