@@ -88,7 +88,7 @@ pub struct SocBus {
     ver_base: [u32; 7],
     /// Device time is advanced lazily: cycles accumulate here and the devices see them in one
     /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
-    /// have passed — so guest-visible time is exact while idle rounds cost nothing.
+    /// have passed, so guest-visible time is exact while idle rounds cost nothing.
     tick_pending: u32,
     tick_budget: u32,
 }
@@ -1029,7 +1029,7 @@ impl SocBus {
         // The blob's RX path only *indicates* a frame up the 802.11 stack while the descriptor ring is
         // shallow; with several filled descriptors pending it switches to batch block-recycle and drops
         // them. So hold off until the previously delivered descriptor has been recycled by software
-        // (has_data cleared) — that is what a real radio sees at low traffic — and never deliver two
+        // (has_data cleared), which is what a real radio sees at low traffic, and never deliver two
         // frames closer than a frame's airtime.
         if now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 400 {
             return;
@@ -1095,7 +1095,7 @@ impl SocBus {
             None => return,
         };
         let mut b = Vec::with_capacity(total);
-        // rx_ctrl word 0 (silicon: a real broadcast beacon reads 0x111b20ad — bit 28 set, signed rssi in the low
+        // rx_ctrl word 0 (silicon: a real broadcast beacon reads 0x111b20ad, bit 28 set, signed rssi in the low
         // byte). The MAC has already address-filtered, so every delivered frame is "for us"; use the same flags
         // for unicast and broadcast (an invented "filter_match" nibble made the blob discard unicast frames).
         // filter-match nibble (silicon: broadcast beacon reads bit 28). A frame the hardware accepted because
