@@ -5,5 +5,8 @@ edition.workspace = true
 license.workspace = true
 description = "Xtensa LX7 (ESP32-S3 configuration) instruction-level emulator core"
 
+[lints]
+workspace = true
+
 [dependencies]
 emu-core = { path = "../emu-core" }
