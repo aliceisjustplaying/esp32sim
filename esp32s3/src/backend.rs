@@ -427,6 +427,21 @@ impl Backend for Esp32SimBackend {
             return Err(BackendError::Closed);
         }
         let receipt = validate_artifacts(&artifacts)?;
+        for artifact in &artifacts {
+            match artifact.kind {
+                ArtifactKind::OpaqueIdentity => {
+                    return Err(BackendError::UnsupportedCapability(
+                        "opaque-identity-artifact".into(),
+                    ));
+                }
+                ArtifactKind::InputTranscript => {
+                    return Err(BackendError::UnsupportedCapability(
+                        "input-transcript-artifact".into(),
+                    ));
+                }
+                _ => {}
+            }
+        }
         let exactly_one = |kind: ArtifactKind| -> Result<Option<Vec<u8>>, BackendError> {
             let matching: Vec<_> = artifacts
                 .iter()
@@ -459,6 +474,16 @@ impl Backend for Esp32SimBackend {
             BootMode::DirectApplication if loaded.application.is_none() => {
                 return Err(BackendError::InvalidArtifact(
                     "direct boot requires an application artifact".into(),
+                ));
+            }
+            BootMode::RomFlash if loaded.application.is_some() => {
+                return Err(BackendError::InvalidArtifact(
+                    "ROM-flash boot does not consume an application artifact".into(),
+                ));
+            }
+            BootMode::DirectApplication if loaded.mask_rom.is_some() || loaded.flash.is_some() => {
+                return Err(BackendError::InvalidArtifact(
+                    "direct-application boot does not consume mask ROM or flash artifacts".into(),
                 ));
             }
             _ => {}
@@ -1044,6 +1069,87 @@ mod tests {
             .entries
             .iter()
             .any(|entry| matches!(entry.kind, LedgerKind::InputApplied { .. })));
+    }
+
+    #[test]
+    fn unsupported_and_boot_mismatched_artifacts_fail_closed() {
+        let (profile, receipts) = profile(5, None);
+        let make = || Esp32SimBackend::new(BackendConfig::default(), receipts.clone()).unwrap();
+
+        let mut identity = make();
+        assert!(matches!(
+            identity.load(vec![
+                Artifact::new("profile", ArtifactKind::TimingProfile, profile.clone()),
+                Artifact::new(
+                    "application",
+                    ArtifactKind::Application,
+                    application(crate::bus::IRAM_LOW),
+                ),
+                Artifact::new("identity", ArtifactKind::OpaqueIdentity, vec![1]),
+            ]),
+            Err(BackendError::UnsupportedCapability(name)) if name == "opaque-identity-artifact"
+        ));
+
+        let mut transcript = make();
+        assert!(matches!(
+            transcript.load(vec![
+                Artifact::new("profile", ArtifactKind::TimingProfile, profile.clone()),
+                Artifact::new(
+                    "application",
+                    ArtifactKind::Application,
+                    application(crate::bus::IRAM_LOW),
+                ),
+                Artifact::new("inputs", ArtifactKind::InputTranscript, vec![1]),
+            ]),
+            Err(BackendError::UnsupportedCapability(name)) if name == "input-transcript-artifact"
+        ));
+
+        let mut extra_flash = make();
+        assert!(matches!(
+            extra_flash.load(vec![
+                Artifact::new("profile", ArtifactKind::TimingProfile, profile),
+                Artifact::new(
+                    "application",
+                    ArtifactKind::Application,
+                    application(crate::bus::IRAM_LOW),
+                ),
+                Artifact::new("flash", ArtifactKind::FlashImage, vec![0xff]),
+            ]),
+            Err(BackendError::InvalidArtifact(message)) if message.contains("does not consume")
+        ));
+    }
+
+    #[test]
+    fn queued_byte_limits_are_hard_and_preserve_rejected_output() {
+        let mut backend = ready_backend(5, crate::bus::IRAM_LOW, None);
+        backend
+            .inject(InputEvent {
+                epoch: 1,
+                cycle: 1,
+                caller_sequence: 1,
+                payload: InputPayload::Bytes(vec![0; MAX_QUEUED_INPUT_BYTES]),
+            })
+            .unwrap();
+        assert!(matches!(
+            backend.inject(InputEvent {
+                epoch: 1,
+                cycle: 2,
+                caller_sequence: 2,
+                payload: InputPayload::Bytes(vec![0]),
+            }),
+            Err(BackendError::InvalidInput(message)) if message.contains("byte limit")
+        ));
+
+        backend.machine_mut().bus.periph.usb.tx_out = vec![0; MAX_QUEUED_OUTPUT_BYTES + 1];
+        assert!(matches!(
+            backend.collect_outputs(),
+            Err(BackendError::BackendFault(message)) if message.contains("byte limit")
+        ));
+        assert_eq!(
+            backend.machine().bus.periph.usb.tx_out.len(),
+            MAX_QUEUED_OUTPUT_BYTES + 1
+        );
+        assert!(backend.outputs.is_empty());
     }
 
     proptest! {
