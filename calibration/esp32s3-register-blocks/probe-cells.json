@@ -726,17 +726,17 @@
       "reason": "INT_CLR clears interrupt status"
     },
     {
-      "register": "all",
+      "register": "0x600c2000-0x600c2fff",
       "block": "INTERRUPT",
       "reason": "TinyDraw performs no reads from this block in the captured run"
     },
     {
-      "register": "all",
+      "register": "0x60007000-0x60007fff",
       "block": "EFUSE",
       "reason": "TinyDraw performs no writes to this block in the captured run"
     },
     {
-      "register": "all",
+      "register": "0x60038000-0x60038fff",
       "block": "USB_SERIAL_JTAG",
       "reason": "Every TinyDraw-touched write register has a documented side effect"
     }
