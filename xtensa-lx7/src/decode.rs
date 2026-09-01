@@ -5,7 +5,10 @@
 //! For 16-bit (density) instructions: b0 = t<<4 | op0, b1 = r<<4 | s.
 //! Branch/call targets are resolved to absolute addresses at decode time.
 
-#[allow(non_camel_case_types)]
+#[allow(
+    non_camel_case_types,
+    reason = "instruction variant names preserve the Xtensa ISA mnemonics"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Op {
     // --- illegal / control

@@ -1,6 +1,9 @@
 //! A tiny AArch64 encoder: only the instructions the block compiler emits. Every encoding is
 //! checked against clang's assembler in `tests::encodings_match_clang`.
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "the encoder exposes the complete subset used across platform-specific JIT paths"
+)]
 
 pub type Reg = u32;
 pub const ZR: Reg = 31;
