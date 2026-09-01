@@ -1,0 +1,1432 @@
+{
+  "adoptedMeasuredModeCosts": [],
+  "archiveSha256SumsSha256": "d285d968e3d7a0cb5f4edb6b71327aa20274280892604232ff119fc0924f97eb",
+  "captures": [
+    {
+      "boot": 1,
+      "bootIdentity": "11-e2a567863778958d",
+      "captureSha256": "3e857c4d491b3ea4f2fc1c60dee8d9cb76c886d9bfd26a2e7457259bd2fe4148",
+      "cells": 25,
+      "perCell": {
+        "arbitration_psram_victim_flash_aggressor": {
+          "classification": "distribution",
+          "max": 2632360,
+          "median": 2632360,
+          "min": 2630938,
+          "p90": 2632360,
+          "samples": 9
+        },
+        "arbitration_psram_victim_internal_aggressor": {
+          "classification": "distribution",
+          "max": 704486,
+          "median": 704059,
+          "min": 704059,
+          "p90": 704486,
+          "samples": 9
+        },
+        "arbitration_psram_victim_psram_aggressor": {
+          "classification": "distribution",
+          "max": 1400238,
+          "median": 1399212,
+          "min": 1399212,
+          "p90": 1400238,
+          "samples": 9
+        },
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "distribution",
+          "max": 1499,
+          "median": 968,
+          "min": 733,
+          "p90": 1499,
+          "samples": 6
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "distribution",
+          "max": 81893,
+          "median": 7665.5,
+          "min": 1290,
+          "p90": 81893,
+          "samples": 6
+        },
+        "first_line_d_flash": {
+          "classification": "exact",
+          "max": 128,
+          "median": 128,
+          "min": 128,
+          "p90": 128,
+          "samples": 5
+        },
+        "first_line_d_psram": {
+          "classification": "distribution",
+          "max": 96,
+          "median": 96,
+          "min": 94,
+          "p90": 96,
+          "samples": 5
+        },
+        "first_line_i_flash": {
+          "classification": "distribution",
+          "max": 544,
+          "median": 404,
+          "min": 404,
+          "p90": 544,
+          "samples": 5
+        },
+        "flash_bandwidth_cross_core": {
+          "classification": "interval",
+          "max": 2648067,
+          "median": 2648066,
+          "min": 2648066,
+          "p90": 2648067,
+          "samples": 9
+        },
+        "gdma_transfer_sweep": {
+          "classification": "distribution",
+          "max": 137951,
+          "median": 34614.5,
+          "min": 15221,
+          "p90": 137951,
+          "samples": 6
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "distribution",
+          "max": 479523,
+          "median": 239662.5,
+          "min": 22448,
+          "p90": 479523,
+          "samples": 6
+        },
+        "psram_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 1401408,
+          "median": 1399211,
+          "min": 1399211,
+          "p90": 1401408,
+          "samples": 9
+        },
+        "spi2_transfer_sweep": {
+          "classification": "distribution",
+          "max": 1581347,
+          "median": 131123,
+          "min": 13407,
+          "p90": 1581347,
+          "samples": 6
+        },
+        "store_hit_psram": {
+          "classification": "distribution",
+          "max": 386,
+          "median": 272,
+          "min": 272,
+          "p90": 386,
+          "samples": 9
+        },
+        "touch_i2c_transaction": {
+          "classification": "distribution",
+          "max": 97163,
+          "median": 62291,
+          "min": 61085,
+          "p90": 97163,
+          "samples": 9
+        },
+        "writeback_clean_16_lines": {
+          "classification": "exact",
+          "max": 936,
+          "median": 936,
+          "min": 936,
+          "p90": 936,
+          "samples": 9
+        },
+        "writeback_clean_1_lines": {
+          "classification": "distribution",
+          "max": 999,
+          "median": 862,
+          "min": 862,
+          "p90": 999,
+          "samples": 9
+        },
+        "writeback_clean_2_lines": {
+          "classification": "exact",
+          "max": 862,
+          "median": 862,
+          "min": 862,
+          "p90": 862,
+          "samples": 9
+        },
+        "writeback_clean_4_lines": {
+          "classification": "exact",
+          "max": 876,
+          "median": 876,
+          "min": 876,
+          "p90": 876,
+          "samples": 9
+        },
+        "writeback_clean_8_lines": {
+          "classification": "exact",
+          "max": 894,
+          "median": 894,
+          "min": 894,
+          "p90": 894,
+          "samples": 9
+        },
+        "writeback_dirty_16_lines": {
+          "classification": "exact",
+          "max": 3442,
+          "median": 3442,
+          "min": 3442,
+          "p90": 3442,
+          "samples": 9
+        },
+        "writeback_dirty_1_lines": {
+          "classification": "exact",
+          "max": 1016,
+          "median": 1016,
+          "min": 1016,
+          "p90": 1016,
+          "samples": 9
+        },
+        "writeback_dirty_2_lines": {
+          "classification": "exact",
+          "max": 1170,
+          "median": 1170,
+          "min": 1170,
+          "p90": 1170,
+          "samples": 9
+        },
+        "writeback_dirty_4_lines": {
+          "classification": "exact",
+          "max": 1506,
+          "median": 1506,
+          "min": 1506,
+          "p90": 1506,
+          "samples": 9
+        },
+        "writeback_dirty_8_lines": {
+          "classification": "exact",
+          "max": 2154,
+          "median": 2154,
+          "min": 2154,
+          "p90": 2154,
+          "samples": 9
+        }
+      },
+      "refusals": 0,
+      "samples": 198,
+      "variant": "normal"
+    },
+    {
+      "boot": 2,
+      "bootIdentity": "11-d04491648c82d894",
+      "captureSha256": "e96aa32d54efd59ad3f1a2de81f7773b26362c8de6a35a60d17f873000cf3faa",
+      "cells": 25,
+      "perCell": {
+        "arbitration_psram_victim_flash_aggressor": {
+          "classification": "distribution",
+          "max": 2632360,
+          "median": 2632360,
+          "min": 2630938,
+          "p90": 2632360,
+          "samples": 9
+        },
+        "arbitration_psram_victim_internal_aggressor": {
+          "classification": "distribution",
+          "max": 704489,
+          "median": 704053,
+          "min": 704053,
+          "p90": 704489,
+          "samples": 9
+        },
+        "arbitration_psram_victim_psram_aggressor": {
+          "classification": "distribution",
+          "max": 1400238,
+          "median": 1399212,
+          "min": 1399212,
+          "p90": 1400238,
+          "samples": 9
+        },
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "distribution",
+          "max": 1499,
+          "median": 968,
+          "min": 733,
+          "p90": 1499,
+          "samples": 6
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "distribution",
+          "max": 81894,
+          "median": 7665.5,
+          "min": 1290,
+          "p90": 81894,
+          "samples": 6
+        },
+        "first_line_d_flash": {
+          "classification": "exact",
+          "max": 128,
+          "median": 128,
+          "min": 128,
+          "p90": 128,
+          "samples": 5
+        },
+        "first_line_d_psram": {
+          "classification": "distribution",
+          "max": 96,
+          "median": 96,
+          "min": 94,
+          "p90": 96,
+          "samples": 5
+        },
+        "first_line_i_flash": {
+          "classification": "distribution",
+          "max": 544,
+          "median": 404,
+          "min": 404,
+          "p90": 544,
+          "samples": 5
+        },
+        "flash_bandwidth_cross_core": {
+          "classification": "interval",
+          "max": 2648067,
+          "median": 2648066,
+          "min": 2648066,
+          "p90": 2648067,
+          "samples": 9
+        },
+        "gdma_transfer_sweep": {
+          "classification": "distribution",
+          "max": 137948,
+          "median": 34617.5,
+          "min": 15230,
+          "p90": 137948,
+          "samples": 6
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "distribution",
+          "max": 479523,
+          "median": 239662.5,
+          "min": 22448,
+          "p90": 479523,
+          "samples": 6
+        },
+        "psram_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 1401579,
+          "median": 1399211,
+          "min": 1399211,
+          "p90": 1401579,
+          "samples": 9
+        },
+        "spi2_transfer_sweep": {
+          "classification": "distribution",
+          "max": 1581347,
+          "median": 131123,
+          "min": 13407,
+          "p90": 1581347,
+          "samples": 6
+        },
+        "store_hit_psram": {
+          "classification": "distribution",
+          "max": 386,
+          "median": 272,
+          "min": 272,
+          "p90": 386,
+          "samples": 9
+        },
+        "touch_i2c_transaction": {
+          "classification": "distribution",
+          "max": 97163,
+          "median": 62291,
+          "min": 61085,
+          "p90": 97163,
+          "samples": 9
+        },
+        "writeback_clean_16_lines": {
+          "classification": "exact",
+          "max": 936,
+          "median": 936,
+          "min": 936,
+          "p90": 936,
+          "samples": 9
+        },
+        "writeback_clean_1_lines": {
+          "classification": "distribution",
+          "max": 999,
+          "median": 862,
+          "min": 862,
+          "p90": 999,
+          "samples": 9
+        },
+        "writeback_clean_2_lines": {
+          "classification": "exact",
+          "max": 862,
+          "median": 862,
+          "min": 862,
+          "p90": 862,
+          "samples": 9
+        },
+        "writeback_clean_4_lines": {
+          "classification": "exact",
+          "max": 876,
+          "median": 876,
+          "min": 876,
+          "p90": 876,
+          "samples": 9
+        },
+        "writeback_clean_8_lines": {
+          "classification": "exact",
+          "max": 894,
+          "median": 894,
+          "min": 894,
+          "p90": 894,
+          "samples": 9
+        },
+        "writeback_dirty_16_lines": {
+          "classification": "exact",
+          "max": 3442,
+          "median": 3442,
+          "min": 3442,
+          "p90": 3442,
+          "samples": 9
+        },
+        "writeback_dirty_1_lines": {
+          "classification": "exact",
+          "max": 1016,
+          "median": 1016,
+          "min": 1016,
+          "p90": 1016,
+          "samples": 9
+        },
+        "writeback_dirty_2_lines": {
+          "classification": "exact",
+          "max": 1170,
+          "median": 1170,
+          "min": 1170,
+          "p90": 1170,
+          "samples": 9
+        },
+        "writeback_dirty_4_lines": {
+          "classification": "exact",
+          "max": 1506,
+          "median": 1506,
+          "min": 1506,
+          "p90": 1506,
+          "samples": 9
+        },
+        "writeback_dirty_8_lines": {
+          "classification": "exact",
+          "max": 2154,
+          "median": 2154,
+          "min": 2154,
+          "p90": 2154,
+          "samples": 9
+        }
+      },
+      "refusals": 0,
+      "samples": 198,
+      "variant": "normal"
+    },
+    {
+      "boot": 1,
+      "bootIdentity": "11-878cb8beaa06294f",
+      "captureSha256": "1a5020dc19112a63e5fe2e69b247c58fdc3a96393144c857b991b0ae41376fe0",
+      "cells": 26,
+      "perCell": {
+        "arbitration_psram_victim_flash_aggressor": {
+          "classification": "distribution",
+          "max": 2632358,
+          "median": 2631884,
+          "min": 2631412,
+          "p90": 2632358,
+          "samples": 9
+        },
+        "arbitration_psram_victim_internal_aggressor": {
+          "classification": "distribution",
+          "max": 704232,
+          "median": 704122,
+          "min": 704074,
+          "p90": 704232,
+          "samples": 9
+        },
+        "arbitration_psram_victim_psram_aggressor": {
+          "classification": "distribution",
+          "max": 1399042,
+          "median": 1399041,
+          "min": 1398014,
+          "p90": 1399042,
+          "samples": 9
+        },
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "distribution",
+          "max": 1500,
+          "median": 969,
+          "min": 734,
+          "p90": 1500,
+          "samples": 6
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "distribution",
+          "max": 81909,
+          "median": 7586,
+          "min": 1180,
+          "p90": 81909,
+          "samples": 6
+        },
+        "first_line_d_flash": {
+          "classification": "exact",
+          "max": 128,
+          "median": 128,
+          "min": 128,
+          "p90": 128,
+          "samples": 5
+        },
+        "first_line_d_psram": {
+          "classification": "exact",
+          "max": 96,
+          "median": 96,
+          "min": 96,
+          "p90": 96,
+          "samples": 5
+        },
+        "flash_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 2648066,
+          "median": 2647895,
+          "min": 2647724,
+          "p90": 2648066,
+          "samples": 9
+        },
+        "gdma_transfer_sweep": {
+          "classification": "distribution",
+          "max": 138738,
+          "median": 26500,
+          "min": 15361,
+          "p90": 138738,
+          "samples": 6
+        },
+        "instruction_psram_cold": {
+          "classification": "exact",
+          "max": 992,
+          "median": 992,
+          "min": 992,
+          "p90": 992,
+          "samples": 9
+        },
+        "instruction_psram_hot": {
+          "classification": "exact",
+          "max": 133,
+          "median": 133,
+          "min": 133,
+          "p90": 133,
+          "samples": 9
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "distribution",
+          "max": 479802,
+          "median": 239802,
+          "min": 17972,
+          "p90": 479802,
+          "samples": 6
+        },
+        "psram_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 1401301,
+          "median": 1399043,
+          "min": 1398015,
+          "p90": 1401301,
+          "samples": 9
+        },
+        "spi2_transfer_sweep": {
+          "classification": "distribution",
+          "max": 1581462,
+          "median": 131238,
+          "min": 13122,
+          "p90": 1581462,
+          "samples": 6
+        },
+        "store_hit_psram": {
+          "classification": "distribution",
+          "max": 357,
+          "median": 272,
+          "min": 272,
+          "p90": 357,
+          "samples": 9
+        },
+        "touch_i2c_transaction": {
+          "classification": "distribution",
+          "max": 76943,
+          "median": 62241,
+          "min": 62238,
+          "p90": 76943,
+          "samples": 9
+        },
+        "writeback_clean_16_lines": {
+          "classification": "exact",
+          "max": 937,
+          "median": 937,
+          "min": 937,
+          "p90": 937,
+          "samples": 9
+        },
+        "writeback_clean_1_lines": {
+          "classification": "distribution",
+          "max": 954,
+          "median": 863,
+          "min": 863,
+          "p90": 954,
+          "samples": 9
+        },
+        "writeback_clean_2_lines": {
+          "classification": "exact",
+          "max": 863,
+          "median": 863,
+          "min": 863,
+          "p90": 863,
+          "samples": 9
+        },
+        "writeback_clean_4_lines": {
+          "classification": "exact",
+          "max": 877,
+          "median": 877,
+          "min": 877,
+          "p90": 877,
+          "samples": 9
+        },
+        "writeback_clean_8_lines": {
+          "classification": "exact",
+          "max": 895,
+          "median": 895,
+          "min": 895,
+          "p90": 895,
+          "samples": 9
+        },
+        "writeback_dirty_16_lines": {
+          "classification": "exact",
+          "max": 3443,
+          "median": 3443,
+          "min": 3443,
+          "p90": 3443,
+          "samples": 9
+        },
+        "writeback_dirty_1_lines": {
+          "classification": "exact",
+          "max": 1017,
+          "median": 1017,
+          "min": 1017,
+          "p90": 1017,
+          "samples": 9
+        },
+        "writeback_dirty_2_lines": {
+          "classification": "exact",
+          "max": 1171,
+          "median": 1171,
+          "min": 1171,
+          "p90": 1171,
+          "samples": 9
+        },
+        "writeback_dirty_4_lines": {
+          "classification": "exact",
+          "max": 1507,
+          "median": 1507,
+          "min": 1507,
+          "p90": 1507,
+          "samples": 9
+        },
+        "writeback_dirty_8_lines": {
+          "classification": "exact",
+          "max": 2155,
+          "median": 2155,
+          "min": 2155,
+          "p90": 2155,
+          "samples": 9
+        }
+      },
+      "refusals": 0,
+      "samples": 211,
+      "variant": "xip-psram"
+    },
+    {
+      "boot": 2,
+      "bootIdentity": "11-951f35cbfbd360f8",
+      "captureSha256": "2bc080b899e7eabb5664fe7fa48ffc51176a0ffc5f755d9060bbd0772b817540",
+      "cells": 26,
+      "perCell": {
+        "arbitration_psram_victim_flash_aggressor": {
+          "classification": "distribution",
+          "max": 2632358,
+          "median": 2631884,
+          "min": 2631412,
+          "p90": 2632358,
+          "samples": 9
+        },
+        "arbitration_psram_victim_internal_aggressor": {
+          "classification": "distribution",
+          "max": 704267,
+          "median": 704122,
+          "min": 704074,
+          "p90": 704267,
+          "samples": 9
+        },
+        "arbitration_psram_victim_psram_aggressor": {
+          "classification": "distribution",
+          "max": 1399042,
+          "median": 1399041,
+          "min": 1398014,
+          "p90": 1399042,
+          "samples": 9
+        },
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "distribution",
+          "max": 1500,
+          "median": 969,
+          "min": 734,
+          "p90": 1500,
+          "samples": 6
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "distribution",
+          "max": 81908,
+          "median": 7586,
+          "min": 1180,
+          "p90": 81908,
+          "samples": 6
+        },
+        "first_line_d_flash": {
+          "classification": "exact",
+          "max": 128,
+          "median": 128,
+          "min": 128,
+          "p90": 128,
+          "samples": 5
+        },
+        "first_line_d_psram": {
+          "classification": "exact",
+          "max": 96,
+          "median": 96,
+          "min": 96,
+          "p90": 96,
+          "samples": 5
+        },
+        "flash_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 2648067,
+          "median": 2647895,
+          "min": 2647724,
+          "p90": 2648067,
+          "samples": 9
+        },
+        "gdma_transfer_sweep": {
+          "classification": "distribution",
+          "max": 138732,
+          "median": 26431,
+          "min": 15355,
+          "p90": 138732,
+          "samples": 6
+        },
+        "instruction_psram_cold": {
+          "classification": "interval",
+          "max": 993,
+          "median": 992,
+          "min": 992,
+          "p90": 993,
+          "samples": 9
+        },
+        "instruction_psram_hot": {
+          "classification": "exact",
+          "max": 133,
+          "median": 133,
+          "min": 133,
+          "p90": 133,
+          "samples": 9
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "distribution",
+          "max": 479802,
+          "median": 239802,
+          "min": 17977,
+          "p90": 479802,
+          "samples": 6
+        },
+        "psram_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 1401301,
+          "median": 1399043,
+          "min": 1398014,
+          "p90": 1401301,
+          "samples": 9
+        },
+        "spi2_transfer_sweep": {
+          "classification": "distribution",
+          "max": 1581462,
+          "median": 131238,
+          "min": 13122,
+          "p90": 1581462,
+          "samples": 6
+        },
+        "store_hit_psram": {
+          "classification": "distribution",
+          "max": 357,
+          "median": 272,
+          "min": 272,
+          "p90": 357,
+          "samples": 9
+        },
+        "touch_i2c_transaction": {
+          "classification": "distribution",
+          "max": 76937,
+          "median": 62241,
+          "min": 62238,
+          "p90": 76937,
+          "samples": 9
+        },
+        "writeback_clean_16_lines": {
+          "classification": "exact",
+          "max": 937,
+          "median": 937,
+          "min": 937,
+          "p90": 937,
+          "samples": 9
+        },
+        "writeback_clean_1_lines": {
+          "classification": "distribution",
+          "max": 954,
+          "median": 863,
+          "min": 863,
+          "p90": 954,
+          "samples": 9
+        },
+        "writeback_clean_2_lines": {
+          "classification": "exact",
+          "max": 863,
+          "median": 863,
+          "min": 863,
+          "p90": 863,
+          "samples": 9
+        },
+        "writeback_clean_4_lines": {
+          "classification": "exact",
+          "max": 877,
+          "median": 877,
+          "min": 877,
+          "p90": 877,
+          "samples": 9
+        },
+        "writeback_clean_8_lines": {
+          "classification": "exact",
+          "max": 895,
+          "median": 895,
+          "min": 895,
+          "p90": 895,
+          "samples": 9
+        },
+        "writeback_dirty_16_lines": {
+          "classification": "exact",
+          "max": 3443,
+          "median": 3443,
+          "min": 3443,
+          "p90": 3443,
+          "samples": 9
+        },
+        "writeback_dirty_1_lines": {
+          "classification": "exact",
+          "max": 1017,
+          "median": 1017,
+          "min": 1017,
+          "p90": 1017,
+          "samples": 9
+        },
+        "writeback_dirty_2_lines": {
+          "classification": "exact",
+          "max": 1171,
+          "median": 1171,
+          "min": 1171,
+          "p90": 1171,
+          "samples": 9
+        },
+        "writeback_dirty_4_lines": {
+          "classification": "exact",
+          "max": 1507,
+          "median": 1507,
+          "min": 1507,
+          "p90": 1507,
+          "samples": 9
+        },
+        "writeback_dirty_8_lines": {
+          "classification": "exact",
+          "max": 2155,
+          "median": 2155,
+          "min": 2155,
+          "p90": 2155,
+          "samples": 9
+        }
+      },
+      "refusals": 0,
+      "samples": 211,
+      "variant": "xip-psram"
+    }
+  ],
+  "disposition": "candidate-evidence-only",
+  "manifestSha256": "7aa707c8ea6d176d9556eb4e2de3dcfb90754dc5e4107b891fb64da76651c1b7",
+  "open": [
+    "gpio21_edge"
+  ],
+  "schemaVersion": 1,
+  "sourceCommit": "fc6d9347549730a0e57aa926f8f6935e12636844",
+  "statistics": {
+    "median": "arithmetic midpoint of the two middle sorted values for even sample counts",
+    "p90": "nearest rank ceil(0.90 * n) on ascending values"
+  },
+  "suite": "tier-b",
+  "variants": {
+    "normal": {
+      "affineFits": {
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "unexplained",
+          "interceptCycles": 847.507643,
+          "maxAbsoluteResidualCycles": 248.45102,
+          "points": 12,
+          "rSquared": 0.786231543,
+          "slopeCyclesPerUnit": 0.02423348,
+          "unit": "bytes"
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "affine",
+          "interceptCycles": 1246.886506,
+          "maxAbsoluteResidualCycles": 591.345233,
+          "points": 12,
+          "rSquared": 0.999878233,
+          "slopeCyclesPerUnit": 2.470933121,
+          "unit": "bytes"
+        },
+        "gdma_transfer_sweep": {
+          "classification": "unexplained",
+          "interceptCycles": 20486.107103,
+          "maxAbsoluteResidualCycles": 19286.784623,
+          "points": 12,
+          "rSquared": 0.954925282,
+          "slopeCyclesPerUnit": 3.517316775,
+          "unit": "bytes"
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "unexplained",
+          "interceptCycles": 106867.873956,
+          "maxAbsoluteResidualCycles": 121609.206818,
+          "points": 12,
+          "rSquared": 0.727903082,
+          "slopeCyclesPerUnit": 11.059491432,
+          "unit": "bytes"
+        },
+        "spi2_transfer_sweep": {
+          "classification": "affine",
+          "interceptCycles": 8852.979011,
+          "maxAbsoluteResidualCycles": 1483.120489,
+          "points": 12,
+          "rSquared": 0.999998473,
+          "slopeCyclesPerUnit": 47.982820302,
+          "unit": "bytes"
+        },
+        "writeback-clean-lines": {
+          "classification": "unexplained",
+          "interceptCycles": 854.666667,
+          "maxAbsoluteResidualCycles": 2.774194,
+          "points": 10,
+          "rSquared": 0.995919839,
+          "slopeCyclesPerUnit": 5.053763441,
+          "unit": "cache-lines"
+        },
+        "writeback-dirty-lines": {
+          "classification": "affine",
+          "interceptCycles": 853.5,
+          "maxAbsoluteResidualCycles": 7.403226,
+          "points": 10,
+          "rSquared": 0.999972212,
+          "slopeCyclesPerUnit": 161.951612903,
+          "unit": "cache-lines"
+        }
+      },
+      "boots": 2,
+      "cellsPerBoot": 25,
+      "pooledPerCell": {
+        "arbitration_psram_victim_flash_aggressor": {
+          "classification": "distribution",
+          "max": 2632360,
+          "median": 2632360,
+          "min": 2630938,
+          "p90": 2632360,
+          "samples": 18
+        },
+        "arbitration_psram_victim_internal_aggressor": {
+          "classification": "distribution",
+          "max": 704489,
+          "median": 704059,
+          "min": 704053,
+          "p90": 704486,
+          "samples": 18
+        },
+        "arbitration_psram_victim_psram_aggressor": {
+          "classification": "distribution",
+          "max": 1400238,
+          "median": 1399212,
+          "min": 1399212,
+          "p90": 1400238,
+          "samples": 18
+        },
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "unexplained",
+          "max": 1499,
+          "median": 968,
+          "min": 733,
+          "p90": 1499,
+          "samples": 12
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "affine",
+          "max": 81894,
+          "median": 7665.5,
+          "min": 1290,
+          "p90": 81893,
+          "samples": 12
+        },
+        "first_line_d_flash": {
+          "classification": "exact",
+          "max": 128,
+          "median": 128,
+          "min": 128,
+          "p90": 128,
+          "samples": 10
+        },
+        "first_line_d_psram": {
+          "classification": "distribution",
+          "max": 96,
+          "median": 96,
+          "min": 94,
+          "p90": 96,
+          "samples": 10
+        },
+        "first_line_i_flash": {
+          "classification": "distribution",
+          "max": 544,
+          "median": 404,
+          "min": 404,
+          "p90": 544,
+          "samples": 10
+        },
+        "flash_bandwidth_cross_core": {
+          "classification": "interval",
+          "max": 2648067,
+          "median": 2648066,
+          "min": 2648066,
+          "p90": 2648067,
+          "samples": 18
+        },
+        "gdma_transfer_sweep": {
+          "classification": "unexplained",
+          "max": 137951,
+          "median": 34616,
+          "min": 15221,
+          "p90": 137948,
+          "samples": 12
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "unexplained",
+          "max": 479523,
+          "median": 239662.5,
+          "min": 22448,
+          "p90": 479523,
+          "samples": 12
+        },
+        "psram_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 1401579,
+          "median": 1399211,
+          "min": 1399211,
+          "p90": 1401408,
+          "samples": 18
+        },
+        "spi2_transfer_sweep": {
+          "classification": "affine",
+          "max": 1581347,
+          "median": 131123,
+          "min": 13407,
+          "p90": 1581347,
+          "samples": 12
+        },
+        "store_hit_psram": {
+          "classification": "distribution",
+          "max": 386,
+          "median": 272,
+          "min": 272,
+          "p90": 386,
+          "samples": 18
+        },
+        "touch_i2c_transaction": {
+          "classification": "distribution",
+          "max": 97163,
+          "median": 62291,
+          "min": 61085,
+          "p90": 97163,
+          "samples": 18
+        },
+        "writeback_clean_16_lines": {
+          "classification": "exact",
+          "max": 936,
+          "median": 936,
+          "min": 936,
+          "p90": 936,
+          "samples": 18
+        },
+        "writeback_clean_1_lines": {
+          "classification": "distribution",
+          "max": 999,
+          "median": 862,
+          "min": 862,
+          "p90": 999,
+          "samples": 18
+        },
+        "writeback_clean_2_lines": {
+          "classification": "exact",
+          "max": 862,
+          "median": 862,
+          "min": 862,
+          "p90": 862,
+          "samples": 18
+        },
+        "writeback_clean_4_lines": {
+          "classification": "exact",
+          "max": 876,
+          "median": 876,
+          "min": 876,
+          "p90": 876,
+          "samples": 18
+        },
+        "writeback_clean_8_lines": {
+          "classification": "exact",
+          "max": 894,
+          "median": 894,
+          "min": 894,
+          "p90": 894,
+          "samples": 18
+        },
+        "writeback_dirty_16_lines": {
+          "classification": "exact",
+          "max": 3442,
+          "median": 3442,
+          "min": 3442,
+          "p90": 3442,
+          "samples": 18
+        },
+        "writeback_dirty_1_lines": {
+          "classification": "exact",
+          "max": 1016,
+          "median": 1016,
+          "min": 1016,
+          "p90": 1016,
+          "samples": 18
+        },
+        "writeback_dirty_2_lines": {
+          "classification": "exact",
+          "max": 1170,
+          "median": 1170,
+          "min": 1170,
+          "p90": 1170,
+          "samples": 18
+        },
+        "writeback_dirty_4_lines": {
+          "classification": "exact",
+          "max": 1506,
+          "median": 1506,
+          "min": 1506,
+          "p90": 1506,
+          "samples": 18
+        },
+        "writeback_dirty_8_lines": {
+          "classification": "exact",
+          "max": 2154,
+          "median": 2154,
+          "min": 2154,
+          "p90": 2154,
+          "samples": 18
+        }
+      },
+      "samplesPerBoot": 198
+    },
+    "xip-psram": {
+      "affineFits": {
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "unexplained",
+          "interceptCycles": 848.507643,
+          "maxAbsoluteResidualCycles": 248.45102,
+          "points": 12,
+          "rSquared": 0.786231543,
+          "slopeCyclesPerUnit": 0.02423348,
+          "unit": "bytes"
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "affine",
+          "interceptCycles": 1177.125063,
+          "maxAbsoluteResidualCycles": 612.116551,
+          "points": 12,
+          "rSquared": 0.999868574,
+          "slopeCyclesPerUnit": 2.473984276,
+          "unit": "bytes"
+        },
+        "gdma_transfer_sweep": {
+          "classification": "unexplained",
+          "interceptCycles": 16531.211599,
+          "maxAbsoluteResidualCycles": 6141.211344,
+          "points": 12,
+          "rSquared": 0.995807752,
+          "slopeCyclesPerUnit": 3.71214153,
+          "unit": "bytes"
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "unexplained",
+          "interceptCycles": 104487.137719,
+          "maxAbsoluteResidualCycles": 123885.278718,
+          "points": 12,
+          "rSquared": 0.723396274,
+          "slopeCyclesPerUnit": 11.161702698,
+          "unit": "bytes"
+        },
+        "spi2_transfer_sweep": {
+          "classification": "affine",
+          "interceptCycles": 8809.436561,
+          "maxAbsoluteResidualCycles": 1241.259359,
+          "points": 12,
+          "rSquared": 0.999998948,
+          "slopeCyclesPerUnit": 47.989126257,
+          "unit": "bytes"
+        },
+        "writeback-clean-lines": {
+          "classification": "unexplained",
+          "interceptCycles": 855.666667,
+          "maxAbsoluteResidualCycles": 2.774194,
+          "points": 10,
+          "rSquared": 0.995919839,
+          "slopeCyclesPerUnit": 5.053763441,
+          "unit": "cache-lines"
+        },
+        "writeback-dirty-lines": {
+          "classification": "affine",
+          "interceptCycles": 854.5,
+          "maxAbsoluteResidualCycles": 7.403226,
+          "points": 10,
+          "rSquared": 0.999972212,
+          "slopeCyclesPerUnit": 161.951612903,
+          "unit": "cache-lines"
+        }
+      },
+      "boots": 2,
+      "cellsPerBoot": 26,
+      "pooledPerCell": {
+        "arbitration_psram_victim_flash_aggressor": {
+          "classification": "distribution",
+          "max": 2632358,
+          "median": 2631884,
+          "min": 2631412,
+          "p90": 2632358,
+          "samples": 18
+        },
+        "arbitration_psram_victim_internal_aggressor": {
+          "classification": "distribution",
+          "max": 704267,
+          "median": 704122,
+          "min": 704074,
+          "p90": 704232,
+          "samples": 18
+        },
+        "arbitration_psram_victim_psram_aggressor": {
+          "classification": "distribution",
+          "max": 1399042,
+          "median": 1399041,
+          "min": 1398014,
+          "p90": 1399042,
+          "samples": 18
+        },
+        "cache_msync_invalidate_clean_sweep": {
+          "classification": "unexplained",
+          "max": 1500,
+          "median": 969,
+          "min": 734,
+          "p90": 1500,
+          "samples": 12
+        },
+        "cache_msync_writeback_sweep": {
+          "classification": "affine",
+          "max": 81909,
+          "median": 7586,
+          "min": 1180,
+          "p90": 81908,
+          "samples": 12
+        },
+        "first_line_d_flash": {
+          "classification": "exact",
+          "max": 128,
+          "median": 128,
+          "min": 128,
+          "p90": 128,
+          "samples": 10
+        },
+        "first_line_d_psram": {
+          "classification": "exact",
+          "max": 96,
+          "median": 96,
+          "min": 96,
+          "p90": 96,
+          "samples": 10
+        },
+        "flash_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 2648067,
+          "median": 2647895,
+          "min": 2647724,
+          "p90": 2648066,
+          "samples": 18
+        },
+        "gdma_transfer_sweep": {
+          "classification": "unexplained",
+          "max": 138738,
+          "median": 26497,
+          "min": 15355,
+          "p90": 138732,
+          "samples": 12
+        },
+        "instruction_psram_cold": {
+          "classification": "interval",
+          "max": 993,
+          "median": 992,
+          "min": 992,
+          "p90": 992,
+          "samples": 18
+        },
+        "instruction_psram_hot": {
+          "classification": "exact",
+          "max": 133,
+          "median": 133,
+          "min": 133,
+          "p90": 133,
+          "samples": 18
+        },
+        "panel_qspi_flush_sweep": {
+          "classification": "unexplained",
+          "max": 479802,
+          "median": 239802,
+          "min": 17972,
+          "p90": 479802,
+          "samples": 12
+        },
+        "psram_bandwidth_cross_core": {
+          "classification": "distribution",
+          "max": 1401301,
+          "median": 1399043,
+          "min": 1398014,
+          "p90": 1401301,
+          "samples": 18
+        },
+        "spi2_transfer_sweep": {
+          "classification": "affine",
+          "max": 1581462,
+          "median": 131238,
+          "min": 13122,
+          "p90": 1581462,
+          "samples": 12
+        },
+        "store_hit_psram": {
+          "classification": "distribution",
+          "max": 357,
+          "median": 272,
+          "min": 272,
+          "p90": 357,
+          "samples": 18
+        },
+        "touch_i2c_transaction": {
+          "classification": "distribution",
+          "max": 76943,
+          "median": 62241,
+          "min": 62238,
+          "p90": 76937,
+          "samples": 18
+        },
+        "writeback_clean_16_lines": {
+          "classification": "exact",
+          "max": 937,
+          "median": 937,
+          "min": 937,
+          "p90": 937,
+          "samples": 18
+        },
+        "writeback_clean_1_lines": {
+          "classification": "distribution",
+          "max": 954,
+          "median": 863,
+          "min": 863,
+          "p90": 954,
+          "samples": 18
+        },
+        "writeback_clean_2_lines": {
+          "classification": "exact",
+          "max": 863,
+          "median": 863,
+          "min": 863,
+          "p90": 863,
+          "samples": 18
+        },
+        "writeback_clean_4_lines": {
+          "classification": "exact",
+          "max": 877,
+          "median": 877,
+          "min": 877,
+          "p90": 877,
+          "samples": 18
+        },
+        "writeback_clean_8_lines": {
+          "classification": "exact",
+          "max": 895,
+          "median": 895,
+          "min": 895,
+          "p90": 895,
+          "samples": 18
+        },
+        "writeback_dirty_16_lines": {
+          "classification": "exact",
+          "max": 3443,
+          "median": 3443,
+          "min": 3443,
+          "p90": 3443,
+          "samples": 18
+        },
+        "writeback_dirty_1_lines": {
+          "classification": "exact",
+          "max": 1017,
+          "median": 1017,
+          "min": 1017,
+          "p90": 1017,
+          "samples": 18
+        },
+        "writeback_dirty_2_lines": {
+          "classification": "exact",
+          "max": 1171,
+          "median": 1171,
+          "min": 1171,
+          "p90": 1171,
+          "samples": 18
+        },
+        "writeback_dirty_4_lines": {
+          "classification": "exact",
+          "max": 1507,
+          "median": 1507,
+          "min": 1507,
+          "p90": 1507,
+          "samples": 18
+        },
+        "writeback_dirty_8_lines": {
+          "classification": "exact",
+          "max": 2155,
+          "median": 2155,
+          "min": 2155,
+          "p90": 2155,
+          "samples": 18
+        }
+      },
+      "samplesPerBoot": 211
+    }
+  }
+}
