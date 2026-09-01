@@ -69,6 +69,7 @@ pub struct InstructionObservation {
     pub fetch_memory: MemoryClass,
     pub access: Option<AccessShape>,
     pub access_memory: Option<MemoryClass>,
+    pub branch_taken: Option<bool>,
     pub block_cost: BlockCostPayload,
 }
 
@@ -82,7 +83,12 @@ pub struct TimingPlan {
 
 pub trait TimingSource {
     fn price(&self, observation: &InstructionObservation) -> Result<TimingPlan, TimingRefusal>;
-    fn commit(&mut self, mutations: &[TimingMutation]);
+    fn commit(
+        &mut self,
+        observation: &InstructionObservation,
+        components: &[CostComponent],
+        mutations: &[TimingMutation],
+    ) -> Result<(), TimingRefusal>;
 }
 
 /// Planning-only view of the bus. Implementations must not mutate guest,
@@ -150,6 +156,8 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         fetch_memory: bus.measured_memory_class(pc),
         access_memory: access.map(|shape| bus.measured_memory_class(shape.address)),
         access,
+        branch_taken: matches!(instruction.op, crate::Op::Beqz | crate::Op::BeqzN)
+            .then(|| cpu.get_ar(instruction.s) == 0),
         block_cost: BlockCostPayload {
             start_pc: pc,
             instruction_count: 1,
@@ -244,6 +252,7 @@ fn access_shape(cpu: &Cpu, instruction: Insn) -> Option<AccessShape> {
 pub enum CompletionError {
     BeforeCompletion,
     Trap(Trap),
+    Timing(TimingRefusal),
 }
 
 pub fn complete_instruction<B: MeasuredBus, T: TimingSource>(
@@ -264,7 +273,13 @@ pub fn complete_instruction<B: MeasuredBus, T: TimingSource>(
     cpu.insn_count = cpu.insn_count.saturating_add(1);
     match result {
         Ok(()) => {
-            timing.commit(&pending.mutations);
+            timing
+                .commit(
+                    &pending.observation,
+                    &pending.components,
+                    &pending.mutations,
+                )
+                .map_err(CompletionError::Timing)?;
             Ok(())
         }
         Err(trap) => Err(CompletionError::Trap(trap)),
@@ -337,8 +352,14 @@ mod tests {
             })
         }
 
-        fn commit(&mut self, mutations: &[TimingMutation]) {
+        fn commit(
+            &mut self,
+            _observation: &InstructionObservation,
+            _components: &[CostComponent],
+            mutations: &[TimingMutation],
+        ) -> Result<(), TimingRefusal> {
             self.applied.extend_from_slice(mutations);
+            Ok(())
         }
     }
 
