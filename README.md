@@ -12,7 +12,7 @@ projects end to end. No cloud, no accounts. MIT.
 | Core crate | `xtensa-lx7` | `riscv-rv32` |
 | Decoder vs `objdump` | 977 k instructions, 0 mismatches | 161 k instructions, 0 mismatches |
 | Boots | ROM → bootloader → FreeRTOS → app | ROM → bootloader → FreeRTOS → app |
-| Boards / displays | ST7735, ST7701S 480×480 + touch, WS2812, camera, audio | none — console only |
+| Boards / displays | ST7735, ST7701S 480×480, CO5300 368×448 + touch, WS2812, camera, audio | none — console only |
 | WiFi | virtual AP, WPA2, DHCP/DNS/NTP, NAT to the real network, HTTPS | not modelled |
 | Speed | block interpreter + **AArch64 JIT**, ~150–240 Minsn/s | plain interpreter (no block cache or JIT yet) — still well above real time on hello_world |
 | In the browser | yes (WebAssembly) | yes (WebAssembly) |
@@ -35,7 +35,8 @@ esp32sim/
   esp32s3/        SoC + boards: memory map, cache MMU, SPI flash/PSRAM, SHA/AES/RSA, RNG,
                   systimer, timer groups, interrupt matrix (per core), GPIO, USB-CDC,
                   UARTs, I2C, GDMA + I2S/LCD_CAM, RMT TX, regi2c, RTC WDT, WiFi MAC + virtual
-                  AP + NAT; board.rs: atech14 / waveshare-cam / waveshare-lcd4b / none
+                  AP + NAT; board.rs: atech14 / waveshare-cam / waveshare-lcd4b /
+                  waveshare-amoled18-v2 / none
   cli/            the `esp32sim` command line
   ── ESP32-C3 (RISC-V RV32IMC, single core) ──
   riscv-rv32/     RV32IMC decoder (verified 100% against objdump), interpreter, disassembler
@@ -69,6 +70,10 @@ from `--cam-image` or the browser (picture upload / webcam) → esp‑dl pedestr
 emulated PIE SIMD unit → pling on the ES8311. See `examples/waveshare-cam/`. Adding a board =
 implementing the trait (`gpio_changes`, `rmt_frame`, `i2c_devices`, `camera_frame`, …).
 
+`--board waveshare-amoled18-v2` models the Waveshare ESP32-S3-Touch-AMOLED-1.8 V2 used by
+TinyDraw V2: a 368×448 CO5300 panel over GP-SPI2 DMA, CST820 touch, and the board's I2C support
+devices. The browser exposes the panel and pointer-driven touch.
+
 ## Run — ESP32-S3
 
 ```sh
@@ -98,6 +103,21 @@ prints the ROM banner, the bootloader and app logs on UART0, `Hello world!`, the
 then reboots through the RTC watchdog exactly as silicon does (`rst:0xc (RTC_SW_CPU_RST)`),
 ~30× faster than real time. Chip resets (software, RTC watchdog) restart the machine from the
 ROM with the right reset cause; `--no-reboot` stops at the first reset instead.
+
+## TinyDraw V2 quickstart
+
+Clone `aliceisjustplaying/tinydraw` next to this repository, then run:
+
+```sh
+./scripts/tinydraw-v2.sh run
+```
+
+The script builds the normal, unmodified TinyDraw V2 product and the release emulator, opens the
+browser UI at <http://127.0.0.1:8766/>, and boots the real ROM, bootloader, and application. It
+does not run the 90-second battery-test firmware. Use `build` to compile only, `smoke` for the
+automated 120-second product readiness check, and `flash` to put the same normal product on the
+single connected `/dev/cu.usbmodem*` device. Pass a TinyDraw checkout as the second argument when
+the repositories are not side by side; `TINYDRAW_DIR` and `TINYDRAW_WEB_PORT` are also accepted.
 
 ## Run — ESP32-C3
 

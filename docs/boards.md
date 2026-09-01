@@ -55,6 +55,20 @@ Needs `--flash-mb 16 --psram-mb 8`. Example: `examples/waveshare-cam/run-autopli
 
 Needs `--flash-mb 16 --psram-mb 8`; `examples/waveshare-lcd4b/run-energy-panel.sh` runs the esp32-screen panel.
 
+## `waveshare-amoled18-v2`: Waveshare ESP32-S3-Touch-AMOLED-1.8 V2
+
+| Device | Bus | Model |
+| --- | --- | --- |
+| CO5300 368×448 AMOLED | GP-SPI2 quad data over GDMA, 40 MHz | command/window decode, RGB565 GRAM, browser rendering |
+| CST820 touch @0x15 | I2C0 (SDA 15, SCL 14), interrupt GPIO 21 | chip identity and single-point reports; browser pointer events become touch reports |
+| TCA9554 / AXP2101 / PCF85063A / QMI8658 | I2C0 | register-level board support used during TinyDraw startup |
+| Tear signal | GPIO 13 | demo cadence used to drive presentation; not a measured hardware-timing claim |
+
+Needs `--flash-mb 16 --psram-mb 8`. With TinyDraw cloned next to esp32sim,
+`scripts/tinydraw-v2.sh run` builds and starts the normal TinyDraw V2 product in the browser.
+`scripts/tinydraw-v2.sh smoke` verifies that it reaches `TINYDRAW_VECTOR_V2_READY` without a
+crash or product failure.
+
 ## `none` — bare module
 
 No devices; console only. For stock ESP-IDF projects (`examples/hello_world`).
