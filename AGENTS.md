@@ -55,6 +55,16 @@ points there.
   committed evidence or `~/Archives/esp32s3/` at capture time, never
   left inside a working tree.
 
+## Build exactly the thing
+
+- The smallest implementation that meets its acceptance criteria is
+  the correct one; deleted and avoided code is a contribution.
+- Implement what is named, not frameworks for hypotheticals: add
+  generality when a second real caller exists, not before.
+- When two designs both satisfy the criteria, choose the one with
+  fewer moving parts; spend any surplus on sharper tests and clearer
+  names, never on speculative surface.
+
 ## Process
 
 - Upstream-first: fixes and capabilities upstream would want are built
