@@ -1,0 +1,852 @@
+{
+  "schemaVersion": 1,
+  "receiptKind": "esp32s3-hardware-calibration",
+  "captureMode": "hardware",
+  "capturedAt": "2026-08-30T23:41:05.758Z",
+  "git": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "d81e2ea1aa15fb357f8991e2a721b0c9532948d9",
+    "dirty": false
+  },
+  "toolchain": {
+    "target": "esp32s3",
+    "espIdfVersion": "v6.0.2",
+    "compiler": "GNU",
+    "compilerVersion": "15.2.0"
+  },
+  "sdkconfig": {
+    "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+    "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+    "cpuHz": 240000000,
+    "psramMode": "octal",
+    "psramBusHz": 80000000,
+    "flashMode": "qio",
+    "flashBusHz": 80000000
+  },
+  "boot": {
+    "bootId": "1cdbd47b85c8-02e3261c-00010423",
+    "resetReason": "usb",
+    "chipModel": "ESP32-S3",
+    "chipRevision": 2,
+    "cpuCores": 2,
+    "psramBytes": 8388608,
+    "flashBytes": 16777216,
+    "bootLogSha256": "0cb51b4e4cf558bbb55053100fbd97c57f7cc99e9b674a1fdda65a7bc459c5b8"
+  },
+  "counter": {
+    "source": "xtensa-ccount",
+    "bits": 32,
+    "hz": 240000000,
+    "core": 0
+  },
+  "measurement": {
+    "kind": "ccount-kernel",
+    "kernel": "flash_mmap_hot_sequential_single_core",
+    "memoryPath": "flash-to-internal",
+    "bytesPerIteration": 4096,
+    "iterationsPerSample": 1,
+    "warmupIterations": 8,
+    "samples": [
+      {
+        "ordinal": 0,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 132664288,
+        "endCcount": 132668399,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 1,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 135417465,
+        "endCcount": 135421576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 2,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 140697465,
+        "endCcount": 140701576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 3,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 145977465,
+        "endCcount": 145981576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 4,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 151257465,
+        "endCcount": 151261576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 5,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 156297465,
+        "endCcount": 156301576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 6,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 161577465,
+        "endCcount": 161581576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 7,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 166857465,
+        "endCcount": 166861576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 8,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 172137465,
+        "endCcount": 172141576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 9,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 177178296,
+        "endCcount": 177182407,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 10,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 182457465,
+        "endCcount": 182461576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 11,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 187737465,
+        "endCcount": 187741576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 12,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 193017465,
+        "endCcount": 193021576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 13,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 198297465,
+        "endCcount": 198301576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 14,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 203577465,
+        "endCcount": 203581576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 15,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 208857465,
+        "endCcount": 208861576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 16,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 213897465,
+        "endCcount": 213901576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 17,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 219177465,
+        "endCcount": 219181576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 18,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 224457465,
+        "endCcount": 224461576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 19,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 229737465,
+        "endCcount": 229741576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 20,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 235017465,
+        "endCcount": 235021576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 21,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 240297465,
+        "endCcount": 240301576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 22,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 245577465,
+        "endCcount": 245581576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 23,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 250617465,
+        "endCcount": 250621576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 24,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 255897465,
+        "endCcount": 255901576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 25,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 261177465,
+        "endCcount": 261181576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 26,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 266457465,
+        "endCcount": 266461576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 27,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 271737465,
+        "endCcount": 271741576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 28,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 277017465,
+        "endCcount": 277021576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 29,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 282057465,
+        "endCcount": 282061576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 30,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 287337465,
+        "endCcount": 287341576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 31,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 292617465,
+        "endCcount": 292621576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 32,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 297897465,
+        "endCcount": 297901576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 33,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 303177465,
+        "endCcount": 303181576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 34,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 308457465,
+        "endCcount": 308461576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 35,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 313737465,
+        "endCcount": 313741576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 36,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 318777465,
+        "endCcount": 318781576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 37,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 324057465,
+        "endCcount": 324061576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 38,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 329337465,
+        "endCcount": 329341576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 39,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 334617465,
+        "endCcount": 334621576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 40,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 339897465,
+        "endCcount": 339901576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 41,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 345177465,
+        "endCcount": 345181576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 42,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 350217465,
+        "endCcount": 350221576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 43,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 355497465,
+        "endCcount": 355501576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 44,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 360777465,
+        "endCcount": 360781576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 45,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 366057465,
+        "endCcount": 366061576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 46,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 371337465,
+        "endCcount": 371341576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 47,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 376617465,
+        "endCcount": 376621576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 48,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 381897465,
+        "endCcount": 381901576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 49,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 386937465,
+        "endCcount": 386941576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 50,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 392217465,
+        "endCcount": 392221576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 51,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 397497465,
+        "endCcount": 397501576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 52,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 402777465,
+        "endCcount": 402781576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 53,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 408057465,
+        "endCcount": 408061576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 54,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 413337465,
+        "endCcount": 413341576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 55,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 418377465,
+        "endCcount": 418381576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 56,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 423657465,
+        "endCcount": 423661576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 57,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 428937465,
+        "endCcount": 428941576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 58,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 434217465,
+        "endCcount": 434221576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 59,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 439497465,
+        "endCcount": 439501576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 60,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 444777465,
+        "endCcount": 444781576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 61,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 450057465,
+        "endCcount": 450061576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 62,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 455337465,
+        "endCcount": 455341576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 63,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 460377465,
+        "endCcount": 460381576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 64,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 465657465,
+        "endCcount": 465661576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 65,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 470937465,
+        "endCcount": 470941576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 66,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 476217465,
+        "endCcount": 476221576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 67,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 481497465,
+        "endCcount": 481501576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 68,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 486777465,
+        "endCcount": 486781576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 69,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 491817465,
+        "endCcount": 491821576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 70,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 497097465,
+        "endCcount": 497101576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 71,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 502377465,
+        "endCcount": 502381576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 72,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 507657465,
+        "endCcount": 507661576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 73,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 512937465,
+        "endCcount": 512941576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 74,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 518217465,
+        "endCcount": 518221576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 75,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 523497465,
+        "endCcount": 523501576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 76,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 528537465,
+        "endCcount": 528541576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 77,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 533817465,
+        "endCcount": 533821576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 78,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 539097465,
+        "endCcount": 539101576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 79,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 544377465,
+        "endCcount": 544381576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 80,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 549657465,
+        "endCcount": 549661576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 81,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 554937465,
+        "endCcount": 554941576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 82,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 560217465,
+        "endCcount": 560221576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 83,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 565257465,
+        "endCcount": 565261576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 84,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 570537465,
+        "endCcount": 570541576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 85,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 575817465,
+        "endCcount": 575821576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 86,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 581097465,
+        "endCcount": 581101576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 87,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 586377465,
+        "endCcount": 586381576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 88,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 591657465,
+        "endCcount": 591661576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 89,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 596697465,
+        "endCcount": 596701576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 90,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 601977465,
+        "endCcount": 601981576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 91,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 607257465,
+        "endCcount": 607261576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 92,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 612537465,
+        "endCcount": 612541576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 93,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 617817465,
+        "endCcount": 617821576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 94,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 623097465,
+        "endCcount": 623101576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 95,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 628137465,
+        "endCcount": 628141576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 96,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 633417465,
+        "endCcount": 633421576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 97,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 638697465,
+        "endCcount": 638701576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 98,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 643977465,
+        "endCcount": 643981576,
+        "cycles": 4111
+      },
+      {
+        "ordinal": 99,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 649257465,
+        "endCcount": 649261576,
+        "cycles": 4111
+      }
+    ]
+  }
+}

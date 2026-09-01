@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "status": "adopted",
+  "firmware": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "6f22350a95ccc3eba4eebfbd89bb98582e0087e0",
+    "dirty": false,
+    "elfSha256": "21ba3dba138373e4f8227bdded35131a4d37012244c36b847c83efe4f72a05da",
+    "sdkconfigSha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68"
+  },
+  "captures": [
+    {
+      "bootId": "1cdbd47b85c8-23deca5c-00012899",
+      "path": "captures-6f22350/boot-1.log.gz",
+      "compressedSha256": "d57ea4a5ee233615218a11f6bcafe413c4e50433a90342a8a90f81e09d30840d",
+      "decompressedSha256": "825d49cbafacd352b9bb8779ef3ab30eef482cf64f6293a1f5ae9dae9e8f4432"
+    },
+    {
+      "bootId": "1cdbd47b85c8-52eff8c9-0001289c",
+      "path": "captures-6f22350/boot-3.log.gz",
+      "compressedSha256": "83dafdcf5062fd1bb0ccee43b5c91b9463d3abd5e6ca29b160475f74093ff41e",
+      "decompressedSha256": "59fc17ac47a877c02585d7ede45386aff8a26068aec7c34429834097ab922ca5"
+    }
+  ],
+  "strictReceipts": {
+    "samplesPerCellPerBoot": 100,
+    "operationsPerSample": 4096,
+    "cells": [
+      {
+        "role": "read-baseline",
+        "kernel": "mmio_read_sram_4096_aligned_single_core",
+        "paths": [
+          "receipts-6f22350/boot-1/mmio_read_sram_4096_aligned_single_core.json",
+          "receipts-6f22350/boot-3/mmio_read_sram_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "d32984a81dfefd2889dda74f39ca1ef8cb7e121fe767cba5067b2f591e7d1a83",
+          "5d1a653e4ca942d5edcce09dc07a18333b981f22f84b58adf8658821eb45f135"
+        ]
+      },
+      {
+        "role": "system-read",
+        "kernel": "mmio_read_system_cpu_per_conf_4096_aligned_single_core",
+        "paths": [
+          "receipts-6f22350/boot-1/mmio_read_system_cpu_per_conf_4096_aligned_single_core.json",
+          "receipts-6f22350/boot-3/mmio_read_system_cpu_per_conf_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "10f4a4ea7624fe6b9ebe9dc0fa4f3ff6205b310b69f61104f9051d3233358634",
+          "74bfd5295132cbaa591de519054d4d084bfbc8c963aa8db4a89bd187a80cb560"
+        ]
+      },
+      {
+        "role": "cache-read",
+        "kernel": "mmio_read_extmem_cache_state_4096_aligned_single_core",
+        "paths": [
+          "receipts-6f22350/boot-1/mmio_read_extmem_cache_state_4096_aligned_single_core.json",
+          "receipts-6f22350/boot-3/mmio_read_extmem_cache_state_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "84734d88b14edc6f91b7c6ad8ee630c3e5bfd070592d409404b5ed209a4b1e19",
+          "bc83637267e80f147b6daef57b3f2f1b20ab74be2d8aaa1d8f1a6c152f67f212"
+        ]
+      },
+      {
+        "role": "write-baseline",
+        "kernel": "mmio_write_sram_4096_aligned_single_core",
+        "paths": [
+          "receipts-6f22350/boot-1/mmio_write_sram_4096_aligned_single_core.json",
+          "receipts-6f22350/boot-3/mmio_write_sram_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "ad26cbeba6e35a72fbc4c9ac7e17b6cece9d9fbf24233a81073582c427a9f09a",
+          "0ee0c8080ad9e11868ccd00ead35e5b09f2c2bc43fb1e385716bddc1cacdebb9"
+        ]
+      },
+      {
+        "role": "cache-write",
+        "kernel": "mmio_write_extmem_cache_counter_clear_4096_aligned_single_core",
+        "paths": [
+          "receipts-6f22350/boot-1/mmio_write_extmem_cache_counter_clear_4096_aligned_single_core.json",
+          "receipts-6f22350/boot-3/mmio_write_extmem_cache_counter_clear_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "27eba40b96f47ef50dea7dec6867da0cd28606310822f5fe7673fbe6ae3414bd",
+          "15d8414657deb59bcdc168b01a82854537b988e1d4e188135bd563d3735c2e83"
+        ]
+      },
+      {
+        "role": "rtc-read-excluded",
+        "kernel": "mmio_read_rtc_store1_4096_aligned_single_core",
+        "paths": [
+          "receipts-6f22350/boot-1/mmio_read_rtc_store1_4096_aligned_single_core.json",
+          "receipts-6f22350/boot-3/mmio_read_rtc_store1_4096_aligned_single_core.json"
+        ],
+        "sha256": [
+          "1b24d815e4647a9a7954c53a30e054ed48172da5ee51b67633ea2e8d47f9d09e",
+          "07a1c47aa9880901829dd7dc4b0d5b6b6fb933d26b8769835bdbe837f0b545c0"
+        ]
+      }
+    ]
+  },
+  "matchedResults": {
+    "readBaselineCycles": 12306,
+    "systemReadCycles": 45074,
+    "cacheReadCycles": 45074,
+    "readDeltaCycles": 32768,
+    "adoptedReadCyclesPerAccess": 8,
+    "writeBaselineCycles": 4119,
+    "cacheWriteCycles": 16399,
+    "writeDeltaCycles": 12280,
+    "writeDeltaCyclesPerAccess": {
+      "numerator": 12280,
+      "denominator": 4096
+    }
+  },
+  "adoptedAccesses": [
+    {
+      "address": "0x600c0010",
+      "operation": "read",
+      "bytes": 4,
+      "peripheral": "system-controller",
+      "cycles": 8
+    },
+    {
+      "address": "0x600c4130",
+      "operation": "read",
+      "bytes": 4,
+      "peripheral": "cache-controller",
+      "cycles": 8
+    }
+  ],
+  "claimBoundary": {
+    "exactAddressOperationWidthAndPeripheralOnly": true,
+    "allAdoptedCacheCountersZero": true,
+    "rtcReadExcludedForInstructionBusActivityAndVariance": true,
+    "cacheCounterClearWriteExcludedForNonIntegralDelta": true,
+    "otherMmioAccessesCalibrated": false,
+    "architectureCycleAccurate": false
+  }
+}

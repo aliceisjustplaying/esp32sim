@@ -1,0 +1,101 @@
+{
+  "adoptionVersion": 1,
+  "status": "adopted-exact-beqz-path-cycles",
+  "scope": {
+    "chip": "ESP32-S3 revision 0.2",
+    "cpuHz": 240000000,
+    "flash": "QIO 80 MHz",
+    "psram": "octal DTR 80 MHz",
+    "sdkconfigSha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68"
+  },
+  "firmware": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "2bf3ffd861115b95451df1860623618c06e22dcf",
+    "dirty": false,
+    "elfSha256": "b5db91a7c2692395c8b73aa96c69a5966517d518f904725f95b94096e2fd729c"
+  },
+  "captures": [
+    {
+      "bootId": "1cdbd47b85c8-06fabe6f-000128af",
+      "path": "captures-2bf3ffd/boot-1.log.gz",
+      "compressedSha256": "a6013305c597a8dce4634c41e983ed29422bfc0e1308f8275fc41da2726e2a82",
+      "decompressedSha256": "61dfcf10637037d82db1923238a4141816ac7e411b8afb66967cc82692fe30eb"
+    },
+    {
+      "bootId": "1cdbd47b85c8-8cd46371-000128af",
+      "path": "captures-2bf3ffd/boot-2.log.gz",
+      "compressedSha256": "a980c6ddcd4a6c55250c3464eee917c222a712d0770a9c5ab65488145794b843",
+      "decompressedSha256": "ac88a04d11380a87917be8304e0917a41a84b6bce62c17970e5f1532c486d192"
+    }
+  ],
+  "strictReceipts": {
+    "samplesPerCellPerBoot": 100,
+    "branchIterationsPerSample": 4096,
+    "cells": [
+      {
+        "pathKind": "baseline",
+        "kernel": "conditional_branch_baseline_4096_iterations_single_core",
+        "instructionEncoding": "204220",
+        "instruction": "or a4, a2, a2",
+        "paths": [
+          "receipts-2bf3ffd/boot-1/conditional_branch_baseline_4096_iterations_single_core.json",
+          "receipts-2bf3ffd/boot-2/conditional_branch_baseline_4096_iterations_single_core.json"
+        ],
+        "sha256": [
+          "1021ca1e83ec36a7eb1ebdd790833da5952daa10005937f19495afedbff539cc",
+          "60a167619682f1c2c772c6ce13a85616f9ba2696ac373c536b4523acedc4a05b"
+        ]
+      },
+      {
+        "pathKind": "not-taken",
+        "kernel": "conditional_branch_not_taken_4096_iterations_single_core",
+        "instructionEncoding": "004216",
+        "instruction": "beqz a2, target",
+        "paths": [
+          "receipts-2bf3ffd/boot-1/conditional_branch_not_taken_4096_iterations_single_core.json",
+          "receipts-2bf3ffd/boot-2/conditional_branch_not_taken_4096_iterations_single_core.json"
+        ],
+        "sha256": [
+          "13ad2db188806882b9396923f27610a2b3e8091c7e664f55cb6cb3396ae19a16",
+          "3f71e0390c359385cc31817d8b99715ba4c98d0c5cd98ba4be42355150cfc81a"
+        ]
+      },
+      {
+        "pathKind": "taken",
+        "kernel": "conditional_branch_taken_4096_iterations_single_core",
+        "instructionEncoding": "004216",
+        "instruction": "beqz a2, target",
+        "paths": [
+          "receipts-2bf3ffd/boot-1/conditional_branch_taken_4096_iterations_single_core.json",
+          "receipts-2bf3ffd/boot-2/conditional_branch_taken_4096_iterations_single_core.json"
+        ],
+        "sha256": [
+          "ad63983eed643d22d5963e599d52aa02862825aa8c613b350b8349bf610ed820",
+          "ce36da5b432c2814462b860a60e345756fc3d585b1cb65e978a124c4fdaf90d6"
+        ]
+      }
+    ]
+  },
+  "matchedResults": {
+    "dynamicBodyInstructionsPerIteration": 4,
+    "baselineCycles": 28692,
+    "notTakenCycles": 28692,
+    "takenCycles": 36884,
+    "notTakenDeltaCycles": 0,
+    "takenDeltaCycles": 8192,
+    "takenAdditionalCyclesPerBranch": 2,
+    "steadyStateIssueCycles": 1,
+    "adoptedBeqzCpuCycles": {
+      "notTaken": 1,
+      "taken": 3
+    }
+  },
+  "claimBoundary": {
+    "exactBeqzEncodingAndMatchedRoutesOnly": true,
+    "allCacheCountersZero": true,
+    "otherConditionalBranchesCalibrated": false,
+    "interruptsExcluded": false,
+    "perOpcodeCoverageComplete": false,
+    "architectureCycleAccurate": false
+  }
+}

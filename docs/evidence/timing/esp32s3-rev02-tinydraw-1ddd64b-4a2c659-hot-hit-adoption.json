@@ -1,0 +1,235 @@
+{
+  "adoptionVersion": 1,
+  "status": "adopted-hot-zero-miss-cache-hit-additive-costs",
+  "scope": {
+    "chip": "ESP32-S3 revision 0.2",
+    "cpuHz": 240000000,
+    "flash": "QIO 80 MHz",
+    "psram": "octal DTR 80 MHz",
+    "sdkconfigSha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68"
+  },
+  "firmwareCohorts": [
+    {
+      "purpose": "matched independent instruction and load bodies",
+      "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+      "commit": "1ddd64b41f694eeb3fb9cf27e4cd4c0d38c1efa0",
+      "dirty": false,
+      "collection": {
+        "mode": "complete-measurement recovery; every retained receipt passed the strict assembler",
+        "boots": [
+          {
+            "bootId": "1cdbd47b85c8-59c0af71-000124de",
+            "retainedMeasurementGroups": 105,
+            "omittedMeasurements": ["dcache_flash_burst_8_lines_hot_core1_contended"]
+          },
+          {
+            "bootId": "1cdbd47b85c8-b510ea00-000124de",
+            "retainedMeasurementGroups": 105,
+            "omittedMeasurements": ["dcache_flash_burst_1_lines_hot_core1_contended"]
+          }
+        ]
+      },
+      "captures": [
+        {
+          "bootId": "1cdbd47b85c8-59c0af71-000124de",
+          "path": "captures-1ddd64b/boot-3.log.gz",
+          "compressedSha256": "d8f0c6a3ede502803ed6f54425ddf82b882758573038ac33df8632fee06fe668",
+          "decompressedSha256": "670b41f0d6b661b10ba498fe82d78687da152c590d741f6f4c804c188a2b0604"
+        },
+        {
+          "bootId": "1cdbd47b85c8-b510ea00-000124de",
+          "path": "captures-1ddd64b/boot-4.log.gz",
+          "compressedSha256": "79aa239c8e9beca4c72e88c4222e331f778cf2b0728ed0261972bc137107e2e0",
+          "decompressedSha256": "f24e2e5cfa3fd1314094b19d375e6dac587d7c995dc810a0ddce5a7161488f65"
+        }
+      ]
+    },
+    {
+      "purpose": "matched dependent-load bodies",
+      "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+      "commit": "4a2c659c3baa8aa2578d2ea31ae8097256de6479",
+      "dirty": false,
+      "elfSha256": "7a51650e64e7517a83fd7f97daca08e9d6e11f8a14b3cf791c2775b3fe014a9b",
+      "collection": {
+        "mode": "complete-measurement recovery; every retained receipt passed the strict assembler",
+        "boots": [
+          {
+            "bootId": "1cdbd47b85c8-da3bb62a-000128bd",
+            "retainedMeasurementGroups": 111,
+            "omittedMeasurements": ["flash_instruction_hot_core1_contended"]
+          },
+          {
+            "bootId": "1cdbd47b85c8-550ef184-000128bb",
+            "retainedMeasurementGroups": 110,
+            "omittedMeasurements": [
+              "dcache_psram_burst_1_lines_cold_single_core",
+              "icache_flash_burst_2_lines_hot_core1_contended"
+            ]
+          }
+        ]
+      },
+      "captures": [
+        {
+          "bootId": "1cdbd47b85c8-da3bb62a-000128bd",
+          "path": "captures-4a2c659/boot-1.log.gz",
+          "compressedSha256": "1c9ef91b631af4b0adc5662919cc52b6340dc992f893aaab3473bc7ed91d722a",
+          "decompressedSha256": "2a466cfeab7f61a3d8807bb658a9101f62b5ad7b78bb5bb0d8d768ea500f4f81"
+        },
+        {
+          "bootId": "1cdbd47b85c8-550ef184-000128bb",
+          "path": "captures-4a2c659/boot-2.log.gz",
+          "compressedSha256": "924fc4066ea41146251981c5095b9701b48613de7a9f35cd4f4ac3126bc692bc",
+          "decompressedSha256": "561d540264e6e003953da581735254d4d5b006b7c056182f31b43d8cc2055be6"
+        }
+      ]
+    }
+  ],
+  "strictReceipts": {
+    "samplesPerCellPerBoot": 100,
+    "independent": [
+      {
+        "kernel": "icache_hit_iram_120_instructions_single_core",
+        "paths": [
+          "receipts-1ddd64b/boot-3/icache_hit_iram_120_instructions_single_core.json",
+          "receipts-1ddd64b/boot-4/icache_hit_iram_120_instructions_single_core.json"
+        ],
+        "sha256": [
+          "9d96267abe6ffae338eaf5f94362f8672a9b0622da6447aac1df433602cb50da",
+          "c24a4d8a4e552ac5066b5c55e50a2e0017863a4ffdbe41b54d9184f9b5638287"
+        ]
+      },
+      {
+        "kernel": "icache_hit_flash_120_instructions_single_core",
+        "paths": [
+          "receipts-1ddd64b/boot-3/icache_hit_flash_120_instructions_single_core.json",
+          "receipts-1ddd64b/boot-4/icache_hit_flash_120_instructions_single_core.json"
+        ],
+        "sha256": [
+          "245e67a562b1c54fc1e13acaf5fd6054e717d8aac92ac2940eba9b90fe3632fe",
+          "89928bfd9fe8a49b7e047f2c62a63891c0aff667c1fd2f9aca380e76658e4c13"
+        ]
+      },
+      {
+        "kernel": "dcache_hit_sram_16_loads_single_core",
+        "paths": [
+          "receipts-1ddd64b/boot-3/dcache_hit_sram_16_loads_single_core.json",
+          "receipts-1ddd64b/boot-4/dcache_hit_sram_16_loads_single_core.json"
+        ],
+        "sha256": [
+          "8b96e2eda2eae331d9e6bee9afdcce032e4568ecc6617e91a562f0425d81c1bc",
+          "d574628ab0ce26e49a7d4f2a7ace9a6a0cc21ccf8c3d3161d9b83bc0eed51e56"
+        ]
+      },
+      {
+        "kernel": "dcache_hit_psram_16_loads_single_core",
+        "paths": [
+          "receipts-1ddd64b/boot-3/dcache_hit_psram_16_loads_single_core.json",
+          "receipts-1ddd64b/boot-4/dcache_hit_psram_16_loads_single_core.json"
+        ],
+        "sha256": [
+          "f35295596f226d4318a3d6d718ecc664180e996b6521338151af0cfb810828da",
+          "4961993d0e5d196f808e6f12a00428647cc2fbab939fb99349c6636fdd9bc618"
+        ]
+      },
+      {
+        "kernel": "dcache_hit_flash_16_loads_single_core",
+        "paths": [
+          "receipts-1ddd64b/boot-3/dcache_hit_flash_16_loads_single_core.json",
+          "receipts-1ddd64b/boot-4/dcache_hit_flash_16_loads_single_core.json"
+        ],
+        "sha256": [
+          "e2824b325fcee90aab320669e08905b92fb5709ad2bd18a6929802b175fdfd37",
+          "890957274672b4f080c29beb449e55a1d890fc96b5f2857cf227b848fe93c1b3"
+        ]
+      }
+    ],
+    "dependent": [
+      {
+        "kernel": "dependent_load_sram_4096_steps_single_core",
+        "paths": [
+          "receipts-4a2c659/boot-1/dependent_load_sram_4096_steps_single_core.json",
+          "receipts-4a2c659/boot-2/dependent_load_sram_4096_steps_single_core.json"
+        ],
+        "sha256": [
+          "afc5d76c164e2917e63e4fadc24ee1816f1fb2d0f4944bcffe49f567eb08807d",
+          "d95fd22f8550dd51155470effcdb463055bdf94ee03a10e0515c23bf20bc7661"
+        ]
+      },
+      {
+        "kernel": "dependent_load_psram_hot_4096_steps_single_core",
+        "paths": [
+          "receipts-4a2c659/boot-1/dependent_load_psram_hot_4096_steps_single_core.json",
+          "receipts-4a2c659/boot-2/dependent_load_psram_hot_4096_steps_single_core.json"
+        ],
+        "sha256": [
+          "b774ee3626766a6fc4c1bf68225b6e60ddb43c1702f9a9445810a982a15738c9",
+          "0b66aaed86114b9a155b759cf76fe6f849eb246c66a7751f30777074bf91e28d"
+        ]
+      },
+      {
+        "kernel": "dependent_load_flash_hot_4096_steps_single_core",
+        "paths": [
+          "receipts-4a2c659/boot-1/dependent_load_flash_hot_4096_steps_single_core.json",
+          "receipts-4a2c659/boot-2/dependent_load_flash_hot_4096_steps_single_core.json"
+        ],
+        "sha256": [
+          "2a8fd2e9318faf2335e885b82d69992e69d4a7540b81b45f8385908bf57c8bab",
+          "a23f479cbbee488b8ac51c0214fd99937f526ff886c18928f93dde03db0a1206"
+        ]
+      }
+    ]
+  },
+  "matchedResults": {
+    "instructionFetch": {
+      "matchedBodyInstructions": 120,
+      "iramCycles": { "value": 126, "samples": 200 },
+      "hotFlashCycles": { "value": 126, "samples": 200 },
+      "hotFlashCounterSignature": {
+        "ibus": { "accesses": 62, "misses": 0 },
+        "dbus": { "accesses": 0, "flashMisses": 0, "psramMisses": 0 }
+      },
+      "additiveHotHitCycles": 0
+    },
+    "independentLoad": {
+      "matchedBodyLoads": 16,
+      "sramCycles": { "value": 33, "samples": 200 },
+      "hotPsramCycles": { "value": 33, "samples": 200 },
+      "hotFlashCycles": { "value": 33, "samples": 200 },
+      "externalCounterSignature": {
+        "ibus": { "accesses": 0, "misses": 0 },
+        "dbus": { "accesses": 16, "flashMisses": 0, "psramMisses": 0 }
+      },
+      "additiveHotHitCycles": 0
+    },
+    "dependentLoad": {
+      "dependentSteps": 4096,
+      "body": ["addx4", "l32i.n", "extui"],
+      "sramCycles": { "value": 16403, "samples": 200 },
+      "hotPsramCycles": { "value": 16403, "samples": 200 },
+      "hotFlashCycles": { "value": 16403, "samples": 200 },
+      "externalCounterSignature": {
+        "ibus": { "accesses": 0, "misses": 0 },
+        "dbus": { "accesses": 4096, "flashMisses": 0, "psramMisses": 0 }
+      },
+      "additiveHotHitCycles": 0
+    }
+  },
+  "adoptedCosts": {
+    "instructionFetchHotHitAdditiveCycles": 0,
+    "loadHotHitAdditiveCycles": 0,
+    "storeHotHitAdditiveCycles": null
+  },
+  "claimBoundary": {
+    "zeroMissHotHitsOnly": true,
+    "flashAndPsramLoadsCovered": true,
+    "dependentLoadUseHazard": {
+      "status": "unmodeled",
+      "observedAdditionalCycles": 1,
+      "reason": "the common dependency hazard is present for SRAM, hot PSRAM, and hot flash, but runtime traces do not identify register dependencies"
+    },
+    "coldMissCostsCoveredElsewhere": true,
+    "dirtyWritebackCostsCalibrated": false,
+    "perOpcodeLatencyClaimed": false,
+    "architectureCycleAccurate": false
+  }
+}
