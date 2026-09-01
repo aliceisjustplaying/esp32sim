@@ -536,7 +536,7 @@ pub fn test_claim(id: &str, cycles: u64) -> CostClaim {
     CostClaim {
         id: id.into(),
         tier: CostTier::Exact { cycles },
-        receipt: ReceiptRef {
+        receipts: vec![ReceiptRef {
             repository: "test".into(),
             commit: "0000000000000000000000000000000000000000".into(),
             path: "test".into(),
@@ -546,6 +546,6 @@ pub fn test_claim(id: &str, cycles: u64) -> CostClaim {
             toolchain: "test".into(),
             board_revision: "test".into(),
             adoption_status: AdoptionStatus::Accepted,
-        },
+        }],
     }
 }

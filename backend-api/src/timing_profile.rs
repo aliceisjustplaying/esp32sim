@@ -3,7 +3,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub type ReceiptManifest = BTreeMap<String, [u8; 32]>;
+pub type ReceiptManifest = Vec<ReceiptRef>;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CostBinding {
@@ -53,7 +53,11 @@ impl ImportedTimingProfile {
             tier_candidate: "unexplained".into(),
             reason: "timing profile binding references a missing claim".into(),
         })?;
-        if claim.receipt.adoption_status != AdoptionStatus::Accepted {
+        if claim
+            .receipts
+            .iter()
+            .any(|receipt| receipt.adoption_status != AdoptionStatus::Accepted)
+        {
             return Err(TimingBlock {
                 claim_id: claim.id.clone(),
                 tier_candidate: claim.tier.candidate_name().into(),
@@ -127,6 +131,8 @@ struct RawClaim {
     #[serde(flatten)]
     tier: RawTier,
     receipt: RawReceipt,
+    #[serde(default)]
+    additional_receipts: Vec<RawReceipt>,
 }
 
 #[derive(Deserialize)]
@@ -310,13 +316,17 @@ pub fn import_timing_profile_v2(
                 maximum,
                 cause,
             } => {
-                nonempty(cause, &format!("claim {id} interval cause"))?;
+                let cause = nonempty(cause, &format!("claim {id} interval cause"))?;
                 if minimum > maximum {
                     return Err(ProfileError::Invalid(format!(
                         "claim {id} interval is reversed"
                     )));
                 }
-                CostTier::Interval { minimum, maximum }
+                CostTier::Interval {
+                    minimum,
+                    maximum,
+                    cause,
+                }
             }
             RawTier::Distribution {
                 minimum,
@@ -326,7 +336,7 @@ pub fn import_timing_profile_v2(
                 boots,
                 cause,
             } => {
-                nonempty(cause, &format!("claim {id} distribution cause"))?;
+                let cause = nonempty(cause, &format!("claim {id} distribution cause"))?;
                 if minimum > median || median > maximum || samples == 0 || boots == 0 {
                     return Err(ProfileError::Invalid(format!(
                         "claim {id} distribution is invalid"
@@ -338,62 +348,64 @@ pub fn import_timing_profile_v2(
                     maximum,
                     samples,
                     boots,
+                    cause,
                 }
             }
             RawTier::Unexplained { reason } => {
-                nonempty(reason, &format!("claim {id} unexplained reason"))?;
-                CostTier::Unexplained
+                let reason = nonempty(reason, &format!("claim {id} unexplained reason"))?;
+                CostTier::Unexplained { reason }
             }
         };
-        let receipt_hash = hash(
-            &raw_claim.receipt.sha256,
-            &format!("claim {id} receipt sha256"),
-        )?;
-        let manifest_hash =
-            receipts
-                .get(&raw_claim.receipt.path)
-                .ok_or_else(|| ProfileError::ReceiptMismatch {
-                    path: raw_claim.receipt.path.clone(),
-                })?;
-        if *manifest_hash != receipt_hash {
-            return Err(ProfileError::ReceiptMismatch {
-                path: raw_claim.receipt.path,
-            });
-        }
-        let adoption_status = match raw_claim.receipt.adoption_status.as_str() {
-            "accepted" => AdoptionStatus::Accepted,
-            "candidate" => AdoptionStatus::Candidate,
-            "rejected" => AdoptionStatus::Rejected,
-            _ => {
+        let mut claim_receipts = Vec::new();
+        let mut receipt_paths = BTreeSet::new();
+        for raw_receipt in std::iter::once(raw_claim.receipt).chain(raw_claim.additional_receipts) {
+            let adoption_status = match raw_receipt.adoption_status.as_str() {
+                "accepted" => AdoptionStatus::Accepted,
+                "candidate" => AdoptionStatus::Candidate,
+                "rejected" => AdoptionStatus::Rejected,
+                _ => {
+                    return Err(ProfileError::Invalid(format!(
+                        "claim {id} has invalid adoption status"
+                    )))
+                }
+            };
+            let receipt = ReceiptRef {
+                repository: nonempty(raw_receipt.repository, &format!("claim {id} repository"))?,
+                commit: nonempty(raw_receipt.commit, &format!("claim {id} commit"))?,
+                path: nonempty(raw_receipt.path, &format!("claim {id} path"))?,
+                sha256: hash(&raw_receipt.sha256, &format!("claim {id} receipt sha256"))?,
+                firmware: nonempty(raw_receipt.firmware, &format!("claim {id} firmware"))?,
+                sdkconfig_sha256: hash(
+                    &raw_receipt.sdkconfig_sha256,
+                    &format!("claim {id} sdkconfig sha256"),
+                )?,
+                toolchain: nonempty(raw_receipt.toolchain, &format!("claim {id} toolchain"))?,
+                board_revision: nonempty(
+                    raw_receipt.board_revision,
+                    &format!("claim {id} board revision"),
+                )?,
+                adoption_status,
+            };
+            if !receipt_paths.insert(receipt.path.clone()) {
                 return Err(ProfileError::Invalid(format!(
-                    "claim {id} has invalid adoption status"
-                )))
+                    "claim {id} repeats receipt path {}",
+                    receipt.path
+                )));
             }
-        };
-        let receipt = ReceiptRef {
-            repository: nonempty(
-                raw_claim.receipt.repository,
-                &format!("claim {id} repository"),
-            )?,
-            commit: nonempty(raw_claim.receipt.commit, &format!("claim {id} commit"))?,
-            path: nonempty(raw_claim.receipt.path, &format!("claim {id} path"))?,
-            sha256: receipt_hash,
-            firmware: nonempty(raw_claim.receipt.firmware, &format!("claim {id} firmware"))?,
-            sdkconfig_sha256: hash(
-                &raw_claim.receipt.sdkconfig_sha256,
-                &format!("claim {id} sdkconfig sha256"),
-            )?,
-            toolchain: nonempty(
-                raw_claim.receipt.toolchain,
-                &format!("claim {id} toolchain"),
-            )?,
-            board_revision: nonempty(
-                raw_claim.receipt.board_revision,
-                &format!("claim {id} board revision"),
-            )?,
-            adoption_status,
-        };
-        claims.insert(id.clone(), CostClaim { id, tier, receipt });
+            if !receipts.iter().any(|trusted| trusted == &receipt) {
+                return Err(ProfileError::ReceiptMismatch { path: receipt.path });
+            }
+            claim_receipts.push(receipt);
+        }
+        claim_receipts.sort_by(|left, right| left.path.cmp(&right.path));
+        claims.insert(
+            id.clone(),
+            CostClaim {
+                id,
+                tier,
+                receipts: claim_receipts,
+            },
+        );
     }
 
     let mut bindings = BTreeMap::new();

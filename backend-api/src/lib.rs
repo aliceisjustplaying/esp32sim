@@ -60,6 +60,7 @@ pub enum CostTier {
     Interval {
         minimum: u64,
         maximum: u64,
+        cause: String,
     },
     Distribution {
         minimum: u64,
@@ -67,8 +68,11 @@ pub enum CostTier {
         maximum: u64,
         samples: u64,
         boots: u32,
+        cause: String,
     },
-    Unexplained,
+    Unexplained {
+        reason: String,
+    },
 }
 
 impl CostTier {
@@ -78,7 +82,7 @@ impl CostTier {
             Self::Affine { .. } => "affine",
             Self::Interval { .. } => "interval",
             Self::Distribution { .. } => "distribution",
-            Self::Unexplained => "unexplained",
+            Self::Unexplained { .. } => "unexplained",
         }
     }
 }
@@ -107,7 +111,7 @@ pub enum AdoptionStatus {
 pub struct CostClaim {
     pub id: String,
     pub tier: CostTier,
-    pub receipt: ReceiptRef,
+    pub receipts: Vec<ReceiptRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -279,13 +283,94 @@ impl LedgerEntry {
         if let Some(cost) = &self.cost {
             out.push(1);
             encode_bytes(&mut out, cost.id.as_bytes());
-            encode_bytes(&mut out, cost.tier.candidate_name().as_bytes());
-            out.extend_from_slice(&cost.receipt.sha256);
+            encode_tier(&mut out, &cost.tier);
+            let mut receipts: Vec<&ReceiptRef> = cost.receipts.iter().collect();
+            receipts.sort_by(|left, right| {
+                (&left.repository, &left.commit, &left.path).cmp(&(
+                    &right.repository,
+                    &right.commit,
+                    &right.path,
+                ))
+            });
+            out.extend_from_slice(&(receipts.len() as u32).to_le_bytes());
+            for receipt in receipts {
+                encode_receipt(&mut out, receipt);
+            }
         } else {
             out.push(0);
         }
         out
     }
+}
+
+fn encode_tier(out: &mut Vec<u8>, tier: &CostTier) {
+    match tier {
+        CostTier::Exact { cycles } => {
+            out.extend_from_slice(&0u16.to_le_bytes());
+            out.extend_from_slice(&cycles.to_le_bytes());
+        }
+        CostTier::Affine {
+            slope,
+            intercept,
+            minimum_count,
+            maximum_count,
+        } => {
+            out.extend_from_slice(&1u16.to_le_bytes());
+            out.extend_from_slice(&slope.to_le_bytes());
+            out.extend_from_slice(&intercept.to_le_bytes());
+            out.extend_from_slice(&minimum_count.to_le_bytes());
+            out.extend_from_slice(&maximum_count.to_le_bytes());
+        }
+        CostTier::Interval {
+            minimum,
+            maximum,
+            cause,
+        } => {
+            out.extend_from_slice(&2u16.to_le_bytes());
+            out.extend_from_slice(&minimum.to_le_bytes());
+            out.extend_from_slice(&maximum.to_le_bytes());
+            encode_bytes(out, cause.as_bytes());
+        }
+        CostTier::Distribution {
+            minimum,
+            median,
+            maximum,
+            samples,
+            boots,
+            cause,
+        } => {
+            out.extend_from_slice(&3u16.to_le_bytes());
+            out.extend_from_slice(&minimum.to_le_bytes());
+            out.extend_from_slice(&median.to_le_bytes());
+            out.extend_from_slice(&maximum.to_le_bytes());
+            out.extend_from_slice(&samples.to_le_bytes());
+            out.extend_from_slice(&boots.to_le_bytes());
+            encode_bytes(out, cause.as_bytes());
+        }
+        CostTier::Unexplained { reason } => {
+            out.extend_from_slice(&4u16.to_le_bytes());
+            encode_bytes(out, reason.as_bytes());
+        }
+    }
+}
+
+fn encode_receipt(out: &mut Vec<u8>, receipt: &ReceiptRef) {
+    encode_bytes(out, receipt.repository.as_bytes());
+    encode_bytes(out, receipt.commit.as_bytes());
+    encode_bytes(out, receipt.path.as_bytes());
+    out.extend_from_slice(&receipt.sha256);
+    encode_bytes(out, receipt.firmware.as_bytes());
+    out.extend_from_slice(&receipt.sdkconfig_sha256);
+    encode_bytes(out, receipt.toolchain.as_bytes());
+    encode_bytes(out, receipt.board_revision.as_bytes());
+    out.extend_from_slice(
+        &(match receipt.adoption_status {
+            AdoptionStatus::Accepted => 0u16,
+            AdoptionStatus::Candidate => 1u16,
+            AdoptionStatus::Rejected => 2u16,
+        })
+        .to_le_bytes(),
+    );
 }
 
 fn encode_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
