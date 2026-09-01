@@ -66,8 +66,8 @@ Needs `--flash-mb 16 --psram-mb 8`; `examples/waveshare-lcd4b/run-energy-panel.s
 
 Needs `--flash-mb 16 --psram-mb 8`. With TinyDraw cloned next to esp32sim,
 `scripts/tinydraw-v2.sh run` builds and starts the normal TinyDraw V2 product in the browser.
-`scripts/tinydraw-v2.sh smoke` verifies that it reaches `TINYDRAW_VECTOR_V2_READY` without a
-crash or product failure.
+`scripts/tinydraw-v2.sh smoke` verifies readiness, a time-spaced multi-sample stroke, and a clean
+120-second run.
 
 ## `none` — bare module
 

@@ -115,9 +115,10 @@ Clone `aliceisjustplaying/tinydraw` next to this repository, then run:
 The script builds the normal, unmodified TinyDraw V2 product and the release emulator, opens the
 browser UI at <http://127.0.0.1:8766/>, and boots the real ROM, bootloader, and application. It
 does not run the 90-second battery-test firmware. Use `build` to compile only, `smoke` for the
-automated 120-second product readiness check, and `flash` to put the same normal product on the
-single connected `/dev/cu.usbmodem*` device. Pass a TinyDraw checkout as the second argument when
-the repositories are not side by side; `TINYDRAW_DIR` and `TINYDRAW_WEB_PORT` are also accepted.
+automated 120-second product check, including a seven-point paced stroke, and `flash` to put the
+same normal product on the single connected `/dev/cu.usbmodem*` device. Pass a TinyDraw checkout
+as the second argument when the repositories are not side by side; `TINYDRAW_DIR` and
+`TINYDRAW_WEB_PORT` are also accepted.
 
 ## Run — ESP32-C3
 
