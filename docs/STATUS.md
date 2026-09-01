@@ -7,8 +7,11 @@ what is adopted, and what the hardware queue holds. The goal is
 ## What exists
 
 - Branch `alice` (this branch): upstream esp32sim pinned at `2114ffc`
-  plus provenance and a mechanical rustfmt pass, plus this
-  documentation and evidence set. Upstream provides the dual-core
+  plus provenance, strict Rust safeguards, and this documentation and
+  evidence set. The safeguards pin Rust 1.98.0, apply workspace-wide
+  deny-level lints, preserve release overflow checks and debug
+  assertions, and split the fast commit gate from the full push battery.
+  Upstream provides the dual-core
   Xtensa LX7 interpreter and native JIT, the ESP32-S3 SoC and
   peripheral models, real-ROM boot, a wasm build (interpreter-only),
   and the web shell. No measured mode exists on this branch yet.
@@ -28,7 +31,7 @@ Read-only inputs. Harvest under review; do not resume.
 | --- | --- | --- | --- |
 | `salvage/core-measured-phase1` | `516b1ad` | `backend-api` crate with fake backend, measured interpreter scheduler, schema-2 profile importer, ledger; 58 tests passing in isolation | Single-core; cache model is an unbounded lifetime set (no eviction, no per-core state); timing mutations are strings in the hot path; timing commits on trapped instructions; interrupt acceptance is unledgered; differential-gate test reverted at HEAD |
 | `salvage/board-tinydraw-v2` | `b7c9b87` | Waveshare AMOLED 1.8 V2 board model: generic GP-SPI with MISO, GP-SPI2 DMA delivery, CST820 touch, CO5300 panel, TCA9554, tear line on GPIO 13, board-driven GPIO input, browser touch, one-command TinyDraw workflows; wasm builds; passes the safeguards script; passed the TinyDraw V2 normal-product stroke gate in the browser with the same source validated on hardware (receipt: `evidence/board-tinydraw-v2-normal-2026-09-01/`) | Touch interrupt (GPIO 21) not driven (stroke gate passes via polling); DMA descriptor walker unbounded (guest can hang the host); dead ST7701 state wired into the IO expander; modeled 60 Hz TE is an approximate compatibility signal, not adopted timing; PMIC/RTC/IMU are register-RAM stubs (acceptable per GOAL, label them) |
-| `salvage/rust-safeguards` | `b138473` | `scripts/pre-commit.sh`: fmt, check, strict clippy, debug and release tests, rustdoc | None known; harvest first |
+| `salvage/rust-safeguards` | `b138473` | `scripts/pre-commit.sh`: fmt, check, strict clippy, debug and release tests, rustdoc | Harvested under review; frozen source retained |
 | `salvage/gp-spi-device-hook` | `246c699` | Upstream-shaped synchronous GP-SPI board-response hook | Candidate for an upstream PR |
 | `salvage/ci-spec`, `salvage/upstream-ci` | `6ba6a6d`, `3b58cc6` | CI workflow material | Not yet reviewed in place |
 | `salvage/design-spike` | `e22f971` | Design-spike markdown, historical | Do not implement from it |
@@ -148,11 +151,10 @@ mode (needs GOAL milestone 2).
 
 ## Next steps
 
-1. Harvest `salvage/rust-safeguards` into `alice`.
-2. Integration trunk: harvest the board model and the measured-mode
+1. Integration trunk: harvest the board model and the measured-mode
    material that survives review.
-3. Receipt-correlation tests against the adopted numbers above.
-4. Wasm JIT cost-accounting spike (GOAL milestone 3).
-5. Hardware batch: maintainer tests and merges TinyDraw pull request
+2. Receipt-correlation tests against the adopted numbers above.
+3. Wasm JIT cost-accounting spike (GOAL milestone 3).
+4. Hardware batch: maintainer tests and merges TinyDraw pull request
    4, then tier A captures, then tier B probe development under
    review.
