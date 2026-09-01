@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# Pre-commit gate. Enable once per clone with:
-#   git config core.hooksPath .githooks
-# Runs the full safeguard battery (fmt, check, strict clippy, debug and
-# release tests, rustdoc) via scripts/pre-commit.sh whenever staged
-# changes touch code or build configuration. Documentation-only commits
-# skip the cargo battery.
+# Fast commit gate: format always, strict clippy once the safeguards are
+# harvested. The full battery (tests, rustdoc) runs in pre-push.
+# Enable once per clone with: git config core.hooksPath .githooks
 set -euo pipefail
 
 if git diff --cached --name-only | grep -qE '\.(rs|toml|lock)$|^scripts/|^\.githooks/|^tools/'; then
+  cargo fmt --all -- --check
   if [ -x scripts/pre-commit.sh ]; then
-    ./scripts/pre-commit.sh
+    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
   else
     echo "pre-commit: scripts/pre-commit.sh not present yet (rust-safeguards" >&2
-    echo "pre-commit: not harvested); code checks SKIPPED. Task 1 arms this gate." >&2
+    echo "pre-commit: not harvested); clippy SKIPPED. Task 1 arms this gate." >&2
   fi
 else
-  echo "pre-commit: no code or build files staged; skipping the cargo battery"
+  echo "pre-commit: no code or build files staged; skipping cargo checks"
 fi
