@@ -1790,7 +1790,7 @@ pub struct Peripherals {
     pub log_unknown: bool,
     /// per-(address, pc, write) access statistics for register reverse engineering (`--regstat FILE`)
     pub regstat: Option<RegisterAccessMap>,
-    /// experiment hook: ESP_EMU_FAKE_READ=addr:or[:and],... applied to register reads
+    /// Experiment hook: `ESP_EMU_FAKE_READ=addr:or[:and],...` applied to register reads.
     pub fake_reads: std::collections::HashMap<u32, (u32, u32)>,
     pub log_all: bool,
     seen: HashSet<(u32, bool)>,
@@ -3338,7 +3338,8 @@ impl Gdma {
     }
 }
 
-/// One DMA descriptor (dma_descriptor_t): dw0 = size[11:0] length[23:12] suc_eof[30] owner[31]; dw1 = buffer; dw2 = next
+/// One DMA descriptor (`dma_descriptor_t`): `dw0 = size[11:0] length[23:12]
+/// suc_eof[30] owner[31]`; `dw1 = buffer`; `dw2 = next`.
 pub struct DmaDesc {
     pub addr: u32,
     pub size: u32,

@@ -1174,7 +1174,8 @@ impl Machine {
     }
 
     /// Parse a script: one action per line, `<seconds> <cmd> [args]`.
-    ///   press <pin> [ms]   release <pin>   gpio <pin> <0|1>   serial <text...>   knob <cw|ccw> [detents]   touch <x> <y> <0|1>   stop
+    /// `press <pin> [ms]`, `release <pin>`, `gpio <pin> <0|1>`, `serial <text...>`,
+    /// `knob <cw|ccw> [detents]`, `touch <x> <y> <0|1>`, or `stop`.
     /// Buttons/encoder are active-low with pull-ups (release = 1).
     pub fn load_script(&mut self, text: &str) -> Result<(), String> {
         use crate::board::*;
