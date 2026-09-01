@@ -1,0 +1,1952 @@
+{
+  "schemaVersion": 1,
+  "receiptKind": "esp32s3-hardware-calibration",
+  "captureMode": "hardware",
+  "capturedAt": "2026-08-31T00:46:56.354Z",
+  "git": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "bf169bc0e2e3f7cb3cff9b8bbda2861ec436be7d",
+    "dirty": false
+  },
+  "toolchain": {
+    "target": "esp32s3",
+    "espIdfVersion": "v6.0.2",
+    "compiler": "GNU",
+    "compilerVersion": "15.2.0"
+  },
+  "sdkconfig": {
+    "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+    "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+    "cpuHz": 240000000,
+    "psramMode": "octal",
+    "psramBusHz": 80000000,
+    "flashMode": "qio",
+    "flashBusHz": 80000000
+  },
+  "boot": {
+    "bootId": "1cdbd47b85c8-85122d0a-000124d7",
+    "resetReason": "usb",
+    "chipModel": "ESP32-S3",
+    "chipRevision": 2,
+    "cpuCores": 2,
+    "psramBytes": 8388608,
+    "flashBytes": 16777216,
+    "bootLogSha256": "cefa30732306efa20cf748a6adc6cfac7b143470d533fe1c68f6430d57ab83c6"
+  },
+  "counter": {
+    "source": "xtensa-ccount",
+    "bits": 32,
+    "hz": 240000000,
+    "core": 0
+  },
+  "measurement": {
+    "kind": "ccount-kernel",
+    "kernel": "flash_instruction_cold_single_core",
+    "memoryPath": "other",
+    "bytesPerIteration": 0,
+    "iterationsPerSample": 1,
+    "warmupIterations": 0,
+    "samples": [
+      {
+        "ordinal": 0,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 133944736,
+        "endCcount": 133948591,
+        "cycles": 3855,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 142479105,
+        "endCcount": 142482958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 151119105,
+        "endCcount": 151122958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 159759105,
+        "endCcount": 159762958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 168399105,
+        "endCcount": 168402958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 177039105,
+        "endCcount": 177042958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 185679105,
+        "endCcount": 185682958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 194319105,
+        "endCcount": 194322958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 202959105,
+        "endCcount": 202962958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 211599105,
+        "endCcount": 211602958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 220239105,
+        "endCcount": 220242958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 228879105,
+        "endCcount": 228882958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 237519105,
+        "endCcount": 237522958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 246159105,
+        "endCcount": 246162958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 254799105,
+        "endCcount": 254802958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 263439105,
+        "endCcount": 263442958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 272079105,
+        "endCcount": 272082958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 280719105,
+        "endCcount": 280722958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 289359105,
+        "endCcount": 289362958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 297999105,
+        "endCcount": 298002958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 306639105,
+        "endCcount": 306642958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 315279105,
+        "endCcount": 315282958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 323919105,
+        "endCcount": 323922958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 332559105,
+        "endCcount": 332562958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 341199105,
+        "endCcount": 341202958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 349839105,
+        "endCcount": 349842958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 358479105,
+        "endCcount": 358482958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 27,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 367119105,
+        "endCcount": 367122958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 28,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 375759105,
+        "endCcount": 375762958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 29,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 384399105,
+        "endCcount": 384402958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 30,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 393039105,
+        "endCcount": 393042958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 31,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 401679105,
+        "endCcount": 401682958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 32,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 410319105,
+        "endCcount": 410322958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 33,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 418959105,
+        "endCcount": 418962958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 34,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 427599105,
+        "endCcount": 427602958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 35,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 436239105,
+        "endCcount": 436242958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 36,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 444879105,
+        "endCcount": 444882958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 37,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 453519105,
+        "endCcount": 453522958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 38,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 462159105,
+        "endCcount": 462162958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 39,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 470799105,
+        "endCcount": 470802958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 40,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 479439105,
+        "endCcount": 479442958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 41,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 488079105,
+        "endCcount": 488082958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 42,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 496719105,
+        "endCcount": 496722958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 43,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 505359105,
+        "endCcount": 505362958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 44,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 513999105,
+        "endCcount": 514002958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 45,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 522639105,
+        "endCcount": 522642958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 46,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 531279105,
+        "endCcount": 531282958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 47,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 539919105,
+        "endCcount": 539922958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 48,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 548559105,
+        "endCcount": 548562958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 49,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 557199105,
+        "endCcount": 557202958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 50,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 565839105,
+        "endCcount": 565842958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 51,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 574479105,
+        "endCcount": 574482958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 52,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 583119105,
+        "endCcount": 583122958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 53,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 591759105,
+        "endCcount": 591762958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 54,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 600399105,
+        "endCcount": 600402958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 55,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 609039105,
+        "endCcount": 609042958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 56,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 617679105,
+        "endCcount": 617682958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 57,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 626319105,
+        "endCcount": 626322958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 58,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 634959105,
+        "endCcount": 634962958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 59,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 643599105,
+        "endCcount": 643602958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 60,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 652239105,
+        "endCcount": 652242958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 61,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 660879105,
+        "endCcount": 660882958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 62,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 669519105,
+        "endCcount": 669522958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 63,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 678159105,
+        "endCcount": 678162958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 64,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 686799105,
+        "endCcount": 686802958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 65,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 695439105,
+        "endCcount": 695442958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 66,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 704079105,
+        "endCcount": 704082958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 67,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 712719105,
+        "endCcount": 712722958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 68,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 721359105,
+        "endCcount": 721362958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 69,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 729999105,
+        "endCcount": 730002958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 70,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 738639105,
+        "endCcount": 738642958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 71,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 747279105,
+        "endCcount": 747282958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 72,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 755919105,
+        "endCcount": 755922958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 73,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 764559105,
+        "endCcount": 764562958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 74,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 773199105,
+        "endCcount": 773202958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 75,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 781839105,
+        "endCcount": 781842958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 76,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 790479105,
+        "endCcount": 790482958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 77,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 799119105,
+        "endCcount": 799122958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 78,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 807759105,
+        "endCcount": 807762958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 79,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 816399105,
+        "endCcount": 816402958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 80,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 825039105,
+        "endCcount": 825042958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 81,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 833679105,
+        "endCcount": 833682958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 82,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 842319105,
+        "endCcount": 842322958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 83,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 850959105,
+        "endCcount": 850962958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 84,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 859599105,
+        "endCcount": 859602958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 85,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 868239105,
+        "endCcount": 868242958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 86,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 876879105,
+        "endCcount": 876882958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 87,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 885519105,
+        "endCcount": 885522958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 88,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 894159105,
+        "endCcount": 894162958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 89,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 902799105,
+        "endCcount": 902802958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 90,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 911439105,
+        "endCcount": 911442958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 91,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 920079105,
+        "endCcount": 920082958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 92,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 928719105,
+        "endCcount": 928722958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 93,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 937359105,
+        "endCcount": 937362958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 94,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 945999105,
+        "endCcount": 946002958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 95,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 954639105,
+        "endCcount": 954642958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 96,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 963279105,
+        "endCcount": 963282958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 97,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 971919105,
+        "endCcount": 971922958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 98,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 980559105,
+        "endCcount": 980562958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      },
+      {
+        "ordinal": 99,
+        "startCore": 0,
+        "endCore": 0,
+        "startCcount": 989199105,
+        "endCcount": 989202958,
+        "cycles": 3853,
+        "cacheCounters": {
+          "ibus": {
+            "accesses": 2307,
+            "misses": 2
+          },
+          "dbus": {
+            "accesses": 0,
+            "flashMisses": 0,
+            "psramMisses": 0
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,488 @@
+{
+  "analysisVersion": 1,
+  "status": "analysis-only",
+  "review": {
+    "microbenchmarkToArchitecturalCost": "unreviewed",
+    "cacheClaim": "not-claimed",
+    "costAdoption": "none"
+  },
+  "estimator": "nearest-rank-median(cold)-nearest-rank-median(hot)",
+  "receiptCount": 24,
+  "bootCount": 3,
+  "cohort": {
+    "repository": "https://github.com/aliceisjustplaying/tinydraw.git",
+    "commit": "a91d1d74af0ff4c1b55aebc3ed584e9074821394",
+    "toolchain": {
+      "target": "esp32s3",
+      "espIdfVersion": "v6.0.2",
+      "compiler": "GNU",
+      "compilerVersion": "15.2.0"
+    },
+    "sdkconfig": {
+      "path": "/private/tmp/tinydraw-esp32s3-timing/out/build/esp32-timing-probe/sdkconfig",
+      "sha256": "5befec96cb7e4dbd86a69abccf96828696b0c79cfe0b0c904d5bdc75543d3d68",
+      "cpuHz": 240000000,
+      "psramMode": "octal",
+      "psramBusHz": 80000000,
+      "flashMode": "qio",
+      "flashBusHz": 80000000
+    },
+    "chipRevision": 2,
+    "flashBytes": 16777216,
+    "counter": {
+      "source": "xtensa-ccount",
+      "bits": 32,
+      "hz": 240000000,
+      "core": 0
+    }
+  },
+  "evidence": {
+    "bootIds": [
+      "1cdbd47b85c8-1f5a312c-000124dd",
+      "1cdbd47b85c8-9c64e721-000124de",
+      "1cdbd47b85c8-eb5922de-000124dc"
+    ],
+    "bootLogSha256": [
+      "396a188e1cb4843a723801013e6fea6d881e099dcb9164958d634e7becdff962",
+      "6cbf1b1c4e9fdc58065e13631944e5c144268d645d8e3d390263ba4a0ecee7a4",
+      "f7f23872797e2c2545f1c71c37903a260993ead6e43c605e5d70d6fbb77662be"
+    ],
+    "receiptSha256": [
+      "0e30610eaa877ff334534ba7d7e532b7fc10d2718d30f1d9ec7827e0123a8f83",
+      "0f7cf1882d28c3abb714de2d104b5af153235a3aa638af95c1366dd84ce6ce0e",
+      "1cfee0a2f45456f06d8e177c590fb5bcb3060532f7f545b94d5a584816e68969",
+      "4351b63d9f7e250221c169e93d0684013175dc56dd6f4f32277b63b362e00dbd",
+      "4544f37b954722b9fb99e4041e5047c285ee794cde37109584f2a0fd17d4c68f",
+      "489af945700b9c1ea2999573604011f05a853d1e7106905eae740e257fd70896",
+      "4e92539d83f68ae5cbc87770757e164704f85c1f03de328b09ed444ab7353ef6",
+      "5cb86468264deb11c335cd297c03ad17a557bfda8255b9d7577d5bf0149dbf8e",
+      "665e9e38b95170d4f8c33d92ca4a0d2e7f6a7941f738d4ea81b5f65f78c604a0",
+      "66665fa4188cb0c6e38f595e74db638ca43cb371169dab4cbc28ed81b9c69857",
+      "72aebef595ab1f8a6b41382dd4c4054c5fcf705d912603083f2b66ad9b65ea57",
+      "8aab9581771339c28579c6ff84b20baf5b80f24ed901bad783ab7f8df75ce61f",
+      "984fafc0291e6c1e41f84c9b3c80b6a26bea7230338ca5d6e1504466105d99d2",
+      "a58fe908ced1735918d2ab7417a1f773e4d8dcbb6ace532e105fae1db68bd06f",
+      "a731b4c319a4430d88a1ac35cac7c584303f8a542fb5fc0affaf75eb5ff93d29",
+      "ac390cdebfd2490f7782f235a8eda5a8d9e22568ae8f6842d2ad193047db6830",
+      "b2e619b712f5cb022ce4621fbfe65a5bcfe571bc57188233ed72ad56f74863ee",
+      "b5ba49535bbb46c431bc5a94e68a84f31e95743342f5801d90741dc83dfc666b",
+      "c6348c9ce8509c2bbe1e16fa930e2d470af107540f67c37809434a143e8b9823",
+      "ce009c593cb51e2ff20bb0c6ca4bd50d60e3a9bdf42268d3913743b5996cf0bb",
+      "db027071cb843e919e906184dff3b35017d3330149b83ab9c3012890b495cd8e",
+      "f3bf10733e68cf998ff4e0b29f4b39289d5d1fd94eec009ebe09e03b1bbe3afb",
+      "f3f07db385e11ef87fdbe0ca5b5ce3de96c668c457e8cfd38244250f71d09c53",
+      "fbb3589ad8a7d90570203ce3e0480f002f1105696ea51af27a17b387405a1769"
+    ]
+  },
+  "perBoot": [
+    {
+      "bootId": "1cdbd47b85c8-1f5a312c-000124dd",
+      "series": {
+        "samplesPerCell": 100,
+        "penalties": [
+          {
+            "lines": 1,
+            "hotMedianCycles": "14",
+            "coldMedianCycles": "218",
+            "coldMinusHotCycles": "204"
+          },
+          {
+            "lines": 2,
+            "hotMedianCycles": "30",
+            "coldMedianCycles": "499",
+            "coldMinusHotCycles": "469"
+          },
+          {
+            "lines": 4,
+            "hotMedianCycles": "62",
+            "coldMedianCycles": "1064",
+            "coldMinusHotCycles": "1002"
+          },
+          {
+            "lines": 8,
+            "hotMedianCycles": "126",
+            "coldMedianCycles": "2191",
+            "coldMinusHotCycles": "2065"
+          }
+        ],
+        "firstLinePenaltyCycles": "204",
+        "intervalEstimates": [
+          {
+            "fromLines": 1,
+            "toLines": 2,
+            "additionalLines": 1,
+            "cyclesPerAdditionalLine": {
+              "numerator": "265",
+              "denominator": "1"
+            }
+          },
+          {
+            "fromLines": 2,
+            "toLines": 4,
+            "additionalLines": 2,
+            "cyclesPerAdditionalLine": {
+              "numerator": "533",
+              "denominator": "2"
+            }
+          },
+          {
+            "fromLines": 4,
+            "toLines": 8,
+            "additionalLines": 4,
+            "cyclesPerAdditionalLine": {
+              "numerator": "1063",
+              "denominator": "4"
+            }
+          }
+        ],
+        "fixedFirstLineFit": {
+          "model": "penalty(N)=P1+(N-1)*interval",
+          "intervalCyclesPerLine": {
+            "numerator": "15686",
+            "denominator": "59"
+          },
+          "residuals": [
+            {
+              "lines": 1,
+              "cycles": {
+                "numerator": "0",
+                "denominator": "1"
+              }
+            },
+            {
+              "lines": 2,
+              "cycles": {
+                "numerator": "-51",
+                "denominator": "59"
+              }
+            },
+            {
+              "lines": 4,
+              "cycles": {
+                "numerator": "24",
+                "denominator": "59"
+              }
+            },
+            {
+              "lines": 8,
+              "cycles": {
+                "numerator": "-3",
+                "denominator": "59"
+              }
+            }
+          ],
+          "residualSumSquaresCyclesSquared": {
+            "numerator": "54",
+            "denominator": "59"
+          }
+        }
+      }
+    },
+    {
+      "bootId": "1cdbd47b85c8-9c64e721-000124de",
+      "series": {
+        "samplesPerCell": 100,
+        "penalties": [
+          {
+            "lines": 1,
+            "hotMedianCycles": "14",
+            "coldMedianCycles": "218",
+            "coldMinusHotCycles": "204"
+          },
+          {
+            "lines": 2,
+            "hotMedianCycles": "30",
+            "coldMedianCycles": "499",
+            "coldMinusHotCycles": "469"
+          },
+          {
+            "lines": 4,
+            "hotMedianCycles": "62",
+            "coldMedianCycles": "1064",
+            "coldMinusHotCycles": "1002"
+          },
+          {
+            "lines": 8,
+            "hotMedianCycles": "126",
+            "coldMedianCycles": "2191",
+            "coldMinusHotCycles": "2065"
+          }
+        ],
+        "firstLinePenaltyCycles": "204",
+        "intervalEstimates": [
+          {
+            "fromLines": 1,
+            "toLines": 2,
+            "additionalLines": 1,
+            "cyclesPerAdditionalLine": {
+              "numerator": "265",
+              "denominator": "1"
+            }
+          },
+          {
+            "fromLines": 2,
+            "toLines": 4,
+            "additionalLines": 2,
+            "cyclesPerAdditionalLine": {
+              "numerator": "533",
+              "denominator": "2"
+            }
+          },
+          {
+            "fromLines": 4,
+            "toLines": 8,
+            "additionalLines": 4,
+            "cyclesPerAdditionalLine": {
+              "numerator": "1063",
+              "denominator": "4"
+            }
+          }
+        ],
+        "fixedFirstLineFit": {
+          "model": "penalty(N)=P1+(N-1)*interval",
+          "intervalCyclesPerLine": {
+            "numerator": "15686",
+            "denominator": "59"
+          },
+          "residuals": [
+            {
+              "lines": 1,
+              "cycles": {
+                "numerator": "0",
+                "denominator": "1"
+              }
+            },
+            {
+              "lines": 2,
+              "cycles": {
+                "numerator": "-51",
+                "denominator": "59"
+              }
+            },
+            {
+              "lines": 4,
+              "cycles": {
+                "numerator": "24",
+                "denominator": "59"
+              }
+            },
+            {
+              "lines": 8,
+              "cycles": {
+                "numerator": "-3",
+                "denominator": "59"
+              }
+            }
+          ],
+          "residualSumSquaresCyclesSquared": {
+            "numerator": "54",
+            "denominator": "59"
+          }
+        }
+      }
+    },
+    {
+      "bootId": "1cdbd47b85c8-eb5922de-000124dc",
+      "series": {
+        "samplesPerCell": 100,
+        "penalties": [
+          {
+            "lines": 1,
+            "hotMedianCycles": "14",
+            "coldMedianCycles": "218",
+            "coldMinusHotCycles": "204"
+          },
+          {
+            "lines": 2,
+            "hotMedianCycles": "30",
+            "coldMedianCycles": "499",
+            "coldMinusHotCycles": "469"
+          },
+          {
+            "lines": 4,
+            "hotMedianCycles": "62",
+            "coldMedianCycles": "1064",
+            "coldMinusHotCycles": "1002"
+          },
+          {
+            "lines": 8,
+            "hotMedianCycles": "126",
+            "coldMedianCycles": "2191",
+            "coldMinusHotCycles": "2065"
+          }
+        ],
+        "firstLinePenaltyCycles": "204",
+        "intervalEstimates": [
+          {
+            "fromLines": 1,
+            "toLines": 2,
+            "additionalLines": 1,
+            "cyclesPerAdditionalLine": {
+              "numerator": "265",
+              "denominator": "1"
+            }
+          },
+          {
+            "fromLines": 2,
+            "toLines": 4,
+            "additionalLines": 2,
+            "cyclesPerAdditionalLine": {
+              "numerator": "533",
+              "denominator": "2"
+            }
+          },
+          {
+            "fromLines": 4,
+            "toLines": 8,
+            "additionalLines": 4,
+            "cyclesPerAdditionalLine": {
+              "numerator": "1063",
+              "denominator": "4"
+            }
+          }
+        ],
+        "fixedFirstLineFit": {
+          "model": "penalty(N)=P1+(N-1)*interval",
+          "intervalCyclesPerLine": {
+            "numerator": "15686",
+            "denominator": "59"
+          },
+          "residuals": [
+            {
+              "lines": 1,
+              "cycles": {
+                "numerator": "0",
+                "denominator": "1"
+              }
+            },
+            {
+              "lines": 2,
+              "cycles": {
+                "numerator": "-51",
+                "denominator": "59"
+              }
+            },
+            {
+              "lines": 4,
+              "cycles": {
+                "numerator": "24",
+                "denominator": "59"
+              }
+            },
+            {
+              "lines": 8,
+              "cycles": {
+                "numerator": "-3",
+                "denominator": "59"
+              }
+            }
+          ],
+          "residualSumSquaresCyclesSquared": {
+            "numerator": "54",
+            "denominator": "59"
+          }
+        }
+      }
+    }
+  ],
+  "pooled": {
+    "samplesPerCell": 300,
+    "penalties": [
+      {
+        "lines": 1,
+        "hotMedianCycles": "14",
+        "coldMedianCycles": "218",
+        "coldMinusHotCycles": "204"
+      },
+      {
+        "lines": 2,
+        "hotMedianCycles": "30",
+        "coldMedianCycles": "499",
+        "coldMinusHotCycles": "469"
+      },
+      {
+        "lines": 4,
+        "hotMedianCycles": "62",
+        "coldMedianCycles": "1064",
+        "coldMinusHotCycles": "1002"
+      },
+      {
+        "lines": 8,
+        "hotMedianCycles": "126",
+        "coldMedianCycles": "2191",
+        "coldMinusHotCycles": "2065"
+      }
+    ],
+    "firstLinePenaltyCycles": "204",
+    "intervalEstimates": [
+      {
+        "fromLines": 1,
+        "toLines": 2,
+        "additionalLines": 1,
+        "cyclesPerAdditionalLine": {
+          "numerator": "265",
+          "denominator": "1"
+        }
+      },
+      {
+        "fromLines": 2,
+        "toLines": 4,
+        "additionalLines": 2,
+        "cyclesPerAdditionalLine": {
+          "numerator": "533",
+          "denominator": "2"
+        }
+      },
+      {
+        "fromLines": 4,
+        "toLines": 8,
+        "additionalLines": 4,
+        "cyclesPerAdditionalLine": {
+          "numerator": "1063",
+          "denominator": "4"
+        }
+      }
+    ],
+    "fixedFirstLineFit": {
+      "model": "penalty(N)=P1+(N-1)*interval",
+      "intervalCyclesPerLine": {
+        "numerator": "15686",
+        "denominator": "59"
+      },
+      "residuals": [
+        {
+          "lines": 1,
+          "cycles": {
+            "numerator": "0",
+            "denominator": "1"
+          }
+        },
+        {
+          "lines": 2,
+          "cycles": {
+            "numerator": "-51",
+            "denominator": "59"
+          }
+        },
+        {
+          "lines": 4,
+          "cycles": {
+            "numerator": "24",
+            "denominator": "59"
+          }
+        },
+        {
+          "lines": 8,
+          "cycles": {
+            "numerator": "-3",
+            "denominator": "59"
+          }
+        }
+      ],
+      "residualSumSquaresCyclesSquared": {
+        "numerator": "54",
+        "denominator": "59"
+      }
+    }
+  }
+}
