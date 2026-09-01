@@ -11,10 +11,24 @@ what is adopted, and what the hardware queue holds. The goal is
   evidence set. The safeguards pin Rust 1.98.0, apply workspace-wide
   deny-level lints, preserve release overflow checks and debug
   assertions, and split the fast commit gate from the full push battery.
-  Upstream provides the dual-core
+  The Xtensa and RISC-V objdump-differential corpora are committed in-tree;
+  either test fails if its corpus is absent. Upstream provides the dual-core
   Xtensa LX7 interpreter and native JIT, the ESP32-S3 SoC and
   peripheral models, real-ROM boot, a wasm build (interpreter-only),
-  and the web shell. No measured mode exists on this branch yet.
+  and the web shell.
+- Task 3a's initial measured core is merged at `a142952`: a typed backend
+  API and transaction engine, a structurally dual-core scheduler, the
+  `FakeBackend` contract, and tests that assert exact values from committed
+  receipts. Wiring this core into the product interpreter remains open.
+- The TinyDraw V2 board harvest is merged. It includes GP-SPI2 DMA,
+  CST820 touch, the CO5300 panel, timestamped GPIO edges, browser touch,
+  and the paced-stroke workflow, with the defect dispositions below.
+- The wasm JIT accounting spike is committed at
+  [`evidence/wasm-jit-accounting-spike-2026-09-01/result.json`](evidence/wasm-jit-accounting-spike-2026-09-01/result.json).
+  On an Apple M1 Pro in Chrome 151, the accounting-off median is 10,486.56
+  MIPS and accounting-on is 4,478.24 MIPS, a 57.30 percent accounting cost.
+  The accounting-on ceiling clears 480 MIPS by 3,998.24 MIPS (832.97
+  percent). This is a ceiling measurement, not product-JIT throughput.
 - Branch `main`: clean upstream mirror.
 - Branches `salvage/*`: frozen earlier work, inventoried below.
 - The TinyDraw repository holds probe and reference firmware and the
@@ -29,11 +43,11 @@ Read-only inputs. Harvest under review; do not resume.
 
 | Branch | Head | Contents | Known defects to review before harvest |
 | --- | --- | --- | --- |
-| `salvage/core-measured-phase1` | `516b1ad` | `backend-api` crate with fake backend, measured interpreter scheduler, schema-2 profile importer, ledger; 58 tests passing in isolation | Single-core; cache model is an unbounded lifetime set (no eviction, no per-core state); timing mutations are strings in the hot path; timing commits on trapped instructions; interrupt acceptance is unledgered; differential-gate test reverted at HEAD |
+| `salvage/core-measured-phase1` | `516b1ad` | Reimplemented under review at `a142952` as the typed backend API, transaction engine, structurally dual-core scheduler, `FakeBackend` contract, and exact receipt tests | The salvage defects were not carried into Task 3a; interpreter integration, cache behavior, interrupt accounting, and the interpreter-versus-JIT gate remain later work |
 | `salvage/board-tinydraw-v2` | `b7c9b87` | Harvested at `30b7c8e` and `8dee48d`. Taken: generic GP-SPI with MISO, GP-SPI2 DMA delivery, CST820 touch, CO5300 panel, TCA9554, timestamped GPIO 13 tear and GPIO 21 touch edges, browser touch, and the one-command TinyDraw paced-stroke workflow. Dropped: the retrospective `input_changes(cycles)` API, the AMOLED board's dead ST7701 coupling, and the separate example script. | Dispositioned: the DMA walker has a 1,024-descriptor step budget, visited set, and typed read, cycle, and budget faults; GPIO 21 drives an active-low interrupt edge; the 60 Hz TE model remains explicitly an approximate compatibility signal with no adopted timing claim; PMIC, RTC, and IMU devices are labeled register-RAM stubs. The paced stroke and wasm build pass. |
 | `salvage/rust-safeguards` | `b138473` | `scripts/pre-commit.sh`: fmt, check, strict clippy, debug and release tests, rustdoc | Harvested under review; frozen source retained |
 | `salvage/gp-spi-device-hook` | `246c699` | Upstream-shaped synchronous GP-SPI board-response hook | Candidate for an upstream PR |
-| `salvage/ci-spec`, `salvage/upstream-ci` | `6ba6a6d`, `3b58cc6` | CI workflow material | Not yet reviewed in place |
+| `salvage/ci-spec`, `salvage/upstream-ci` | `6ba6a6d`, `3b58cc6` | CI workflow material; decoder-conformance intent harvested at `4e5f47e` | The mandatory Xtensa and RISC-V corpora are in-tree and absence fails the tests; remaining CI material is not yet reviewed in place |
 | `salvage/design-spike` | `e22f971` | Design-spike markdown, historical | Do not implement from it |
 | `salvage/puck-base` | `3051793` | The base `alice` was cut from | Fully contained in `alice` |
 
@@ -103,7 +117,13 @@ The board has one owner at a time. Front-load everything USB-C can
 reach (CCOUNT probes, GPIO interrupt timestamps, hardware cache
 counters, USB Serial/JTAG capture) as one early batch, in tiers:
 
-Tier A, capture now with existing or PR-4 assets:
+TinyDraw `main` at `5f38ca5` is ready for the capture work below. Its
+fail-closed NDJSON path covers 28 Tier B cells across six families. A
+committed objdump gate verifies the probe issue-block encodings and all
+four loop-body residues modulo 4 before capture; mismatch exits nonzero
+without a result file. Task 5-prep did not flash the board or open serial.
+
+Tier A, capture now with committed TinyDraw assets:
 
 1. Close the six IDF 6.1 receipt-gap identities (full-suite boots;
    no selective rerun mode exists yet).
@@ -118,7 +138,7 @@ Tier A, capture now with existing or PR-4 assets:
 5. PSRAM long-window: assemble the existing cells offline first;
    re-capture only the cells that fall short of two eligible boots.
 
-Tier B, needs reviewed probe code first (one unified timing image
+Tier B, probe code is reviewed and committed (one unified timing image
 where practical, two clean independent boots each):
 
 6. Arbitration aggressors (internal, flash, PSRAM) with a start
@@ -158,10 +178,10 @@ mode (needs GOAL milestone 2).
 
 ## Next steps
 
-1. Integration trunk: board harvest is complete; harvest the measured-mode
-   material that survives review, then wire it to the board deadline contract.
-2. Receipt-correlation tests against the adopted numbers above.
-3. Wasm JIT cost-accounting spike (GOAL milestone 3).
-4. Hardware batch: maintainer tests and merges TinyDraw pull request
-   4, then tier A captures, then tier B probe development under
-   review.
+1. Task 3b: wire the measured core into the product interpreter and board
+   deadline contract while preserving the dual-core and fail-closed rules.
+2. Extend receipt-correlation coverage as additional cost classes are adopted.
+3. Execute the maintainer-owned hardware batch from TinyDraw `5f38ca5`: tier A,
+   then the prepared Tier B cells.
+4. Attach the architectural interpreter-versus-JIT conformance gate to the
+   first costed-JIT task before product-JIT work begins.
