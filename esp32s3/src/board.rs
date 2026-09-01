@@ -60,13 +60,14 @@ pub trait BoardModel {
 
 pub type Board = Box<dyn BoardModel>;
 
-/// Board by name: `atech14` (default), `none`.
+/// Board by name: `atech14` (default), `none`, or a supported Waveshare board.
 pub fn make_board(name: &str) -> Option<Board> {
     match name {
         "atech14" | "atech" => Some(Box::new(Atech14::new())),
         "none" | "bare" => Some(Box::new(NoBoard)),
         "waveshare-cam" | "waveshare" => Some(Box::new(WaveshareCam::new())),
         "waveshare-lcd4b" | "lcd4b" => Some(Box::new(WaveshareLcd4b::new())),
+        "waveshare-amoled18-v2" | "amoled18-v2" => Some(Box::new(WaveshareAmoled18V2::new())),
         _ => None,
     }
 }
@@ -609,5 +610,36 @@ impl Default for WaveshareCam {
 impl Default for WaveshareLcd4b {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Waveshare ESP32-S3-Touch-AMOLED-1.8 V2: CO5300 368x448 QSPI panel, CST820 touch at 0x15,
+/// TCA9554 power/reset expander at 0x20, AXP2101 PMIC, PCF85063A RTC, and QMI8658 IMU.
+pub struct WaveshareAmoled18V2 {
+    pub gpio_events: u64, pub frame: Vec<u16>, pub frames: u64,
+    pub panel: std::sync::Arc<std::sync::Mutex<crate::i2c::St7701State>>,
+    pub touch_state: std::sync::Arc<std::sync::Mutex<crate::i2c::TouchState>>,
+}
+impl WaveshareAmoled18V2 {
+    pub fn new() -> Self { WaveshareAmoled18V2 { gpio_events: 0, frame: vec![0; 368 * 448], frames: 0, panel: Default::default(), touch_state: Default::default() } }
+}
+impl BoardModel for WaveshareAmoled18V2 {
+    fn name(&self) -> &'static str { "waveshare-amoled18-v2" }
+    fn gpio_changes(&mut self, changes: &[(u8, bool)]) { self.gpio_events += changes.len() as u64; }
+    fn gpio_events(&self) -> u64 { self.gpio_events }
+    fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn crate::i2c::I2cDevice>)> {
+        use crate::i2c::*;
+        vec![
+            (0x15, Box::new(Cst820::new(self.touch_state.clone()))),
+            (0x20, Box::new(Tca9554::new(self.panel.clone()))),
+            (0x34, Box::new(Reg8Device::new("axp2101", &[(0x03, 0x4a)]))),
+            (0x51, Box::new(Reg8Device::new("pcf85063a", &[]))),
+            (0x6b, Box::new(Reg8Device::new("qmi8658", &[(0x00, 0x05)]))),
+        ]
+    }
+    fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> { Some((368, 448, self.frame.clone(), self.frames)) }
+    fn touch(&mut self, x: u16, y: u16, down: bool) {
+        let mut t = self.touch_state.lock().unwrap(); t.x = x.min(367); t.y = y.min(447);
+        if down { t.down = true; t.seen = false; t.release_pending = false; } else if t.seen { t.down = false; } else { t.release_pending = true; }
     }
 }
