@@ -13,22 +13,56 @@ pub enum Fault {
 pub const TLB_ENTRIES: usize = 512;
 pub const VPAGE_SHIFT: u32 = 8;
 #[inline(always)]
-pub fn tlb_index(addr: u32) -> usize { (((addr >> 16) ^ (addr >> 24)) as usize) & (TLB_ENTRIES - 1) }
+pub fn tlb_index(addr: u32) -> usize {
+    (((addr >> 16) ^ (addr >> 24)) as usize) & (TLB_ENTRIES - 1)
+}
 
 /// One software-TLB entry: guest `[lo, hi)` is host memory starting at `base`; `vbase` is the
 /// write-version index of `lo`. Layout is fixed (32 bytes) because the JIT reads it.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct TlbEntry { pub lo: u32, pub hi: u32, pub base: *mut u8, pub vbase: u32, pub writable: u32, pub off: u32, pub src: u32 }
-impl TlbEntry { pub const EMPTY: TlbEntry = TlbEntry { lo: 1, hi: 0, base: std::ptr::null_mut(), vbase: 0, writable: 0, off: 0, src: 0 }; }
-// Entries only ever point into the owning bus's buffers, which live as long as the bus.
+pub struct TlbEntry {
+    pub lo: u32,
+    pub hi: u32,
+    pub base: *mut u8,
+    pub vbase: u32,
+    pub writable: u32,
+    pub off: u32,
+    pub src: u32,
+}
+impl TlbEntry {
+    pub const EMPTY: TlbEntry = TlbEntry {
+        lo: 1,
+        hi: 0,
+        base: std::ptr::null_mut(),
+        vbase: 0,
+        writable: 0,
+        off: 0,
+        src: 0,
+    };
+}
+#[expect(
+    unsafe_code,
+    reason = "the software TLB stores synchronized raw buffer pointers"
+)]
+// SAFETY: Entries only point into their owning bus's buffers, and access remains synchronized
+// through the bus that owns those buffers.
 unsafe impl Send for TlbEntry {}
+#[expect(
+    unsafe_code,
+    reason = "the software TLB stores synchronized raw buffer pointers"
+)]
+// SAFETY: Entries only point into their owning bus's buffers, and access remains synchronized
+// through the bus that owns those buffers.
 unsafe impl Sync for TlbEntry {}
 
 /// What generated code needs to access memory without calling back: the TLB and the
 /// write-version counters. Both pointers must stay valid while the bus exists.
 #[derive(Clone, Copy)]
-pub struct FastMem { pub tlb: *const TlbEntry, pub page_ver: *mut u32 }
+pub struct FastMem {
+    pub tlb: *const TlbEntry,
+    pub page_ver: *mut u32,
+}
 
 pub trait Bus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault>;
@@ -46,20 +80,34 @@ pub trait Bus {
     /// instead of re-fetching and comparing the bytes; `code_page` is only called on a miss.
     /// Pages must be at least 128 bytes: a block (`block::MAX_LEN` instructions) records the
     /// versions of the pages holding its first and last byte and assumes there is no third.
-    fn page_versions(&self) -> &[u32] { &[] }
-    fn code_page(&mut self, pc: u32) -> u32 { let _ = pc; 0 }
+    fn page_versions(&self) -> &[u32] {
+        &[]
+    }
+    fn code_page(&mut self, pc: u32) -> u32 {
+        let _ = pc;
+        0
+    }
     /// The pc of the instruction about to execute, for buses that attribute accesses to code.
     #[inline(always)]
-    fn note_pc(&mut self, pc: u32) { let _ = pc; }
+    fn note_pc(&mut self, pc: u32) {
+        let _ = pc;
+    }
     /// True when the last instruction may have changed an interrupt line, so a block must end
     /// and let the machine re-derive the CPU's interrupt inputs before the next instruction.
     #[inline(always)]
-    fn block_break(&self) -> bool { false }
+    fn block_break(&self) -> bool {
+        false
+    }
     /// Direct memory access for generated code, if the bus has a `TlbEntry` table.
-    fn fast_mem(&mut self) -> Option<FastMem> { None }
+    fn fast_mem(&mut self) -> Option<FastMem> {
+        None
+    }
     /// Called after every executed instruction with the cycle estimate; lets the
     /// SoC advance timers and DMA. Return pending external level-interrupt lines.
-    fn tick(&mut self, cycles: u32) -> u32 { let _ = cycles; 0 }
+    fn tick(&mut self, cycles: u32) -> u32 {
+        let _ = cycles;
+        0
+    }
 }
 
 /// Simple flat RAM for unit tests.
@@ -71,25 +119,67 @@ pub struct FlatRam {
 }
 
 impl FlatRam {
-    pub fn new(base: u32, size: usize) -> Self { FlatRam { base, mem: vec![0; size], ver: 0 } }
+    pub fn new(base: u32, size: usize) -> Self {
+        FlatRam {
+            base,
+            mem: vec![0; size],
+            ver: 0,
+        }
+    }
     fn off(&self, addr: u32, n: usize) -> Result<usize, Fault> {
         let o = addr.wrapping_sub(self.base) as usize;
-        if o + n <= self.mem.len() { Ok(o) } else { Err(Fault::Unmapped) }
+        if o + n <= self.mem.len() {
+            Ok(o)
+        } else {
+            Err(Fault::Unmapped)
+        }
     }
 }
 
 impl Bus for FlatRam {
-    fn read8(&mut self, a: u32) -> Result<u8, Fault> { let o = self.off(a, 1)?; Ok(self.mem[o]) }
-    fn read16(&mut self, a: u32) -> Result<u16, Fault> { let o = self.off(a, 2)?; Ok(u16::from_le_bytes([self.mem[o], self.mem[o + 1]])) }
-    fn read32(&mut self, a: u32) -> Result<u32, Fault> { let o = self.off(a, 4)?; Ok(u32::from_le_bytes(self.mem[o..o + 4].try_into().unwrap())) }
-    fn write8(&mut self, a: u32, v: u8) -> Result<(), Fault> { let o = self.off(a, 1)?; self.mem[o] = v; self.ver += 1; Ok(()) }
-    fn write16(&mut self, a: u32, v: u16) -> Result<(), Fault> { let o = self.off(a, 2)?; self.mem[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.ver += 1; Ok(()) }
-    fn write32(&mut self, a: u32, v: u32) -> Result<(), Fault> { let o = self.off(a, 4)?; self.mem[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.ver += 1; Ok(()) }
-    fn page_versions(&self) -> &[u32] { std::slice::from_ref(&self.ver) }
+    fn read8(&mut self, a: u32) -> Result<u8, Fault> {
+        let o = self.off(a, 1)?;
+        Ok(self.mem[o])
+    }
+    fn read16(&mut self, a: u32) -> Result<u16, Fault> {
+        let o = self.off(a, 2)?;
+        Ok(u16::from_le_bytes([self.mem[o], self.mem[o + 1]]))
+    }
+    fn read32(&mut self, a: u32) -> Result<u32, Fault> {
+        let o = self.off(a, 4)?;
+        Ok(u32::from_le_bytes(self.mem[o..o + 4].try_into().expect(
+            "the checked four-byte RAM range has the required width",
+        )))
+    }
+    fn write8(&mut self, a: u32, v: u8) -> Result<(), Fault> {
+        let o = self.off(a, 1)?;
+        self.mem[o] = v;
+        self.ver += 1;
+        Ok(())
+    }
+    fn write16(&mut self, a: u32, v: u16) -> Result<(), Fault> {
+        let o = self.off(a, 2)?;
+        self.mem[o..o + 2].copy_from_slice(&v.to_le_bytes());
+        self.ver += 1;
+        Ok(())
+    }
+    fn write32(&mut self, a: u32, v: u32) -> Result<(), Fault> {
+        let o = self.off(a, 4)?;
+        self.mem[o..o + 4].copy_from_slice(&v.to_le_bytes());
+        self.ver += 1;
+        Ok(())
+    }
+    fn page_versions(&self) -> &[u32] {
+        std::slice::from_ref(&self.ver)
+    }
     fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
         let o = self.off(pc, 1)?;
         let mut b = [0u8; 4];
-        for i in 0..4 { if o + i < self.mem.len() { b[i] = self.mem[o + i]; } }
+        for (i, byte) in b.iter_mut().enumerate() {
+            if o + i < self.mem.len() {
+                *byte = self.mem[o + i];
+            }
+        }
         Ok(b)
     }
 }

@@ -1,7 +1,7 @@
 //! ESP32-S3 memory map: internal SRAM (512 KiB, IRAM/DRAM aliases), mask ROM, RTC
 //! memories, external flash + PSRAM through the 512-entry cache MMU, peripherals.
-use crate::periph::{Peripherals, PERIPH_BASE, PERIPH_END};
 use crate::board::Board;
+use crate::periph::{Peripherals, PERIPH_BASE, PERIPH_END};
 use xtensa_lx7::bus::{Bus, Fault};
 
 pub const SRAM_SIZE: usize = 512 * 1024;
@@ -56,7 +56,8 @@ pub struct SocBus {
     /// Device time is advanced lazily: cycles accumulate here and the devices see them in one
     /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
     /// have passed — so guest-visible time is exact while idle rounds cost nothing.
-    tick_pending: u32, tick_budget: u32,
+    tick_pending: u32,
+    tick_budget: u32,
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
@@ -64,24 +65,47 @@ pub struct SocBus {
 const MAX_TICK_DEFER: u32 = 256;
 
 /// Buffer identifiers for resolved addresses.
-pub const SRC_SRAM: u8 = 0; pub const SRC_IROM: u8 = 1; pub const SRC_FLASH: u8 = 2; pub const SRC_PSRAM: u8 = 3;
-pub const SRC_DROM: u8 = 4; pub const SRC_RTC_FAST: u8 = 5; pub const SRC_RTC_SLOW: u8 = 6;
+pub const SRC_SRAM: u8 = 0;
+pub const SRC_IROM: u8 = 1;
+pub const SRC_FLASH: u8 = 2;
+pub const SRC_PSRAM: u8 = 3;
+pub const SRC_DROM: u8 = 4;
+pub const SRC_RTC_FAST: u8 = 5;
+pub const SRC_RTC_SLOW: u8 = 6;
 const TLB_SIZE: usize = xtensa_lx7::bus::TLB_ENTRIES;
 /// Granularity of the write-version counters. Must exceed the longest block (`block::MAX_LEN` × 3 bytes).
 const VPAGE_SHIFT: usize = xtensa_lx7::bus::VPAGE_SHIFT as usize;
 const VPAGE_MASK: usize = (1 << VPAGE_SHIFT) - 1;
 use xtensa_lx7::bus::{FastMem, TlbEntry};
 #[inline(always)]
-fn tlb_idx(addr: u32) -> usize { xtensa_lx7::bus::tlb_index(addr) }
+fn tlb_idx(addr: u32) -> usize {
+    xtensa_lx7::bus::tlb_index(addr)
+}
 
 impl SocBus {
-    pub fn new(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self { Self::with_sizes(flash_size, psram_size, mac) }
+    pub fn new(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self {
+        Self::with_sizes(flash_size, psram_size, mac)
+    }
     pub fn with_sizes(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self {
         let bus_uninit = SocBus {
-            sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
-            rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
-            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false,
-            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
+            sram: vec![0; SRAM_SIZE],
+            irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize],
+            drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
+            rtc_fast: vec![0; 8192],
+            rtc_slow: vec![0; 8192],
+            flash: vec![0xff; flash_size],
+            psram: vec![0; psram_size],
+            mmu: [MMU_INVALID; MMU_ENTRIES],
+            periph: Peripherals::new(mac),
+            board: Box::new(crate::board::Atech14::new()),
+            cycles: 0,
+            last_fault: None,
+            irq_dirty: false,
+            tlb: vec![TlbEntry::EMPTY; TLB_SIZE],
+            page_ver: Vec::new(),
+            ver_base: [0; 7],
+            tick_pending: 0,
+            tick_budget: 0,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -90,9 +114,20 @@ impl SocBus {
 
     /// Size the per-page version table to the buffers. Call after replacing `flash` or `psram`.
     pub fn rebuild_page_table(&mut self) {
-        let sizes = [self.sram.len(), self.irom.len(), self.flash.len(), self.psram.len(), self.drom.len(), self.rtc_fast.len(), self.rtc_slow.len()];
+        let sizes = [
+            self.sram.len(),
+            self.irom.len(),
+            self.flash.len(),
+            self.psram.len(),
+            self.drom.len(),
+            self.rtc_fast.len(),
+            self.rtc_slow.len(),
+        ];
         let mut base = 0u32;
-        for (i, n) in sizes.iter().enumerate() { self.ver_base[i] = base; base += ((n + VPAGE_MASK) >> VPAGE_SHIFT) as u32; }
+        for (i, n) in sizes.iter().enumerate() {
+            self.ver_base[i] = base;
+            base += ((n + VPAGE_MASK) >> VPAGE_SHIFT) as u32;
+        }
         self.page_ver = vec![0; base as usize + 1];
         self.invalidate_tlb();
     }
@@ -102,38 +137,80 @@ impl SocBus {
     /// the flash and PSRAM page versions are bumped too: that is what invalidates decoded
     /// instructions and blocks that were built through the old mapping.
     pub fn invalidate_tlb(&mut self) {
-        for e in self.tlb.iter_mut() { *e = TlbEntry::EMPTY; }
-        let (a, b) = (self.ver_base[SRC_FLASH as usize] as usize, self.ver_base[SRC_DROM as usize] as usize);
-        for v in &mut self.page_ver[a..b] { *v = v.wrapping_add(1); }          // flash then psram
+        for e in self.tlb.iter_mut() {
+            *e = TlbEntry::EMPTY;
+        }
+        let (a, b) = (
+            self.ver_base[SRC_FLASH as usize] as usize,
+            self.ver_base[SRC_DROM as usize] as usize,
+        );
+        for v in &mut self.page_ver[a..b] {
+            *v = v.wrapping_add(1);
+        } // flash then psram
     }
 
     #[inline(always)]
     fn buf(&self, src: u8) -> &Vec<u8> {
-        match src { SRC_SRAM => &self.sram, SRC_IROM => &self.irom, SRC_FLASH => &self.flash, SRC_PSRAM => &self.psram,
-                    SRC_DROM => &self.drom, SRC_RTC_FAST => &self.rtc_fast, _ => &self.rtc_slow }
+        match src {
+            SRC_SRAM => &self.sram,
+            SRC_IROM => &self.irom,
+            SRC_FLASH => &self.flash,
+            SRC_PSRAM => &self.psram,
+            SRC_DROM => &self.drom,
+            SRC_RTC_FAST => &self.rtc_fast,
+            _ => &self.rtc_slow,
+        }
     }
     #[inline(always)]
     fn buf_mut(&mut self, src: u8) -> &mut Vec<u8> {
-        match src { SRC_SRAM => &mut self.sram, SRC_IROM => &mut self.irom, SRC_FLASH => &mut self.flash, SRC_PSRAM => &mut self.psram,
-                    SRC_DROM => &mut self.drom, SRC_RTC_FAST => &mut self.rtc_fast, _ => &mut self.rtc_slow }
+        match src {
+            SRC_SRAM => &mut self.sram,
+            SRC_IROM => &mut self.irom,
+            SRC_FLASH => &mut self.flash,
+            SRC_PSRAM => &mut self.psram,
+            SRC_DROM => &mut self.drom,
+            SRC_RTC_FAST => &mut self.rtc_fast,
+            _ => &mut self.rtc_slow,
+        }
     }
 
     /// The mapping covering `addr`, from the TLB or by walking the address map.
     #[inline(always)]
     fn lookup(&mut self, addr: u32) -> Option<TlbEntry> {
         let e = self.tlb[tlb_idx(addr)];
-        if addr >= e.lo && addr < e.hi { Some(e) } else { self.tlb_fill(addr) }
+        if addr >= e.lo && addr < e.hi {
+            Some(e)
+        } else {
+            self.tlb_fill(addr)
+        }
     }
 
     /// Walk the address map for the 64 KiB page holding `addr` and remember it.
+    #[expect(
+        unsafe_code,
+        reason = "the software TLB caches a pointer into an owned buffer"
+    )]
     fn tlb_fill(&mut self, addr: u32) -> Option<TlbEntry> {
         let page = addr & !0xffff;
         let region = |lo: u32, hi: u32, src: u8, w: bool| -> TlbEntry {
-            let lo_ = page.max(lo); let hi_ = (page + 0x10000).min(hi);
-            TlbEntry { lo: lo_, hi: hi_, base: std::ptr::null_mut(), off: lo_ - lo, vbase: 0, src: src as u32, writable: w as u32 }
+            let lo_ = page.max(lo);
+            let hi_ = (page + 0x10000).min(hi);
+            TlbEntry {
+                lo: lo_,
+                hi: hi_,
+                base: std::ptr::null_mut(),
+                off: lo_ - lo,
+                vbase: 0,
+                src: src as u32,
+                writable: w as u32,
+            }
         };
         let mut e = match addr {
-            DRAM_LOW..=0x3FCF_FFFF => { let mut e = region(DRAM_LOW, 0x3FD0_0000, SRC_SRAM, true); e.off += 0x8000; e }
+            DRAM_LOW..=0x3FCF_FFFF => {
+                let mut e = region(DRAM_LOW, 0x3FD0_0000, SRC_SRAM, true);
+                e.off += 0x8000;
+                e
+            }
             IRAM_LOW..=0x403D_FFFF => region(IRAM_LOW, 0x403E_0000, SRC_SRAM, true),
             IROM_MASK_LOW..=0x4005_FFFF => region(IROM_MASK_LOW, 0x4006_0000, SRC_IROM, false),
             DROM_MASK_LOW..=0x3FF1_FFFF => region(DROM_MASK_LOW, 0x3FF2_0000, SRC_DROM, false),
@@ -142,26 +219,37 @@ impl SocBus {
             DBUS_LOW..=0x3DFF_FFFF | IBUS_LOW..=0x43FF_FFFF => {
                 let linear = addr & 0x1FF_FFFF;
                 let entry = self.mmu[(linear >> 16) as usize];
-                if entry & MMU_INVALID != 0 { return None; }
+                if entry & MMU_INVALID != 0 {
+                    return None;
+                }
                 let off = (entry & 0x3fff) as usize * PAGE as usize;
-                let (src, w) = if entry & MMU_SPIRAM != 0 { (SRC_PSRAM, true) } else { (SRC_FLASH, false) };
-                if off + PAGE as usize > self.buf(src).len() { return None; }
-                TlbEntry { lo: page, hi: page + 0x10000, base: std::ptr::null_mut(), off: off as u32, vbase: 0, src: src as u32, writable: w as u32 }
+                let (src, w) = if entry & MMU_SPIRAM != 0 {
+                    (SRC_PSRAM, true)
+                } else {
+                    (SRC_FLASH, false)
+                };
+                if off + PAGE as usize > self.buf(src).len() {
+                    return None;
+                }
+                TlbEntry {
+                    lo: page,
+                    hi: page + 0x10000,
+                    base: std::ptr::null_mut(),
+                    off: off as u32,
+                    vbase: 0,
+                    src: src as u32,
+                    writable: w as u32,
+                }
             }
             _ => return None,
         };
         e.vbase = self.ver_base[e.src as usize] + (e.off as usize >> VPAGE_SHIFT) as u32;
         let off = e.off as usize;
+        // SAFETY: The region construction above bounds `off` within the selected owned buffer.
+        // The buffer is not resized while the TLB entry is live.
         e.base = unsafe { self.buf_mut(e.src as u8).as_mut_ptr().add(off) };
         self.tlb[tlb_idx(addr)] = e;
         Some(e)
-    }
-
-    /// Resolve an address to (buffer, offset, writable) — the slow path, for loaders.
-    fn resolve(&mut self, addr: u32) -> Option<(&mut Vec<u8>, usize, bool)> {
-        let e = self.lookup(addr)?;
-        let o = e.off as usize + (addr - e.lo) as usize;
-        Some((self.buf_mut(e.src as u8), o, e.writable != 0))
     }
 
     /// Record that `len` bytes at `off` of the page group starting at `vbase` changed. An
@@ -172,55 +260,91 @@ impl SocBus {
         let p = vbase as usize + (off >> VPAGE_SHIFT);
         self.page_ver[p] = self.page_ver[p].wrapping_add(1);
         let last = vbase as usize + ((off + len - 1) >> VPAGE_SHIFT);
-        if last != p { self.page_ver[last] = self.page_ver[last].wrapping_add(1); }
-        if off & VPAGE_MASK < 3 && p > 0 { self.page_ver[p - 1] = self.page_ver[p - 1].wrapping_add(1); }
+        if last != p {
+            self.page_ver[last] = self.page_ver[last].wrapping_add(1);
+        }
+        if off & VPAGE_MASK < 3 && p > 0 {
+            self.page_ver[p - 1] = self.page_ver[p - 1].wrapping_add(1);
+        }
     }
 
     /// Record a write done behind the bus's back (image loaders, the SPI flash controller).
     pub fn note_written(&mut self, src: u8, off: usize, len: usize) {
-        if len == 0 { return; }
+        if len == 0 {
+            return;
+        }
         let vbase = self.ver_base[src as usize];
         let (first, last) = (off >> VPAGE_SHIFT, (off + len - 1) >> VPAGE_SHIFT);
-        for p in first..=last { let i = vbase as usize + p; if i < self.page_ver.len() { self.page_ver[i] = self.page_ver[i].wrapping_add(1); } }
-        if off & VPAGE_MASK < 3 && first > 0 { let i = vbase as usize + first - 1; self.page_ver[i] = self.page_ver[i].wrapping_add(1); }
+        for p in first..=last {
+            let i = vbase as usize + p;
+            if i < self.page_ver.len() {
+                self.page_ver[i] = self.page_ver[i].wrapping_add(1);
+            }
+        }
+        if off & VPAGE_MASK < 3 && first > 0 {
+            let i = vbase as usize + first - 1;
+            self.page_ver[i] = self.page_ver[i].wrapping_add(1);
+        }
     }
 
     #[inline]
-    fn is_periph(addr: u32) -> bool { (PERIPH_BASE..PERIPH_END).contains(&addr) }
+    fn is_periph(addr: u32) -> bool {
+        (PERIPH_BASE..PERIPH_END).contains(&addr)
+    }
 
     fn periph_read(&mut self, addr: u32, size: u32) -> u32 {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
             return self.mmu[((addr - MMU_TABLE) >> 2) as usize];
         }
-        self.flush_ticks();                                         // registers must show exact time
+        self.flush_ticks(); // registers must show exact time
         let w = self.periph.read32(addr & !3);
-        match size { 1 => (w >> ((addr & 3) * 8)) & 0xff, 2 => (w >> ((addr & 2) * 8)) & 0xffff, _ => w }
+        match size {
+            1 => (w >> ((addr & 3) * 8)) & 0xff,
+            2 => (w >> ((addr & 2) * 8)) & 0xffff,
+            _ => w,
+        }
     }
     fn periph_write(&mut self, addr: u32, v: u32, size: u32) {
         self.periph_write_inner(addr, v, size);
-        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);   // the write may have armed something
+        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        // the write may have armed something
     }
     fn periph_write_inner(&mut self, addr: u32, v: u32, size: u32) {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
             let i = ((addr - MMU_TABLE) >> 2) as usize;
-            if self.mmu[i] != v & 0xffff { self.mmu[i] = v & 0xffff; self.invalidate_tlb(); }
+            if self.mmu[i] != v & 0xffff {
+                self.mmu[i] = v & 0xffff;
+                self.invalidate_tlb();
+            }
             return;
         }
         self.flush_ticks();
         let a = addr & !3;
         let w = match size {
             4 => v,
-            2 => { let old = self.periph.read32(a); let sh = (addr & 2) * 8; (old & !(0xffff << sh)) | ((v & 0xffff) << sh) }
-            _ => { let old = self.periph.read32(a); let sh = (addr & 3) * 8; (old & !(0xff << sh)) | ((v & 0xff) << sh) }
+            2 => {
+                let old = self.periph.read32(a);
+                let sh = (addr & 2) * 8;
+                (old & !(0xffff << sh)) | ((v & 0xffff) << sh)
+            }
+            _ => {
+                let old = self.periph.read32(a);
+                let sh = (addr & 3) * 8;
+                (old & !(0xff << sh)) | ((v & 0xff) << sh)
+            }
         };
         self.periph.write32(a, w);
         // GPIO output registers (OUT/W1TS/W1TC/OUT1...) are hammered by bit-banged SPI and never change an
         // interrupt line directly; the periodic 32-cycle poll still sees any indirect effect
-        if !(0x6000_4004..=0x6000_4018).contains(&a) { self.irq_dirty = true; }
+        if !(0x6000_4004..=0x6000_4018).contains(&a) {
+            self.irq_dirty = true;
+        }
         if self.periph.spi_exec {
             self.periph.spi_exec = false;
             self.periph.spi1.execute(&mut self.flash, &mut self.psram);
-            for (src, off, len) in std::mem::take(&mut self.periph.spi1.dirty) { self.note_written(src, off, len); }
+            for (src, off, len) in std::mem::take(&mut self.periph.spi1.dirty) {
+                self.note_written(src, off, len);
+            }
         }
     }
 
@@ -232,26 +356,63 @@ impl SocBus {
 
     /// Move I2S TX data for controller `which` (0 = I2S0 on GDMA trigger 3, 1 = I2S1 on trigger 4).
     fn dma_i2s_one(&mut self, cycles: u64, which: usize) {
-        let (frames, bpf) = { let i2s = if which == 0 { &mut self.periph.i2s0 } else { &mut self.periph.i2s1 }; (i2s.frames_due(cycles), i2s.bytes_per_frame as usize) };
-        if frames == 0 { return; }
-        let Some(ch) = self.periph.gdma.out_channel_for(if which == 0 { 3 } else { 4 }) else { return };
+        let (frames, bpf) = {
+            let i2s = if which == 0 {
+                &mut self.periph.i2s0
+            } else {
+                &mut self.periph.i2s1
+            };
+            (i2s.frames_due(cycles), i2s.bytes_per_frame as usize)
+        };
+        if frames == 0 {
+            return;
+        }
+        let Some(ch) = self
+            .periph
+            .gdma
+            .out_channel_for(if which == 0 { 3 } else { 4 })
+        else {
+            return;
+        };
         let mut need = frames as usize * bpf;
         let mut samples: Vec<i16> = Vec::new();
         while need > 0 {
             let c = self.periph.gdma.out[ch];
-            if !c.running || c.desc == 0 { break; }
+            if !c.running || c.desc == 0 {
+                break;
+            }
             let dw0 = self.read32(c.desc).unwrap_or(0);
-            let d = crate::periph::DmaDesc { addr: c.desc, size: dw0 & 0xfff, length: (dw0 >> 12) & 0xfff, eof: dw0 & (1 << 30) != 0, owner_dma: dw0 & (1 << 31) != 0, buf: self.read32(c.desc + 4).unwrap_or(0), next: self.read32(c.desc + 8).unwrap_or(0) };
+            let d = crate::periph::DmaDesc {
+                addr: c.desc,
+                size: dw0 & 0xfff,
+                length: (dw0 >> 12) & 0xfff,
+                eof: dw0 & (1 << 30) != 0,
+                owner_dma: dw0 & (1 << 31) != 0,
+                buf: self.read32(c.desc + 4).unwrap_or(0),
+                next: self.read32(c.desc + 8).unwrap_or(0),
+            };
             let remaining = d.length.saturating_sub(c.buf_pos) as usize;
             if remaining == 0 {
                 // descriptor complete: hand back to software, raise EOF/DONE, advance
                 let ch_ref = &mut self.periph.gdma.out[ch];
-                if ch_ref.conf0 & (1 << 2) != 0 { let dw0 = self.read32(d.addr).unwrap_or(0) & !(1 << 31); let _ = self.write32(d.addr, dw0); }   // AUTO_WRBACK: owner -> cpu
+                if ch_ref.conf0 & (1 << 2) != 0 {
+                    let dw0 = self.read32(d.addr).unwrap_or(0) & !(1 << 31);
+                    let _ = self.write32(d.addr, dw0);
+                } // AUTO_WRBACK: owner -> cpu
                 let ch_ref = &mut self.periph.gdma.out[ch];
-                ch_ref.int_raw |= 1 << 0;                                                     // OUT_DONE
-                if d.eof { ch_ref.int_raw |= 1 << 1; ch_ref.eof_desc = d.addr; }             // OUT_EOF
-                if d.next == 0 { ch_ref.running = false; ch_ref.desc = 0; ch_ref.int_raw |= 1 << 3; break; }   // OUT_TOTAL_EOF
-                ch_ref.desc = d.next; ch_ref.buf_pos = 0;
+                ch_ref.int_raw |= 1 << 0; // OUT_DONE
+                if d.eof {
+                    ch_ref.int_raw |= 1 << 1;
+                    ch_ref.eof_desc = d.addr;
+                } // OUT_EOF
+                if d.next == 0 {
+                    ch_ref.running = false;
+                    ch_ref.desc = 0;
+                    ch_ref.int_raw |= 1 << 3;
+                    break;
+                } // OUT_TOTAL_EOF
+                ch_ref.desc = d.next;
+                ch_ref.buf_pos = 0;
                 continue;
             }
             let take = remaining.min(need);
@@ -265,35 +426,74 @@ impl SocBus {
             self.periph.gdma.out[ch].buf_pos += take as u32;
             need -= take;
         }
-        if !samples.is_empty() { let i2s = if which == 0 { &mut self.periph.i2s0 } else { &mut self.periph.i2s1 }; i2s.frames_out += samples.len() as u64; i2s.pcm.extend_from_slice(&samples); }
+        if !samples.is_empty() {
+            let i2s = if which == 0 {
+                &mut self.periph.i2s0
+            } else {
+                &mut self.periph.i2s1
+            };
+            i2s.frames_out += samples.len() as u64;
+            i2s.pcm.extend_from_slice(&samples);
+        }
     }
 
     /// Camera engine: when a sensor frame is due, push it through the GDMA IN channel bound to CAM (trigger 5).
     fn dma_cam_step(&mut self, cycles: u64) {
-        if !self.periph.lcd_cam.frame_due(cycles) { return; }
-        let Some(ch) = self.periph.gdma.in_channel_for(5) else { self.periph.lcd_cam.dropped += 1; return };
-        let Some((_w, _h, frame)) = self.board.camera_frame() else { self.periph.lcd_cam.dropped += 1; return };
+        if !self.periph.lcd_cam.frame_due(cycles) {
+            return;
+        }
+        let Some(ch) = self.periph.gdma.in_channel_for(5) else {
+            self.periph.lcd_cam.dropped += 1;
+            return;
+        };
+        let Some((_w, _h, frame)) = self.board.camera_frame() else {
+            self.periph.lcd_cam.dropped += 1;
+            return;
+        };
         let mut pos = 0usize;
         let mut desc = self.periph.gdma.inp[ch].desc;
         let mut last = desc;
         while desc != 0 && pos < frame.len() {
             let dw0 = self.read32(desc).unwrap_or(0);
-            let size = (dw0 & 0xfff) as usize; let buf = self.read32(desc + 4).unwrap_or(0); let next = self.read32(desc + 8).unwrap_or(0);
-            if dw0 & (1 << 31) == 0 || size == 0 { break; }                   // descriptor not owned by DMA
+            let size = (dw0 & 0xfff) as usize;
+            let buf = self.read32(desc + 4).unwrap_or(0);
+            let next = self.read32(desc + 8).unwrap_or(0);
+            if dw0 & (1 << 31) == 0 || size == 0 {
+                break;
+            } // descriptor not owned by DMA
             let n = size.min(frame.len() - pos);
             let mut i = 0;
-            while i + 4 <= n { let v = u32::from_le_bytes([frame[pos + i], frame[pos + i + 1], frame[pos + i + 2], frame[pos + i + 3]]); let _ = self.write32(buf + i as u32, v); i += 4; }
-            while i < n { let _ = self.write8(buf + i as u32, frame[pos + i]); i += 1; }
+            while i + 4 <= n {
+                let v = u32::from_le_bytes([
+                    frame[pos + i],
+                    frame[pos + i + 1],
+                    frame[pos + i + 2],
+                    frame[pos + i + 3],
+                ]);
+                let _ = self.write32(buf + i as u32, v);
+                i += 4;
+            }
+            while i < n {
+                let _ = self.write8(buf + i as u32, frame[pos + i]);
+                i += 1;
+            }
             pos += n;
             let eof = pos >= frame.len();
-            let ndw0 = (dw0 & !(0xfff << 12) & !(1 << 31) & !(1 << 30)) | ((n as u32) << 12) | if eof { 1 << 30 } else { 0 };   // length, owner=cpu, suc_eof
+            let ndw0 = (dw0 & !(0xfff << 12) & !(1 << 31) & !(1 << 30))
+                | ((n as u32) << 12)
+                | if eof { 1 << 30 } else { 0 }; // length, owner=cpu, suc_eof
             let _ = self.write32(desc, ndw0);
-            last = desc; desc = next;
+            last = desc;
+            desc = next;
         }
         let r = &mut self.periph.gdma.inp[ch];
-        r.eof_desc = last; r.desc = desc; r.int_raw |= (1 << 0) | (1 << 1);                    // IN_DONE | IN_SUC_EOF
-        if desc == 0 { r.running = false; }
-        self.periph.lcd_cam.int_raw |= 1 << 2;                                                  // CAM_VSYNC_INT
+        r.eof_desc = last;
+        r.desc = desc;
+        r.int_raw |= (1 << 0) | (1 << 1); // IN_DONE | IN_SUC_EOF
+        if desc == 0 {
+            r.running = false;
+        }
+        self.periph.lcd_cam.int_raw |= 1 << 2; // CAM_VSYNC_INT
         self.periph.lcd_cam.frames += 1;
         self.irq_dirty = true;
     }
@@ -304,14 +504,21 @@ impl SocBus {
     /// so a DMA link restart mid-frame (the RGB driver skips LCD_FIFO_PRESERVE_SIZE_PX pixels then)
     /// behaves as on silicon. Frames are published to the board and raise LCD_VSYNC.
     fn dma_lcd_step(&mut self, cycles: u64) {
-        if !self.periph.lcd_cam.lcd_running() { return; }
+        if !self.periph.lcd_cam.lcd_running() {
+            return;
+        }
         let (ha, va, bpp, frame_cycles) = self.periph.lcd_cam.lcd_geometry();
         let frame_bytes = (ha * va * bpp) as usize;
-        if frame_bytes == 0 { return; }
+        if frame_bytes == 0 {
+            return;
+        }
         const FIFO_BYTES: usize = 17 * 2;
         self.periph.lcd_cam.lcd_acc += cycles;
-        let due = (self.periph.lcd_cam.lcd_acc as u128 * frame_bytes as u128 / frame_cycles as u128) as usize;
-        if due < 512 { return; }
+        let due = (self.periph.lcd_cam.lcd_acc as u128 * frame_bytes as u128 / frame_cycles as u128)
+            as usize;
+        if due < 512 {
+            return;
+        }
         self.periph.lcd_cam.lcd_acc = 0;
         let log = self.periph.lcd_cam.lcd_log;
         // 1) top the FIFO up from DMA so that it holds `due` + lookahead bytes
@@ -319,38 +526,75 @@ impl SocBus {
             let mut want = (due + FIFO_BYTES).saturating_sub(self.periph.lcd_cam.lcd_fifo.len());
             while want > 0 {
                 let c = self.periph.gdma.out[ch];
-                if !c.running || c.desc == 0 { break; }
+                if !c.running || c.desc == 0 {
+                    break;
+                }
                 let dw0 = self.read32(c.desc).unwrap_or(0);
-                let length = (dw0 >> 12) & 0xfff; let eof = dw0 & (1 << 30) != 0; let buf = self.read32(c.desc + 4).unwrap_or(0); let next = self.read32(c.desc + 8).unwrap_or(0);
+                let length = (dw0 >> 12) & 0xfff;
+                let eof = dw0 & (1 << 30) != 0;
+                let buf = self.read32(c.desc + 4).unwrap_or(0);
+                let next = self.read32(c.desc + 8).unwrap_or(0);
                 let remaining = length.saturating_sub(c.buf_pos) as usize;
                 if remaining == 0 {
-                    if log { eprintln!("[lcd] desc {:#010x} done (buf {:#010x} len {} eof {}) -> next {:#010x}", c.desc, buf, length, eof, next); }
+                    if log {
+                        eprintln!("[lcd] desc {:#010x} done (buf {:#010x} len {} eof {}) -> next {:#010x}", c.desc, buf, length, eof, next);
+                    }
                     let ch_ref = &mut self.periph.gdma.out[ch];
                     ch_ref.int_raw |= 1 << 0;
-                    if eof { ch_ref.int_raw |= 1 << 1; ch_ref.eof_desc = c.desc; }
-                    if next == 0 { ch_ref.running = false; ch_ref.desc = 0; ch_ref.int_raw |= 1 << 3; break; }
-                    ch_ref.desc = next; ch_ref.buf_pos = 0;
+                    if eof {
+                        ch_ref.int_raw |= 1 << 1;
+                        ch_ref.eof_desc = c.desc;
+                    }
+                    if next == 0 {
+                        ch_ref.running = false;
+                        ch_ref.desc = 0;
+                        ch_ref.int_raw |= 1 << 3;
+                        break;
+                    }
+                    ch_ref.desc = next;
+                    ch_ref.buf_pos = 0;
                     self.irq_dirty = true;
                     continue;
                 }
                 let take = remaining.min(want);
                 let start = buf + c.buf_pos;
                 let mut i = 0usize;
-                while i + 4 <= take && (start + i as u32) & 3 == 0 { let v = self.read32(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_fifo.extend(v.to_le_bytes()); i += 4; }
-                while i < take { let b = self.read8(start + i as u32).unwrap_or(0); self.periph.lcd_cam.lcd_fifo.push_back(b); i += 1; }
+                while i + 4 <= take && (start + i as u32) & 3 == 0 {
+                    let v = self.read32(start + i as u32).unwrap_or(0);
+                    self.periph.lcd_cam.lcd_fifo.extend(v.to_le_bytes());
+                    i += 4;
+                }
+                while i < take {
+                    let b = self.read8(start + i as u32).unwrap_or(0);
+                    self.periph.lcd_cam.lcd_fifo.push_back(b);
+                    i += 1;
+                }
                 self.periph.gdma.out[ch].buf_pos += take as u32;
                 want -= take;
             }
         }
         // 2) the panel consumes `due` bytes from the FIFO
         let n = due.min(self.periph.lcd_cam.lcd_fifo.len());
-        for _ in 0..n { let b = self.periph.lcd_cam.lcd_fifo.pop_front().unwrap(); self.periph.lcd_cam.lcd_line.push(b); }
+        for _ in 0..n {
+            let b = self
+                .periph
+                .lcd_cam
+                .lcd_fifo
+                .pop_front()
+                .expect("the bounded LCD FIFO drain count guarantees an available byte");
+            self.periph.lcd_cam.lcd_line.push(b);
+        }
         while self.periph.lcd_cam.lcd_line.len() >= frame_bytes {
             let frame = std::mem::take(&mut self.periph.lcd_cam.lcd_line);
             self.board.lcd_frame(ha, va, &frame[..frame_bytes]);
-            if frame.len() > frame_bytes { self.periph.lcd_cam.lcd_line.extend_from_slice(&frame[frame_bytes..]); }
+            if frame.len() > frame_bytes {
+                self.periph
+                    .lcd_cam
+                    .lcd_line
+                    .extend_from_slice(&frame[frame_bytes..]);
+            }
             self.periph.lcd_cam.lcd_frames += 1;
-            self.periph.lcd_cam.int_raw |= 1 << 0;                                    // LCD_VSYNC_INT
+            self.periph.lcd_cam.int_raw |= 1 << 0; // LCD_VSYNC_INT
             self.irq_dirty = true;
         }
     }
@@ -367,11 +611,21 @@ impl SocBus {
             let mut desc = self.periph.gdma.out[out_ch].desc;
             while desc != 0 && input.len() < want {
                 let dw0 = self.read32(desc).unwrap_or(0);
-                let (len, buf, next) = (((dw0 >> 12) & 0xfff) as usize, self.read32(desc + 4).unwrap_or(0), self.read32(desc + 8).unwrap_or(0));
-                for i in 0..len { input.push(self.read8(buf + i as u32).unwrap_or(0)); }
+                let (len, buf, next) = (
+                    ((dw0 >> 12) & 0xfff) as usize,
+                    self.read32(desc + 4).unwrap_or(0),
+                    self.read32(desc + 8).unwrap_or(0),
+                );
+                for i in 0..len {
+                    input.push(self.read8(buf + i as u32).unwrap_or(0));
+                }
                 let eof = dw0 & (1 << 30) != 0;
-                let _ = self.write32(desc, dw0 & !(1 << 31));                   // hand the descriptor back
-                if eof { self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1); self.periph.gdma.out[out_ch].eof_desc = desc; break; }
+                let _ = self.write32(desc, dw0 & !(1 << 31)); // hand the descriptor back
+                if eof {
+                    self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1);
+                    self.periph.gdma.out[out_ch].eof_desc = desc;
+                    break;
+                }
                 desc = next;
             }
         }
@@ -388,79 +642,136 @@ impl SocBus {
 
     fn aes_dma_step(&mut self) {
         self.periph.aes.dma_pending = false;
-        let (Some(out_ch), Some(in_ch)) = (self.periph.gdma.out_channel_for(6), self.periph.gdma.in_channel_for(6)) else {
-            self.periph.aes.state = 2; self.periph.aes.int_raw |= 1; self.irq_dirty = true; return;
+        let (Some(out_ch), Some(in_ch)) = (
+            self.periph.gdma.out_channel_for(6),
+            self.periph.gdma.in_channel_for(6),
+        ) else {
+            self.periph.aes.state = 2;
+            self.periph.aes.int_raw |= 1;
+            self.irq_dirty = true;
+            return;
         };
         // gather input
         let mut input = Vec::new();
         let mut desc = self.periph.gdma.out[out_ch].desc;
         while desc != 0 {
             let dw0 = self.read32(desc).unwrap_or(0);
-            let (len, buf, next) = (((dw0 >> 12) & 0xfff) as usize, self.read32(desc + 4).unwrap_or(0), self.read32(desc + 8).unwrap_or(0));
-            for i in 0..len { input.push(self.read8(buf + i as u32).unwrap_or(0)); }
+            let (len, buf, next) = (
+                ((dw0 >> 12) & 0xfff) as usize,
+                self.read32(desc + 4).unwrap_or(0),
+                self.read32(desc + 8).unwrap_or(0),
+            );
+            for i in 0..len {
+                input.push(self.read8(buf + i as u32).unwrap_or(0));
+            }
             let eof = dw0 & (1 << 30) != 0;
-            let _ = self.write32(desc, dw0 & !(1 << 31));                       // hand the descriptor back
-            if eof { self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1); self.periph.gdma.out[out_ch].eof_desc = desc; break; }
+            let _ = self.write32(desc, dw0 & !(1 << 31)); // hand the descriptor back
+            if eof {
+                self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1);
+                self.periph.gdma.out[out_ch].eof_desc = desc;
+                break;
+            }
             desc = next;
         }
         if std::env::var("ESP_EMU_DEBUG_AES").is_ok() {
-            eprintln!("[aes] dma block_mode={} num_blocks={} mode={} bytes={}", self.periph.aes.block_mode, self.periph.aes.num_blocks, self.periph.aes.mode, input.len());
+            eprintln!(
+                "[aes] dma block_mode={} num_blocks={} mode={} bytes={}",
+                self.periph.aes.block_mode,
+                self.periph.aes.num_blocks,
+                self.periph.aes.mode,
+                input.len()
+            );
         }
         // transform (ECB and CBC cover what the crypto libraries ask for here)
         let key = self.periph.aes.key_bytes();
         let decrypt = self.periph.aes.decrypting();
         let block_mode = self.periph.aes.block_mode;
         let mut iv = [0u8; 16];
-        for (i, w) in self.periph.aes.iv.iter().enumerate() { iv[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes()); }
+        for (i, w) in self.periph.aes.iv.iter().enumerate() {
+            iv[4 * i..4 * i + 4].copy_from_slice(&w.to_le_bytes());
+        }
         let mut output = Vec::with_capacity(input.len());
         for chunk in input.chunks(16) {
             let mut b = [0u8; 16];
             b[..chunk.len()].copy_from_slice(chunk);
             let cipher_in = b;
             let o = match block_mode {
-                1 => {                                                          // CBC
-                    if !decrypt { for i in 0..16 { b[i] ^= iv[i]; } }
+                1 => {
+                    // CBC
+                    if !decrypt {
+                        for i in 0..16 {
+                            b[i] ^= iv[i];
+                        }
+                    }
                     let mut o = crate::crypto::aes_block(&key, &b, decrypt);
-                    if decrypt { for i in 0..16 { o[i] ^= iv[i]; } iv = cipher_in; } else { iv = o; }
+                    if decrypt {
+                        for i in 0..16 {
+                            o[i] ^= iv[i];
+                        }
+                        iv = cipher_in;
+                    } else {
+                        iv = o;
+                    }
                     o
                 }
-                2 => {                                                          // OFB: keystream feeds itself
+                2 => {
+                    // OFB: keystream feeds itself
                     let ks = crate::crypto::aes_block(&key, &iv, false);
                     iv = ks;
                     let mut o = [0u8; 16];
-                    for i in 0..16 { o[i] = b[i] ^ ks[i]; }
+                    for i in 0..16 {
+                        o[i] = b[i] ^ ks[i];
+                    }
                     o
                 }
-                3 => {                                                          // CTR: encrypt the counter, then bump it
+                3 => {
+                    // CTR: encrypt the counter, then bump it
                     let ks = crate::crypto::aes_block(&key, &iv, false);
                     let mut o = [0u8; 16];
-                    for i in 0..16 { o[i] = b[i] ^ ks[i]; }
-                    for i in (0..16).rev() { iv[i] = iv[i].wrapping_add(1); if iv[i] != 0 { break; } }
+                    for i in 0..16 {
+                        o[i] = b[i] ^ ks[i];
+                    }
+                    for i in (0..16).rev() {
+                        iv[i] = iv[i].wrapping_add(1);
+                        if iv[i] != 0 {
+                            break;
+                        }
+                    }
                     o
                 }
-                _ => crate::crypto::aes_block(&key, &b, decrypt),                // ECB
+                _ => crate::crypto::aes_block(&key, &b, decrypt), // ECB
             };
             output.extend_from_slice(&o);
             self.periph.aes.blocks += 1;
         }
-        for (i, w) in iv.chunks(4).enumerate() { self.periph.aes.iv[i] = u32::from_le_bytes([w[0], w[1], w[2], w[3]]); }
+        for (i, w) in iv.chunks(4).enumerate() {
+            self.periph.aes.iv[i] = u32::from_le_bytes([w[0], w[1], w[2], w[3]]);
+        }
         // scatter the result
         let mut pos = 0usize;
         let mut desc = self.periph.gdma.inp[in_ch].desc;
         while desc != 0 && pos < output.len() {
             let dw0 = self.read32(desc).unwrap_or(0);
-            let (size, buf, next) = ((dw0 & 0xfff) as usize, self.read32(desc + 4).unwrap_or(0), self.read32(desc + 8).unwrap_or(0));
+            let (size, buf, next) = (
+                (dw0 & 0xfff) as usize,
+                self.read32(desc + 4).unwrap_or(0),
+                self.read32(desc + 8).unwrap_or(0),
+            );
             let n = size.min(output.len() - pos);
-            for i in 0..n { let _ = self.write8(buf + i as u32, output[pos + i]); }
+            for i in 0..n {
+                let _ = self.write8(buf + i as u32, output[pos + i]);
+            }
             pos += n;
             let ndw0 = (dw0 & !(0xfff << 12) & !(1 << 31)) | ((n as u32) << 12) | (1 << 30);
             let _ = self.write32(desc, ndw0);
             self.periph.gdma.inp[in_ch].eof_desc = desc;
             self.periph.gdma.inp[in_ch].int_raw |= (1 << 0) | (1 << 1);
-            if next == 0 { break; }
+            if next == 0 {
+                break;
+            }
             desc = next;
         }
-        self.periph.aes.state = 2;                                              // DONE
+        self.periph.aes.state = 2; // DONE
         self.periph.aes.int_raw |= 1;
         self.irq_dirty = true;
     }
@@ -469,17 +780,30 @@ impl SocBus {
     fn wifi_tx_step(&mut self) {
         let pending = std::mem::take(&mut self.periph.wifi.tx_pending);
         for (slot, desc) in pending {
-            let dw0 = self.read32(desc).unwrap_or(0); let pkt = self.read32(desc + 4).unwrap_or(0);
+            let dw0 = self.read32(desc).unwrap_or(0);
+            let pkt = self.read32(desc + 4).unwrap_or(0);
             let len = ((dw0 >> 12) & 0xfff) as usize;
             let mut frame = Vec::with_capacity(len);
-            for i in 0..len { frame.push(self.read8(pkt + i as u32).unwrap_or(0)); }
-            if self.periph.wifi.log || std::env::var("ESP_EMU_DEBUG_WIFI_FRAMES").is_ok() { eprintln!("[wifi] TX slot {} desc {:#010x} pkt {:#010x} {}", slot, desc, pkt, crate::wifi::describe(&frame)); }
+            for i in 0..len {
+                frame.push(self.read8(pkt + i as u32).unwrap_or(0));
+            }
+            if self.periph.wifi.log || std::env::var("ESP_EMU_DEBUG_WIFI_FRAMES").is_ok() {
+                eprintln!(
+                    "[wifi] TX slot {} desc {:#010x} pkt {:#010x} {}",
+                    slot,
+                    desc,
+                    pkt,
+                    crate::wifi::describe(&frame)
+                );
+            }
             self.periph.wifi.tx_done(slot);
             self.irq_dirty = true;
             let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
             if let Some(ap) = &mut self.periph.wifi.ap {
                 if let Some(data) = ap.on_station_tx(&frame, now_us) {
-                    if let Some(eth) = crate::wifi::data_to_eth(&data) { self.periph.wifi.eth_tx.push(eth); }
+                    if let Some(eth) = crate::wifi::data_to_eth(&data) {
+                        self.periph.wifi.eth_tx.push(eth);
+                    }
                 }
             }
         }
@@ -493,33 +817,69 @@ impl SocBus {
         // them. So hold off until the previously delivered descriptor has been recycled by software
         // (has_data cleared) — that is what a real radio sees at low traffic — and never deliver two
         // frames closer than a frame's airtime.
-        if now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 400 { return; }
+        if now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 400 {
+            return;
+        }
         // ... but if software stops recycling altogether, don't stall the air forever: after 50 ms
         // the frame is dropped, exactly as a real ring would overflow.
-        let busy = { let d = self.periph.wifi.last_rx_desc; d != 0 && self.read32(d).unwrap_or(0) & (1 << 30) != 0 };
-        if busy && now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 50_000 { return; }
-        let mut due = { let ap = self.periph.wifi.ap.as_mut().unwrap(); ap.step(now_us) };
+        let busy = {
+            let d = self.periph.wifi.last_rx_desc;
+            d != 0 && self.read32(d).unwrap_or(0) & (1 << 30) != 0
+        };
+        if busy && now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 50_000 {
+            return;
+        }
+        let mut due = match self.periph.wifi.ap.as_mut() {
+            Some(ap) => ap.step(now_us),
+            None => return,
+        };
         let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
-        for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
-        if due.is_empty() { return; }
+        for e in eth_in {
+            if let Some(ap) = self.periph.wifi.ap.as_mut() {
+                if let Some(f) = ap.data_from_ds(&e) {
+                    due.push(crate::wifi::AirFrame {
+                        at_us: now_us,
+                        frame: f,
+                    });
+                }
+            }
+        }
+        if due.is_empty() {
+            return;
+        }
         // management responses (auth, assoc, probe) go before beacons: a connect exchange must not be
         // crowded out by beacon traffic
         due.sort_by_key(|a| (crate::wifi::is_beacon(&a.frame), a.at_us));
         let first = due.remove(0);
         self.wifi_rx_deliver(&first.frame, now_us);
         self.periph.wifi.last_rx_us = now_us;
-        if let Some(ap) = &mut self.periph.wifi.ap { for a in due { ap.queue.push(a); } }
+        if let Some(ap) = &mut self.periph.wifi.ap {
+            for a in due {
+                ap.queue.push(a);
+            }
+        }
     }
 
     /// Write one received frame into the next RX descriptor (rx_ctrl header + frame + FCS) and raise the RX event.
     fn wifi_rx_deliver(&mut self, frame: &[u8], now_us: u64) {
         let desc = self.periph.wifi.rx_next | crate::periph::DMA_ADDR_BASE;
-        if desc == 0 { self.periph.wifi.rx_dropped += 1; return; }
-        let dw0 = self.read32(desc).unwrap_or(0); let buf = self.read32(desc + 4).unwrap_or(0); let next = self.read32(desc + 8).unwrap_or(0);
+        if desc == 0 {
+            self.periph.wifi.rx_dropped += 1;
+            return;
+        }
+        let dw0 = self.read32(desc).unwrap_or(0);
+        let buf = self.read32(desc + 4).unwrap_or(0);
+        let next = self.read32(desc + 8).unwrap_or(0);
         let size = (dw0 & 0xfff) as usize;
         let total = 48 + frame.len() + 4;
-        if dw0 & (1 << 31) == 0 || buf == 0 || size < total { self.periph.wifi.rx_dropped += 1; return; }
-        let (chan, log) = { let ap = self.periph.wifi.ap.as_ref().unwrap(); (ap.cfg.channel as u32, ap.log) };
+        if dw0 & (1 << 31) == 0 || buf == 0 || size < total {
+            self.periph.wifi.rx_dropped += 1;
+            return;
+        }
+        let (chan, log) = match self.periph.wifi.ap.as_ref() {
+            Some(ap) => (ap.cfg.channel as u32, ap.log),
+            None => return,
+        };
         let mut b = Vec::with_capacity(total);
         // rx_ctrl word 0 (silicon: a real broadcast beacon reads 0x111b20ad — bit 28 set, signed rssi in the low
         // byte). The MAC has already address-filtered, so every delivered frame is "for us"; use the same flags
@@ -530,28 +890,58 @@ impl SocBus {
         let bcast = frame.len() >= 5 && frame[4] & 1 == 1;
         // filter-match nibble: bit 28 is the "accepted by the address filter" bit the blob's RX path
         // requires (silicon: a broadcast beacon reads 0x111b20ad); unicast frames add bit 29.
-        let fm = if bcast { 1u32 << 28 } else { (1u32 << 28) | (1u32 << 29) };
-        let w0: u32 = fm | (0xd8u32 & 0xff);   // rssi -40 dBm, 1 Mbps, legacy
-        let w2: u32 = (chan << 16) | (chan << 20);                                        // channel, secondary
-        let w5: u32 = 0xa6;                                                                // noise floor -90
-        let w11: u32 = ((frame.len() + 4) as u32 & 0xfff) | (0 << 24);                    // sig_len (incl. FCS), rx_state OK
-        for w in [w0, 0, w2, now_us as u32, 0, w5, 0, 0, 0, 0, 0, w11] { b.extend_from_slice(&w.to_le_bytes()); }
-        b.extend_from_slice(frame); b.extend_from_slice(&crate::wifi::fcs(frame).to_le_bytes());
+        let fm = if bcast {
+            1u32 << 28
+        } else {
+            (1u32 << 28) | (1u32 << 29)
+        };
+        let w0: u32 = fm | (0xd8u32 & 0xff); // rssi -40 dBm, 1 Mbps, legacy
+        let w2: u32 = (chan << 16) | (chan << 20); // channel, secondary
+        let w5: u32 = 0xa6; // noise floor -90
+        let w11: u32 = (frame.len() + 4) as u32 & 0xfff; // sig_len (incl. FCS), rx_state OK
+        for w in [w0, 0, w2, now_us as u32, 0, w5, 0, 0, 0, 0, 0, w11] {
+            b.extend_from_slice(&w.to_le_bytes());
+        }
+        b.extend_from_slice(frame);
+        b.extend_from_slice(&crate::wifi::fcs(frame).to_le_bytes());
         let mut i = 0usize;
-        while i + 4 <= b.len() { let v = u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]); let _ = self.write32(buf + i as u32, v); i += 4; }
-        while i < b.len() { let _ = self.write8(buf + i as u32, b[i]); i += 1; }
-        let ndw0 = (dw0 & !(0xfff << 12)) | ((total as u32) << 12) | (1 << 30) | (1 << 31);   // length; owner AND has_data set (verified on silicon 2026-08-25: dw0=0xc0..)
+        while i + 4 <= b.len() {
+            let v = u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+            let _ = self.write32(buf + i as u32, v);
+            i += 4;
+        }
+        while i < b.len() {
+            let _ = self.write8(buf + i as u32, b[i]);
+            i += 1;
+        }
+        let ndw0 = (dw0 & !(0xfff << 12)) | ((total as u32) << 12) | (1 << 30) | (1 << 31); // length; owner AND has_data set (verified on silicon 2026-08-25: dw0=0xc0..)
         let _ = self.write32(desc, ndw0);
         let w = &mut self.periph.wifi;
-        w.rx_last = (desc & 0xf_ffff) | (1 << 24); w.rx_next = next & 0xf_ffff; w.last_rx_desc = desc; w.rx_frames += 1; w.events |= (1 << 14) | (1 << 24);   // RX data (wDev_ProcessFiq tests 0x1004000)   // registers hold masked descriptor addrs; rx_last has a 0x01 prefix (silicon)
-        if log { let d = crate::wifi::describe(frame); if d.contains("auth")||d.contains("assoc") { eprintln!("[wifi] RX AUTH/ASSOC -> desc {:#010x} buf {:#010x} {}", desc, buf, d); } else { eprintln!("[wifi] RX -> desc {:#010x} {}", desc, d); } }
+        w.rx_last = (desc & 0xf_ffff) | (1 << 24);
+        w.rx_next = next & 0xf_ffff;
+        w.last_rx_desc = desc;
+        w.rx_frames += 1;
+        w.events |= (1 << 14) | (1 << 24); // RX data (wDev_ProcessFiq tests 0x1004000)   // registers hold masked descriptor addrs; rx_last has a 0x01 prefix (silicon)
+        if log {
+            let d = crate::wifi::describe(frame);
+            if d.contains("auth") || d.contains("assoc") {
+                eprintln!(
+                    "[wifi] RX AUTH/ASSOC -> desc {:#010x} buf {:#010x} {}",
+                    desc, buf, d
+                );
+            } else {
+                eprintln!("[wifi] RX -> desc {:#010x} {}", desc, d);
+            }
+        }
         self.irq_dirty = true;
     }
 
     pub fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> {
         for (i, b) in data.iter().enumerate() {
             let a = addr.wrapping_add(i as u32);
-            let Some(e) = self.lookup(a) else { return Err(format!("load: address {:#010x} not mapped", a)) };
+            let Some(e) = self.lookup(a) else {
+                return Err(format!("load: address {:#010x} not mapped", a));
+            };
             let o = e.off as usize + (a - e.lo) as usize;
             self.buf_mut(e.src as u8)[o] = *b;
             self.bump(e.vbase, o - e.off as usize, 1);
@@ -562,74 +952,183 @@ impl SocBus {
 
 impl Bus for SocBus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault> {
-        if Self::is_periph(addr) { return Ok(self.periph_read(addr, 1) as u8); }
-        let Some(e) = self.lookup(addr) else { self.last_fault = Some((addr, false)); return Err(Fault::Unmapped) };
+        if Self::is_periph(addr) {
+            return Ok(self.periph_read(addr, 1) as u8);
+        }
+        let Some(e) = self.lookup(addr) else {
+            self.last_fault = Some((addr, false));
+            return Err(Fault::Unmapped);
+        };
         Ok(self.buf(e.src as u8)[e.off as usize + (addr - e.lo) as usize])
     }
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
-        if Self::is_periph(addr) { return Ok(self.periph_read(addr, 2) as u16); }
+        if Self::is_periph(addr) {
+            return Ok(self.periph_read(addr, 2) as u16);
+        }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
-            Some(_) => Ok(u16::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?])),       // straddles a page
-            None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
+            Some(e) if addr.wrapping_add(2) <= e.hi => {
+                let o = e.off as usize + (addr - e.lo) as usize;
+                Ok(u16::from_le_bytes(
+                    self.buf(e.src as u8)[o..o + 2]
+                        .try_into()
+                        .expect("the mapped two-byte read has the required width"),
+                ))
+            }
+            Some(_) => Ok(u16::from_le_bytes([
+                self.read8(addr)?,
+                self.read8(addr + 1)?,
+            ])), // straddles a page
+            None => {
+                self.last_fault = Some((addr, false));
+                Err(Fault::Unmapped)
+            }
         }
     }
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
-        if Self::is_periph(addr) { return Ok(self.periph_read(addr, 4)); }
+        if Self::is_periph(addr) {
+            return Ok(self.periph_read(addr, 4));
+        }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
-            Some(_) => Ok(u32::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?, self.read8(addr + 2)?, self.read8(addr + 3)?])),
-            None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
+            Some(e) if addr.wrapping_add(4) <= e.hi => {
+                let o = e.off as usize + (addr - e.lo) as usize;
+                Ok(u32::from_le_bytes(
+                    self.buf(e.src as u8)[o..o + 4]
+                        .try_into()
+                        .expect("the mapped four-byte read has the required width"),
+                ))
+            }
+            Some(_) => Ok(u32::from_le_bytes([
+                self.read8(addr)?,
+                self.read8(addr + 1)?,
+                self.read8(addr + 2)?,
+                self.read8(addr + 3)?,
+            ])),
+            None => {
+                self.last_fault = Some((addr, false));
+                Err(Fault::Unmapped)
+            }
         }
     }
     fn write8(&mut self, addr: u32, v: u8) -> Result<(), Fault> {
-        if Self::is_periph(addr) { self.periph_write(addr, v as u32, 1); return Ok(()); }
+        if Self::is_periph(addr) {
+            self.periph_write(addr, v as u32, 1);
+            return Ok(());
+        }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 => { let rel = (addr - e.lo) as usize; self.buf_mut(e.src as u8)[e.off as usize + rel] = v; self.bump(e.vbase, rel, 1); Ok(()) }
-            _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
+            Some(e) if e.writable != 0 => {
+                let rel = (addr - e.lo) as usize;
+                self.buf_mut(e.src as u8)[e.off as usize + rel] = v;
+                self.bump(e.vbase, rel, 1);
+                Ok(())
+            }
+            _ => {
+                self.last_fault = Some((addr, true));
+                Err(Fault::Prohibited)
+            }
         }
     }
     fn write16(&mut self, addr: u32, v: u16) -> Result<(), Fault> {
-        if Self::is_periph(addr) { self.periph_write(addr, v as u32, 2); return Ok(()); }
+        if Self::is_periph(addr) {
+            self.periph_write(addr, v as u32, 2);
+            return Ok(());
+        }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 && addr.wrapping_add(2) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
-            Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); self.write8(addr, b[0])?; self.write8(addr + 1, b[1]) }
-            _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
+            Some(e) if e.writable != 0 && addr.wrapping_add(2) <= e.hi => {
+                let rel = (addr - e.lo) as usize;
+                let o = e.off as usize + rel;
+                self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes());
+                self.bump(e.vbase, rel, 2);
+                Ok(())
+            }
+            Some(e) if e.writable != 0 => {
+                let b = v.to_le_bytes();
+                self.write8(addr, b[0])?;
+                self.write8(addr + 1, b[1])
+            }
+            _ => {
+                self.last_fault = Some((addr, true));
+                Err(Fault::Prohibited)
+            }
         }
     }
     fn write32(&mut self, addr: u32, v: u32) -> Result<(), Fault> {
-        if Self::is_periph(addr) { self.periph_write(addr, v, 4); return Ok(()); }
+        if Self::is_periph(addr) {
+            self.periph_write(addr, v, 4);
+            return Ok(());
+        }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 && addr.wrapping_add(4) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
-            Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); for i in 0..4 { self.write8(addr + i, b[i as usize])?; } Ok(()) }
-            _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
+            Some(e) if e.writable != 0 && addr.wrapping_add(4) <= e.hi => {
+                let rel = (addr - e.lo) as usize;
+                let o = e.off as usize + rel;
+                self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes());
+                self.bump(e.vbase, rel, 4);
+                Ok(())
+            }
+            Some(e) if e.writable != 0 => {
+                let b = v.to_le_bytes();
+                for i in 0..4 {
+                    self.write8(addr + i, b[i as usize])?;
+                }
+                Ok(())
+            }
+            _ => {
+                self.last_fault = Some((addr, true));
+                Err(Fault::Prohibited)
+            }
         }
     }
     fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
-        let Some(e) = self.lookup(pc) else { self.last_fault = Some((pc, false)); return Err(Fault::Unmapped) };
+        let Some(e) = self.lookup(pc) else {
+            self.last_fault = Some((pc, false));
+            return Err(Fault::Unmapped);
+        };
         let o = e.off as usize + (pc - e.lo) as usize;
         let b = self.buf(e.src as u8);
-        if let Some(w) = b.get(o..o + 4) { return Ok(w.try_into().unwrap()); }
+        if let Some(w) = b.get(o..o + 4) {
+            return Ok(w
+                .try_into()
+                .expect("the requested four-byte fetch slice has the required width"));
+        }
         // last bytes of a buffer (or of a mapped page): what physical memory has, zero beyond
         let mut r = [0u8; 4];
-        for i in 0..4 { if let Some(x) = b.get(o + i) { r[i] = *x; } }
+        for (i, byte) in r.iter_mut().enumerate() {
+            if let Some(x) = b.get(o + i) {
+                *byte = *x;
+            }
+        }
         Ok(r)
     }
     #[inline(always)]
-    fn page_versions(&self) -> &[u32] { &self.page_ver }
+    fn page_versions(&self) -> &[u32] {
+        &self.page_ver
+    }
     #[inline(always)]
-    fn note_pc(&mut self, pc: u32) { self.periph.cur_pc = pc; }
-    fn fast_mem(&mut self) -> Option<FastMem> { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) }
+    fn note_pc(&mut self, pc: u32) {
+        self.periph.cur_pc = pc;
+    }
+    fn fast_mem(&mut self) -> Option<FastMem> {
+        Some(FastMem {
+            tlb: self.tlb.as_ptr(),
+            page_ver: self.page_ver.as_mut_ptr(),
+        })
+    }
     #[inline(always)]
-    fn block_break(&self) -> bool { self.irq_dirty }
+    fn block_break(&self) -> bool {
+        self.irq_dirty
+    }
     fn code_page(&mut self, pc: u32) -> u32 {
-        match self.lookup(pc) { Some(e) => e.vbase + ((pc - e.lo) >> VPAGE_SHIFT), None => self.page_ver.len() as u32 - 1 }
+        match self.lookup(pc) {
+            Some(e) => e.vbase + ((pc - e.lo) >> VPAGE_SHIFT),
+            None => self.page_ver.len() as u32 - 1,
+        }
     }
     /// Returns 1 when device models actually ran (so interrupt lines may have changed), else 0.
     fn tick(&mut self, cycles: u32) -> u32 {
         self.cycles += cycles as u64;
         self.tick_pending += cycles;
-        if self.tick_pending < self.tick_budget { return 0; }
+        if self.tick_pending < self.tick_budget {
+            return 0;
+        }
         self.flush_ticks();
         1
     }
@@ -639,7 +1138,9 @@ impl SocBus {
     /// Deliver the deferred cycles to the device models now.
     pub fn flush_ticks(&mut self) {
         let c = std::mem::take(&mut self.tick_pending);
-        if c == 0 { return; }
+        if c == 0 {
+            return;
+        }
         self.tick_impl(c);
         self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
     }
@@ -649,11 +1150,19 @@ impl SocBus {
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
-        if !self.periph.wifi.tx_pending.is_empty() { self.wifi_tx_step(); }
-        if self.periph.aes.dma_pending { self.aes_dma_step(); }
-        if self.periph.sha.dma_pending { self.sha_dma_step(); }
-        if self.periph.wifi.ap.is_some() { self.wifi_air_step(); }
-        if self.periph.wifi.net.is_some() {
+        if !self.periph.wifi.tx_pending.is_empty() {
+            self.wifi_tx_step();
+        }
+        if self.periph.aes.dma_pending {
+            self.aes_dma_step();
+        }
+        if self.periph.sha.dma_pending {
+            self.sha_dma_step();
+        }
+        if self.periph.wifi.ap.is_some() {
+            self.wifi_air_step();
+        }
+        if let Some(net) = self.periph.wifi.net.as_mut() {
             let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
             let out = std::mem::take(&mut self.periph.wifi.eth_tx);
             // Frames from the station are handled the moment they are sent, but reading the host
@@ -662,17 +1171,31 @@ impl SocBus {
             const NET_POLL_US: u64 = 500;
             let due = now_us.wrapping_sub(self.periph.wifi.net_polled_us) >= NET_POLL_US;
             if !out.is_empty() || due {
-                if due { self.periph.wifi.net_polled_us = now_us; }
-                let net = self.periph.wifi.net.as_mut().unwrap();
+                if due {
+                    self.periph.wifi.net_polled_us = now_us;
+                }
                 let mut replies = Vec::new();
-                for e in out { replies.extend(net.handle(&e, now_us)); }
+                for e in out {
+                    replies.extend(net.handle(&e, now_us));
+                }
                 replies.extend(net.poll(now_us));
                 self.periph.wifi.eth_rx.extend(replies);
             }
         }
-        if !self.periph.gpio.changes.is_empty() { let ch = std::mem::take(&mut self.periph.gpio.changes); self.board.gpio_changes(&ch); }
-        if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
-        if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
+        if !self.periph.gpio.changes.is_empty() {
+            let ch = std::mem::take(&mut self.periph.gpio.changes);
+            self.board.gpio_changes(&ch);
+        }
+        if !self.periph.spi2.tx.is_empty() {
+            let d = std::mem::take(&mut self.periph.spi2.tx);
+            self.board.spi_tx(2, &d);
+        }
+        if !self.periph.rmt.done.is_empty() {
+            for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) {
+                self.board.rmt_frame(ch, &bits);
+            }
+            self.irq_dirty = true;
+        }
         0
     }
 }
