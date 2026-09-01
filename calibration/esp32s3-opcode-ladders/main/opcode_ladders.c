@@ -192,15 +192,16 @@ static void print_cycles_per_op(uint64_t doubled_cycles) {
   printf("%" PRIu64 ".%06" PRIu64, whole, fraction);
 }
 
-static void emit_refusal(const probe_t *probe) {
+static void emit_refusal(const char *name) {
   printf("CAL_RECORD {\"type\":\"refusal\",\"name\":\"%s\","
          "\"reason\":\"cache-counter mismatch during IRAM issue block\","
          "\"tierCandidate\":\"distribution\"}\n",
-         probe->id);
+         name);
   fflush(stdout);
 }
 
-static void emit_metric(const probe_t *probe, const uint32_t *samples) {
+static void emit_metric(const char *name, const char *pattern,
+                        const uint32_t *samples) {
   uint32_t ordered[SAMPLES];
   memcpy(ordered, samples, sizeof(ordered));
   sort_samples(ordered);
@@ -208,7 +209,7 @@ static void emit_metric(const probe_t *probe, const uint32_t *samples) {
          "\"memory\":\"iram\",\"access_pattern\":\"%s\","
          "\"operations_per_trial\":%u,\"bytes_per_operation\":0,"
          "\"ccount_samples\":[",
-         probe->id, probe->pattern, OPS_PER_BLOCK);
+         name, pattern, OPS_PER_BLOCK);
   for (uint32_t index = 0; index < SAMPLES; ++index) {
     printf("%s%" PRIu32, index == 0 ? "" : ",", samples[index]);
   }
@@ -224,25 +225,34 @@ static void emit_metric(const probe_t *probe, const uint32_t *samples) {
   fflush(stdout);
 }
 
-static void run_probe(const probe_t *probe) {
-  uint32_t samples[SAMPLES];
-  bool cache_mismatch = false;
-  probe->function(&benchmark_word);
+static void IRAM_ATTR __attribute__((noinline))
+measure_probe_samples(probe_fn_t function, uint32_t *samples,
+                      bool *cache_mismatch) {
+  bool mismatch = false;
+  function(&benchmark_word);
   for (uint32_t sample = 0; sample < SAMPLES; ++sample) {
     clear_cache_counters();
     const uint32_t previous = mask_interrupts();
     const uint32_t start = read_ccount();
-    probe->function(&benchmark_word);
+    function(&benchmark_word);
     const uint32_t end = read_ccount();
     restore_interrupts(previous);
     const cache_counters_t counters = read_cache_counters();
     samples[sample] = end - start;
-    cache_mismatch = cache_mismatch || !counters_zero(counters);
+    mismatch = mismatch || !counters_zero(counters);
   }
+  *cache_mismatch = mismatch;
+}
+
+static void run_probe(const char *name, probe_fn_t function,
+                      const char *pattern) {
+  uint32_t samples[SAMPLES];
+  bool cache_mismatch = false;
+  measure_probe_samples(function, samples, &cache_mismatch);
   if (cache_mismatch) {
-    emit_refusal(probe);
+    emit_refusal(name);
   } else {
-    emit_metric(probe, samples);
+    emit_metric(name, pattern, samples);
   }
 }
 
@@ -261,7 +271,10 @@ void app_main(void) {
   fflush(stdout);
 
   for (uint32_t index = 0; index < sizeof(probes) / sizeof(probes[0]); ++index) {
-    run_probe(&probes[index]);
+    const char *const name = probes[index].id;
+    const probe_fn_t function = probes[index].function;
+    const char *const pattern = probes[index].pattern;
+    run_probe(name, function, pattern);
   }
 
   printf("CALIBRATION_DONE sink=%" PRIu32 "\n", benchmark_word);
