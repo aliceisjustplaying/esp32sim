@@ -1,9 +1,11 @@
-//! Differential decoder test: every instruction in objdump's disassembly of the C3 mask ROM and
-//! of real firmware must decode to the same mnemonic and operands.
-//! Set RISCV_DIS_FILES=/path/rom.dis:/path/app.dis (skipped, loudly, if unset).
+//! Differential decoder test against the committed objdump corpus.
+//! RISCV_DIS_FILES may name additional disassembly files.
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use riscv_rv32::decode::decode;
 use riscv_rv32::disasm;
+
+const MANDATORY_CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/corpus/mandatory.dis");
 
 fn norm_num(t: &str) -> Option<i64> {
     let t = t.trim();
@@ -23,14 +25,15 @@ fn same_operand(mine: &str, theirs: &str) -> bool {
 
 #[test]
 fn decoder_matches_objdump() {
-    let Ok(files) = std::env::var("RISCV_DIS_FILES") else {
-        eprintln!("RISCV_DIS_FILES unset — skipping (see docs/esp32c3-plan.md for how to generate)");
-        return;
-    };
+    let mut files = vec![PathBuf::from(MANDATORY_CORPUS)];
+    if let Some(extra) = std::env::var_os("RISCV_DIS_FILES") {
+        files.extend(std::env::split_paths(&extra));
+    }
     let (mut total, mut bad) = (0usize, 0usize);
     let mut by_mnemonic: BTreeMap<String, (usize, usize, String)> = BTreeMap::new();
-    for file in files.split(':') {
-        let text = std::fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {}", file, e));
+    for file in files {
+        let text = std::fs::read_to_string(&file)
+            .unwrap_or_else(|e| panic!("{}: {}", file.display(), e));
         for line in text.lines() {
             // "40000000:\t0000006f          \tj\t40000000 <_start>"
             let l = line.trim_start();
@@ -42,7 +45,7 @@ fn decoder_matches_objdump() {
             let Ok(word) = u32::from_str_radix(hex, 16) else { continue };
             let len = hex.len() / 2;
             if len != 2 && len != 4 { continue; }
-            // objdump appends " <sym+0x..>" and "# 0x.. <sym>" comments — not part of the operands
+            // objdump appends " <sym+0x..>" and "# 0x.. <sym>" comments, not part of the operands
             let mut t = text.trim();
             if let Some(p) = t.find(" <") { t = &t[..p]; }
             if let Some(p) = t.find(" #") { t = &t[..p]; }
@@ -71,7 +74,7 @@ fn decoder_matches_objdump() {
             }
         }
     }
-    assert!(total > 1000, "only {} instructions parsed — is the .dis file right?", total);
+    assert!(total > 0, "no instructions parsed from the .dis files");
     if bad > 0 {
         let mut worst: Vec<_> = by_mnemonic.iter().filter(|(_, v)| v.1 > 0).collect();
         worst.sort_by_key(|(_, v)| std::cmp::Reverse(v.1));

@@ -1,9 +1,11 @@
-//! Differential decoder test: every instruction in objdump's disassembly of the
-//! firmware and the mask ROM must decode to the same mnemonic + operands.
-//! Set XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis (skipped if unset).
+//! Differential decoder test against the committed objdump corpus.
+//! XTENSA_DIS_FILES may name additional disassembly files.
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use xtensa_lx7::decode::{decode, Op};
 use xtensa_lx7::disasm;
+
+const MANDATORY_CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/corpus/mandatory.dis");
 
 fn norm_num(tok: &str) -> Option<i64> {
     let t = tok.trim();
@@ -22,12 +24,16 @@ fn same_operand(mine: &str, theirs: &str) -> bool {
 
 #[test]
 fn decoder_matches_objdump() {
-    let Ok(files) = std::env::var("XTENSA_DIS_FILES") else { eprintln!("XTENSA_DIS_FILES unset — skipping"); return; };
+    let mut files = vec![PathBuf::from(MANDATORY_CORPUS)];
+    if let Some(extra) = std::env::var_os("XTENSA_DIS_FILES") {
+        files.extend(std::env::split_paths(&extra));
+    }
     let mut total = 0usize;
     let mut bad = 0usize;
     let mut by_mnemonic: BTreeMap<String, (usize, usize, String)> = BTreeMap::new();
-    for file in files.split(':') {
-        let text = std::fs::read_to_string(file).expect("read dis file");
+    for file in files {
+        let text = std::fs::read_to_string(&file)
+            .unwrap_or_else(|e| panic!("{}: {}", file.display(), e));
         for line in text.lines() {
             // "40374404:\t36 41 00 \tentry\ta1, 32"   (objdump prints bytes reversed as one hex string on xtensa)
             let mut parts = line.splitn(3, '\t');
