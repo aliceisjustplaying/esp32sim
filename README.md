@@ -189,6 +189,15 @@ Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`, `ESP_EMU_DEBUG_W
 [networking how-to](docs/networking-howto.md), the [WiFi](docs/wifi-plan.md) and
 [networking](docs/networking-plan.md) design notes, and the [testing](docs/testing-plan.md) plan.
 
+## Development checks
+
+The workspace uses the Rust 1.98.0 toolchain pinned in `rust-toolchain.toml`.
+Enable the opt-in Git hooks once per clone:
+```sh
+git config core.hooksPath .githooks
+```
+CI runs formatting, strict clippy checks, a release workspace build, and the golden tests.
+
 ## Provenance
 
 Written from the ESP‑IDF register headers, the Xtensa core config shipped with ESP‑IDF, the
