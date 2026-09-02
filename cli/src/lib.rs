@@ -31,6 +31,7 @@ pub struct Opts {
     pub profile: bool, pub profile_blocks: bool, pub coverage: Option<Option<String>>, pub irq_latency: bool, pub vcd: Option<String>,
     pub regstat: Option<String>, pub regtrace: Option<String>, pub regtrace_max: u64, pub regtrace_from_pc: Option<u32>,
     pub stubs: Vec<String>, pub trace_fns: Vec<String>, pub stop_exc: u64, pub log_periph: bool, pub no_jit: bool, pub debug: Vec<String>,
+    pub measured: bool,
 }
 
 pub fn parse(args: &[String], default_chip: &str) -> Opts {
@@ -96,6 +97,7 @@ pub fn parse(args: &[String], default_chip: &str) -> Opts {
             "--stop-after-exceptions" => o.stop_exc = next().parse().expect("count"),
             "--log-periph" => o.log_periph = true,
             "--no-jit" => o.no_jit = true,
+            "--measured" => o.measured = true,
             "--debug" => o.debug.push(next()),
             "-h" | "--help" => usage(default_chip),
             _ => { eprintln!("unknown arg {}", a); usage(default_chip) }
@@ -117,11 +119,16 @@ pub fn run_cli(default_chip: &str) {
     let args: Vec<String> = std::env::args().collect();
     let o = parse(&args, default_chip);
     match o.chip.as_str() {
-        "s3" | "esp32s3" => { let m = setup_s3(&o); run(m, &o) }
-        "c3" | "esp32c3" => { let m = setup_c3(&o); run(m, &o) }
-        "c6" | "esp32c6" => { let m = setup_c6(&o); run(m, &o) }
+        "s3" | "esp32s3" => { let m = setup_s3(&o); if o.measured { run_measured_s3(m, &o) } else { run(m, &o) } }
+        "c3" | "esp32c3" => { if o.measured { unavailable_measured("C3") } let m = setup_c3(&o); run(m, &o) }
+        "c6" | "esp32c6" => { if o.measured { unavailable_measured("C6") } let m = setup_c6(&o); run(m, &o) }
         c => { eprintln!("--chip {}: s3, c3 or c6", c); std::process::exit(2) }
     }
+}
+
+fn unavailable_measured(chip: &str) -> ! {
+    eprintln!("--measured is not available on the {chip}");
+    std::process::exit(2)
 }
 
 fn setup_s3(o: &Opts) -> esp32s3::Machine {
@@ -200,6 +207,91 @@ fn setup_c6(o: &Opts) -> esp32c6::Machine {
         if on { eprintln!("{} is not available on the C6", flag); std::process::exit(2); }
     }
     m
+}
+
+const MEASURED_READY_MARKER: &[u8] = b"TINYDRAW_VECTOR_V2_READY";
+
+fn sha256(path: &std::path::Path) -> Result<String, String> {
+    let output = std::process::Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(path)
+        .output()
+        .map_err(|error| format!("cannot run shasum for {}: {error}", path.display()))?;
+    if !output.status.success() { return Err(format!("shasum failed for {}", path.display())); }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|error| format!("shasum output is not UTF-8: {error}"))?;
+    let digest = text.split_whitespace().next()
+        .ok_or_else(|| format!("shasum returned no digest for {}", path.display()))?;
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!("shasum returned an invalid digest for {}", path.display()));
+    }
+    Ok(digest.to_string())
+}
+
+fn refusal_class(refusal: &esp32s3::backend::MeasuredBootRefusal) -> String {
+    match refusal.error {
+        esp32s3::MeasuredStepError::Unpriced(class) => format!("{class:?}"),
+        other => format!("{other:?}"),
+    }
+}
+
+fn measured_report(stop: esp32s3::backend::MeasuredBootStop, elf_sha256: &str, rom_elf_sha256: &str) -> String {
+    use esp32s3::backend::MeasuredBootStop;
+    match stop {
+        MeasuredBootStop::Refusal { boot_cycle, core_cycles, refusal } => {
+            let config = refusal.configuration;
+            format!(concat!(
+                "{{\n  \"schema\": 1,\n  \"image\": {{\n",
+                "    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n",
+                "    \"elf_sha256\": \"{}\",\n    \"rom_elf_sha256\": \"{}\"\n  }},\n",
+                "  \"outcome\": \"refusal\",\n  \"boot_cycle\": {},\n  \"core_cycles\": [{}, {}],\n",
+                "  \"ready\": false,\n  \"deterministic_runs\": 2,\n  \"refusals\": [\n    {{\n",
+                "      \"class\": \"{}\",\n      \"chip_config\": {{\n",
+                "        \"cpu_mhz\": {},\n        \"flash_mode\": \"{:?}\",\n        \"flash_mhz\": {},\n",
+                "        \"psram_mode\": \"{:?}\",\n        \"psram_mhz\": {},\n",
+                "        \"icache_size_bytes\": {},\n        \"icache_ways\": {},\n        \"icache_line_bytes\": {},\n",
+                "        \"dcache_size_bytes\": {},\n        \"dcache_ways\": {},\n        \"dcache_line_bytes\": {}\n      }},\n",
+                "      \"count\": 1,\n      \"first_core\": \"{:?}\",\n      \"first_pc\": \"{:#010x}\",\n",
+                "      \"first_symbol\": \"{}\"\n    }}\n  ]\n}}\n"
+            ), elf_sha256, rom_elf_sha256, boot_cycle, core_cycles[0], core_cycles[1],
+                refusal_class(&refusal), config.cpu_mhz, config.flash_mode, config.flash_mhz,
+                config.psram_mode, config.psram_mhz, config.icache_size_bytes, config.icache_ways,
+                config.icache_line_bytes, config.dcache_size_bytes, config.dcache_ways,
+                config.dcache_line_bytes, refusal.core, refusal.pc,
+                esp_soc::web::json_escape(&refusal.symbol))
+        }
+        MeasuredBootStop::Ready { boot_cycle, core_cycles } => format!(
+            "{{\n  \"schema\": 1,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"ready\",\n  \"boot_cycle\": {boot_cycle},\n  \"core_cycles\": [{}, {}],\n  \"ready\": true,\n  \"deterministic_runs\": 2,\n  \"refusals\": []\n}}\n",
+            core_cycles[0], core_cycles[1]
+        ),
+        MeasuredBootStop::StepLimit { core_cycles } => format!(
+            "{{\n  \"schema\": 1,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"step_limit\",\n  \"core_cycles\": [{}, {}]\n}}\n",
+            core_cycles[0], core_cycles[1]
+        ),
+    }
+}
+
+fn run_measured_s3(mut m: esp32s3::Machine, o: &Opts) {
+    let rom = o.rom.clone().or_else(|| find_rom(esp32s3::S3::ROM_ELF));
+    let Some(rom_path) = rom else { eprintln!("--measured requires --rom"); std::process::exit(2) };
+    let Some(elf_path) = o.elfs.last().map(PathBuf::from) else { eprintln!("--measured requires --elf"); std::process::exit(2) };
+    let rom_bytes = std::fs::read(&rom_path).expect("rom");
+    m.load_rom(&rom_bytes).expect("rom");
+    if let Some(p) = &o.flash_image { m.write_flash(0, &std::fs::read(p).expect("flash image")).unwrap(); }
+    if let Some(p) = &o.bootloader { m.write_flash(0, &std::fs::read(p).expect("bootloader")).unwrap(); }
+    if let Some(p) = &o.ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }
+    if let Some(p) = &o.app { m.write_flash(0x10000, &std::fs::read(p).expect("app")).unwrap(); }
+    for p in &o.elfs { m.add_symbols(&std::fs::read(p).expect("elf")).expect("elf symbols"); }
+    match o.boot.as_deref().unwrap_or("app") {
+        "app" => { m.boot_app(0x10000).unwrap_or_else(|error| { eprintln!("[emu] {error}"); std::process::exit(2) }); }
+        "rom" => m.boot_rom(),
+        _ => { eprintln!("--boot app|rom"); std::process::exit(2) }
+    }
+    let elf_sha256 = sha256(&elf_path).unwrap_or_else(|error| { eprintln!("{error}"); std::process::exit(2) });
+    let rom_elf_sha256 = sha256(&rom_path).unwrap_or_else(|error| { eprintln!("{error}"); std::process::exit(2) });
+    let mut scheduler = esp32s3::backend::MeasuredBootScheduler::new(m);
+    let stop = scheduler.run_until(MEASURED_READY_MARKER, o.max_insns);
+    print!("{}", measured_report(stop, &elf_sha256, &rom_elf_sha256));
 }
 
 /// Everything after the chip is set up: images, boot, observers, the run, the reports.
