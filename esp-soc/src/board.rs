@@ -13,6 +13,40 @@ pub struct BoardEdge {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Spi2Mode {
+    Single,
+    Dual,
+    Quad,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Spi2DmaRequest {
+    pub submitted_at: VirtualCycle,
+    pub bytes: usize,
+    pub clock_hz: u32,
+    pub mode: Spi2Mode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Spi2DmaTiming {
+    pub submit_cycles: VirtualCycle,
+    pub completion_cycle: VirtualCycle,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Spi2DmaTimingRefusal {
+    UnsupportedBoard,
+    UnsupportedMode { mode: Spi2Mode },
+    UnsupportedClock { clock_hz: u32 },
+    UnpricedPayload {
+        bytes: usize,
+        tier_candidate: backend_api::CostTier,
+    },
+    CompletionOverflow,
+    TransferAlreadyPending,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BoardDeadlineError {
     TimeReversed {
         current: VirtualCycle,
@@ -35,6 +69,15 @@ pub trait BoardModel {
         self.spi_tx(host, tx);
         vec![0xff; rx_len]
     }
+    /// Schedule the completion edge for a receipt-scoped SPI2 DMA transfer.
+    fn schedule_spi2_dma(
+        &mut self,
+        _request: Spi2DmaRequest,
+    ) -> Result<Spi2DmaTiming, Spi2DmaTimingRefusal> {
+        Err(Spi2DmaTimingRefusal::UnsupportedBoard)
+    }
+    /// Consume one SPI2 DMA completion delivered by the last deadline advance.
+    fn take_spi2_dma_completion(&mut self) -> bool { false }
     fn gpio_events(&self) -> u64 { 0 }
     /// Devices on the I2C buses: (bus, 7-bit address, device).
     fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn I2cDevice>)> { Vec::new() }
