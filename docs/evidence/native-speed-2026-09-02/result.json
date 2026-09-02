@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-02",
+  "acceptance": {
+    "requiredMarker": "TINYDRAW_VECTOR_V2_READY",
+    "requiredRuns": 5,
+    "completedRuns": 0,
+    "status": "blocked",
+    "reason": "The authorized product image did not emit READY before any of five escalating MaxInsns ceilings."
+  },
+  "mode": {
+    "buildProfile": "release",
+    "execution": "native fast mode",
+    "boot": "rom",
+    "board": "waveshare-amoled18-v2",
+    "flashMiB": 16,
+    "psramMiB": 8,
+    "console": "usb",
+    "environment": "TINYDRAW_VECTOR_V2_BUILD"
+  },
+  "machine": {
+    "modelIdentifier": "MacBookPro18,3",
+    "processor": "Apple M1 Pro",
+    "memoryBytes": 34359738368,
+    "architecture": "arm64",
+    "operatingSystem": "macOS 27.0",
+    "buildVersion": "26A5421a"
+  },
+  "esp32sim": {
+    "commit": "42d30f771b179ec77f50516c13e5a238bd39488c",
+    "binarySha256": "a6c720d21b9ba56f93241973c96abde6e3d9b090a8db2f3fc06ee62d286a33e5"
+  },
+  "productImage": {
+    "sourceCommit": "fc6d9347549730a0e57aa926f8f6935e12636844",
+    "appVersion": "2.2.0-35-gfc6d934",
+    "espIdf": "v6.1",
+    "provenance": "docs/evidence/timing/tier-b-2026-09-01/archive-reference.json",
+    "physicalReadyReceipt": "/Users/sarah/Archives/esp32s3/2026-09-01-tier-b/product-restore/serial.log",
+    "artifacts": {
+      "bootloader.bin": "2aeed36158c08b259fa841e1ee68cfb8febc0049ba560e0b75efdbac57356fc5",
+      "partition-table.bin": "f53268312c8caffe6c7f4e6c66d4092aeca3435c142db3116466f84a6a608d2d",
+      "tinydraw_esp32.bin": "dfd14fcf5bb7877f01461574476eb5455b52abfe9aba1d36d2f9d126f264bb46",
+      "tinydraw_esp32.elf": "ecccf7c6b717c58a672259adbd5bc06867d48a57a41e94485ca0b9e0a39e8d17"
+    }
+  },
+  "command": "TINYDRAW_VECTOR_V2_BUILD=<product-build> /usr/bin/time -p target/release/esp32sim --boot rom --bootloader <product-build>/bootloader/bootloader.bin --ptable <product-build>/partition_table/partition-table.bin --app <product-build>/tinydraw_esp32.bin --elf <product-build>/tinydraw_esp32.elf --board waveshare-amoled18-v2 --flash-mb 16 --psram-mb 8 --console usb --no-dump --max-insns <ceiling>",
+  "runs": [
+    {
+      "run": 1,
+      "cycleCeiling": 1000000000,
+      "emulatedSeconds": 4.167,
+      "wallSeconds": 8.66,
+      "core0RetiredInstructions": 959603381,
+      "core1RetiredInstructions": 9359161,
+      "totalRetiredInstructions": 968962542,
+      "retiredMips": 111.889439,
+      "ready": false,
+      "lastProductLine": "I (275) co5300_spi: LCD panel create success, version: 2.1.0",
+      "stopReason": "MaxInsns",
+      "processExitStatus": 0
+    },
+    {
+      "run": 2,
+      "cycleCeiling": 2000000000,
+      "emulatedSeconds": 8.333,
+      "wallSeconds": 17.53,
+      "core0RetiredInstructions": 1959595644,
+      "core1RetiredInstructions": 14597080,
+      "totalRetiredInstructions": 1974192724,
+      "retiredMips": 112.617953,
+      "ready": false,
+      "lastProductLine": "I (275) co5300_spi: LCD panel create success, version: 2.1.0",
+      "stopReason": "MaxInsns",
+      "processExitStatus": 0
+    },
+    {
+      "run": 3,
+      "cycleCeiling": 4000000000,
+      "emulatedSeconds": 16.667,
+      "wallSeconds": 35.75,
+      "core0RetiredInstructions": 3959580166,
+      "core1RetiredInstructions": 25071661,
+      "totalRetiredInstructions": 3984651827,
+      "retiredMips": 111.458792,
+      "ready": false,
+      "lastProductLine": "I (275) co5300_spi: LCD panel create success, version: 2.1.0",
+      "stopReason": "MaxInsns",
+      "processExitStatus": 0
+    },
+    {
+      "run": 4,
+      "cycleCeiling": 8000000000,
+      "emulatedSeconds": 33.333,
+      "wallSeconds": 70.43,
+      "core0RetiredInstructions": 7959549215,
+      "core1RetiredInstructions": 46022080,
+      "totalRetiredInstructions": 8005571295,
+      "retiredMips": 113.667064,
+      "ready": false,
+      "lastProductLine": "I (275) co5300_spi: LCD panel create success, version: 2.1.0",
+      "stopReason": "MaxInsns",
+      "processExitStatus": 0
+    },
+    {
+      "run": 5,
+      "cycleCeiling": 16000000000,
+      "emulatedSeconds": 66.667,
+      "wallSeconds": 162.15,
+      "core0RetiredInstructions": 15959487309,
+      "core1RetiredInstructions": 87921661,
+      "totalRetiredInstructions": 16047408970,
+      "retiredMips": 98.966444,
+      "ready": false,
+      "lastProductLine": "I (275) co5300_spi: LCD panel create success, version: 2.1.0",
+      "stopReason": "MaxInsns",
+      "processExitStatus": 0
+    }
+  ],
+  "preReadyObservation": {
+    "medianRetiredMips": 111.889439,
+    "maximumRetiredMips": 113.667064,
+    "realTimeBudgetMips": 480.0,
+    "maximumPercentOfBudget": 23.680638,
+    "comparison": "All bounded pre-READY observations are below 480 MIPS. They are not completed boot throughput measurements."
+  },
+  "diagnostic": {
+    "lastProgressMarker": "co5300_spi LCD panel create success",
+    "classification": "product boot hang before READY"
+  }
+}
