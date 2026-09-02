@@ -126,7 +126,7 @@ does not provide a scalar total; measured mode records it at its named tier.
 | MMIO write steady drain, APB peripheral blocks | exact | 15 cycles per write | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
 | MMIO write steady drain, NRX | interval | 17 to 18 cycles per write | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
 | MMIO write steady drain, RTC | distribution | 69.7265625 to 70.62890625 cycles observed | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
-| Concurrent SPI2 DMA effect on a 32 KiB PSRAM-to-SRAM CPU copy | exact | +0 additive cycles within the observed 0 to 3.5-cycle range | `C240-Q80-O80-I32-D64`; SPI2 quad 40 MHz | `evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json` |
+| Concurrent SPI2 DMA effect on a 32 KiB PSRAM-to-SRAM CPU copy | exact | +0 additive cycles within the observed 0 to 3.5-cycle range | `C240-Q80-O80-I32-D64`; SPI2 quad 40 MHz, 32 KiB transfer | `evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json` |
 
 ### Correlation targets
 
