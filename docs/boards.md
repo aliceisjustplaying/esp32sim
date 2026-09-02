@@ -63,10 +63,8 @@ No devices; console only. For stock ESP-IDF projects (`examples/hello_world`).
 
 ## Adding a board
 
-1. Implement `BoardModel` in `board.rs` (or a new module) and add it to `make_board`.
-2. Devices that talk I2C implement `I2cDevice` (`start/write/read/stop`); GPIO-driven devices
-   parse edges in `gpio_changes`; RMT-driven ones in `rmt_frame`.
-3. If the board has a display or LEDs, return them from `tft()`/`ring()` (or extend the trait
-   with a new optional accessor) and teach `web/index.html` to draw them (the page switches
-   layout on the `board` message).
-4. Add a run script under `examples/<board>/` and a row in this file.
+The worked example is in [adding.md](adding.md#a-board-a-device-with-things-wired-to-the-chip):
+`impl BoardModel` (GPIO edges, RMT frames, SPI bytes, LCD frames in; display, LEDs, camera preview,
+named pins, encoder, report out), I2C devices as `I2cDevice`, one arm in `make_board`, a run script
+under `examples/<board>/` and a row in this file. The page switches its layout on the `board`
+message (`web/index.html`).

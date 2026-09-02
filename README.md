@@ -181,6 +181,8 @@ Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`, `ESP_EMU_DEBUG_W
 
 ## Documentation
 
+- [docs/adding.md](docs/adding.md) — adding a peripheral, a board with devices, a CPU/chip, an observer
+
 `docs/` — [architecture](docs/architecture.md), [peripheral coverage](docs/peripherals.md),
 [boards](docs/boards.md), [CLI reference](docs/cli.md), [web UI protocol](docs/web-ui.md),
 [design decisions & gotchas](docs/decisions.md), [roadmap](docs/roadmap.md),

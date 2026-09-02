@@ -41,18 +41,68 @@ the bus, or the front-ends changes.
 Check: `cargo test --release --workspace -- --include-ignored` unchanged, `--log-periph` no longer
 lists the registers you modelled.
 
-## A board
+## A board (a device with things wired to the chip)
 
-1. `impl esp_soc::BoardModel` in `esp32s3/src/board.rs` (or a new module). The SoC hands it pin
-   edges (`gpio_changes`), RMT symbol streams (`rmt_frame`), SPI bytes (`spi_tx`), LCD frames
-   (`lcd_frame`), and asks for camera frames; it offers the UI a display, LEDs, a camera preview,
-   and the scripts named pins and an encoder. Its I2C devices (`impl esp_periph::i2c::I2cDevice`)
-   are returned by `i2c_devices` as (bus, address, device).
-2. One line in `make_board`.
-3. A run script under `examples/` and a row in `docs/boards.md`.
+A board is one `impl esp_soc::BoardModel`: the SoC emits pin-level events and asks the board for
+what the UI needs. The chip model never knows what board it is on. Two real ones to copy from:
+`Atech14` (bit-banged SPI display on GPIOs, WS2812 ring on RMT, buttons and an encoder) and
+`WaveshareLcd4b` (I2C IO expander and touch controller, RGB panel on LCD_CAM, codec on I2S), both
+in `esp32s3/src/board.rs`.
 
-The web page keys its layout on the board name (`web/index.html`); a board with a display and
-nothing else shows as a bare module with a screen.
+Say the new board has a BME280-style I2C sensor, a status LED on GPIO 5, and a button on GPIO 0.
+
+1. **The I2C device.** A register-style device is an `esp_periph::i2c::I2cDevice`: the master
+   addresses it (`start`), writes bytes (`write`, return ACK), reads bytes (`read`), stops. For a
+   plain "first byte selects the register, then data" device there is `Reg8Device::new(name,
+   defaults)` — give it the register defaults the driver identifies the chip by:
+
+   ```rust
+   Reg8Device::new("bme280", &[(0xd0, 0x60), (0x88, 0x6e), (0x89, 0x6c) /* calibration... */])
+   ```
+   Anything with more logic (a FIFO, a measurement that changes) implements the trait itself;
+   `Gt911` (touch) and `Ov5640` (camera SCCB) in `esp32s3/src/i2c.rs` are the two shapes.
+
+2. **The board.**
+
+   ```rust
+   pub struct Sensorboard { led: bool, gpio_events: u64 }
+   impl BoardModel for Sensorboard {
+       fn name(&self) -> &'static str { "sensorboard" }
+       // output edges, in order; pick out the pins that are yours
+       fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
+           for &(pin, level) in changes { self.gpio_events += 1; if pin == 5 { self.led = level; } }
+       }
+       fn gpio_events(&self) -> u64 { self.gpio_events }
+       // (bus, 7-bit address, device): attached to the I2C controller at start
+       fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn I2cDevice>)> {
+           vec![(0, 0x76, Box::new(Reg8Device::new("bme280", &[(0xd0, 0x60)])))]
+       }
+       // what scripts and the UI may call the button; the encoder pins if there is one
+       fn named_pin(&self, n: &str) -> Option<u8> { (n == "btn1").then_some(0) }
+       // show the LED as a one-LED strip; the UI already draws LEDs
+       fn leds(&self) -> Option<(&[[u8; 3]], u64)> { ... }
+       fn report(&self) -> String { format!("[emu] led {}", if self.led { "on" } else { "off" }) }
+   }
+   ```
+   Inputs are not board methods: a button is `press btn1 150` in a script (`docs/cli.md`) or a
+   click in the page, both of which end up in `gpio_set_input` on the SoC.
+
+3. **Register it**: one arm in `make_board` (`"sensorboard" => Some(Box::new(Sensorboard::new()))`).
+   The CLI's `--board sensorboard` and the page's board list (`web/emu.js`) take the name.
+
+4. **Displays, cameras, audio.** A display fed pixel by pixel implements `display()`,
+   `display_version()` and says `display_quiet_push() == true` (`Atech14`); one that receives whole
+   frames from LCD_CAM implements `lcd_frame` and `display()` (`WaveshareLcd4b`). A camera returns
+   YUYV frames from `camera_frame` and a preview from `camera_preview`. Audio needs nothing from
+   the board: I2S output is captured by the SoC (`--wav`, the page's player).
+
+5. **If the SoC does not yet produce the event you need** (say, the board hangs a device on SPI3,
+   or wants LEDC PWM duty for a backlight), that is a peripheral, previous recipe; the board then
+   gets the event through a new `BoardModel` method with a default, as `spi_tx` and `lcd_frame` did.
+
+Run it: `esp32sim --board sensorboard --boot rom ... --log-periph` and watch which registers the
+firmware polls that nothing answers yet. Add a row to `docs/boards.md` and a run script under
+`examples/<board>/`.
 
 ## A CPU and a chip
 
