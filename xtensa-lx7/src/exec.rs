@@ -3,18 +3,7 @@ use crate::bus::Bus;
 use crate::decode::{decode, Insn, Op};
 use crate::state::*;
 
-/// Why `step` stopped early (the instruction was NOT executed unless noted).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Trap {
-    /// an architectural exception was taken (vectored); emulation continues normally
-    Exception(u32),
-    /// an interrupt was taken
-    Interrupt(u32),
-    /// instruction not implemented by the emulator (pc, raw word)
-    Unimplemented(u32, u32),
-    /// `simcall` — semihosting request
-    Simcall,
-}
+pub use emu_core::Trap;
 
 #[inline(always)]
 fn bit(w: u32) -> u32 { 1 << (w & (NUM_WINDOWS - 1)) }

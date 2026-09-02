@@ -29,12 +29,15 @@ esp32s3/      the SoC and boards
   board.rs    BoardModel trait; Atech14, WaveshareCam, NoBoard; ST7735 and WS2812 decoders
   web.rs      dependency-free HTTP + WebSocket server
   elf.rs / image.rs / picture.rs   loaders (ELF symbols/segments, ESP app images, BMP/PPM)
+emu-core/     what every core shares: the Bus contract (with the TLB/page-version hooks a JIT
+              needs), the Core trait a machine drives, Trap, ClockTree, and the AArch64 encoder
 xtensa-lx7/   the core
   decode.rs   instruction decoder (24/16-bit base ISA, FPU, MAC16, booleans) -> Insn
   pie.rs      PIE SIMD (ee.*) decode/format/execute; pie_table.rs is generated from the TRM
   exec.rs     interpreter: windowed registers, loops, XEA2 exceptions/interrupts, CP enable
   block.rs    basic-block cache and block interpreter (the normal execution path)
-  jit/        native code generation for blocks: mod.rs compiler + helpers, a64.rs encoder
+  core.rs     the `emu_core::Core` implementation the machine drives
+  jit/        native code generation for blocks: mod.rs compiler + helpers (encoder in emu-core)
   state.rs    Cpu: registers, special registers, user registers (ACCX/QACC/…), interrupt levels
   disasm.rs   objdump-compatible formatter (used by the differential decoder test)
 web/          index.html: board drawing, console, WebAudio, camera panel (no build step)

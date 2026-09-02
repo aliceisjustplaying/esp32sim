@@ -201,7 +201,6 @@ impl Bus for SocBus {
         self.devices(cycles);
         1
     }
-    fn pending_interrupt(&mut self) -> Option<u32> { self.periph.intc.pending() }
     #[inline(always)]
     fn note_pc(&mut self, pc: u32) { self.periph.cur_pc = pc; }
 }

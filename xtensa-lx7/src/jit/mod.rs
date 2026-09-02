@@ -14,7 +14,7 @@
 #![allow(clippy::too_many_arguments)]
 
 #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
-pub mod a64;
+pub use emu_core::jit_a64 as a64;
 
 #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
 mod native {

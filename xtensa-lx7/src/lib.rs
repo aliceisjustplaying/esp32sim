@@ -1,6 +1,7 @@
 //! Xtensa LX7 core emulator (ESP32-S3 configuration: windowed ABI, loops,
 //! booleans, MUL/DIV32, single-precision FPU, MAC16, 32 interrupts / 6 levels).
-pub mod bus;
+pub mod bus { pub use emu_core::bus::*; }
+pub mod core;
 pub mod decode;
 pub mod disasm;
 pub mod exec;
@@ -10,7 +11,7 @@ pub mod pie_table;
 
 pub mod block;
 pub mod jit;
-pub use bus::{Bus, Fault, FlatRam};
+pub use emu_core::{Bus, Core, Fault, FlatRam};
 pub use decode::{decode, Insn, Op};
 pub use exec::{step, Trap};
 pub use state::Cpu;

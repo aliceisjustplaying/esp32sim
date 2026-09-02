@@ -28,10 +28,7 @@ use crate::decode::{decode, Insn, Op};
 use crate::exec::{exec_insn, max_ar, Trap};
 use crate::state::{sr, Cpu};
 
-/// Bloom bit for a pc; shared with the machine's stub/probe tables so block boundaries and
-/// their lookups agree.
-#[inline(always)]
-pub fn pc_bit(pc: u32) -> u64 { 1u64 << ((pc >> 2) & 63) }
+pub use emu_core::core::pc_bit;
 
 #[derive(Clone, Copy)]
 pub struct BlockInsn { pub insn: Insn, pub max_ar: u8, /// byte offset of this instruction's native code from the block body start

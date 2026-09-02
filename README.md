@@ -28,6 +28,7 @@ Touch-LCD-4B panel with its SID player, and the C3 booting hello_world.
 
 ```
 esp32sim/
+  emu-core/       the Bus and Core traits, Trap, ClockTree, AArch64 encoder — shared by both cores
   ── ESP32-S3 (Xtensa LX7, dual core) ──
   xtensa-lx7/     decoder (verified 100% against objdump over app+ROM+IDF), interpreter
                   (windowed regs, loops, XEA2 exceptions/interrupts, FPU, MAC16, booleans,

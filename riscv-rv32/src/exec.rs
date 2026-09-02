@@ -4,16 +4,7 @@ use crate::bus::{Bus, Fault};
 use crate::decode::{decode, Insn, Op};
 use crate::state::{exc, Cpu};
 
-/// Why `step` returned early. The trap has already been taken (pc, mepc, mcause updated) —
-/// these are reported so the machine can count them and stop on request.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Trap {
-    Exception(u32),
-    /// a CPU interrupt line from the SoC's interrupt matrix
-    Interrupt(u32),
-    /// `ebreak` — a panic, an assert, or a debugger breakpoint in the guest
-    Ebreak(u32),
-}
+pub use emu_core::Trap;
 
 macro_rules! ld {
     ($cpu:expr, $bus:expr, $f:ident, $addr:expr, $pc:expr) => {
@@ -34,9 +25,10 @@ macro_rules! st {
 
 /// Execute one instruction.
 pub fn step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(), Trap> {
-    // The SoC's INTC decides enable/priority; the CPU only gates on mstatus.MIE.
+    // The SoC's INTC decides enable/priority and hands us the line (`Core::set_irq`); the CPU
+    // only gates on mstatus.MIE.
     if cpu.waiting || cpu.mie_enabled() {
-        if let Some(line) = bus.pending_interrupt() {
+        if let Some(line) = cpu.irq {
             cpu.waiting = false;
             if cpu.mie_enabled() {
                 let pc = cpu.pc;

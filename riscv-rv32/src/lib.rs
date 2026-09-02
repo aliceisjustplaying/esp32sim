@@ -4,13 +4,14 @@
 //! Interrupts are *not* the standard `mie`/`mip` external-interrupt model: the C3 routes 62
 //! peripheral sources through its own interrupt matrix onto 31 CPU lines and vectors each one
 //! separately (`mtvec` in vectored mode), so the SoC hands us the pending line and we take it.
-pub mod bus;
+pub mod bus { pub use emu_core::bus::*; }
+pub mod core;
 pub mod decode;
 pub mod disasm;
 pub mod exec;
 pub mod state;
 
-pub use bus::{Bus, Fault, FlatRam};
+pub use emu_core::{Bus, Core, Fault, FlatRam};
 pub use decode::{decode, Insn, Op};
 pub use exec::{step, Trap};
 pub use state::Cpu;

@@ -1,5 +1,6 @@
 //! ESP32-S3 peripherals (register level). Each device owns its register state;
 //! `Peripherals` dispatches by 4 KiB block and logs first-touch unknown accesses.
+use emu_core::ClockDomain;
 use std::collections::HashSet;
 
 pub const PERIPH_BASE: u32 = 0x6000_0000;
@@ -885,7 +886,7 @@ pub struct Peripherals {
     pub log_all: bool,
     seen: HashSet<(u32, bool)>,
     pub cur_pc: u32,
-    cycle_total: u64, st_done: u64, apb_done: u64, rtc_done: u64,
+    clock: emu_core::ClockTree,
     pub sw_int: u32,          // SYSTEM_CPU_INTR_FROM_CPU_0..3
     pub spi_exec: bool,       // SPI1 command pending execution against the flash array
     last_status: [u32; 4],
@@ -899,7 +900,7 @@ impl Peripherals {
             usb: UsbSerialJtag::new(), uart: [Uart::new(), Uart::new(), Uart::new()], systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], intmatrix: IntMatrix::new(), gpio: Gpio::new(), rtc: RtcCntl::new(),
             efuse: Efuse::new(mac), system: SystemRegs::new(), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true), i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), spi2: GpSpi::new(), pcnt: Pcnt::new(), wifi: WifiMac::new(), aes: Aes::new(), rsa: Rsa::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(), i2s1: I2s::new(), rmt: Rmt::new(), generic: Default::default(),
-            log_unknown: false, regstat: None, fake_reads: std::env::var("ESP_EMU_FAKE_READ").ok().map(|v| v.split(',').filter_map(|e| { let mut p = e.split(':'); let a = u32::from_str_radix(p.next()?.trim_start_matches("0x"), 16).ok()?; let o = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).ok()?; let m = u32::from_str_radix(p.next().unwrap_or("ffffffff").trim_start_matches("0x"), 16).ok()?; Some((a, (o, m))) }).collect()).unwrap_or_default(), log_all: std::env::var("ESP_EMU_LOG_ALL").is_ok(), seen: HashSet::new(), cur_pc: 0, cycle_total: 0, st_done: 0, apb_done: 0, rtc_done: 0, sw_int: 0, spi_exec: false, last_status: [0; 4], intmatrix_dirty: true, io_mux: RegRam::new(),
+            log_unknown: false, regstat: None, fake_reads: std::env::var("ESP_EMU_FAKE_READ").ok().map(|v| v.split(',').filter_map(|e| { let mut p = e.split(':'); let a = u32::from_str_radix(p.next()?.trim_start_matches("0x"), 16).ok()?; let o = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).ok()?; let m = u32::from_str_radix(p.next().unwrap_or("ffffffff").trim_start_matches("0x"), 16).ok()?; Some((a, (o, m))) }).collect()).unwrap_or_default(), log_all: std::env::var("ESP_EMU_LOG_ALL").is_ok(), seen: HashSet::new(), cur_pc: 0, clock: emu_core::ClockTree::new(CPU_HZ, &[(ClockDomain::Systimer, 15), (ClockDomain::Apb, 3), (ClockDomain::RtcSlow, 1600)]), sw_int: 0, spi_exec: false, last_status: [0; 4], intmatrix_dirty: true, io_mux: RegRam::new(),
         }
     }
 
@@ -951,7 +952,7 @@ impl Peripherals {
             0x02 => self.spi1.read(off),
             0x03 => self.spi0.read(off),
             0x3b => self.sha.read(off),
-            0x35 if matches!(off, 0x0c | 0x10 | 0x14 | 0x18 | 0x1c | 0x118 | 0x11c | 0x128) => { self.wifi.now_cycles = self.cycle_total; self.wifi.read(block, off) }
+            0x35 if matches!(off, 0x0c | 0x10 | 0x14 | 0x18 | 0x1c | 0x118 | 0x11c | 0x128) => { self.wifi.now_cycles = self.clock.cycles(); self.wifi.read(block, off) }
             0x35 => self.wdev.read(off),
             0x0e => self.i2c_mst.read(off),
             0x3f => self.gdma.read(off),
@@ -990,7 +991,7 @@ impl Peripherals {
             0x02 => { if self.spi1.write(off, v) { self.spi_exec = true; } }
             0x03 => { self.spi0.write(off, v); }
             0x3b => self.sha.write(off, v),
-            0x35 if matches!(off, 0x0c | 0x10 | 0x14 | 0x18 | 0x1c | 0x118 | 0x11c | 0x128) => { self.wifi.now_cycles = self.cycle_total; self.wifi.write(block, off, v) }
+            0x35 if matches!(off, 0x0c | 0x10 | 0x14 | 0x18 | 0x1c | 0x118 | 0x11c | 0x128) => { self.wifi.now_cycles = self.clock.cycles(); self.wifi.write(block, off, v) }
             0x35 => self.wdev.write(off, v),
             0x0e => self.i2c_mst.write(off, v),
             0x3f => self.gdma.write(off, v),
@@ -1029,13 +1030,13 @@ impl Peripherals {
     /// Advance all timers by `cycles` CPU cycles. Each derived clock keeps a "delivered"
     /// counter so no cycle is counted twice.
     pub fn tick(&mut self, cycles: u64) {
-        self.cycle_total += cycles;
-        let st = self.cycle_total / 15;      // systimer 16 MHz = CPU/15
-        if st > self.st_done { self.systimer.tick(st - self.st_done); self.st_done = st; }
-        let apb = self.cycle_total / 3;      // APB 80 MHz = CPU/3
-        if apb > self.apb_done { let d = apb - self.apb_done; self.apb_done = apb; self.timg[0].tick(d); self.timg[1].tick(d); }
-        let rtc = self.cycle_total / 1600;   // RTC slow clock 150 kHz
-        if rtc > self.rtc_done { let d = rtc - self.rtc_done; self.rtc.slow_ticks += d; self.rtc_done = rtc; self.rtc.wdt_tick(d); }
+        let Peripherals { clock, systimer, timg, rtc, .. } = self;
+        clock.advance(cycles, |d, n| match d {           // systimer 16 MHz = CPU/15, APB 80 MHz = CPU/3, RTC slow 150 kHz
+            ClockDomain::Systimer => systimer.tick(n),
+            ClockDomain::Apb => { timg[0].tick(n); timg[1].tick(n); }
+            ClockDomain::RtcSlow => { rtc.slow_ticks += n; rtc.wdt_tick(n); }
+            _ => {}
+        });
         self.usb.tick(cycles);
         self.rmt.tick(cycles);
         if !self.gpio.input_changes.is_empty() {

@@ -187,7 +187,7 @@ impl Machine {
             if n >= max_insns { self.drain_console(); return Stop::MaxInsns; }
             let slow = self.trace || !self.breakpoints.is_empty() || self.watch.is_some();
             // A core in WFI with nothing pending costs nothing: let time jump to the next quantum.
-            if self.cpu.waiting && !slow && self.bus.periph.intc.pending().is_none() {
+            if self.cpu.waiting && !slow && self.cpu.irq.is_none() {
                 self.cpu.insn_count += QUANTUM;
             } else {
                 for _ in 0..QUANTUM {
@@ -199,6 +199,7 @@ impl Machine {
             self.bus.periph.tick(QUANTUM);
             self.bus.irq_dirty = false;
             self.bus.periph.refresh_lines();
+            self.cpu.irq = self.bus.periph.intc.pending();
             if self.bus.periph.rtc.sw_reset { self.drain_console(); return Stop::SwReset; }
             if self.bus.cycles >= self.max_cycles { self.drain_console(); return Stop::Halted; }
             if n & 0xffff < QUANTUM { self.drain_console(); }
@@ -228,10 +229,12 @@ impl Machine {
                 // no handler installed yet: the guest would spin in the vector, so surface it
                 if self.cpu.mtvec == 0 { return Some(Stop::Ebreak(pc)); }
             }
+            Err(Trap::Unimplemented(..)) | Err(Trap::Simcall) => {}   // not produced by this core
         }
         if self.bus.irq_dirty {
             self.bus.irq_dirty = false;
             self.bus.periph.refresh_lines();
+            self.cpu.irq = self.bus.periph.intc.pending();
         }
         if let Some((wa, wv)) = self.watch {
             if let Ok(v) = self.bus.read32(wa) {

@@ -48,6 +48,8 @@ pub struct Cpu {
     pub insn_count: u64,
     /// halted by WFI until the SoC raises a line
     pub waiting: bool,
+    /// the line the SoC's interrupt controller wants taken, if any (`Core::set_irq`)
+    pub irq: Option<u32>,
     /// CSRs we do not model: read back what was written, like the SoC's unknown registers
     pub csr_other: HashMap<u32, u32>,
 }
@@ -62,7 +64,7 @@ impl Cpu {
             pc: RESET_VECTOR, x: [0; 32],
             mstatus: 0x1800,          // MPP = machine
             mtvec: 0, mepc: 0, mcause: 0, mtval: 0, mie: 0, mscratch: 0,
-            insn_count: 0, waiting: false, csr_other: HashMap::new(),
+            insn_count: 0, waiting: false, irq: None, csr_other: HashMap::new(),
         }
     }
 

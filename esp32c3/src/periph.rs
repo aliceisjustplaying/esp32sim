@@ -6,6 +6,7 @@
 //! the interrupt controller are written here. (If a third chip appears, lift those models into
 //! their own `esp-periph` crate; today that would be churn for its own sake.)
 
+use emu_core::ClockDomain;
 use esp32s3::periph::{Aes, Efuse, Gdma, Gpio, RegRam, Rsa, RtcCntl, Sha, SpiMem, SystemRegs, Systimer, TimerGroup, Uart, UsbSerialJtag};
 use std::collections::HashMap;
 
@@ -187,10 +188,7 @@ pub struct Peripherals {
     rng: u32,
     /// `SYSTEM_CPU_INTR_FROM_CPU_0..3` latches
     pub sw_int: u32,
-    cycle_total: u64,
-    st_done: u64,
-    apb_done: u64,
-    rtc_done: u64,
+    clock: emu_core::ClockTree,
     last_status: [u32; 2],
 }
 
@@ -205,7 +203,7 @@ impl Peripherals {
             gdma: Gdma::new(),
             sha: Sha::new(), aes: Aes::new(), rsa: Rsa::new(),
             generic: HashMap::new(), log_unknown: false, seen: Default::default(), cur_pc: 0,
-            spi_exec: false, rng: 0x2545_f491, sw_int: 0, cycle_total: 0, st_done: 0, apb_done: 0, rtc_done: 0, last_status: [0; 2],
+            spi_exec: false, rng: 0x2545_f491, sw_int: 0, clock: emu_core::ClockTree::new(CPU_HZ, &[(ClockDomain::Systimer, 10), (ClockDomain::Apb, 2), (ClockDomain::RtcSlow, 1067)]), last_status: [0; 2],
         }
     }
 
@@ -255,7 +253,7 @@ impl Peripherals {
             // enough for the bootloader's stack canary and for `esp_random` to make progress.
             0x26 if off == 0xb0 => {
                 self.rng ^= self.rng << 13; self.rng ^= self.rng >> 17; self.rng ^= self.rng << 5;
-                self.rng.wrapping_add(self.cycle_total as u32)
+                self.rng.wrapping_add(self.clock.cycles() as u32)
             }
             0xc0 => self.system.read(off),
             0xc2 => self.intc.read(off),
@@ -299,13 +297,13 @@ impl Peripherals {
     /// Advance every derived clock by `cycles` CPU cycles, with delivered-tick accounting so a
     /// slow clock never loses or gains a tick to rounding.
     pub fn tick(&mut self, cycles: u64) {
-        self.cycle_total += cycles;
-        let st = self.cycle_total / 10;           // systimer 16 MHz = CPU/10
-        if st > self.st_done { self.systimer.tick(st - self.st_done); self.st_done = st; }
-        let apb = self.cycle_total / 2;           // APB 80 MHz = CPU/2
-        if apb > self.apb_done { let d = apb - self.apb_done; self.apb_done = apb; self.timg[0].tick(d); self.timg[1].tick(d); }
-        let rtc = self.cycle_total / 1067;        // RTC slow clock ~150 kHz
-        if rtc > self.rtc_done { let d = rtc - self.rtc_done; self.rtc.slow_ticks += d; self.rtc_done = rtc; self.rtc.wdt_tick(d); }
+        let Peripherals { clock, systimer, timg, rtc, .. } = self;
+        clock.advance(cycles, |d, n| match d {           // systimer 16 MHz = CPU/10, APB 80 MHz = CPU/2, RTC slow ~150 kHz
+            ClockDomain::Systimer => systimer.tick(n),
+            ClockDomain::Apb => { timg[0].tick(n); timg[1].tick(n); }
+            ClockDomain::RtcSlow => { rtc.slow_ticks += n; rtc.wdt_tick(n); }
+            _ => {}
+        });
         // the USB model derives its 1 ms SOF from the S3's 240 MHz, so hand it scaled cycles
         self.usb.tick(cycles * 3 / 2);
     }

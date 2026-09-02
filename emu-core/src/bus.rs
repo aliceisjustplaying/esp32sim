@@ -1,4 +1,6 @@
-//! Memory bus abstraction between the core and the SoC.
+//! Memory bus abstraction between a core and the SoC. One trait for every core: the six
+//! accessors and `fetch` are what an interpreter needs; the rest are hooks a block cache or a
+//! JIT uses and a simple bus leaves at their defaults.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fault {
@@ -6,6 +8,8 @@ pub enum Fault {
     Unmapped,
     /// address exists but access of this kind is not allowed (e.g. exec from data-only)
     Prohibited,
+    /// address is not aligned for this access width
+    Misaligned,
 }
 
 /// Number of entries in a bus's software TLB and the write-version page size, fixed here

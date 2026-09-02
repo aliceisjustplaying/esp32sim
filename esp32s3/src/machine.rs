@@ -253,6 +253,7 @@ impl Machine {
             Some(Trap::Interrupt(irq)) => { self.interrupts += 1; self.irq_hist[core][irq as usize] += 1; }
             Some(Trap::Unimplemented(p, raw)) => { if self.stop_on_unimplemented { return (used, Some(Stop::Unimplemented(p, raw))); } }
             Some(Trap::Simcall) => return (used, Some(Stop::Simcall(pc))),
+            Some(Trap::Ebreak(_)) => {}   // not produced by this core
         }
         if bus.irq_dirty {
             bus.irq_dirty = false;
@@ -316,6 +317,7 @@ impl Machine {
             Err(Trap::Interrupt(irq)) => { self.interrupts += 1; self.irq_hist[core][irq as usize] += 1; if self.trace { eprintln!("          ** core{} interrupt {} at {:08x} -> {:08x}", core, irq, pc, cpu.pc); } }
             Err(Trap::Unimplemented(p, raw)) => { if self.stop_on_unimplemented { return Some(Stop::Unimplemented(p, raw)); } }
             Err(Trap::Simcall) => return Some(Stop::Simcall(pc)),
+            Err(Trap::Ebreak(_)) => {}   // not produced by this core
         }
         if bus.irq_dirty {
             bus.irq_dirty = false;
