@@ -1,6 +1,7 @@
 //! Differential decoder test: every instruction in objdump's disassembly of the C3 mask ROM and
 //! of real firmware must decode to the same mnemonic and operands.
-//! Set RISCV_DIS_FILES=/path/rom.dis:/path/app.dis (skipped, loudly, if unset).
+//! The checked-in corpus (`tests/corpus/*.dis`, sampled from a real app and the mask ROM) runs
+//! every time; `RISCV_DIS_FILES=/path/rom.dis:/path/app.dis` runs the ignored full-size test.
 use std::collections::BTreeMap;
 use riscv_rv32::decode::decode;
 use riscv_rv32::disasm;
@@ -21,12 +22,8 @@ fn same_operand(mine: &str, theirs: &str) -> bool {
     }
 }
 
-#[test]
-fn decoder_matches_objdump() {
-    let Ok(files) = std::env::var("RISCV_DIS_FILES") else {
-        eprintln!("RISCV_DIS_FILES unset — skipping (see docs/esp32c3-plan.md for how to generate)");
-        return;
-    };
+/// Every instruction in the listings must decode to objdump's mnemonic and operands. Returns the case count.
+fn check(files: &str) -> usize {
     let (mut total, mut bad) = (0usize, 0usize);
     let mut by_mnemonic: BTreeMap<String, (usize, usize, String)> = BTreeMap::new();
     for file in files.split(':') {
@@ -82,4 +79,21 @@ fn decoder_matches_objdump() {
         panic!("{}", msg);
     }
     eprintln!("decoder: {} instructions, 0 mismatches", total);
+    total
+}
+
+/// Hermetic: the sampled corpora checked in next to this test (see the headers for provenance).
+#[test]
+fn decoder_matches_corpus() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/corpus");
+    let n = check(&format!("{0}/rom.dis:{0}/hello_world.dis", dir));
+    assert!(n >= 6000, "only {} corpus cases — the corpus files are incomplete", n);
+}
+
+/// The full listings of whatever `RISCV_DIS_FILES` points at.
+#[test]
+#[ignore = "set RISCV_DIS_FILES=/path/rom.dis:/path/app.dis (riscv32-esp-elf-objdump -d)"]
+fn decoder_matches_objdump() {
+    let files = std::env::var("RISCV_DIS_FILES").expect("RISCV_DIS_FILES=/path/rom.dis:/path/app.dis is required for this test");
+    check(&files);
 }

@@ -99,6 +99,19 @@ fn hello_world_s3() {
     expect_u64("hello-s3.insns", r.insns);
 }
 
+/// Through the RTC watchdog reset esp_restart() arms at the end of the countdown and back up
+/// from the ROM: the chip-reset path (what survives, what the ROM reports).
+#[test] #[ignore = "needs the ESP32-S3 mask ROM ELF"]
+fn hello_world_s3_reboot() {
+    let rom = rom("esp32s3_rev0");
+    let r = run(BIN, &["--rom", rom.to_str().unwrap(), "--board", "none", "--boot", "rom", "--no-dump", "--console", "uart0",
+        "--bootloader", &format!("{FW}/hello-bootloader.bin"), "--ptable", &format!("{FW}/hello-ptable.bin"), "--app", &format!("{FW}/hello_world.bin"), "--max-seconds", "12"]);
+    assert!(r.stderr.contains("[emu] chip reset at t="), "no reset seen:\n{}", r.stderr);
+    assert!(r.stdout.matches("Hello world!").count() >= 2, "the app did not come back after the reset:\n{}", r.stdout);
+    expect_text("hello-s3-reboot.console.txt", &r.stdout);
+    expect_u64("hello-s3-reboot.insns", r.insns);
+}
+
 /// The block profile attributes time to symbols (the ROM's here), and the per-instruction
 /// `--profile` (slow path, idle cores stepping) still agrees on the hottest function.
 #[test] #[ignore = "needs the ESP32-S3 mask ROM ELF"]
@@ -131,4 +144,17 @@ fn hello_world_c3() {
         "--mac", "3c:84:27:b6:a7:1c", "--reset-cause", "0x15", "--strap", "0xd",
         "--bootloader", &format!("{FW}/c3-hello-bootloader.bin"), "--ptable", &format!("{FW}/c3-hello-ptable.bin"), "--app", &format!("{FW}/c3-hello_world.bin"), "--max-seconds", "3"]);
     assert_eq!(r.stdout, r2.stdout); assert_eq!(r.insns, r2.insns);
+}
+
+/// The C3's esp_restart() path: a software CPU reset, back through the ROM with the right cause.
+#[test] #[ignore = "needs the ESP32-C3 mask ROM ELF"]
+fn hello_world_c3_reboot() {
+    let rom = rom("esp32c3_rev3");
+    let r = run(BIN_C3, &["--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
+        "--mac", "3c:84:27:b6:a7:1c", "--reset-cause", "0x15", "--strap", "0xd",
+        "--bootloader", &format!("{FW}/c3-hello-bootloader.bin"), "--ptable", &format!("{FW}/c3-hello-ptable.bin"), "--app", &format!("{FW}/c3-hello_world.bin"), "--max-seconds", "12"]);
+    assert!(r.stderr.contains("[emu] chip reset at t="), "no reset seen:\n{}", r.stderr);
+    assert!(r.stdout.matches("Hello world!").count() >= 2, "the app did not come back after the reset:\n{}", r.stdout);
+    expect_text("hello-c3-reboot.console.txt", &r.stdout);
+    expect_u64("hello-c3-reboot.insns", r.insns);
 }

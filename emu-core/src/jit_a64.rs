@@ -182,12 +182,8 @@ impl Asm {
 mod tests {
     use super::*;
 
-    /// Assemble reference text with clang and compare word for word with our encoder.
-    #[test]
-    fn encodings_match_clang() {
-        let clang = "/Library/Developer/CommandLineTools/usr/bin/clang";
-        let objdump = "/Library/Developer/CommandLineTools/usr/bin/llvm-objdump";
-        if !std::path::Path::new(clang).exists() { eprintln!("clang not found — encoder test skipped"); return; }
+    /// The reference program: assembler text and our encoding of it, one instruction per line.
+    fn program() -> (String, Vec<u32>) {
         let mut a = Asm::new();
         let l_end = a.label();
         let mut text = String::new();
@@ -282,7 +278,27 @@ mod tests {
         t!("ret", a.ret());
         text.push_str("1:\n");
         a.bind(l_end);
-        let ours = a.finish();
+        (text, a.finish())
+    }
+
+    /// Hermetic: every word must match `tests/fixtures/a64_expected.hex`, which `encodings_match_clang`
+    /// produced from clang's assembler (run it with `UPDATE_FIXTURE=1` after adding an instruction).
+    #[test]
+    fn encodings_match_fixture() {
+        let (text, ours) = program();
+        let want: Vec<u32> = include_str!("../tests/fixtures/a64_expected.hex").lines().filter(|l| !l.starts_with('#') && !l.is_empty()).map(|l| u32::from_str_radix(l.trim(), 16).unwrap()).collect();
+        assert_eq!(want.len(), ours.len(), "instruction count differs from the fixture; regenerate it with clang");
+        for (i, ((w, o), line)) in want.iter().zip(ours.iter()).zip(text.lines()).enumerate() { assert_eq!(*w, *o, "#{} {:08x} (fixture) != {:08x} (ours): {}", i, w, o, line); }
+    }
+
+    /// Assemble the reference text with clang and compare word for word with our encoder.
+    #[test]
+    #[ignore = "needs Apple's clang and llvm-objdump; regenerates the fixture with UPDATE_FIXTURE=1"]
+    fn encodings_match_clang() {
+        let clang = "/Library/Developer/CommandLineTools/usr/bin/clang";
+        let objdump = "/Library/Developer/CommandLineTools/usr/bin/llvm-objdump";
+        assert!(std::path::Path::new(clang).exists(), "{} not found", clang);
+        let (text, ours) = program();
         let dir = std::env::temp_dir().join(format!("a64enc-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("t.s"), &text).unwrap();
@@ -304,5 +320,10 @@ mod tests {
             assert_eq!(*w, *o, "#{} {:08x} (clang) != {:08x} (ours): {}", i, w, o, line);
         }
         let _ = std::fs::remove_dir_all(&dir);
+        if std::env::var("UPDATE_FIXTURE").is_ok() {
+            let mut f = String::from("# AArch64 encodings of the reference program in jit_a64.rs tests, as clang assembled them.\n");
+            for w in &ours { f += &format!("{:08x}\n", w); }
+            std::fs::write(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/a64_expected.hex"), f).unwrap();
+        }
     }
 }

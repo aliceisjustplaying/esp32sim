@@ -1,6 +1,7 @@
 //! Differential decoder test: every instruction in objdump's disassembly of the
 //! firmware and the mask ROM must decode to the same mnemonic + operands.
-//! Set XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis (skipped if unset).
+//! The checked-in corpus (`tests/corpus/*.dis`, sampled from a real app and the mask ROM) runs
+//! every time; `XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis` runs the ignored full-size test.
 use std::collections::BTreeMap;
 use xtensa_lx7::decode::{decode, Op};
 use xtensa_lx7::disasm;
@@ -20,9 +21,8 @@ fn same_operand(mine: &str, theirs: &str) -> bool {
     }
 }
 
-#[test]
-fn decoder_matches_objdump() {
-    let Ok(files) = std::env::var("XTENSA_DIS_FILES") else { eprintln!("XTENSA_DIS_FILES unset — skipping"); return; };
+/// Every instruction in the listings must decode to objdump's mnemonic and operands. Returns the case count.
+fn check(files: &str) -> usize {
     let mut total = 0usize;
     let mut bad = 0usize;
     let mut by_mnemonic: BTreeMap<String, (usize, usize, String)> = BTreeMap::new();
@@ -67,4 +67,21 @@ fn decoder_matches_objdump() {
     for (m, (n, b, ex)) in &by_mnemonic { if *b > 0 { eprintln!("{:<28} {:>7} insns {:>6} bad   e.g. {}", m, n, b, ex); } }
     eprintln!("total {} instructions, {} mismatches", total, bad);
     assert_eq!(bad, 0, "decoder mismatches vs objdump");
+    total
+}
+
+/// Hermetic: the sampled corpora checked in next to this test (see the headers for provenance).
+#[test]
+fn decoder_matches_corpus() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/corpus");
+    let n = check(&format!("{0}/hello_world.dis:{0}/rom.dis", dir));
+    assert!(n >= 6000, "only {} corpus cases — the corpus files are incomplete", n);
+}
+
+/// The full listings of whatever `XTENSA_DIS_FILES` points at (app + ROM: ~1 M instructions).
+#[test]
+#[ignore = "set XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis (xtensa-esp32s3-elf-objdump -d)"]
+fn decoder_matches_objdump() {
+    let files = std::env::var("XTENSA_DIS_FILES").expect("XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis is required for this test");
+    check(&files);
 }
