@@ -491,7 +491,10 @@ mod native {
     /// # Safety
     /// `code` must identify live code produced by `compile` in `cc`, and `entry` must be an
     /// instruction offset recorded by that compilation. `h` must have been created by
-    /// `Helpers::new::<B>()`. If present, `fm` must describe `bus` and remain valid for this call.
+    /// `Helpers::new::<B>()`. The backing `BlockInsn` slice passed to `compile` must remain alive
+    /// and unmoved until `code` can no longer run because fallback paths embed pointers into it.
+    /// Code compiled with `fast = true` requires `Some(fm)`; it must describe `bus`, including
+    /// valid unmoved backing buffers for its TLB entries, and remain valid for this call.
     pub unsafe fn run<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: &mut B, h: &Helpers, budget: u32, entry: u32, fm: Option<FastMem>) -> u32 {
         // SAFETY: The caller guarantees that `code` names a live compiled entry point in this
         // cache with the declared ABI and concrete bus type.
