@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Fast commit gate: format and run strict clippy checks.
+# Enable once per clone with: git config core.hooksPath .githooks
+set -euo pipefail
+
+if git diff --cached --name-only | grep -qE '\.(rs|toml|lock)$|^scripts/|^\.githooks/|^tools/'; then
+  cargo fmt --all -- --check
+  cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+else
+  echo "pre-commit: no code or build files staged; skipping cargo checks"
+fi

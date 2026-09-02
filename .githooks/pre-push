@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Full push gate: fmt, check, strict clippy, debug and release tests,
+# and rustdoc with warnings denied.
+# Enable once per clone with: git config core.hooksPath .githooks
+set -euo pipefail
+
+./scripts/pre-commit.sh
