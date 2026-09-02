@@ -1,8 +1,7 @@
 use backend_api::{Backend, CoreId};
 use esp32s3::{Esp32Backend, Machine, MeasuredStep};
 
-const ELF: &[u8] =
-    include_bytes!("/Users/sarah/src/a/tinydraw/out/build/esp32-vector-v2/tinydraw_esp32.elf");
+const WINDOW_VECTORS: &[u8] = include_bytes!("fixtures/idf61-window-vectors.bin");
 const CORRELATION_CORE: CoreId = CoreId::Core0;
 
 fn receipt_config(machine: &mut Machine) {
@@ -24,21 +23,12 @@ fn receipt_config(machine: &mut Machine) {
 }
 
 fn idf_handler_machine() -> Machine {
-    let elf = esp32s3::elf::parse(ELF).expect("TinyDraw ELF parses");
-    let vectors = elf
-        .segments
-        .iter()
-        .find(|segment| {
-            0x4037_4000 >= segment.vaddr && 0x4037_4180 <= segment.vaddr + segment.data.len() as u32
-        })
-        .expect("IDF window vectors are loadable");
-    let offset = (0x4037_4000 - vectors.vaddr) as usize;
     let mut machine = Machine::new([0; 6]);
     receipt_config(&mut machine);
     machine
         .bus
-        .load_bytes(0x4037_4000, &vectors.data[offset..offset + 0x180])
-        .expect("IDF window vectors map into IRAM");
+        .load_bytes(0x4037_4000, WINDOW_VECTORS)
+        .expect("committed IDF 6.1 window vector fixture maps into IRAM");
     for register in 0..16 {
         machine
             .cpu
