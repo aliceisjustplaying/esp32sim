@@ -8,7 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Fetch the ESP32-S3 and ESP32-C3 mask ROM ELFs
         run: |
@@ -18,6 +20,10 @@ jobs:
           mkdir -p roms && tar -xzf rom.tar.gz -C roms --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf'
           find roms -mindepth 2 -name '*.elf' -exec mv {} roms/ \;
           ls -la roms/*.elf
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Build
         run: cargo build --release --workspace
       - name: Test (hermetic + golden outputs)
