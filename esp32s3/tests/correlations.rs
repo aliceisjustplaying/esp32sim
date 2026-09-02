@@ -1,6 +1,6 @@
 use backend_api::{Backend, CoreId};
 use esp32s3::backend::{ExceptionEntryClass, UnpricedTimingClass};
-use esp32s3::{Esp32Backend, Machine, MeasuredStep, MeasuredStepError};
+use esp32s3::{machine, Esp32Backend, Machine, MeasuredMachine, MeasuredStep, MeasuredStepError};
 use xtensa_lx7::state::ps;
 
 const WINDOW_VECTORS: &[u8] = include_bytes!("fixtures/idf61-window-vectors.bin");
@@ -34,7 +34,7 @@ fn receipt_config(machine: &mut Machine) {
 }
 
 fn callx8_recursion_machine() -> Machine {
-    let mut machine = Machine::new([0; 6]);
+    let mut machine = machine([0; 6]);
     receipt_config(&mut machine);
     machine
         .bus
@@ -48,12 +48,12 @@ fn callx8_recursion_machine() -> Machine {
         .bus
         .load_bytes(RECURSE, &RECURSION_BODY)
         .expect("recursive callx8 body maps into IRAM");
-    machine.cpu.pc = CALLER;
-    machine.cpu.vecbase = 0x4037_4000;
-    machine.cpu.ps = ps::WOE;
-    machine.cpu.set_ar(1, 0x3fc8_b000);
-    machine.cpu.set_ar(2, RECURSE);
-    machine.cpu.set_ar(10, RECURSE);
+    machine.cores[0].pc = CALLER;
+    machine.cores[0].vecbase = 0x4037_4000;
+    machine.cores[0].ps = ps::WOE;
+    machine.cores[0].set_ar(1, 0x3fc8_b000);
+    machine.cores[0].set_ar(2, RECURSE);
+    machine.cores[0].set_ar(10, RECURSE);
     machine
 }
 
@@ -71,7 +71,7 @@ fn idf61_callx8_window_overflow_underflow_pair() {
             Err(MeasuredStepError::Unpriced(UnpricedTimingClass::ExceptionEntry(
                 ExceptionEntryClass::WindowOverflow8,
             ))) => {
-                assert_eq!(machine.cpu.pc, 0x4037_4080);
+                assert_eq!(machine.cores[0].pc, 0x4037_4080);
                 assert_eq!(backend.engine().ledger().len(), 20);
                 return;
             }

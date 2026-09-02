@@ -6,9 +6,11 @@ use backend_api::{
     FlashMode, InstructionCost, MmioTier, Operation, PsramMode, RefusalReason, TimingMutation,
     TimingRefusal, TransactionEngine,
 };
-use xtensa_lx7::measured::{complete_instruction, plan_instruction, CompletionError, PlanError};
 use xtensa_lx7::measured::{
-    AccessKind, InstructionObservation, MeasuredBus, MemoryClass, TimingPlan, TimingSource,
+    complete_instruction, observe_instruction, plan_instruction, CompletionError, PlanError,
+};
+use xtensa_lx7::measured::{
+    AccessKind, InstructionObservation, MemoryClass, TimingPlan, TimingSource,
 };
 use xtensa_lx7::state::{exc, INTTYPE_LEVEL};
 use xtensa_lx7::{Op, Trap};
@@ -68,19 +70,19 @@ impl Esp32Backend {
         }
     }
 
-    fn cache_operations(&self, observation: &InstructionObservation) -> Vec<Operation> {
+    fn cache_operations(&self, observation: &InstructionObservation) -> CacheOperations {
         let Some(mut cache) = self.cache.clone() else {
-            return Vec::new();
+            return CacheOperations::default();
         };
-        let mut operations = Vec::new();
+        let mut projected = CacheOperations::default();
         match observation.fetch_memory {
-            MemoryClass::Flash => operations.push(cache_operation(
+            MemoryClass::Flash => projected.push(cache_operation(
                 cache.access(CacheAccessKind::Fetch, observation.pc),
                 true,
                 observation.pc,
                 self.config.icache_line_bytes,
             )),
-            MemoryClass::Psram => operations.push(Operation::UnadoptedInstruction),
+            MemoryClass::Psram => projected.operations.push(Operation::UnadoptedInstruction),
             _ => {}
         }
         if let (Some(memory), Some(access)) = (observation.access_memory, observation.access) {
@@ -89,7 +91,7 @@ impl Esp32Backend {
                     AccessKind::Load => CacheAccessKind::Load,
                     AccessKind::Store | AccessKind::Atomic => CacheAccessKind::Store,
                 };
-                operations.push(cache_operation(
+                projected.push(cache_operation(
                     cache.access(kind, access.address),
                     false,
                     access.address,
@@ -97,7 +99,7 @@ impl Esp32Backend {
                 ));
             }
         }
-        operations
+        projected
     }
 
     fn commit_cache_accesses(&mut self, observation: &InstructionObservation) {
@@ -119,27 +121,69 @@ impl Esp32Backend {
     }
 }
 
+#[derive(Default)]
+struct CacheOperations {
+    operations: Vec<Operation>,
+    dirty_eviction: Option<CacheSource>,
+}
+
+impl CacheOperations {
+    fn push(&mut self, access: CacheOperation) {
+        self.operations.push(access.operation);
+        self.dirty_eviction = self.dirty_eviction.or(access.dirty_eviction);
+    }
+}
+
+struct CacheOperation {
+    operation: Operation,
+    dirty_eviction: Option<CacheSource>,
+}
+
 fn cache_operation(
     result: CacheAccessResult,
     instruction: bool,
     address: u32,
     line_bytes: u8,
-) -> Operation {
+) -> CacheOperation {
     match result {
-        CacheAccessResult::Hit => Operation::HotCacheHit,
-        CacheAccessResult::Miss { position, source } => Operation::CacheLineFill {
-            cache: match (instruction, source) {
-                (true, CacheSource::Flash) => CacheKind::InstructionFlash,
-                (false, CacheSource::Flash) => CacheKind::DataFlash,
-                (false, CacheSource::Psram) => CacheKind::DataPsram,
-                (true, CacheSource::Psram) => return Operation::UnadoptedInstruction,
-            },
-            position: match position {
-                FillPosition::First => CacheFillPosition::First,
-                FillPosition::Subsequent => CacheFillPosition::Subsequent,
-            },
-            line: address / u32::from(line_bytes),
+        CacheAccessResult::Hit => CacheOperation {
+            operation: Operation::HotCacheHit,
+            dirty_eviction: None,
         },
+        CacheAccessResult::Miss {
+            position,
+            source,
+            eviction,
+        } => CacheOperation {
+            operation: match (instruction, source) {
+                (true, CacheSource::Flash) => Operation::CacheLineFill {
+                    cache: CacheKind::InstructionFlash,
+                    position: cache_fill_position(position),
+                    line: address / u32::from(line_bytes),
+                },
+                (false, CacheSource::Flash) => Operation::CacheLineFill {
+                    cache: CacheKind::DataFlash,
+                    position: cache_fill_position(position),
+                    line: address / u32::from(line_bytes),
+                },
+                (false, CacheSource::Psram) => Operation::CacheLineFill {
+                    cache: CacheKind::DataPsram,
+                    position: cache_fill_position(position),
+                    line: address / u32::from(line_bytes),
+                },
+                (true, CacheSource::Psram) => Operation::UnadoptedInstruction,
+            },
+            dirty_eviction: eviction
+                .filter(|evicted| evicted.dirty)
+                .map(|evicted| evicted.source),
+        },
+    }
+}
+
+const fn cache_fill_position(position: FillPosition) -> CacheFillPosition {
+    match position {
+        FillPosition::First => CacheFillPosition::First,
+        FillPosition::Subsequent => CacheFillPosition::Subsequent,
     }
 }
 
@@ -178,7 +222,16 @@ impl TimingSource for Esp32Backend {
         if access.is_some_and(|_| observation.access_memory == Some(MemoryClass::InternalSram)) {
             operations.push(Operation::IndependentSramAccess);
         }
-        operations.extend(self.cache_operations(observation));
+        let cache = self.cache_operations(observation);
+        if cache.dirty_eviction.is_some() {
+            return Err(TimingRefusal {
+                class: backend_api::CostClass::UnadoptedInstruction,
+                tier_candidate: backend_api::CostTier::Unexplained,
+                reason: RefusalReason::CostNotAdopted,
+                configuration: Some(self.config),
+            });
+        }
+        operations.extend(cache.operations);
         if self.previous_load[core_index(observation.core)]
             .is_some_and(|register| observation.read_registers & (1 << register) != 0)
         {
@@ -260,6 +313,7 @@ pub enum UnpricedTimingClass {
     ExceptionEntry(ExceptionEntryClass),
     ExceptionReturn(ExceptionReturnClass),
     InterruptEntry { irq: u32 },
+    DirtyCacheEvictionWriteback(CacheSource),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -326,17 +380,18 @@ impl MeasuredMachine for crate::Machine {
             ));
         }
 
-        let instruction = {
+        let observation = {
             let cpu = &self.cores[index];
-            let bytes = self
-                .bus
-                .measured_fetch(cpu.pc)
-                .map_err(|_| MeasuredStepError::Plan(PlanError::Fetch { pc: cpu.pc }))?;
-            xtensa_lx7::decode(cpu.pc, bytes)
+            observe_instruction(core, cpu, &self.bus).map_err(MeasuredStepError::Plan)?
         };
-        if let Some(class) = exception_return_class(instruction.op) {
+        if let Some(class) = exception_return_class(observation.instruction.op) {
             return Err(MeasuredStepError::Unpriced(
                 UnpricedTimingClass::ExceptionReturn(class),
+            ));
+        }
+        if let Some(source) = backend.cache_operations(&observation).dirty_eviction {
+            return Err(MeasuredStepError::Unpriced(
+                UnpricedTimingClass::DirtyCacheEvictionWriteback(source),
             ));
         }
 
@@ -617,10 +672,10 @@ mod tests {
         for line in 0..lines {
             let address = base + line as u32 * line_bytes;
             if cache == CacheKind::InstructionFlash {
-                machine.cpu.pc = address;
+                machine.cores[0].pc = address;
             } else {
-                machine.cpu.pc = RESET_PC;
-                machine.cpu.set_ar(3, address);
+                machine.cores[0].pc = RESET_PC;
+                machine.cores[0].set_ar(3, address);
             }
             assert_eq!(
                 machine.step_measured(&mut backend, CoreId::Core0),
@@ -651,10 +706,10 @@ mod tests {
         for line in 0..lines {
             let address = base + line as u32 * line_bytes;
             if cache == CacheKind::InstructionFlash {
-                machine.cpu.pc = address;
+                machine.cores[0].pc = address;
             } else {
-                machine.cpu.pc = RESET_PC;
-                machine.cpu.set_ar(3, address);
+                machine.cores[0].pc = RESET_PC;
+                machine.cores[0].set_ar(3, address);
             }
             assert_eq!(
                 machine.step_measured(&mut backend, CoreId::Core0),
@@ -738,15 +793,15 @@ mod tests {
         machine.bus.mmu[256] = crate::bus::MMU_SPIRAM;
         let mut backend = Esp32Backend::default();
         for way in 0..8 {
-            machine.cpu.pc = RESET_PC;
-            machine.cpu.set_ar(3, 0x3d00_0000 + way * 4096);
+            machine.cores[0].pc = RESET_PC;
+            machine.cores[0].set_ar(3, 0x3d00_0000 + way * 4096);
             assert_eq!(
                 machine.step_measured(&mut backend, CoreId::Core0),
                 Ok(MeasuredStep::Instruction)
             );
         }
-        machine.cpu.pc = RESET_PC;
-        machine.cpu.set_ar(3, 0x3d00_8000);
+        machine.cores[0].pc = RESET_PC;
+        machine.cores[0].set_ar(3, 0x3d00_8000);
         assert_eq!(
             format!("{:?}", machine.step_measured(&mut backend, CoreId::Core0)),
             "Err(Unpriced(DirtyCacheEvictionWriteback(Psram)))"
