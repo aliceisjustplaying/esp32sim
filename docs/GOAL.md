@@ -24,6 +24,10 @@ interrupt timing, and register-visible device behavior. Wire-level
 electrical behavior is out of scope unless it becomes visible to
 firmware.
 
+Board scope is exactly the Waveshare ESP32-S3-Touch-AMOLED-1.8. Other
+ESP32-S3 board configurations require their own configuration-dependent
+receipts and are refused by name when unmatched.
+
 ## Definition of done
 
 The emulator boots the board's real merged firmware image (real ELF
@@ -34,6 +38,9 @@ passes a silicon correlation suite at these bounds:
 - exact on SRAM-resident kernels,
 - within 1 percent on frame-scale workloads,
 - distribution agreement on RTC and long-window PSRAM paths.
+
+The frame-scale target is 1 percent. Work below that scale is not held to
+a 0.1 percent target.
 
 ## End state: one mode, fast and accurate
 
