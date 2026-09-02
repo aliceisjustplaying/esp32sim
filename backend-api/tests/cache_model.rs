@@ -1,5 +1,6 @@
 use std::{path::PathBuf, process::Command};
 
+use backend_api::cache::EvictedLine;
 use backend_api::{
     CacheAccessKind as AccessKind, CacheAccessResult as AccessResult, CacheModel, CacheSource,
     CacheTarget, ChipConfig, FillPosition, ReplacementPolicy, UnsupportedChipConfig,
@@ -179,6 +180,7 @@ fn receipt_bursts_have_expected_first_and_subsequent_misses() {
                         AccessResult::Miss {
                             position: FillPosition::First,
                             source: case.source,
+                            eviction: None,
                         }
                     );
                     assert!(first[1..].iter().all(|result| {
@@ -186,6 +188,7 @@ fn receipt_bursts_have_expected_first_and_subsequent_misses() {
                             == AccessResult::Miss {
                                 position: FillPosition::Subsequent,
                                 source: case.source,
+                                eviction: None,
                             }
                     }));
                 }
@@ -206,6 +209,7 @@ fn sixteen_line_icache_replay_is_model_only_because_the_receipt_is_missing() {
         AccessResult::Miss {
             position: FillPosition::First,
             source: CacheSource::Flash,
+            eviction: None,
         }
     );
     assert!(cold[1..].iter().all(|result| {
@@ -213,6 +217,7 @@ fn sixteen_line_icache_replay_is_model_only_because_the_receipt_is_missing() {
             == AccessResult::Miss {
                 position: FillPosition::Subsequent,
                 source: CacheSource::Flash,
+                eviction: None,
             }
     }));
     assert!(hot.iter().all(|result| *result == AccessResult::Hit));
@@ -259,6 +264,7 @@ fn cache_maintenance_is_explicit_and_deterministic() {
         AccessResult::Miss {
             position: FillPosition::First,
             source: CacheSource::Psram,
+            eviction: None,
         }
     );
     assert_eq!(model.writeback(0x3d00_0000, 64), 1);
@@ -274,6 +280,7 @@ fn cache_maintenance_is_explicit_and_deterministic() {
         AccessResult::Miss {
             position: FillPosition::First,
             source: CacheSource::Psram,
+            eviction: None,
         }
     );
     model.invalidate_all(CacheTarget::Instruction);
@@ -317,4 +324,29 @@ fn policy_is_lru_and_unsupported_config_is_named() {
         model.access(AccessKind::Fetch, 0x4200_0000 + same_set_stride),
         AccessResult::Miss { .. }
     ));
+}
+
+#[test]
+fn dirty_eviction_reports_the_writeback_source() {
+    let mut model = CacheModel::new(ChipConfig::RECEIPT_SCOPE)
+        .expect("receipt-scoped cache configuration must be supported");
+    let same_set_stride = ChipConfig::RECEIPT_SCOPE.dcache_size_bytes
+        / u32::from(ChipConfig::RECEIPT_SCOPE.dcache_ways);
+    for way in 0..u32::from(ChipConfig::RECEIPT_SCOPE.dcache_ways) {
+        let _miss = model.access(AccessKind::Store, 0x3d00_0000 + way * same_set_stride);
+    }
+    assert_eq!(
+        model.access(
+            AccessKind::Store,
+            0x3d00_0000 + u32::from(ChipConfig::RECEIPT_SCOPE.dcache_ways) * same_set_stride,
+        ),
+        AccessResult::Miss {
+            position: FillPosition::Subsequent,
+            source: CacheSource::Psram,
+            eviction: Some(EvictedLine {
+                source: CacheSource::Psram,
+                dirty: true,
+            }),
+        }
+    );
 }
