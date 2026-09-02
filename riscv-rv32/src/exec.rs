@@ -98,7 +98,7 @@ pub fn exec_insn<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn, pc: u32) -> Resul
         Add => cpu.set(i.rd, a.wrapping_add(b)),
         Sub => cpu.set(i.rd, a.wrapping_sub(b)),
         Sll => cpu.set(i.rd, a << (b & 31)),
-        Slt => cpu.set(i.rd, (((a as i32) < (b as i32)) as u32)),
+        Slt => cpu.set(i.rd, ((a as i32) < (b as i32)) as u32),
         Sltu => cpu.set(i.rd, (a < b) as u32),
         Xor => cpu.set(i.rd, a ^ b),
         Srl => cpu.set(i.rd, a >> (b & 31)),
@@ -112,7 +112,7 @@ pub fn exec_insn<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn, pc: u32) -> Resul
         Mulhu => cpu.set(i.rd, (((a as u64) * (b as u64)) >> 32) as u32),
         // RISC-V defines division by zero and the signed overflow case, rather than trapping
         Div => cpu.set(i.rd, if b == 0 { u32::MAX } else if a == 0x8000_0000 && b == u32::MAX { a } else { ((a as i32).wrapping_div(b as i32)) as u32 }),
-        Divu => cpu.set(i.rd, if b == 0 { u32::MAX } else { a / b }),
+        Divu => { #[allow(clippy::manual_checked_ops, reason = "RISC-V defines division by zero as an architectural result")] let v = if b == 0 { u32::MAX } else { a / b }; cpu.set(i.rd, v); }
         Rem => cpu.set(i.rd, if b == 0 { a } else if a == 0x8000_0000 && b == u32::MAX { 0 } else { ((a as i32).wrapping_rem(b as i32)) as u32 }),
         Remu => cpu.set(i.rd, if b == 0 { a } else { a % b }),
 

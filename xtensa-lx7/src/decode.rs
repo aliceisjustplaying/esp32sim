@@ -77,6 +77,7 @@ fn sext(v: u32, bits: u32) -> i32 {
 }
 
 impl Insn {
+    #[allow(clippy::too_many_arguments, reason = "the constructor names every packed instruction field")]
     fn new(op: Op, r: u8, s: u8, t: u8, imm: i32, imm2: i32, len: u8, raw: u32) -> Self {
         Insn { op, r, s, t, imm, imm2, len, raw }
     }

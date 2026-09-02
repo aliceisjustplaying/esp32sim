@@ -19,7 +19,7 @@ impl DebugFlags {
         if std::env::var("ESP_EMU_LOG_ALL").is_ok() { f.add("mmio"); }
         f
     }
-    pub fn parse(&mut self, list: &str) { for a in list.split(|c| c == ',' || c == ' ').filter(|a| !a.is_empty()) { self.add(a); } }
+    pub fn parse(&mut self, list: &str) { for a in list.split([',', ' ']).filter(|a| !a.is_empty()) { self.add(a); } }
     pub fn add(&mut self, area: &str) { self.areas.insert(area.to_ascii_lowercase()); }
     pub fn has(&self, area: &str) -> bool { self.areas.contains(area) || self.areas.contains("all") }
     pub fn is_empty(&self) -> bool { self.areas.is_empty() }

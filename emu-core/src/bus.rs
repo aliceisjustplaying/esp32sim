@@ -93,7 +93,7 @@ impl Bus for FlatRam {
     fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
         let o = self.off(pc, 1)?;
         let mut b = [0u8; 4];
-        for i in 0..4 { if o + i < self.mem.len() { b[i] = self.mem[o + i]; } }
+        for (i, byte) in b.iter_mut().enumerate() { if o + i < self.mem.len() { *byte = self.mem[o + i]; } }
         Ok(b)
     }
 }
