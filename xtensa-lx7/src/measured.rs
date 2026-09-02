@@ -124,32 +124,7 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
     timing: &T,
     now: VirtualCycle,
 ) -> Result<PendingInstruction, PlanError> {
-    let pc = cpu.pc;
-    let bytes = bus
-        .measured_fetch(pc)
-        .map_err(|_| PlanError::Fetch { pc })?;
-    let instruction = decode(pc, bytes);
-    let access = access_shape(cpu, instruction);
-    let mut observation = InstructionObservation {
-        core,
-        pc,
-        bytes,
-        instruction,
-        fetch_memory: bus.measured_memory_class(pc),
-        access_memory: access.map(|shape| bus.measured_memory_class(shape.address)),
-        access,
-        branch_taken: branch_outcome(cpu, instruction),
-        load_destination: load_destination(instruction),
-        read_registers: read_registers(instruction),
-        loop_back_edge_residue: (cpu.lcount != 0
-            && pc.wrapping_add(u32::from(instruction.len)) == cpu.lend)
-            .then_some((cpu.lbeg & 3) as u8),
-        block_cost: BlockCostPayload {
-            start_pc: pc,
-            static_cycles: 0,
-            components: Vec::new(),
-        },
-    };
+    let mut observation = observe_instruction(core, cpu, bus)?;
     let plan = timing.price(&observation).map_err(PlanError::Timing)?;
     observation.block_cost.static_cycles = plan
         .components
@@ -173,6 +148,39 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         observation,
         components: plan.components,
         mutations: plan.mutations,
+    })
+}
+
+pub fn observe_instruction<B: MeasuredBus>(
+    core: CoreId,
+    cpu: &Cpu,
+    bus: &B,
+) -> Result<InstructionObservation, PlanError> {
+    let pc = cpu.pc;
+    let bytes = bus
+        .measured_fetch(pc)
+        .map_err(|_| PlanError::Fetch { pc })?;
+    let instruction = decode(pc, bytes);
+    let access = access_shape(cpu, instruction);
+    Ok(InstructionObservation {
+        core,
+        pc,
+        bytes,
+        instruction,
+        fetch_memory: bus.measured_memory_class(pc),
+        access_memory: access.map(|shape| bus.measured_memory_class(shape.address)),
+        access,
+        branch_taken: branch_outcome(cpu, instruction),
+        load_destination: load_destination(instruction),
+        read_registers: read_registers(instruction),
+        loop_back_edge_residue: (cpu.lcount != 0
+            && pc.wrapping_add(u32::from(instruction.len)) == cpu.lend)
+            .then_some((cpu.lbeg & 3) as u8),
+        block_cost: BlockCostPayload {
+            start_pc: pc,
+            static_cycles: 0,
+            components: Vec::new(),
+        },
     })
 }
 
