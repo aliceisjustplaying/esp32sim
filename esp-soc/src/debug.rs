@@ -10,14 +10,22 @@ pub struct DebugFlags { areas: BTreeSet<String> }
 impl DebugFlags {
     /// `ESP_EMU_DEBUG=a,b,c`, plus the older one-variable-per-area form (`ESP_EMU_DEBUG_SPI`, ...).
     pub fn from_env() -> Self {
-        let mut f = DebugFlags::default();
-        if let Ok(v) = std::env::var("ESP_EMU_DEBUG") { if v.is_empty() || v == "1" { f.add("rom"); } else { f.parse(&v); } }
-        for (k, _) in std::env::vars() {
-            if let Some(a) = k.strip_prefix("ESP_EMU_DEBUG_") { f.add(&a.to_ascii_lowercase().replace('_', "-")); }
+        // wasm32-unknown-unknown has no environment: `std::env::vars()` there used to yield nothing
+        // and, since Rust 1.9x's std, aborts with "not supported on this platform" — which took
+        // every browser demo down the first time Pages built with that toolchain.
+        #[cfg(target_arch = "wasm32")]
+        { DebugFlags::default() }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut f = DebugFlags::default();
+            if let Ok(v) = std::env::var("ESP_EMU_DEBUG") { if v.is_empty() || v == "1" { f.add("rom"); } else { f.parse(&v); } }
+            for (k, _) in std::env::vars() {
+                if let Some(a) = k.strip_prefix("ESP_EMU_DEBUG_") { f.add(&a.to_ascii_lowercase().replace('_', "-")); }
+            }
+            if std::env::var("ESP_EMU_RT_LOG").is_ok() { f.add("rt"); }
+            if std::env::var("ESP_EMU_LOG_ALL").is_ok() { f.add("mmio"); }
+            f
         }
-        if std::env::var("ESP_EMU_RT_LOG").is_ok() { f.add("rt"); }
-        if std::env::var("ESP_EMU_LOG_ALL").is_ok() { f.add("mmio"); }
-        f
     }
     pub fn parse(&mut self, list: &str) { for a in list.split([',', ' ']).filter(|a| !a.is_empty()) { self.add(a); } }
     pub fn add(&mut self, area: &str) { self.areas.insert(area.to_ascii_lowercase()); }

@@ -12,6 +12,7 @@ checked-in oracle or is `#[ignore]`d with the reason in its name.
 | peripherals | `esp-periph/tests/devices.rs` | systimer one-shot and periodic alarms and their deadlines, TIMG prescaler/alarm/autoreload, GPIO edge and level interrupts, USB SOF cadence per chip clock, the I2S rate from the clock registers; the `device_set!` table from outside: ranges, `delta`, `alias`, the generic fallback, source numbering, tick delivery per clock domain, the deadline minimum, `--debug` fan-out |
 | machine | `esp32s3/tests/machine.rs`, `esp-soc/tests/parsers.rs` | idle cores skip time, core 1 runs when SYSTEM releases it, what a chip reset keeps, scripts against the board's pin names and encoder, console backlogs and masks, observers on both paths; the ELF/app-image/picture loaders never panic on random, truncated or hostile input |
 | whole runs | `cli/tests/goldens.rs`, `wasm/tests/abi.rs` | the goldens below; the wasm C ABI driven natively for both chips, checking the web protocol's `board`, `serial`, `stat`, frame, audio and ring messages |
+| the wasm build itself | `tools/wasm-test.mjs` | the real `esp32sim.wasm` under Node, driven through the page's firmware manifests (`web/wasm/fw/*.json`): boot, run, drain the outbox, expect the board message and the console line, no panic — the only layer that sees a wasm-only abort (a std that panics where it used to return nothing took every demo down once) |
 
 The **golden-output tests** (`cli/tests/goldens.rs`) are the
 regression bar for everything else: they run the committed demo firmware from the mask ROM and
@@ -26,6 +27,7 @@ silently: without a ROM they fail with the path they looked for.
 ```sh
 cargo test --release --workspace -- --include-ignored --skip external_      # ~15 s for the whole set
 UPDATE_GOLDENS=1 cargo test --release --workspace -- --include-ignored --skip external_   # after an intentional change
+tools/wasm-build.sh && node tools/wasm-test.mjs hello c3-hello panel      # the wasm module, as the page runs it
 ```
 
 Tests named `external_*` need inputs only a developer machine has (full objdump listings via

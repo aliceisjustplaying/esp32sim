@@ -42,6 +42,9 @@ JSON file; real boards have the partition erased and behave as before. Natively:
 
 ## What it is
 
+`tools/wasm-test.mjs` runs the built module under Node through the same manifests the page
+uses and fails on a panic or a missing console line; CI runs it after the goldens.
+
 Both chips are in the one module: `esp32sim_new` takes a board name, and `esp32c3` builds the
 RISC-V machine instead of the Xtensa one. The C3 has no `WebServer` of its own — it is
 console-only — so the wasm layer turns its console into the same `{"t":"serial"}` messages the

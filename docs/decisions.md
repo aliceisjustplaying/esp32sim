@@ -238,6 +238,12 @@ Things that cost real time to find out, recorded so they do not have to be found
   panic at runtime: `Instant::now()` and `SystemTime::now()`. Those live behind `host.rs`; the
   worker passes `Date.now()` in with every run slice. Never call `Instant` on a path the wasm
   build can reach (real-time pacing is the worker's job there).
+- **Never read the process environment on a path the wasm build can reach.** `std::env::var`
+  answers "not present" on wasm32-unknown-unknown, but `std::env::vars()` aborts there since the
+  std of Rust 1.9x (it used to yield nothing). `DebugFlags::from_env` iterated it at machine
+  creation, so the day Pages built with that toolchain every demo died in `esp32sim_new` with
+  "not supported on this platform". Nothing in the repository had changed. The env reading is now
+  compiled out for wasm32, next to the `Instant::now()` rule above.
 - **Reuse the WebSocket protocol, not the WebSocket.** Giving `WebServer` a queue mode meant zero
   changes to `Machine`'s push/poll code and a ~10-line change to the page. The one trap: the
   per-client "hello" snapshot (board name, console backlog) is built for new socket clients and
