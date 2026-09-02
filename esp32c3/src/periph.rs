@@ -324,7 +324,7 @@ impl DeviceSet for Peripherals {
 
 impl Peripherals {
     pub fn new(mac: [u8; 6]) -> Self {
-        let mut p = Peripherals {
+        Peripherals {
             uart: [Uart::new(), Uart::new()],
             usb: UsbSerialJtag::new(CPU_HZ),
             systimer: Systimer::new(),
@@ -357,8 +357,7 @@ impl Peripherals {
             spi_exec: false,
             clock: Self::new_clock(),
             last_status: [0; 4],
-        };
-        p
+        }
     }
 
     pub fn block_name(block: u32) -> &'static str {
