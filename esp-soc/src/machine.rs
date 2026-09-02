@@ -467,8 +467,8 @@ impl<S: Soc> Machine<S> {
                 cycles: self.bus.cycles(),
                 cpu_hz: S::CPU_HZ,
             };
-            for i in 0..S::CORES {
-                let now = S::Core::irq_bits(&irqs[i]);
+            for (i, irq) in irqs.iter().enumerate().take(S::CORES) {
+                let now = S::Core::irq_bits(irq);
                 let mut rising = now & !self.prev_irq[i];
                 self.prev_irq[i] = now;
                 while rising != 0 {
@@ -690,8 +690,8 @@ impl<S: Soc> Machine<S> {
                 self.drain_console();
                 return Stop::MaxInsns;
             }
-            for i in 1..S::CORES {
-                on[i] = match S::core_state(&self.bus, i) {
+            for (i, is_on) in on.iter_mut().enumerate().take(S::CORES).skip(1) {
+                *is_on = match S::core_state(&self.bus, i) {
                     CoreState::Reset => {
                         self.core_held[i] = true;
                         false
@@ -715,8 +715,8 @@ impl<S: Soc> Machine<S> {
             if idle[..S::CORES].iter().all(|&x| x) && !slow_path {
                 // every core asleep: let time pass in larger steps until a device raises a line
                 let chunk = S::IDLE_CHUNK;
-                for i in 0..S::CORES {
-                    if on[i] {
+                for (i, &is_on) in on.iter().enumerate().take(S::CORES) {
+                    if is_on {
                         self.cores[i].idle_advance(chunk as u32);
                     }
                 }
@@ -852,14 +852,25 @@ impl<S: Soc> Machine<S> {
                 std::time::Duration::from_secs_f64(self.bus.cycles() as f64 / S::CPU_HZ as f64);
             let wall = start.elapsed();
             if emulated > wall + std::time::Duration::from_millis(2) {
-                std::thread::sleep(emulated - wall);
+                std::thread::sleep(
+                    emulated
+                        .checked_sub(wall)
+                        .expect("emulated time is ahead of wall time"),
+                );
                 self.rt.behind = 0.0;
             } else if wall > emulated + std::time::Duration::from_millis(50) {
-                self.rt.behind = (wall - emulated).as_secs_f64();
+                self.rt.behind = wall
+                    .checked_sub(emulated)
+                    .expect("wall time is ahead of emulated time")
+                    .as_secs_f64();
                 // more than half a second behind: resynchronise (skip the lag) rather than flood the client while catching up
                 if wall > emulated + std::time::Duration::from_millis(500) {
                     self.rt.resyncs += 1;
-                    self.rt.wall_start = Some(std::time::Instant::now() - emulated);
+                    self.rt.wall_start = Some(
+                        std::time::Instant::now()
+                            .checked_sub(emulated)
+                            .expect("emulated duration fits before the current instant"),
+                    );
                 }
             } else {
                 self.rt.behind = 0.0;
@@ -1137,7 +1148,7 @@ impl<S: Soc> Machine<S> {
             let mut it = line.splitn(2, char::is_whitespace);
             let t: f64 = it
                 .next()
-                .unwrap()
+                .expect("a nonempty script line starts with a time")
                 .parse()
                 .map_err(|_| format!("line {}: bad time", ln + 1))?;
             let after = it.next().unwrap_or("").trim_start();

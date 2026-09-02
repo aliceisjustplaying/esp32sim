@@ -34,10 +34,7 @@ impl DebugFlags {
         f
     }
     pub fn parse(&mut self, list: &str) {
-        for a in list
-            .split(|c| c == ',' || c == ' ')
-            .filter(|a| !a.is_empty())
-        {
+        for a in list.split([',', ' ']).filter(|a| !a.is_empty()) {
             self.add(a);
         }
     }

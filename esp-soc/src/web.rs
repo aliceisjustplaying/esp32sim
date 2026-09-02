@@ -60,7 +60,7 @@ fn sha1(msg: &[u8]) -> [u8; 20] {
             w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
         }
         let (mut a, mut b, mut c, mut d, mut e) = (h[0], h[1], h[2], h[3], h[4]);
-        for i in 0..80 {
+        for (i, word) in w.iter().enumerate() {
             let (f, k) = match i {
                 0..=19 => ((b & c) | (!b & d), 0x5A827999),
                 20..=39 => (b ^ c ^ d, 0x6ED9EBA1),
@@ -72,7 +72,7 @@ fn sha1(msg: &[u8]) -> [u8; 20] {
                 .wrapping_add(f)
                 .wrapping_add(e)
                 .wrapping_add(k)
-                .wrapping_add(w[i]);
+                .wrapping_add(*word);
             e = d;
             d = c;
             c = b.rotate_left(30);
@@ -131,6 +131,10 @@ fn frame(opcode: u8, data: &[u8]) -> Vec<u8> {
     f
 }
 
+fn lock_shared(shared: &Arc<Mutex<Shared>>) -> std::sync::MutexGuard<'_, Shared> {
+    shared.lock().expect("the web state mutex is not poisoned")
+}
+
 impl WebServer {
     pub fn start(port: u16, web_dir: String) -> std::io::Result<WebServer> {
         let listener = TcpListener::bind(("127.0.0.1", port))?;
@@ -175,11 +179,9 @@ impl WebServer {
         self.emit(2, d);
     }
     fn emit(&self, kind: u8, d: &[u8]) {
-        let queue = self.shared.lock().unwrap().queue;
+        let queue = lock_shared(&self.shared).queue;
         if queue {
-            self.shared
-                .lock()
-                .unwrap()
+            lock_shared(&self.shared)
                 .outbox
                 .push_back((kind, d.to_vec()));
         } else {
@@ -187,32 +189,32 @@ impl WebServer {
         }
     }
     fn broadcast(&self, f: Vec<u8>) {
-        let mut sh = self.shared.lock().unwrap();
+        let mut sh = lock_shared(&self.shared);
         sh.clients.retain(|c| c.send(f.clone()));
     }
     /// Queue mode: take everything sent since the last call, as (1 = text, 2 = binary) messages.
     pub fn take_outbox(&self) -> Vec<(u8, Vec<u8>)> {
-        self.shared.lock().unwrap().outbox.drain(..).collect()
+        lock_shared(&self.shared).outbox.drain(..).collect()
     }
     pub fn push_incoming(&self, s: String) {
-        self.shared.lock().unwrap().incoming.push_back(s);
+        lock_shared(&self.shared).incoming.push_back(s);
     }
     pub fn push_incoming_bin(&self, d: Vec<u8>) {
-        self.shared.lock().unwrap().incoming_bin.push_back(d);
+        lock_shared(&self.shared).incoming_bin.push_back(d);
     }
     pub fn set_hello(&self, frames: Vec<Vec<u8>>) {
-        self.shared.lock().unwrap().hello = frames;
+        lock_shared(&self.shared).hello = frames;
     }
     pub fn poll_incoming(&self) -> Vec<String> {
-        let mut sh = self.shared.lock().unwrap();
+        let mut sh = lock_shared(&self.shared);
         sh.incoming.drain(..).collect()
     }
     pub fn poll_incoming_bin(&self) -> Vec<Vec<u8>> {
-        let mut sh = self.shared.lock().unwrap();
+        let mut sh = lock_shared(&self.shared);
         sh.incoming_bin.drain(..).collect()
     }
     pub fn clients(&self) -> usize {
-        self.shared.lock().unwrap().clients.len()
+        lock_shared(&self.shared).clients.len()
     }
 }
 
@@ -237,7 +239,7 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
         // plain HTTP: serve a file
         let path = text.split_whitespace().nth(1).unwrap_or("/");
         let path = if path == "/" { "/index.html" } else { path };
-        let web_dir = shared.lock().unwrap().web_dir.clone();
+        let web_dir = lock_shared(&shared).web_dir.clone();
         let safe = !path.contains("..");
         let body = if safe {
             std::fs::read(format!("{}{}", web_dir, path)).ok()
@@ -266,13 +268,15 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
     let _ = stream.write_all(format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n", accept).as_bytes());
     let _ = stream.set_nodelay(true);
     {
-        let mut sh = shared.lock().unwrap();
+        let mut sh = lock_shared(&shared);
         let hello = sh.hello.clone();
         for f in hello {
             let _ = stream.write_all(&f);
         }
         let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(256);
-        let mut out = stream.try_clone().unwrap();
+        let mut out = stream
+            .try_clone()
+            .expect("the accepted TCP stream can be cloned");
         std::thread::spawn(move || {
             while let Ok(f) = rx.recv() {
                 if out.write_all(&f).is_err() {
@@ -297,8 +301,7 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
         }
         Some(v)
     };
-    loop {
-        let Some(h) = read_exact(2) else { break };
+    while let Some(h) = read_exact(2) {
         let op = h[0] & 0xf;
         let masked = h[1] & 0x80 != 0;
         let mut len = (h[1] & 0x7f) as u64;
@@ -307,7 +310,10 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
             len = u16::from_be_bytes([e[0], e[1]]) as u64;
         } else if len == 127 {
             let Some(e) = read_exact(8) else { break };
-            len = u64::from_be_bytes(e.try_into().unwrap());
+            len = u64::from_be_bytes(
+                e.try_into()
+                    .expect("the extended WebSocket length has eight bytes"),
+            );
         }
         let mask = if masked {
             let Some(m) = read_exact(4) else { break };
@@ -330,14 +336,12 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
             8 => break,
             9 => {}
             1 => {
-                shared
-                    .lock()
-                    .unwrap()
+                lock_shared(&shared)
                     .incoming
                     .push_back(String::from_utf8_lossy(&data).to_string());
             }
             2 => {
-                let mut sh = shared.lock().unwrap();
+                let mut sh = lock_shared(&shared);
                 if sh.incoming_bin.len() < 4 {
                     sh.incoming_bin.push_back(data);
                 }
@@ -345,7 +349,7 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
             _ => {}
         }
     }
-    let mut sh = shared.lock().unwrap();
+    let mut sh = lock_shared(&shared);
     let me = stream.peer_addr().ok();
     sh.clients.retain(|c| c.peer != me);
 }

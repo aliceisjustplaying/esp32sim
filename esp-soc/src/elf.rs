@@ -32,7 +32,11 @@ fn u16le(d: &[u8], o: usize) -> u16 {
     u16::from_le_bytes([d[o], d[o + 1]])
 }
 fn u32le(d: &[u8], o: usize) -> u32 {
-    u32::from_le_bytes(d[o..o + 4].try_into().unwrap())
+    u32::from_le_bytes(
+        d[o..o + 4]
+            .try_into()
+            .expect("the four-byte ELF field has the required length"),
+    )
 }
 
 pub fn parse(d: &[u8]) -> Result<Elf, String> {
