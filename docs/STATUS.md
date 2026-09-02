@@ -174,6 +174,28 @@ xtensa-esp-elf 15.2.0. IDF 6.1 is authoritative: where two toolchains
 disagree at probe level, the IDF 6.1 value is adopted. No receipt mixes
 toolchain versions within a cohort.
 
+## Contention candidates
+
+The paired IDF 6.1 rebaseline analysis covers all 103 identities with both
+single-core and core-1-contended receipts. These are milestone 5 inputs only:
+nothing in this section is adopted or enters the price table. Exact means each
+identity in the family has a repeatable integer delta; family classifications
+fall to interval or distribution when any identity does.
+
+| Family | Classification | Candidate behavior |
+| --- | --- | --- |
+| Branch | exact | All three identities have zero delta |
+| Cache burst | exact | Every identity has a repeatable constant; the constant varies by burst shape |
+| Cache hit | distribution | Fixed hot-hit cells coexist with an interval and spreading flash-map workloads |
+| Dependent load | interval | SRAM is zero; hot flash and PSRAM are 317 to 318 cycles |
+| MMIO read | distribution | Non-RTC identities are zero; RTC identities spread |
+| MMIO write | exact | All ten identities have zero delta |
+| PSRAM pattern | distribution | Sequential hot is constant; the other three identities spread |
+| ROM routine | distribution | Most identities are constant; reset-reason routines vary |
+| Oracle | distribution | SRAM controls are zero, RGB565 is constant, and RTC reset-state reads spread |
+
+Receipt: [`evidence/timing/contention-candidates-idf61/`](evidence/timing/contention-candidates-idf61/README.md).
+
 ## Fixtures
 
 Built from TinyDraw at `3db39856` under ESP-IDF v6.1. The ELFs are
