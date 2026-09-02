@@ -24,6 +24,7 @@ pub enum Spi2Mode {
     Single,
     Dual,
     Quad,
+    Octal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -820,19 +821,29 @@ pub struct WaveshareAmoled18V2 {
     te_level: bool,
     touch_irq_level: bool,
     pending_touch_irq: Option<(VirtualCycle, bool)>,
+    pending_spi2_dma_completion: Option<VirtualCycle>,
+    spi2_dma_completion_ready: bool,
     edges: Vec<BoardEdge>,
 }
 impl WaveshareAmoled18V2 {
+    const APPROXIMATE_TE_HALF_PERIOD: VirtualCycle = crate::periph::CPU_HZ / 120;
+    const SPI2_DMA_32K_SUBMIT_CYCLES: VirtualCycle = 5_755;
+    const SPI2_DMA_32K_TOTAL_CYCLES: VirtualCycle = 401_589;
+
     pub fn new() -> Self {
         WaveshareAmoled18V2 {
             gpio_events: 0,
             panel_display: Co5300::new(),
             touch_state: Default::default(),
             cycle: 0,
-            next_te_cycle: crate::periph::CPU_HZ / 120,
+            // Compatibility signal only. Tier A TE telemetry is diagnostic and is not
+            // an adopted panel-timing claim.
+            next_te_cycle: Self::APPROXIMATE_TE_HALF_PERIOD,
             te_level: true,
             touch_irq_level: true,
             pending_touch_irq: None,
+            pending_spi2_dma_completion: None,
+            spi2_dma_completion_ready: false,
             edges: Vec::new(),
         }
     }
@@ -850,11 +861,14 @@ impl Default for WaveshareAmoled18V2 {
 
 impl DeadlineModel for WaveshareAmoled18V2 {
     fn next_deadline(&self) -> Option<VirtualCycle> {
+        let touch_or_te = self
+            .pending_touch_irq
+            .map_or(self.next_te_cycle, |(cycle, _)| {
+                cycle.min(self.next_te_cycle)
+            });
         Some(
-            self.pending_touch_irq
-                .map_or(self.next_te_cycle, |(cycle, _)| {
-                    cycle.min(self.next_te_cycle)
-                }),
+            self.pending_spi2_dma_completion
+                .map_or(touch_or_te, |cycle| cycle.min(touch_or_te)),
         )
     }
 
@@ -865,7 +879,6 @@ impl DeadlineModel for WaveshareAmoled18V2 {
                 requested: cycle,
             });
         }
-        let half_period = crate::periph::CPU_HZ / 120;
         while self
             .next_deadline()
             .is_some_and(|deadline| deadline <= cycle)
@@ -876,7 +889,9 @@ impl DeadlineModel for WaveshareAmoled18V2 {
             if self.next_te_cycle == deadline {
                 self.te_level = !self.te_level;
                 self.emit_due_edge(deadline, 13, self.te_level);
-                self.next_te_cycle = self.next_te_cycle.saturating_add(half_period);
+                self.next_te_cycle = self
+                    .next_te_cycle
+                    .saturating_add(Self::APPROXIMATE_TE_HALF_PERIOD);
             }
             if self
                 .pending_touch_irq
@@ -888,6 +903,10 @@ impl DeadlineModel for WaveshareAmoled18V2 {
                     .expect("the due touch interrupt must remain pending");
                 self.touch_irq_level = level;
                 self.emit_due_edge(deadline, 21, level);
+            }
+            if self.pending_spi2_dma_completion == Some(deadline) {
+                self.pending_spi2_dma_completion = None;
+                self.spi2_dma_completion_ready = true;
             }
         }
         self.cycle = cycle;
@@ -910,6 +929,40 @@ impl BoardModel for WaveshareAmoled18V2 {
             self.panel_display.transaction(tx);
         }
         vec![0xff; rx_len]
+    }
+    fn schedule_spi2_dma(
+        &mut self,
+        request: Spi2DmaRequest,
+    ) -> Result<Spi2DmaTiming, Spi2DmaTimingRefusal> {
+        if request.mode != Spi2Mode::Quad {
+            return Err(Spi2DmaTimingRefusal::UnsupportedMode { mode: request.mode });
+        }
+        if request.clock_hz != 40_000_000 {
+            return Err(Spi2DmaTimingRefusal::UnsupportedClock {
+                clock_hz: request.clock_hz,
+            });
+        }
+        if request.bytes != 32_768 {
+            return Err(Spi2DmaTimingRefusal::UnpricedPayload {
+                bytes: request.bytes,
+                tier_candidate: backend_api::CostTier::Affine,
+            });
+        }
+        if self.pending_spi2_dma_completion.is_some() {
+            return Err(Spi2DmaTimingRefusal::TransferAlreadyPending);
+        }
+        let completion_cycle = request
+            .submitted_at
+            .checked_add(Self::SPI2_DMA_32K_TOTAL_CYCLES)
+            .ok_or(Spi2DmaTimingRefusal::CompletionOverflow)?;
+        self.pending_spi2_dma_completion = Some(completion_cycle);
+        Ok(Spi2DmaTiming {
+            submit_cycles: Self::SPI2_DMA_32K_SUBMIT_CYCLES,
+            completion_cycle,
+        })
+    }
+    fn take_spi2_dma_completion(&mut self) -> bool {
+        std::mem::take(&mut self.spi2_dma_completion_ready)
     }
     fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn crate::i2c::I2cDevice>)> {
         use crate::i2c::*;
@@ -1024,6 +1077,33 @@ mod co5300_tests {
             Err(Spi2DmaTimingRefusal::UnpricedPayload {
                 bytes: 64,
                 tier_candidate: backend_api::CostTier::Affine,
+            })
+        );
+    }
+
+    #[test]
+    fn unreceipted_spi2_dma_clock_and_mode_refuse_by_name() {
+        let mut board = WaveshareAmoled18V2::new();
+        assert_eq!(
+            board.schedule_spi2_dma(Spi2DmaRequest {
+                submitted_at: 0,
+                bytes: 32_768,
+                clock_hz: 20_000_000,
+                mode: Spi2Mode::Quad,
+            }),
+            Err(Spi2DmaTimingRefusal::UnsupportedClock {
+                clock_hz: 20_000_000,
+            })
+        );
+        assert_eq!(
+            board.schedule_spi2_dma(Spi2DmaRequest {
+                submitted_at: 0,
+                bytes: 32_768,
+                clock_hz: 40_000_000,
+                mode: Spi2Mode::Single,
+            }),
+            Err(Spi2DmaTimingRefusal::UnsupportedMode {
+                mode: Spi2Mode::Single,
             })
         );
     }
