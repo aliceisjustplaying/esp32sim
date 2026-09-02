@@ -82,7 +82,10 @@ impl Esp32Backend {
                 observation.pc,
                 self.config.icache_line_bytes,
             )),
-            MemoryClass::Psram => projected.operations.push(Operation::UnadoptedInstruction),
+            MemoryClass::Psram => {
+                let _result = cache.access(CacheAccessKind::Fetch, observation.pc);
+                projected.operations.push(Operation::UnadoptedInstruction);
+            }
             _ => {}
         }
         if let (Some(memory), Some(access)) = (observation.access_memory, observation.access) {
