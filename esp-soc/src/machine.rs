@@ -11,10 +11,19 @@ use emu_core::{Bus, Core, CostModel, Trap};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug)]
-pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bool), Poke(u32, u32) }
+pub enum ScriptAction {
+    Gpio(u8, bool),
+    Serial(String),
+    Stop,
+    Touch(u16, u16, bool),
+    Poke(u32, u32),
+}
 
 /// The stop conditions that are not observers.
-pub struct Debug { pub stop_on_unimplemented: bool, pub stop_after_exceptions: u64 }
+pub struct Debug {
+    pub stop_on_unimplemented: bool,
+    pub stop_after_exceptions: u64,
+}
 
 /// Guest console output: everything ever printed (`all`), the per-source backlogs the web UI
 /// replays to a late client, and what goes to stdout.
@@ -30,7 +39,12 @@ pub struct Console {
 }
 
 /// Host actions scheduled at emulated times (`--script`, and the UI's encoder detents).
-pub struct Script { pub events: Vec<(u64, ScriptAction)>, pub pos: usize, pub log: bool, knob_next: u64 }
+pub struct Script {
+    pub events: Vec<(u64, ScriptAction)>,
+    pub pos: usize,
+    pub log: bool,
+    knob_next: u64,
+}
 
 pub struct Realtime {
     pub enabled: bool,
@@ -43,7 +57,15 @@ pub struct Realtime {
     log_insns: (u64, u64),
 }
 
-struct WebState { last_push_cycles: u64, audio_sent: usize, ring_updates: u64, px_pending: u64, px_sent: u64, cam_pushed: u64, cam_sent: bool }
+struct WebState {
+    last_push_cycles: u64,
+    audio_sent: usize,
+    ring_updates: u64,
+    px_pending: u64,
+    px_sent: u64,
+    cam_pushed: u64,
+    cam_sent: bool,
+}
 
 pub struct Machine<S: Soc> {
     pub mac: [u8; 6],
@@ -52,7 +74,8 @@ pub struct Machine<S: Soc> {
     pub stubs: HashMap<u32, u32>,
     /// one bit per pc bucket for `stubs` / `fn_probes`, so the common case costs a shift and a test
     /// instead of hashing every pc (a hash lookup per instruction cost ~16% of run time)
-    stub_bloom: u64, probe_bloom: u64,
+    stub_bloom: u64,
+    probe_bloom: u64,
     pub stub_hits: u64,
     /// function-entry tracing: pc -> name (`--trace-fn PREFIX`)
     pub fn_probes: HashMap<u32, String>,
@@ -85,49 +108,148 @@ const QUANTUM: u64 = 64;
 impl<S: Soc> Machine<S> {
     pub fn new(mac: [u8; 6], bus: S::Bus) -> Self {
         Machine {
-            mac, reboots: 0, stubs: HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: HashMap::new(),
-            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(),
-            bus, symbols: BTreeMap::new(),
-            dbg: Debug { stop_on_unimplemented: true, stop_after_exceptions: u64::MAX },
-            observers: Vec::new(), probes: Wants::NONE, prev_irq: vec![0; S::CORES],
-            exceptions: 0, interrupts: 0, irq_hist: vec![[0; 32]; S::CORES],
-            script: Script { events: Vec::new(), pos: 0, log: true, knob_next: 0 }, max_cycles: u64::MAX,
-            console: Console { all: Vec::new(), usb: Vec::new(), uart0: Vec::new(), mask: 3, prefix: false, capture: false },
-            web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, px_pending: 0, px_sent: 0, cam_pushed: u64::MAX, cam_sent: false },
-            rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: false, log_last: None, log_insns: (0, 0) },
-            debug_rom: false, cost: None,
+            mac,
+            reboots: 0,
+            stubs: HashMap::new(),
+            stub_bloom: 0,
+            probe_bloom: 0,
+            stub_hits: 0,
+            fn_probes: HashMap::new(),
+            cores: (0..S::CORES).map(S::new_core).collect(),
+            core_held: (0..S::CORES).map(|i| i > 0).collect(),
+            bus,
+            symbols: BTreeMap::new(),
+            dbg: Debug {
+                stop_on_unimplemented: true,
+                stop_after_exceptions: u64::MAX,
+            },
+            observers: Vec::new(),
+            probes: Wants::NONE,
+            prev_irq: vec![0; S::CORES],
+            exceptions: 0,
+            interrupts: 0,
+            irq_hist: vec![[0; 32]; S::CORES],
+            script: Script {
+                events: Vec::new(),
+                pos: 0,
+                log: true,
+                knob_next: 0,
+            },
+            max_cycles: u64::MAX,
+            console: Console {
+                all: Vec::new(),
+                usb: Vec::new(),
+                uart0: Vec::new(),
+                mask: 3,
+                prefix: false,
+                capture: false,
+            },
+            web: None,
+            ws: WebState {
+                last_push_cycles: 0,
+                audio_sent: 0,
+                ring_updates: 0,
+                px_pending: 0,
+                px_sent: 0,
+                cam_pushed: u64::MAX,
+                cam_sent: false,
+            },
+            rt: Realtime {
+                enabled: false,
+                wall_start: None,
+                last_check: 0,
+                behind: 0.0,
+                resyncs: 0,
+                log: false,
+                log_last: None,
+                log_insns: (0, 0),
+            },
+            debug_rom: false,
+            cost: None,
         }
     }
 
     /// Which parts of the model print what they do (`--debug`, `ESP_EMU_DEBUG`).
-    pub fn set_debug(&mut self, f: &crate::debug::DebugFlags) { self.rt.log = f.has("rt"); self.debug_rom = f.has("rom"); self.bus.set_debug(f); }
-    pub fn seconds(&self) -> f64 { self.bus.cycles() as f64 / S::CPU_HZ as f64 }
-    pub fn insns(&self) -> u64 { self.cores.iter().map(|c| c.insn_count()).sum() }
+    pub fn set_debug(&mut self, f: &crate::debug::DebugFlags) {
+        self.rt.log = f.has("rt");
+        self.debug_rom = f.has("rom");
+        self.bus.set_debug(f);
+    }
+    pub fn seconds(&self) -> f64 {
+        self.bus.cycles() as f64 / S::CPU_HZ as f64
+    }
+    pub fn insns(&self) -> u64 {
+        self.cores.iter().map(|c| c.insn_count()).sum()
+    }
 
     // ------------------------------------------------------------------ observers
     pub fn add_observer(&mut self, o: Box<dyn Observer<S>>) {
         self.probes = self.probes | o.wants();
         self.observers.push(o);
-        self.bus.misc().mmio_log = if self.probes.contains(Wants::MMIO) { Some(Vec::new()) } else { None };
+        self.bus.misc().mmio_log = if self.probes.contains(Wants::MMIO) {
+            Some(Vec::new())
+        } else {
+            None
+        };
         self.bus.observe_gpio(self.probes.contains(Wants::GPIO));
     }
     /// Charge the cores' cycle counters per a silicon-calibrated model instead of 1 cycle per instruction.
-    pub fn set_cost_model(&mut self, m: Box<dyn CostModel>) { self.cost = Some(m); }
-    pub fn has_observer(&self, name: &str) -> bool { self.observers.iter().any(|o| o.name() == name) }
+    pub fn set_cost_model(&mut self, m: Box<dyn CostModel>) {
+        self.cost = Some(m);
+    }
+    pub fn has_observer(&self, name: &str) -> bool {
+        self.observers.iter().any(|o| o.name() == name)
+    }
     /// Every observer's end-of-run report, in the order they were added (files are written now).
     pub fn reports(&mut self) -> String {
-        let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
-        self.observers.iter_mut().map(|o| o.report(&cx)).filter(|r| !r.is_empty()).collect::<Vec<_>>().join("\n")
+        let cx = Ctx {
+            symbols: &self.symbols,
+            cycles: self.bus.cycles(),
+            cpu_hz: S::CPU_HZ,
+        };
+        self.observers
+            .iter_mut()
+            .map(|o| o.report(&cx))
+            .filter(|r| !r.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
     /// Deliver the MMIO and GPIO events the bus recorded since the last call.
     fn deliver_events(&mut self) {
         if self.probes.contains(Wants::MMIO) {
-            let log = self.bus.misc().mmio_log.as_mut().map(std::mem::take).unwrap_or_default();
-            if !log.is_empty() { let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ }; for o in &mut self.observers { if o.wants().contains(Wants::MMIO) { for &(pc, a, v, w) in &log { o.on_mmio(&cx, pc, a, v, w); } } } }
+            let log = self
+                .bus
+                .misc()
+                .mmio_log
+                .as_mut()
+                .map(std::mem::take)
+                .unwrap_or_default();
+            if !log.is_empty() {
+                let cx = Ctx {
+                    symbols: &self.symbols,
+                    cycles: self.bus.cycles(),
+                    cpu_hz: S::CPU_HZ,
+                };
+                for o in &mut self.observers {
+                    if o.wants().contains(Wants::MMIO) {
+                        for &(pc, a, v, w) in &log {
+                            o.on_mmio(&cx, pc, a, v, w);
+                        }
+                    }
+                }
+            }
         }
         if self.probes.contains(Wants::GPIO) {
             let ev = self.bus.take_gpio_events();
-            if !ev.is_empty() { for o in &mut self.observers { if o.wants().contains(Wants::GPIO) { for &(c, p, l) in &ev { o.on_gpio(c, p, l); } } } }
+            if !ev.is_empty() {
+                for o in &mut self.observers {
+                    if o.wants().contains(Wants::GPIO) {
+                        for &(c, p, l) in &ev {
+                            o.on_gpio(c, p, l);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -135,18 +257,40 @@ impl<S: Soc> Machine<S> {
     pub fn load_rom(&mut self, rom_elf: &[u8]) -> Result<(), String> {
         let e = elf::parse(rom_elf)?;
         for s in &e.segments {
-            if s.data.is_empty() { continue; }
+            if s.data.is_empty() {
+                continue;
+            }
             self.bus.load_bytes(s.vaddr, &s.data)?;
             // the mask ROM also holds the initialiser image at paddr (copied by the reset handler)
-            if s.paddr != s.vaddr { let _ = self.bus.load_bytes(s.paddr, &s.data); }
+            if s.paddr != s.vaddr {
+                let _ = self.bus.load_bytes(s.paddr, &s.data);
+            }
         }
         // RAM initialisers live in sections without program headers (.data.interface.*, .data_*)
         let dbg = self.debug_rom;
-        if dbg { eprintln!("[emu] rom: {} segments, {} alloc sections", e.segments.len(), e.sections.len()); }
+        if dbg {
+            eprintln!(
+                "[emu] rom: {} segments, {} alloc sections",
+                e.segments.len(),
+                e.sections.len()
+            );
+        }
         for s in &e.sections {
-            if dbg { eprintln!("[emu]   section {:<36} addr {:#010x} len {:#x} bss={}", s.name, s.addr, s.data.len(), s.is_bss); }
-            if s.is_bss || s.data.is_empty() { continue; }
-            if let Err(err) = self.bus.load_bytes(s.addr, &s.data) { eprintln!("[emu] rom section {} @ {:#x}: {}", s.name, s.addr, err); }
+            if dbg {
+                eprintln!(
+                    "[emu]   section {:<36} addr {:#010x} len {:#x} bss={}",
+                    s.name,
+                    s.addr,
+                    s.data.len(),
+                    s.is_bss
+                );
+            }
+            if s.is_bss || s.data.is_empty() {
+                continue;
+            }
+            if let Err(err) = self.bus.load_bytes(s.addr, &s.data) {
+                eprintln!("[emu] rom section {} @ {:#x}: {}", s.name, s.addr, err);
+            }
         }
         // The reset handler copies RAM initialisers from ROM using a 16-byte-entry table
         // (dst_start, dst_end, rom_src, 0) between _data_start and _data_end. The ELF does
@@ -155,16 +299,30 @@ impl<S: Soc> Machine<S> {
         let find = |name: &str| e.by_name.get(name).copied();
         let start = S::ROM_DATA_TABLE.iter().find_map(|n| find(n));
         if let (Some(ds), Some(de)) = (start, find("_data_end")) {
-            let mut t = ds; let mut n = 0;
+            let mut t = ds;
+            let mut n = 0;
             while t + 16 <= de {
-                let (Ok(d0), Ok(d1), Ok(src)) = (self.bus.read32(t), self.bus.read32(t + 4), self.bus.read32(t + 8)) else { break };
+                let (Ok(d0), Ok(d1), Ok(src)) = (
+                    self.bus.read32(t),
+                    self.bus.read32(t + 4),
+                    self.bus.read32(t + 8),
+                ) else {
+                    break;
+                };
                 if d1 > d0 && d1 - d0 < 0x20000 {
                     let bytes: Vec<u8> = (d0..d1).map(|a| self.bus.read8(a).unwrap_or(0)).collect();
-                    if self.bus.load_bytes(src, &bytes).is_ok() { n += 1; }
+                    if self.bus.load_bytes(src, &bytes).is_ok() {
+                        n += 1;
+                    }
                 }
                 t += 16;
             }
-            if dbg { eprintln!("[emu] rom: back-filled {} initialiser blocks into ROM from table {:#x}..{:#x}", n, ds, de); }
+            if dbg {
+                eprintln!(
+                    "[emu] rom: back-filled {} initialiser blocks into ROM from table {:#x}..{:#x}",
+                    n, ds, de
+                );
+            }
         }
         self.symbols.extend(e.symbols);
         Ok(())
@@ -175,7 +333,9 @@ impl<S: Soc> Machine<S> {
         Ok(())
     }
 
-    pub fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String> { self.bus.write_flash(offset, data) }
+    pub fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String> {
+        self.bus.write_flash(offset, data)
+    }
 
     /// Boot the application image at flash `app_off` the way the 2nd-stage bootloader would.
     pub fn boot_app(&mut self, app_off: usize) -> Result<u32, String> {
@@ -185,24 +345,42 @@ impl<S: Soc> Machine<S> {
     }
 
     /// Cold boot from the mask ROM reset vector (needs ROM + flash image with bootloader).
-    pub fn boot_rom(&mut self) { self.cores[0].reset(); }
+    pub fn boot_rom(&mut self) {
+        self.cores[0].reset();
+    }
 
     /// Chip reset (software / watchdog): cores back to the reset vector, digital peripherals
     /// re-initialised; SRAM, RTC memories, efuses and the RTC-domain registers survive, as on
     /// silicon. Returns the reset cause that the ROM will report.
     pub fn reboot(&mut self) -> u32 {
         let cause = self.bus.reboot(self.mac);
-        for (i, c) in self.cores.iter_mut().enumerate() { S::reset_core(c, i); if i > 0 { self.core_held[i] = true; } }
+        for (i, c) in self.cores.iter_mut().enumerate() {
+            S::reset_core(c, i);
+            if i > 0 {
+                self.core_held[i] = true;
+            }
+        }
         self.reboots += 1;
         cause
     }
 
     /// Address of a symbol loaded from the ELFs.
-    pub fn sym_addr(&self, name: &str) -> Option<u32> { self.symbols.iter().find(|(_, n)| n.as_str() == name).map(|(&a, _)| a) }
+    pub fn sym_addr(&self, name: &str) -> Option<u32> {
+        self.symbols
+            .iter()
+            .find(|(_, n)| n.as_str() == name)
+            .map(|(&a, _)| a)
+    }
 
     pub fn sym(&self, addr: u32) -> String {
         match self.symbols.range(..=addr).next_back() {
-            Some((&a, n)) if addr - a < 0x10000 => if a == addr { n.clone() } else { format!("{}+{:#x}", n, addr - a) },
+            Some((&a, n)) if addr - a < 0x10000 => {
+                if a == addr {
+                    n.clone()
+                } else {
+                    format!("{}+{:#x}", n, addr - a)
+                }
+            }
             _ => String::new(),
         }
     }
@@ -212,23 +390,55 @@ impl<S: Soc> Machine<S> {
         use std::io::Write;
         let streams = self.bus.console_take();
         let mut o = std::io::stdout();
-        let (mask, prefix, capture) = (self.console.mask, self.console.prefix, self.console.capture);
+        let (mask, prefix, capture) =
+            (self.console.mask, self.console.prefix, self.console.capture);
         let mut emit = |bit: u32, tag: &str, d: Vec<u8>, all: &mut Vec<u8>| {
-            if d.is_empty() { return; }
+            if d.is_empty() {
+                return;
+            }
             all.extend_from_slice(&d);
-            if mask & bit == 0 || capture { return; }
-            if prefix { for line in d.split_inclusive(|&b| b == b'\n') { let _ = o.write_all(tag.as_bytes()); let _ = o.write_all(line); } } else { let _ = o.write_all(&d); }
+            if mask & bit == 0 || capture {
+                return;
+            }
+            if prefix {
+                for line in d.split_inclusive(|&b| b == b'\n') {
+                    let _ = o.write_all(tag.as_bytes());
+                    let _ = o.write_all(line);
+                }
+            } else {
+                let _ = o.write_all(&d);
+            }
             let _ = o.flush();
         };
         for (i, d) in streams.into_iter().enumerate() {
             let src = ["usb", "uart0", "uart1", "uart2"][i];
             if i < 2 {
-                let backlog = if i == 0 { &mut self.console.usb } else { &mut self.console.uart0 };
+                let backlog = if i == 0 {
+                    &mut self.console.usb
+                } else {
+                    &mut self.console.uart0
+                };
                 backlog.extend_from_slice(&d);
-                if backlog.len() > 65536 { let cut = backlog.len() - 49152; backlog.drain(..cut); }
+                if backlog.len() > 65536 {
+                    let cut = backlog.len() - 49152;
+                    backlog.drain(..cut);
+                }
             }
-            if let Some(w) = &self.web { if !d.is_empty() { w.send_text(&format!("{{\"t\":\"serial\",\"src\":\"{}\",\"data\":\"{}\"}}", src, crate::web::json_escape(&String::from_utf8_lossy(&d)))); } }
-            let (bit, tag) = [(1, "[usb]  "), (2, "[uart0] "), (4, "[uart1] "), (4, "[uart2] ")][i];
+            if let Some(w) = &self.web {
+                if !d.is_empty() {
+                    w.send_text(&format!(
+                        "{{\"t\":\"serial\",\"src\":\"{}\",\"data\":\"{}\"}}",
+                        src,
+                        crate::web::json_escape(&String::from_utf8_lossy(&d))
+                    ));
+                }
+            }
+            let (bit, tag) = [
+                (1, "[usb]  "),
+                (2, "[uart0] "),
+                (4, "[uart1] "),
+                (4, "[uart2] "),
+            ][i];
             emit(bit, tag, d, &mut self.console.all);
         }
     }
@@ -237,21 +447,39 @@ impl<S: Soc> Machine<S> {
     /// After a device change: re-derive the lines and present them to every core.
     #[inline]
     fn refresh_irq(&mut self) {
-        if !*self.bus.irq_dirty() { return; }
+        if !*self.bus.irq_dirty() {
+            return;
+        }
         *self.bus.irq_dirty() = false;
-        if self.bus.refresh_irq() { self.present_irqs(); }
+        if self.bus.refresh_irq() {
+            self.present_irqs();
+        }
     }
     fn present_irqs(&mut self) {
         let mut irqs = [<S::Core as Core>::Irq::default(); 4];
         S::irqs(&self.bus, &mut irqs[..S::CORES]);
-        for (i, c) in self.cores.iter_mut().enumerate() { c.set_irq(irqs[i]); }
+        for (i, c) in self.cores.iter_mut().enumerate() {
+            c.set_irq(irqs[i]);
+        }
         if self.probes.contains(Wants::IRQ) {
-            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            let cx = Ctx {
+                symbols: &self.symbols,
+                cycles: self.bus.cycles(),
+                cpu_hz: S::CPU_HZ,
+            };
             for i in 0..S::CORES {
                 let now = S::Core::irq_bits(&irqs[i]);
                 let mut rising = now & !self.prev_irq[i];
                 self.prev_irq[i] = now;
-                while rising != 0 { let line = rising.trailing_zeros(); rising &= rising - 1; for o in &mut self.observers { if o.wants().contains(Wants::IRQ) { o.on_irq_raised(&cx, i, line); } } }
+                while rising != 0 {
+                    let line = rising.trailing_zeros();
+                    rising &= rising - 1;
+                    for o in &mut self.observers {
+                        if o.wants().contains(Wants::IRQ) {
+                            o.on_irq_raised(&cx, i, line);
+                        }
+                    }
+                }
             }
         }
     }
@@ -266,31 +494,72 @@ impl<S: Soc> Machine<S> {
         // stubs and probes are block boundaries, so testing them at block start is exact
         if (self.stub_bloom | self.probe_bloom) & pc_bit(pc) != 0 && !cpu.waiting() {
             if let Some(name) = self.fn_probes.get(&pc) {
-                eprintln!("[fn] i={} t={:.4}s c{} {}({}) ret={:#x}", cpu.insn_count(), self.bus.cycles() as f64 / S::CPU_HZ as f64, core, name, cpu.probe_args(), cpu.return_address());
+                eprintln!(
+                    "[fn] i={} t={:.4}s c{} {}({}) ret={:#x}",
+                    cpu.insn_count(),
+                    self.bus.cycles() as f64 / S::CPU_HZ as f64,
+                    core,
+                    name,
+                    cpu.probe_args(),
+                    cpu.return_address()
+                );
             }
-            if let Some(&ret) = self.stubs.get(&pc) { cpu.return_from_stub(ret); self.stub_hits += 1; return (1, None); }
+            if let Some(&ret) = self.stubs.get(&pc) {
+                cpu.return_from_stub(ret);
+                self.stub_hits += 1;
+                return (1, None);
+            }
         }
         let (used, trap) = cpu.run(&mut self.bus, budget);
-        if let Some(m) = &self.cost { let c = m.cycles(pc, used); if c > used { self.cores[core].idle_advance(c - used); } }
+        if let Some(m) = &self.cost {
+            let c = m.cycles(pc, used);
+            if c > used {
+                self.cores[core].idle_advance(c - used);
+            }
+        }
         if self.probes.contains(Wants::BLOCK | Wants::TRAP) {
-            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            let cx = Ctx {
+                symbols: &self.symbols,
+                cycles: self.bus.cycles(),
+                cpu_hz: S::CPU_HZ,
+            };
             let cpu = &self.cores[core];
             for o in &mut self.observers {
                 let w = o.wants();
-                if w.contains(Wants::BLOCK) && used > 0 { o.on_block(&cx, core, pc, used); }
-                if let (true, Some(t)) = (w.contains(Wants::TRAP), &trap) { o.on_trap(&cx, core, cpu, pc, t); }
+                if w.contains(Wants::BLOCK) && used > 0 {
+                    o.on_block(&cx, core, pc, used);
+                }
+                if let (true, Some(t)) = (w.contains(Wants::TRAP), &trap) {
+                    o.on_trap(&cx, core, cpu, pc, t);
+                }
             }
         }
         match trap {
             None => {}
-            Some(Trap::Exception(_)) => { self.exceptions += 1; }
-            Some(Trap::Interrupt(irq)) => { self.interrupts += 1; self.irq_hist[core][(irq & 31) as usize] += 1; }
-            Some(Trap::Unimplemented(p, raw)) => { if self.dbg.stop_on_unimplemented { return (used, Some(Stop::Unimplemented(p, raw))); } }
+            Some(Trap::Exception(_)) => {
+                self.exceptions += 1;
+            }
+            Some(Trap::Interrupt(irq)) => {
+                self.interrupts += 1;
+                self.irq_hist[core][(irq & 31) as usize] += 1;
+            }
+            Some(Trap::Unimplemented(p, raw)) => {
+                if self.dbg.stop_on_unimplemented {
+                    return (used, Some(Stop::Unimplemented(p, raw)));
+                }
+            }
             Some(Trap::Simcall) => return (used, Some(Stop::Simcall(pc))),
-            Some(Trap::Ebreak(p)) => { self.exceptions += 1; if !self.cores[core].has_trap_handler() { return (used, Some(Stop::Ebreak(p))); } }
+            Some(Trap::Ebreak(p)) => {
+                self.exceptions += 1;
+                if !self.cores[core].has_trap_handler() {
+                    return (used, Some(Stop::Ebreak(p)));
+                }
+            }
         }
         self.refresh_irq();
-        if self.exceptions >= self.dbg.stop_after_exceptions { return (used, Some(Stop::Exceptions(self.exceptions))); }
+        if self.exceptions >= self.dbg.stop_after_exceptions {
+            return (used, Some(Stop::Exceptions(self.exceptions)));
+        }
         (used, None)
     }
 
@@ -301,40 +570,101 @@ impl<S: Soc> Machine<S> {
         let pc = cpu.pc();
         if self.probe_bloom & pc_bit(pc) != 0 && !cpu.waiting() {
             if let Some(name) = self.fn_probes.get(&pc) {
-                eprintln!("[fn] i={} t={:.4}s c{} {}({}) ret={:#x}", cpu.insn_count(), self.bus.cycles() as f64 / S::CPU_HZ as f64, core, name, cpu.probe_args(), cpu.return_address());
+                eprintln!(
+                    "[fn] i={} t={:.4}s c{} {}({}) ret={:#x}",
+                    cpu.insn_count(),
+                    self.bus.cycles() as f64 / S::CPU_HZ as f64,
+                    core,
+                    name,
+                    cpu.probe_args(),
+                    cpu.return_address()
+                );
             }
         }
         if self.stub_bloom & pc_bit(pc) != 0 && !cpu.waiting() {
-            if let Some(&ret) = self.stubs.get(&pc) { cpu.return_from_stub(ret); self.stub_hits += 1; return None; }
+            if let Some(&ret) = self.stubs.get(&pc) {
+                cpu.return_from_stub(ret);
+                self.stub_hits += 1;
+                return None;
+            }
         }
         {
-            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
-            for o in &mut self.observers { if o.wants().contains(Wants::INSN) { if let Some(stop) = o.on_insn(&cx, core, &self.cores[core], &mut self.bus, pc) { return Some(stop); } } }
+            let cx = Ctx {
+                symbols: &self.symbols,
+                cycles: self.bus.cycles(),
+                cpu_hz: S::CPU_HZ,
+            };
+            for o in &mut self.observers {
+                if o.wants().contains(Wants::INSN) {
+                    if let Some(stop) = o.on_insn(&cx, core, &self.cores[core], &mut self.bus, pc) {
+                        return Some(stop);
+                    }
+                }
+            }
         }
         let cpu = &mut self.cores[core];
         self.bus.note_pc(pc);
         let r = cpu.step(&mut self.bus);
-        if let Some(m) = &self.cost { let c = m.cycles(pc, 1); if c > 1 { cpu.idle_advance(c - 1); } }
+        if let Some(m) = &self.cost {
+            let c = m.cycles(pc, 1);
+            if c > 1 {
+                cpu.idle_advance(c - 1);
+            }
+        }
         if let (true, Err(t)) = (self.probes.contains(Wants::TRAP), &r) {
-            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            let cx = Ctx {
+                symbols: &self.symbols,
+                cycles: self.bus.cycles(),
+                cpu_hz: S::CPU_HZ,
+            };
             let cpu = &self.cores[core];
-            for o in &mut self.observers { if o.wants().contains(Wants::TRAP) { o.on_trap(&cx, core, cpu, pc, t); } }
+            for o in &mut self.observers {
+                if o.wants().contains(Wants::TRAP) {
+                    o.on_trap(&cx, core, cpu, pc, t);
+                }
+            }
         }
         let cpu = &self.cores[core];
         match r {
             Ok(()) => {}
-            Err(Trap::Exception(_)) => { self.exceptions += 1; }
-            Err(Trap::Interrupt(irq)) => { self.interrupts += 1; self.irq_hist[core][(irq & 31) as usize] += 1; }
-            Err(Trap::Unimplemented(p, raw)) => { if self.dbg.stop_on_unimplemented { return Some(Stop::Unimplemented(p, raw)); } }
+            Err(Trap::Exception(_)) => {
+                self.exceptions += 1;
+            }
+            Err(Trap::Interrupt(irq)) => {
+                self.interrupts += 1;
+                self.irq_hist[core][(irq & 31) as usize] += 1;
+            }
+            Err(Trap::Unimplemented(p, raw)) => {
+                if self.dbg.stop_on_unimplemented {
+                    return Some(Stop::Unimplemented(p, raw));
+                }
+            }
             Err(Trap::Simcall) => return Some(Stop::Simcall(pc)),
-            Err(Trap::Ebreak(p)) => { self.exceptions += 1; if !cpu.has_trap_handler() { return Some(Stop::Ebreak(p)); } }
+            Err(Trap::Ebreak(p)) => {
+                self.exceptions += 1;
+                if !cpu.has_trap_handler() {
+                    return Some(Stop::Ebreak(p));
+                }
+            }
         }
         self.refresh_irq();
         {
-            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
-            for o in &mut self.observers { if o.wants().contains(Wants::INSN) { if let Some(stop) = o.after_insn(&cx, core, &self.cores[core], &mut self.bus) { return Some(stop); } } }
+            let cx = Ctx {
+                symbols: &self.symbols,
+                cycles: self.bus.cycles(),
+                cpu_hz: S::CPU_HZ,
+            };
+            for o in &mut self.observers {
+                if o.wants().contains(Wants::INSN) {
+                    if let Some(stop) = o.after_insn(&cx, core, &self.cores[core], &mut self.bus) {
+                        return Some(stop);
+                    }
+                }
+            }
         }
-        if self.exceptions >= self.dbg.stop_after_exceptions { return Some(Stop::Exceptions(self.exceptions)); }
+        if self.exceptions >= self.dbg.stop_after_exceptions {
+            return Some(Stop::Exceptions(self.exceptions));
+        }
         None
     }
 
@@ -344,7 +674,10 @@ impl<S: Soc> Machine<S> {
     pub fn run(&mut self, max_insns: u64) -> Stop {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); c.flush_caches(); }
+        for c in &mut self.cores {
+            c.set_boundaries(self.stub_bloom | self.probe_bloom);
+            c.flush_caches();
+        }
         // the fast path cannot honour per-instruction observers; those runs single-step
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
@@ -353,43 +686,95 @@ impl<S: Soc> Machine<S> {
         let mut on = [true; 4];
         let mut idle = [true; 4];
         loop {
-            if n >= max_insns { self.drain_console(); return Stop::MaxInsns; }
+            if n >= max_insns {
+                self.drain_console();
+                return Stop::MaxInsns;
+            }
             for i in 1..S::CORES {
                 on[i] = match S::core_state(&self.bus, i) {
-                    CoreState::Reset => { self.core_held[i] = true; false }
+                    CoreState::Reset => {
+                        self.core_held[i] = true;
+                        false
+                    }
                     CoreState::Held => false,
                     CoreState::Running => {
-                        if self.core_held[i] { self.core_held[i] = false; S::reset_core(&mut self.cores[i], i); if trace { eprintln!("          ** core{} released from reset", i); } }
+                        if self.core_held[i] {
+                            self.core_held[i] = false;
+                            S::reset_core(&mut self.cores[i], i);
+                            if trace {
+                                eprintln!("          ** core{} released from reset", i);
+                            }
+                        }
                         true
                     }
                 };
             }
-            for i in 0..S::CORES { idle[i] = !on[i] || (self.cores[i].waiting() && !self.cores[i].irq_pending()); }
+            for i in 0..S::CORES {
+                idle[i] = !on[i] || (self.cores[i].waiting() && !self.cores[i].irq_pending());
+            }
             if idle[..S::CORES].iter().all(|&x| x) && !slow_path {
                 // every core asleep: let time pass in larger steps until a device raises a line
                 let chunk = S::IDLE_CHUNK;
-                for i in 0..S::CORES { if on[i] { self.cores[i].idle_advance(chunk as u32); } }
+                for i in 0..S::CORES {
+                    if on[i] {
+                        self.cores[i].idle_advance(chunk as u32);
+                    }
+                }
                 n += chunk;
                 self.after_round(chunk);
-                if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
-                if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Stop::Halted; }
-                if n & 0xffff < chunk { self.drain_console(); }
+                if self.bus.sw_reset() {
+                    self.drain_console();
+                    return Stop::SwReset;
+                }
+                if self.bus.cycles() >= self.max_cycles {
+                    self.drain_console();
+                    return Stop::Halted;
+                }
+                if n & 0xffff < chunk {
+                    self.drain_console();
+                }
                 continue;
             }
             for i in 0..S::CORES {
-                if !on[i] { continue; }
-                if idle[i] && !slow_path { self.cores[i].idle_advance(QUANTUM as u32); } else if blocks {
-                    let mut left = QUANTUM as u32;
-                    while left > 0 { let (used, stop) = self.step_blocks(i, left); if let Some(stop) = stop { self.drain_console(); return stop; } left -= used.min(left); }
-                } else {
-                    for _ in 0..QUANTUM { if let Some(stop) = self.step_core(i) { self.drain_console(); return stop; } }
+                if !on[i] {
+                    continue;
                 }
-                if i == 0 { n += QUANTUM; }
+                if idle[i] && !slow_path {
+                    self.cores[i].idle_advance(QUANTUM as u32);
+                } else if blocks {
+                    let mut left = QUANTUM as u32;
+                    while left > 0 {
+                        let (used, stop) = self.step_blocks(i, left);
+                        if let Some(stop) = stop {
+                            self.drain_console();
+                            return stop;
+                        }
+                        left -= used.min(left);
+                    }
+                } else {
+                    for _ in 0..QUANTUM {
+                        if let Some(stop) = self.step_core(i) {
+                            self.drain_console();
+                            return stop;
+                        }
+                    }
+                }
+                if i == 0 {
+                    n += QUANTUM;
+                }
             }
             self.after_round(QUANTUM);
-            if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
-            if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Stop::Halted; }
-            if n & 0xffff < QUANTUM { self.drain_console(); }
+            if self.bus.sw_reset() {
+                self.drain_console();
+                return Stop::SwReset;
+            }
+            if self.bus.cycles() >= self.max_cycles {
+                self.drain_console();
+                return Stop::Halted;
+            }
+            if n & 0xffff < QUANTUM {
+                self.drain_console();
+            }
         }
     }
 
@@ -401,40 +786,84 @@ impl<S: Soc> Machine<S> {
         let ticked = self.bus.tick(cycles as u32) != 0;
         if *self.bus.irq_dirty() || ticked {
             *self.bus.irq_dirty() = false;
-            if self.bus.refresh_irq() { self.present_irqs(); }
+            if self.bus.refresh_irq() {
+                self.present_irqs();
+            }
         }
         self.after_round_rest();
         if self.probes.0 != 0 {
             self.deliver_events();
-            if self.probes.contains(Wants::ROUND) { let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ }; for o in &mut self.observers { if o.wants().contains(Wants::ROUND) { o.on_round(&cx); } } }
+            if self.probes.contains(Wants::ROUND) {
+                let cx = Ctx {
+                    symbols: &self.symbols,
+                    cycles: self.bus.cycles(),
+                    cpu_hz: S::CPU_HZ,
+                };
+                for o in &mut self.observers {
+                    if o.wants().contains(Wants::ROUND) {
+                        o.on_round(&cx);
+                    }
+                }
+            }
         }
     }
 
     #[inline]
     fn after_round_rest(&mut self) {
-        while self.script.pos < self.script.events.len() && self.script.events[self.script.pos].0 <= self.bus.cycles() {
-            let (t, a) = self.script.events[self.script.pos].clone(); self.script.pos += 1;
-            if self.script.log { eprintln!("[script] t={:.3}s {:?}", t as f64 / S::CPU_HZ as f64, a); }
+        while self.script.pos < self.script.events.len()
+            && self.script.events[self.script.pos].0 <= self.bus.cycles()
+        {
+            let (t, a) = self.script.events[self.script.pos].clone();
+            self.script.pos += 1;
+            if self.script.log {
+                eprintln!("[script] t={:.3}s {:?}", t as f64 / S::CPU_HZ as f64, a);
+            }
             match a {
-                ScriptAction::Gpio(pin, level) => { self.bus.gpio_set_input(pin, level); *self.bus.irq_dirty() = true; }
+                ScriptAction::Gpio(pin, level) => {
+                    self.bus.gpio_set_input(pin, level);
+                    *self.bus.irq_dirty() = true;
+                }
                 ScriptAction::Serial(text) => self.bus.serial_input(text.as_bytes()),
-                ScriptAction::Stop => { self.max_cycles = 0; }
-                ScriptAction::Touch(x, y, d) => { self.bus.board().touch(x, y, d); }
-                ScriptAction::Poke(a, v) => { let _ = self.bus.write32(a, v); }
+                ScriptAction::Stop => {
+                    self.max_cycles = 0;
+                }
+                ScriptAction::Touch(x, y, d) => {
+                    self.bus.board().touch(x, y, d);
+                }
+                ScriptAction::Poke(a, v) => {
+                    let _ = self.bus.write32(a, v);
+                }
             }
         }
-        if self.web.is_some() && self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= S::CPU_HZ / 50 { self.ws.last_push_cycles = self.bus.cycles(); self.web_push(); self.web_poll_input(); }
+        if self.web.is_some()
+            && self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= S::CPU_HZ / 50
+        {
+            self.ws.last_push_cycles = self.bus.cycles();
+            self.web_push();
+            self.web_poll_input();
+        }
         if self.rt.enabled && self.bus.cycles().wrapping_sub(self.rt.last_check) >= 1 << 16 {
             self.rt.last_check = self.bus.cycles();
-            let start = *self.rt.wall_start.get_or_insert_with(std::time::Instant::now);
-            let emulated = std::time::Duration::from_secs_f64(self.bus.cycles() as f64 / S::CPU_HZ as f64);
+            let start = *self
+                .rt
+                .wall_start
+                .get_or_insert_with(std::time::Instant::now);
+            let emulated =
+                std::time::Duration::from_secs_f64(self.bus.cycles() as f64 / S::CPU_HZ as f64);
             let wall = start.elapsed();
-            if emulated > wall + std::time::Duration::from_millis(2) { std::thread::sleep(emulated - wall); self.rt.behind = 0.0; }
-            else if wall > emulated + std::time::Duration::from_millis(50) {
+            if emulated > wall + std::time::Duration::from_millis(2) {
+                std::thread::sleep(emulated - wall);
+                self.rt.behind = 0.0;
+            } else if wall > emulated + std::time::Duration::from_millis(50) {
                 self.rt.behind = (wall - emulated).as_secs_f64();
                 // more than half a second behind: resynchronise (skip the lag) rather than flood the client while catching up
-                if wall > emulated + std::time::Duration::from_millis(500) { self.rt.resyncs += 1; self.rt.wall_start = Some(std::time::Instant::now() - emulated); }
-            } else { self.rt.behind = 0.0; }
+                if wall > emulated + std::time::Duration::from_millis(500) {
+                    self.rt.resyncs += 1;
+                    self.rt.wall_start = Some(std::time::Instant::now() - emulated);
+                }
+            } else {
+                self.rt.behind = 0.0;
+            }
         }
     }
 
@@ -443,7 +872,10 @@ impl<S: Soc> Machine<S> {
     fn web_push(&mut self) {
         if self.rt.log {
             let now = std::time::Instant::now();
-            let (i0, i1) = (self.cores[0].insn_count(), self.cores.get(1).map_or(0, |c| c.insn_count()));
+            let (i0, i1) = (
+                self.cores[0].insn_count(),
+                self.cores.get(1).map_or(0, |c| c.insn_count()),
+            );
             if let Some(last) = self.rt.log_last {
                 let dt = now.duration_since(last).as_secs_f64() * 1e3;
                 if dt > 40.0 {
@@ -452,26 +884,48 @@ impl<S: Soc> Machine<S> {
                               i0 - self.rt.log_insns.0, p0, self.sym(p0), i1 - self.rt.log_insns.1, p1, self.sym(p1));
                 }
             }
-            self.rt.log_last = Some(now); self.rt.log_insns = (i0, i1);
+            self.rt.log_last = Some(now);
+            self.rt.log_insns = (i0, i1);
         }
         let Some(w) = self.web.clone() else { return };
         self.drain_console();
         let board = self.bus.board_ref();
         let ver = board.display_version();
         // a display drawn pixel by pixel is sent once the stream has been quiet for a push interval (no half-drawn frames)
-        let due = if board.display_quiet_push() { if ver != self.ws.px_pending { self.ws.px_pending = ver; false } else { ver != self.ws.px_sent } } else { ver != self.ws.px_sent };
+        let due = if board.display_quiet_push() {
+            if ver != self.ws.px_pending {
+                self.ws.px_pending = ver;
+                false
+            } else {
+                ver != self.ws.px_sent
+            }
+        } else {
+            ver != self.ws.px_sent
+        };
         if due {
             if let Some((w_, h_, px, _)) = board.display() {
                 self.ws.px_sent = ver;
                 let mut b = vec![1u8, w_ as u8, (w_ >> 8) as u8, h_ as u8, (h_ >> 8) as u8];
-                for p in &px { b.push(*p as u8); b.push((*p >> 8) as u8); }
+                for p in &px {
+                    b.push(*p as u8);
+                    b.push((*p >> 8) as u8);
+                }
                 w.send_binary(&b);
             }
         }
         let board = self.bus.board_ref();
         if self.ws.cam_pushed != self.bus.camera_frames() / 20 || !self.ws.cam_sent {
             if let Some(rgb) = board.camera_preview(320, 240) {
-                let mut b = vec![4u8, (320u16 & 255) as u8, (320u16 >> 8) as u8, (240u16 & 255) as u8, (240u16 >> 8) as u8]; b.extend_from_slice(&rgb); w.send_binary(&b); self.ws.cam_sent = true;
+                let mut b = vec![
+                    4u8,
+                    (320u16 & 255) as u8,
+                    (320u16 >> 8) as u8,
+                    (240u16 & 255) as u8,
+                    (240u16 >> 8) as u8,
+                ];
+                b.extend_from_slice(&rgb);
+                w.send_binary(&b);
+                self.ws.cam_sent = true;
             }
             self.ws.cam_pushed = self.bus.camera_frames() / 20;
         }
@@ -480,29 +934,98 @@ impl<S: Soc> Machine<S> {
             let chunk = &pcm[self.ws.audio_sent..];
             let mut b = vec![2u8];
             b.extend_from_slice(&rate.to_le_bytes());
-            for s in chunk { b.extend_from_slice(&s.to_le_bytes()); }
+            for s in chunk {
+                b.extend_from_slice(&s.to_le_bytes());
+            }
             w.send_binary(&b);
             self.ws.audio_sent = pcm.len();
         }
         let board = self.bus.board_ref();
-        if let Some((leds, updates)) = board.leds() { if updates != self.ws.ring_updates {
-            self.ws.ring_updates = updates;
-            let leds: Vec<String> = leds.iter().map(|c| format!("[{},{},{}]", c[0], c[1], c[2])).collect();
-            w.send_text(&format!("{{\"t\":\"ring\",\"leds\":[{}]}}", leds.join(",")));
-        } }
+        if let Some((leds, updates)) = board.leds() {
+            if updates != self.ws.ring_updates {
+                self.ws.ring_updates = updates;
+                let leds: Vec<String> = leds
+                    .iter()
+                    .map(|c| format!("[{},{},{}]", c[0], c[1], c[2]))
+                    .collect();
+                w.send_text(&format!("{{\"t\":\"ring\",\"leds\":[{}]}}", leds.join(",")));
+            }
+        }
         // snapshot for late-joining clients: backlog, frame, ring
         {
             use crate::web::json_escape;
             let mut hello: Vec<Vec<u8>> = Vec::new();
-            let mk = |s: &str| -> Vec<u8> { let mut f = vec![0x81u8]; let n = s.len(); if n < 126 { f.push(n as u8); } else if n < 65536 { f.push(126); f.extend_from_slice(&(n as u16).to_be_bytes()); } else { f.push(127); f.extend_from_slice(&(n as u64).to_be_bytes()); } f.extend_from_slice(s.as_bytes()); f };
-            let mkb = |d: &[u8]| -> Vec<u8> { let mut f = vec![0x82u8]; let n = d.len(); if n < 126 { f.push(n as u8); } else if n < 65536 { f.push(126); f.extend_from_slice(&(n as u16).to_be_bytes()); } else { f.push(127); f.extend_from_slice(&(n as u64).to_be_bytes()); } f.extend_from_slice(d); f };
-            hello.push(mk(&format!("{{\"t\":\"serial\",\"src\":\"uart0\",\"data\":\"{}\"}}", json_escape(&String::from_utf8_lossy(&self.console.uart0)))));
-            hello.push(mk(&format!("{{\"t\":\"serial\",\"src\":\"usb\",\"data\":\"{}\"}}", json_escape(&String::from_utf8_lossy(&self.console.usb)))));
-            hello.push(mk(&format!("{{\"t\":\"board\",\"name\":\"{}\"}}", board.name())));
-            if let Some((w_, h_, px, _)) = board.display() { let mut b = vec![1u8, w_ as u8, (w_ >> 8) as u8, h_ as u8, (h_ >> 8) as u8]; for p in &px { b.push(*p as u8); b.push((*p >> 8) as u8); } hello.push(mkb(&b)); }
-            if let Some(rgb) = board.camera_preview(320, 240) { let mut b = vec![4u8, (320u16 & 255) as u8, (320u16 >> 8) as u8, (240u16 & 255) as u8, (240u16 >> 8) as u8]; b.extend_from_slice(&rgb); hello.push(mkb(&b)); }
-            if let Some((leds, _)) = board.leds() { let leds: Vec<String> = leds.iter().map(|c| format!("[{},{},{}]", c[0], c[1], c[2])).collect();
-            hello.push(mk(&format!("{{\"t\":\"ring\",\"leds\":[{}]}}", leds.join(",")))); }
+            let mk = |s: &str| -> Vec<u8> {
+                let mut f = vec![0x81u8];
+                let n = s.len();
+                if n < 126 {
+                    f.push(n as u8);
+                } else if n < 65536 {
+                    f.push(126);
+                    f.extend_from_slice(&(n as u16).to_be_bytes());
+                } else {
+                    f.push(127);
+                    f.extend_from_slice(&(n as u64).to_be_bytes());
+                }
+                f.extend_from_slice(s.as_bytes());
+                f
+            };
+            let mkb = |d: &[u8]| -> Vec<u8> {
+                let mut f = vec![0x82u8];
+                let n = d.len();
+                if n < 126 {
+                    f.push(n as u8);
+                } else if n < 65536 {
+                    f.push(126);
+                    f.extend_from_slice(&(n as u16).to_be_bytes());
+                } else {
+                    f.push(127);
+                    f.extend_from_slice(&(n as u64).to_be_bytes());
+                }
+                f.extend_from_slice(d);
+                f
+            };
+            hello.push(mk(&format!(
+                "{{\"t\":\"serial\",\"src\":\"uart0\",\"data\":\"{}\"}}",
+                json_escape(&String::from_utf8_lossy(&self.console.uart0))
+            )));
+            hello.push(mk(&format!(
+                "{{\"t\":\"serial\",\"src\":\"usb\",\"data\":\"{}\"}}",
+                json_escape(&String::from_utf8_lossy(&self.console.usb))
+            )));
+            hello.push(mk(&format!(
+                "{{\"t\":\"board\",\"name\":\"{}\"}}",
+                board.name()
+            )));
+            if let Some((w_, h_, px, _)) = board.display() {
+                let mut b = vec![1u8, w_ as u8, (w_ >> 8) as u8, h_ as u8, (h_ >> 8) as u8];
+                for p in &px {
+                    b.push(*p as u8);
+                    b.push((*p >> 8) as u8);
+                }
+                hello.push(mkb(&b));
+            }
+            if let Some(rgb) = board.camera_preview(320, 240) {
+                let mut b = vec![
+                    4u8,
+                    (320u16 & 255) as u8,
+                    (320u16 >> 8) as u8,
+                    (240u16 & 255) as u8,
+                    (240u16 >> 8) as u8,
+                ];
+                b.extend_from_slice(&rgb);
+                hello.push(mkb(&b));
+            }
+            if let Some((leds, _)) = board.leds() {
+                let leds: Vec<String> = leds
+                    .iter()
+                    .map(|c| format!("[{},{},{}]", c[0], c[1], c[2]))
+                    .collect();
+                hello.push(mk(&format!(
+                    "{{\"t\":\"ring\",\"leds\":[{}]}}",
+                    leds.join(",")
+                )));
+            }
             w.set_hello(hello);
         }
         w.send_text(&format!("{{\"t\":\"stat\",\"time\":{:.2},\"insns\":{},\"frames\":{},\"behind\":{:.2},\"resyncs\":{},\"cam\":{},\"gpio_in\":\"{:x}\"}}", self.seconds(), self.insns(), board.display_frames(), self.rt.behind, self.rt.resyncs, self.bus.camera_frames(), self.bus.gpio_input()));
@@ -514,33 +1037,76 @@ impl<S: Soc> Machine<S> {
         for b in w.poll_incoming_bin() {
             // type 3: camera picture from the browser — [3][w u16 le][h u16 le][RGBA...]
             if b.len() >= 5 && b[0] == 3 {
-                let (wd, ht) = (u16::from_le_bytes([b[1], b[2]]) as usize, u16::from_le_bytes([b[3], b[4]]) as usize);
+                let (wd, ht) = (
+                    u16::from_le_bytes([b[1], b[2]]) as usize,
+                    u16::from_le_bytes([b[3], b[4]]) as usize,
+                );
                 if wd > 0 && ht > 0 && b.len() >= 5 + wd * ht * 4 {
                     let mut rgb = Vec::with_capacity(wd * ht * 3);
-                    for px in b[5..5 + wd * ht * 4].chunks(4) { rgb.extend_from_slice(&px[..3]); }
-                    self.bus.board().set_camera_picture(crate::picture::Picture { w: wd as u32, h: ht as u32, rgb });
+                    for px in b[5..5 + wd * ht * 4].chunks(4) {
+                        rgb.extend_from_slice(&px[..3]);
+                    }
+                    self.bus
+                        .board()
+                        .set_camera_picture(crate::picture::Picture {
+                            w: wd as u32,
+                            h: ht as u32,
+                            rgb,
+                        });
                 }
             }
         }
         for m in w.poll_incoming() {
             let t = json_str(&m, "t").unwrap_or_default();
             match t.as_str() {
-                "btn" => { let pin: u8 = json_str(&m, "pin").and_then(|x| x.parse().ok()).unwrap_or(0); let v = json_str(&m, "v").unwrap_or_default() == "1";
-                           self.bus.gpio_set_input(pin, !v); *self.bus.irq_dirty() = true; }
-                "knobpress" => { let v = json_str(&m, "v").unwrap_or_default() == "1"; if let Some(sw) = self.bus.board_ref().named_pin("sw") { self.bus.gpio_set_input(sw, !v); *self.bus.irq_dirty() = true; } }
+                "btn" => {
+                    let pin: u8 = json_str(&m, "pin")
+                        .and_then(|x| x.parse().ok())
+                        .unwrap_or(0);
+                    let v = json_str(&m, "v").unwrap_or_default() == "1";
+                    self.bus.gpio_set_input(pin, !v);
+                    *self.bus.irq_dirty() = true;
+                }
+                "knobpress" => {
+                    let v = json_str(&m, "v").unwrap_or_default() == "1";
+                    if let Some(sw) = self.bus.board_ref().named_pin("sw") {
+                        self.bus.gpio_set_input(sw, !v);
+                        *self.bus.irq_dirty() = true;
+                    }
+                }
                 "knob" => {
                     let d: i32 = json_str(&m, "d").and_then(|x| x.parse().ok()).unwrap_or(1);
-                    let Some((clk, dt)) = self.bus.board_ref().encoder() else { continue };
-                    let step = S::CPU_HZ / 500;   // 2 ms per phase
-                    let mut tc = (self.bus.cycles() + step).max(self.script.knob_next);   // queue detents back to back, never overlapping
-                    for _ in 0..d.unsigned_abs() { for (pn, l) in Self::quadrature(clk, dt, d > 0) { self.script.events.push((tc, ScriptAction::Gpio(pn, l))); tc += step; } tc += step * 4; }
+                    let Some((clk, dt)) = self.bus.board_ref().encoder() else {
+                        continue;
+                    };
+                    let step = S::CPU_HZ / 500; // 2 ms per phase
+                    let mut tc = (self.bus.cycles() + step).max(self.script.knob_next); // queue detents back to back, never overlapping
+                    for _ in 0..d.unsigned_abs() {
+                        for (pn, l) in Self::quadrature(clk, dt, d > 0) {
+                            self.script.events.push((tc, ScriptAction::Gpio(pn, l)));
+                            tc += step;
+                        }
+                        tc += step * 4;
+                    }
                     self.script.knob_next = tc;
                     self.script.events.sort_by_key(|e| e.0);
-                    self.script.pos = self.script.events.iter().position(|e| e.0 > self.bus.cycles()).unwrap_or(self.script.events.len());
+                    self.script.pos = self
+                        .script
+                        .events
+                        .iter()
+                        .position(|e| e.0 > self.bus.cycles())
+                        .unwrap_or(self.script.events.len());
                 }
-                "serial" => { let line = json_str(&m, "line").unwrap_or_default(); self.bus.serial_input(format!("{}\n", line).as_bytes()); }
-                "touch" => { let x: u16 = json_str(&m, "x").and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = json_str(&m, "y").and_then(|v| v.parse().ok()).unwrap_or(0);
-                             let down = json_str(&m, "down").unwrap_or_default() == "1"; self.bus.board().touch(x, y, down); }
+                "serial" => {
+                    let line = json_str(&m, "line").unwrap_or_default();
+                    self.bus.serial_input(format!("{}\n", line).as_bytes());
+                }
+                "touch" => {
+                    let x: u16 = json_str(&m, "x").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    let y: u16 = json_str(&m, "y").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    let down = json_str(&m, "down").unwrap_or_default() == "1";
+                    self.bus.board().touch(x, y, down);
+                }
                 _ => {}
             }
         }
@@ -549,7 +1115,11 @@ impl<S: Soc> Machine<S> {
     /// One encoder detent as (pin, level) edges, 2 ms apart. Idle is (1,1); CW: CLK falls while
     /// DT=1, then DT falls, CLK rises, DT rises. CCW: DT first.
     fn quadrature(clk: u8, dt: u8, cw: bool) -> [(u8, bool); 4] {
-        if cw { [(clk, false), (dt, false), (clk, true), (dt, true)] } else { [(dt, false), (clk, false), (dt, true), (clk, true)] }
+        if cw {
+            [(clk, false), (dt, false), (clk, true), (dt, true)]
+        } else {
+            [(dt, false), (clk, false), (dt, true), (clk, true)]
+        }
     }
 
     // ------------------------------------------------------------------ scripts
@@ -560,30 +1130,77 @@ impl<S: Soc> Machine<S> {
         let hz = S::CPU_HZ as f64;
         let mut ev: Vec<(u64, ScriptAction)> = Vec::new();
         for (ln, line) in text.lines().enumerate() {
-            let line = line.trim(); if line.is_empty() || line.starts_with('#') { continue; }
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
             let mut it = line.splitn(2, char::is_whitespace);
-            let t: f64 = it.next().unwrap().parse().map_err(|_| format!("line {}: bad time", ln + 1))?;
+            let t: f64 = it
+                .next()
+                .unwrap()
+                .parse()
+                .map_err(|_| format!("line {}: bad time", ln + 1))?;
             let after = it.next().unwrap_or("").trim_start();
             let cmd = after.split_whitespace().next().unwrap_or("");
             let rest = after[cmd.len()..].trim();
             let board = self.bus.board_ref();
-            let pin = |s: &str| -> Result<u8, String> { board.named_pin(s).map(Ok).unwrap_or_else(|| s.parse().map_err(|_| format!("line {}: bad pin {}", ln + 1, s))) };
+            let pin = |s: &str| -> Result<u8, String> {
+                board.named_pin(s).map(Ok).unwrap_or_else(|| {
+                    s.parse()
+                        .map_err(|_| format!("line {}: bad pin {}", ln + 1, s))
+                })
+            };
             let c = (t * hz) as u64;
             match cmd {
-                "press" => { let mut p = rest.split_whitespace(); let pn = pin(p.next().unwrap_or(""))?; let ms: f64 = p.next().map(|x| x.parse().unwrap_or(100.0)).unwrap_or(100.0);
-                             ev.push((c, ScriptAction::Gpio(pn, false))); ev.push((c + (ms / 1000.0 * hz) as u64, ScriptAction::Gpio(pn, true))); }
+                "press" => {
+                    let mut p = rest.split_whitespace();
+                    let pn = pin(p.next().unwrap_or(""))?;
+                    let ms: f64 = p
+                        .next()
+                        .map(|x| x.parse().unwrap_or(100.0))
+                        .unwrap_or(100.0);
+                    ev.push((c, ScriptAction::Gpio(pn, false)));
+                    ev.push((c + (ms / 1000.0 * hz) as u64, ScriptAction::Gpio(pn, true)));
+                }
                 "release" => ev.push((c, ScriptAction::Gpio(pin(rest)?, true))),
-                "gpio" => { let mut p = rest.split_whitespace(); let pn = pin(p.next().unwrap_or(""))?; let l = p.next().unwrap_or("1") == "1"; ev.push((c, ScriptAction::Gpio(pn, l))); }
-                "poke" => { let mut p = rest.split_whitespace(); let a = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).map_err(|e| e.to_string())?; let v = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).map_err(|e| e.to_string())?; ev.push((c, ScriptAction::Poke(a, v))); }
-                "touch" => { let mut p = rest.split_whitespace(); let x: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0); let d = p.next().unwrap_or("1") == "1"; ev.push((c, ScriptAction::Touch(x, y, d))); }
+                "gpio" => {
+                    let mut p = rest.split_whitespace();
+                    let pn = pin(p.next().unwrap_or(""))?;
+                    let l = p.next().unwrap_or("1") == "1";
+                    ev.push((c, ScriptAction::Gpio(pn, l)));
+                }
+                "poke" => {
+                    let mut p = rest.split_whitespace();
+                    let a =
+                        u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16)
+                            .map_err(|e| e.to_string())?;
+                    let v =
+                        u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16)
+                            .map_err(|e| e.to_string())?;
+                    ev.push((c, ScriptAction::Poke(a, v)));
+                }
+                "touch" => {
+                    let mut p = rest.split_whitespace();
+                    let x: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                    let y: u16 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                    let d = p.next().unwrap_or("1") == "1";
+                    ev.push((c, ScriptAction::Touch(x, y, d)));
+                }
                 "serial" => ev.push((c, ScriptAction::Serial(format!("{}\n", rest)))),
                 "knob" => {
-                    let mut p = rest.split_whitespace(); let dir = p.next().unwrap_or("cw"); let n: usize = p.next().map(|x| x.parse().unwrap_or(1)).unwrap_or(1);
-                    let (clk, dt) = board.encoder().ok_or_else(|| format!("line {}: this board has no encoder", ln + 1))?;
-                    let step = (0.002 * hz) as u64;   // 2 ms per quadrature phase
+                    let mut p = rest.split_whitespace();
+                    let dir = p.next().unwrap_or("cw");
+                    let n: usize = p.next().map(|x| x.parse().unwrap_or(1)).unwrap_or(1);
+                    let (clk, dt) = board
+                        .encoder()
+                        .ok_or_else(|| format!("line {}: this board has no encoder", ln + 1))?;
+                    let step = (0.002 * hz) as u64; // 2 ms per quadrature phase
                     let mut tc = c;
                     for _ in 0..n {
-                        for (pn, l) in Self::quadrature(clk, dt, dir == "cw") { ev.push((tc, ScriptAction::Gpio(pn, l))); tc += step; }
+                        for (pn, l) in Self::quadrature(clk, dt, dir == "cw") {
+                            ev.push((tc, ScriptAction::Gpio(pn, l)));
+                            tc += step;
+                        }
                         tc += step * 4;
                     }
                 }
@@ -592,7 +1209,8 @@ impl<S: Soc> Machine<S> {
             }
         }
         ev.sort_by_key(|e| e.0);
-        self.script.events = ev; self.script.pos = 0;
+        self.script.events = ev;
+        self.script.pos = 0;
         Ok(())
     }
 
@@ -602,23 +1220,47 @@ impl<S: Soc> Machine<S> {
         let (pcm, rate) = self.bus.audio();
         let mut out = Vec::with_capacity(44 + pcm.len() * 2);
         let data_len = (pcm.len() * 2) as u32;
-        out.extend_from_slice(b"RIFF"); out.extend_from_slice(&(36 + data_len).to_le_bytes()); out.extend_from_slice(b"WAVEfmt ");
-        out.extend_from_slice(&16u32.to_le_bytes()); out.extend_from_slice(&1u16.to_le_bytes()); out.extend_from_slice(&1u16.to_le_bytes());
-        out.extend_from_slice(&rate.to_le_bytes()); out.extend_from_slice(&(rate * 2).to_le_bytes()); out.extend_from_slice(&2u16.to_le_bytes()); out.extend_from_slice(&16u16.to_le_bytes());
-        out.extend_from_slice(b"data"); out.extend_from_slice(&data_len.to_le_bytes());
-        for s in pcm { out.extend_from_slice(&s.to_le_bytes()); }
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + data_len).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&rate.to_le_bytes());
+        out.extend_from_slice(&(rate * 2).to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&data_len.to_le_bytes());
+        for s in pcm {
+            out.extend_from_slice(&s.to_le_bytes());
+        }
         std::fs::write(path, out)?;
         Ok(pcm.len())
     }
 
     pub fn irq_report(&self) -> String {
-        let mut s = String::from("[irq] per core, cpu-int: count (peripheral sources mapped to it)\n");
+        let mut s =
+            String::from("[irq] per core, cpu-int: count (peripheral sources mapped to it)\n");
         for core in 0..S::CORES {
             for irq in 0..32 {
                 let n = self.irq_hist[core][irq];
-                if n == 0 { continue; }
-                let srcs: Vec<String> = self.bus.irq_sources_of(core, irq as u32).iter().map(|src| src.to_string()).collect();
-                s += &format!("  core{} int{:<2} {:>9}  sources [{}]\n", core, irq, n, srcs.join(","));
+                if n == 0 {
+                    continue;
+                }
+                let srcs: Vec<String> = self
+                    .bus
+                    .irq_sources_of(core, irq as u32)
+                    .iter()
+                    .map(|src| src.to_string())
+                    .collect();
+                s += &format!(
+                    "  core{} int{:<2} {:>9}  sources [{}]\n",
+                    core,
+                    irq,
+                    n,
+                    srcs.join(",")
+                );
             }
         }
         s
@@ -626,16 +1268,27 @@ impl<S: Soc> Machine<S> {
 
     /// Save the board's display (scaled) as PNG.
     pub fn write_tft_png(&self, path: &str, scale: usize) -> std::io::Result<()> {
-        let Some((w, h, px, _)) = self.bus.board_ref().display() else { return Err(std::io::Error::other("this board has no display")) };
-        png::write_png_rgb565(path, &px, w as usize, h as usize, if w > 200 { 1 } else { scale })
+        let Some((w, h, px, _)) = self.bus.board_ref().display() else {
+            return Err(std::io::Error::other("this board has no display"));
+        };
+        png::write_png_rgb565(
+            path,
+            &px,
+            w as usize,
+            h as usize,
+            if w > 200 { 1 } else { scale },
+        )
     }
     pub fn write_gram_png(&self, path: &str) -> std::io::Result<()> {
-        let Some((px, cols, rows)) = self.bus.board_ref().gram() else { return Err(std::io::Error::other("this board has no TFT")) };
+        let Some((px, cols, rows)) = self.bus.board_ref().gram() else {
+            return Err(std::io::Error::other("this board has no TFT"));
+        };
         png::write_png_rgb565(path, &px, cols, rows, 2)
     }
 
     pub fn disasm(&mut self, addr: u32, n: usize) -> String {
-        let mut s = String::new(); let mut pc = addr;
+        let mut s = String::new();
+        let mut pc = addr;
         for _ in 0..n {
             let Ok(b) = self.bus.fetch(pc) else { break };
             let text = self.cores[0].disasm(pc, b);
@@ -648,14 +1301,28 @@ impl<S: Soc> Machine<S> {
 
     pub fn peek(&mut self, addr: u32, words: usize) -> String {
         let mut s = String::new();
-        for i in 0..words { let a = addr.wrapping_add((i * 4) as u32); s += &format!("{:08x}: {}\n", a, match self.bus.read32(a) { Ok(v) => format!("{:08x}", v), Err(_) => "--------".into() }); }
+        for i in 0..words {
+            let a = addr.wrapping_add((i * 4) as u32);
+            s += &format!(
+                "{:08x}: {}\n",
+                a,
+                match self.bus.read32(a) {
+                    Ok(v) => format!("{:08x}", v),
+                    Err(_) => "--------".into(),
+                }
+            );
+        }
         s
     }
 
     pub fn dump_regs(&self) -> String {
         let sym = |a: u32| self.sym(a);
         let mut out = String::new();
-        for (i, c) in self.cores.iter().enumerate() { if i == 0 || !self.core_held[i] { out += &c.dump(i, &sym); } }
+        for (i, c) in self.cores.iter().enumerate() {
+            if i == 0 || !self.core_held[i] {
+                out += &c.dump(i, &sym);
+            }
+        }
         out
     }
 }

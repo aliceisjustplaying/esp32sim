@@ -5,54 +5,120 @@ use crate::bus::Bus;
 use crate::exec::Trap;
 use crate::state::{Cpu, INTTYPE_LEVEL};
 
-const AR: [&str; 16] = ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15"];
+const AR: [&str; 16] = [
+    "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14",
+    "a15",
+];
 
 impl emu_core::Core for Cpu {
     /// The 32 interrupt lines after the interrupt matrix; only the level-triggered ones are the
     /// SoC's to set, the timer/software/edge bits belong to the core.
     type Irq = u32;
-    fn reset(&mut self) { Cpu::reset(self) }
-    fn pc(&self) -> u32 { self.pc }
-    fn set_pc(&mut self, pc: u32) { self.pc = pc; }
-    fn waiting(&self) -> bool { self.waiting }
-    fn insn_count(&self) -> u64 { self.insn_count }
-    fn set_irq(&mut self, lines: u32) { self.interrupt = (self.interrupt & !INTTYPE_LEVEL) | (lines & INTTYPE_LEVEL); }
-    fn irq_pending(&self) -> bool { self.check_interrupts_pending() != 0 }
-    fn irq_bits(irq: &u32) -> u32 { *irq }
-    fn idle_advance(&mut self, cycles: u32) { self.advance_ccount(cycles) }
-    fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> { crate::exec::step(self, bus) }
-    fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }
-    fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
-    fn flush_caches(&mut self) { self.blocks.flush(); }
-    fn set_jit(&mut self, on: bool) { self.blocks.jit_enabled = on; }
-    fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> { Some((self.blocks.builds, self.blocks.flushes, self.blocks.compiled, self.blocks.code_bytes())) }
-    fn regs(&self, out: &mut Vec<(&'static str, u32)>) {
-        for (i, n) in AR.iter().enumerate() { out.push((n, self.get_ar(i as u8))); }
-        out.push(("ps", self.ps)); out.push(("wb", self.windowbase));
+    fn reset(&mut self) {
+        Cpu::reset(self)
     }
-    fn arg(&self, n: usize) -> u32 { self.get_ar(2 + n as u8) }
+    fn pc(&self) -> u32 {
+        self.pc
+    }
+    fn set_pc(&mut self, pc: u32) {
+        self.pc = pc;
+    }
+    fn waiting(&self) -> bool {
+        self.waiting
+    }
+    fn insn_count(&self) -> u64 {
+        self.insn_count
+    }
+    fn set_irq(&mut self, lines: u32) {
+        self.interrupt = (self.interrupt & !INTTYPE_LEVEL) | (lines & INTTYPE_LEVEL);
+    }
+    fn irq_pending(&self) -> bool {
+        self.check_interrupts_pending() != 0
+    }
+    fn irq_bits(irq: &u32) -> u32 {
+        *irq
+    }
+    fn idle_advance(&mut self, cycles: u32) {
+        self.advance_ccount(cycles)
+    }
+    fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> {
+        crate::exec::step(self, bus)
+    }
+    fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
+        crate::block::run_block(self, bus, budget)
+    }
+    fn set_boundaries(&mut self, bloom: u64) {
+        self.boundary_bloom = bloom;
+    }
+    fn flush_caches(&mut self) {
+        self.blocks.flush();
+    }
+    fn set_jit(&mut self, on: bool) {
+        self.blocks.jit_enabled = on;
+    }
+    fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> {
+        Some((
+            self.blocks.builds,
+            self.blocks.flushes,
+            self.blocks.compiled,
+            self.blocks.code_bytes(),
+        ))
+    }
+    fn regs(&self, out: &mut Vec<(&'static str, u32)>) {
+        for (i, n) in AR.iter().enumerate() {
+            out.push((n, self.get_ar(i as u8)));
+        }
+        out.push(("ps", self.ps));
+        out.push(("wb", self.windowbase));
+    }
+    fn arg(&self, n: usize) -> u32 {
+        self.get_ar(2 + n as u8)
+    }
     /// Synthetic return from a windowed function entry whose `entry` has not executed: a0 holds
     /// the return address with the call increment in bits 31:30; no window rotation to undo.
     fn return_from_stub(&mut self, v: u32) {
         let a0 = self.get_ar(0);
         self.set_ar(2, v);
         self.pc = (a0 & 0x3fff_ffff) | (self.pc & 0xc000_0000);
-        self.insn_count += 1; self.advance_ccount(1);
+        self.insn_count += 1;
+        self.advance_ccount(1);
     }
-    fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String { crate::disasm::format(&crate::decode::decode(pc, bytes)) }
-    fn insn_len(bytes: [u8; 4]) -> u32 { crate::decode::decode(0, bytes).len as u32 }
+    fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String {
+        crate::disasm::format(&crate::decode::decode(pc, bytes))
+    }
+    fn insn_len(bytes: [u8; 4]) -> u32 {
+        crate::decode::decode(0, bytes).len as u32
+    }
     const TRACE_WIDTH: usize = 32;
-    fn trace_regs(&self) -> String { format!("a0={:08x} a1={:08x} a2={:08x} a3={:08x} ps={:06x} wb={}", self.get_ar(0), self.get_ar(1), self.get_ar(2), self.get_ar(3), self.ps, self.windowbase) }
+    fn trace_regs(&self) -> String {
+        format!(
+            "a0={:08x} a1={:08x} a2={:08x} a3={:08x} ps={:06x} wb={}",
+            self.get_ar(0),
+            self.get_ar(1),
+            self.get_ar(2),
+            self.get_ar(3),
+            self.ps,
+            self.windowbase
+        )
+    }
     fn trace_trap(&self, core: usize, pc: u32, trap: &Trap) -> Option<String> {
         match trap {
-            Trap::Exception(c) => Some(format!("          ** core{} exception cause {} at {:08x} -> {:08x} (excvaddr {:08x})", core, c, pc, self.pc, self.excvaddr)),
-            Trap::Interrupt(irq) => Some(format!("          ** core{} interrupt {} at {:08x} -> {:08x}", core, irq, pc, self.pc)),
+            Trap::Exception(c) => Some(format!(
+                "          ** core{} exception cause {} at {:08x} -> {:08x} (excvaddr {:08x})",
+                core, c, pc, self.pc, self.excvaddr
+            )),
+            Trap::Interrupt(irq) => Some(format!(
+                "          ** core{} interrupt {} at {:08x} -> {:08x}",
+                core, irq, pc, self.pc
+            )),
             _ => None,
         }
     }
     fn regtrace_line(&self, pc: u32) -> String {
         let mut s = format!("{:08x}", pc);
-        for i in 0..16u8 { s += &format!(" {:08x}", self.get_ar(i)); }
+        for i in 0..16u8 {
+            s += &format!(" {:08x}", self.get_ar(i));
+        }
         s += &format!(" {:08x} {:x}", self.ps, self.windowbase);
         s
     }
@@ -61,11 +127,25 @@ impl emu_core::Core for Cpu {
         let mut s = format!("core{}: ", core);
         s += &format!("pc={:08x} {}  ps={:08x} wb={} ws={:04x} sar={} lcount={} exccause={} excvaddr={:08x} epc1={:08x} intenable={:08x} interrupt={:08x} ccount={} insns={}\n",
             c.pc, sym(c.pc), c.ps, c.windowbase, c.windowstart, c.sar, c.lcount, c.exccause, c.excvaddr, c.epc[1], c.intenable, c.interrupt, c.ccount, c.insn_count);
-        for i in 0..16 { s += &format!("a{:<2}={:08x} ", i, c.get_ar(i)); if i % 8 == 7 { s += "\n"; } }
+        for i in 0..16 {
+            s += &format!("a{:<2}={:08x} ", i, c.get_ar(i));
+            if i % 8 == 7 {
+                s += "\n";
+            }
+        }
         s
     }
-    fn probe_args(&self) -> String { format!("a2={:#x} a3={:#x} a4={:#x}", self.get_ar(2), self.get_ar(3), self.get_ar(4)) }
-    fn return_address(&self) -> u32 { self.get_ar(0) & 0x3fff_ffff | 0x4000_0000 }
+    fn probe_args(&self) -> String {
+        format!(
+            "a2={:#x} a3={:#x} a4={:#x}",
+            self.get_ar(2),
+            self.get_ar(3),
+            self.get_ar(4)
+        )
+    }
+    fn return_address(&self) -> u32 {
+        self.get_ar(0) & 0x3fff_ffff | 0x4000_0000
+    }
 }
 
 #[cfg(test)]
@@ -75,14 +155,22 @@ mod tests {
     #[test]
     fn core_runs_a_block() {
         let mut ram = FlatRam::new(0x4037_0000, 64);
-        ram.mem[..6].copy_from_slice(&[0x22, 0xa0, 0x05, 0x06, 0xff, 0xff]);   // movi a2,5 ; j -4 (to itself)
+        ram.mem[..6].copy_from_slice(&[0x22, 0xa0, 0x05, 0x06, 0xff, 0xff]); // movi a2,5 ; j -4 (to itself)
         let mut cpu = crate::Cpu::new(0);
-        cpu.pc = 0x4037_0000; cpu.ps = 0;
+        cpu.pc = 0x4037_0000;
+        cpu.ps = 0;
         let (used, trap) = cpu.run(&mut ram, 8);
-        assert_eq!(trap, None); assert!(used >= 2, "{}", used);
-        assert_eq!(cpu.get_ar(2), 5); assert_eq!(Core::pc(&cpu), 0x4037_0003);
-        let mut cpu2 = crate::Cpu::new(0); cpu2.pc = 0x4037_0000; cpu2.ps = 0;
-        assert_eq!(cpu2.step(&mut ram), Ok(())); assert_eq!(cpu2.get_ar(2), 5);
-        let mut r = Vec::new(); cpu2.regs(&mut r); assert_eq!(r[2], ("a2", 5));
+        assert_eq!(trap, None);
+        assert!(used >= 2, "{}", used);
+        assert_eq!(cpu.get_ar(2), 5);
+        assert_eq!(Core::pc(&cpu), 0x4037_0003);
+        let mut cpu2 = crate::Cpu::new(0);
+        cpu2.pc = 0x4037_0000;
+        cpu2.ps = 0;
+        assert_eq!(cpu2.step(&mut ram), Ok(()));
+        assert_eq!(cpu2.get_ar(2), 5);
+        let mut r = Vec::new();
+        cpu2.regs(&mut r);
+        assert_eq!(r[2], ("a2", 5));
     }
 }

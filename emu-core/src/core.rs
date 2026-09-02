@@ -45,7 +45,11 @@ pub trait Core {
     /// loop over `step` would have consumed — executed instructions, plus one for a trap taken
     /// before an instruction ran — and the trap that ended the run, if any.
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
-        for i in 0..budget { if let Err(t) = self.step(bus) { return (i + 1, Some(t)); } }
+        for i in 0..budget {
+            if let Err(t) = self.step(bus) {
+                return (i + 1, Some(t));
+            }
+        }
         (budget, None)
     }
     /// pcs the machine intercepts (stubs, probes) as a bloom over `pc_bit`: a fast path must
@@ -56,7 +60,9 @@ pub trait Core {
     /// Enable/disable native code generation, if the core has it (`--no-jit`: the interpreter is the oracle).
     fn set_jit(&mut self, _on: bool) {}
     /// (blocks built, cache flushes, blocks compiled, native code bytes) for the end-of-run report.
-    fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> { None }
+    fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> {
+        None
+    }
     /// Registers worth printing in a trace line, in the core's conventional order.
     fn regs(&self, out: &mut Vec<(&'static str, u32)>);
     /// Argument `n` of the function about to be entered, per the core's calling convention
@@ -73,13 +79,17 @@ pub trait Core {
     /// The registers a trace line shows after the disassembly, e.g. `a0=... ps=... wb=...`.
     fn trace_regs(&self) -> String;
     /// A trace line for a trap just taken, if the core annotates them.
-    fn trace_trap(&self, _core: usize, _pc: u32, _trap: &Trap) -> Option<String> { None }
+    fn trace_trap(&self, _core: usize, _pc: u32, _trap: &Trap) -> Option<String> {
+        None
+    }
     /// One line of the compact register trace used for hardware comparison (`--regtrace`).
     fn regtrace_line(&self, pc: u32) -> String;
     /// The full register dump for the end-of-run report; `sym` names an address.
     fn dump(&self, core: usize, sym: &dyn Fn(u32) -> String) -> String;
     /// Whether the guest has installed a trap handler (an `ebreak` without one is a stop).
-    fn has_trap_handler(&self) -> bool { true }
+    fn has_trap_handler(&self) -> bool {
+        true
+    }
     /// The function-probe argument summary, e.g. `a2=.. a3=.. a4=..`, and the return address.
     fn probe_args(&self) -> String;
     fn return_address(&self) -> u32;
@@ -97,4 +107,6 @@ pub trait CostModel {
 
 /// Bloom bit for a pc; the machine's stub/probe tables and the cores' block boundaries agree on it.
 #[inline(always)]
-pub fn pc_bit(pc: u32) -> u64 { 1u64 << ((pc >> 2) & 63) }
+pub fn pc_bit(pc: u32) -> u64 {
+    1u64 << ((pc >> 2) & 63)
+}

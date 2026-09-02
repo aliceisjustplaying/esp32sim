@@ -52,15 +52,42 @@ pub struct Misc {
     pub mmio_log: Option<Vec<(u32, u32, u32, bool)>>,
 }
 impl Misc {
-    pub fn new() -> Misc { Misc { generic: HashMap::new(), seen: HashSet::new(), log_unknown: false, log_all: false, cur_pc: 0, mmio_log: None } }
+    pub fn new() -> Misc {
+        Misc {
+            generic: HashMap::new(),
+            seen: HashSet::new(),
+            log_unknown: false,
+            log_all: false,
+            cur_pc: 0,
+            mmio_log: None,
+        }
+    }
 }
-impl Default for Misc { fn default() -> Self { Self::new() } }
+impl Default for Misc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 fn note<P: DeviceSet>(p: &mut P, addr: u32, block: u32, off: u32, write: bool, v: u32) {
     let m = p.misc_mut();
-    if !m.log_unknown { return; }
+    if !m.log_unknown {
+        return;
+    }
     if m.seen.insert((addr & !3, write)) {
-        eprintln!("[periph] {} {}+0x{:03x} ({:#010x}) {} pc={:#010x}", if write { "W" } else { "R" }, P::block_name(block), off, addr, if write { format!("= {:#x}", v) } else { String::new() }, m.cur_pc);
+        eprintln!(
+            "[periph] {} {}+0x{:03x} ({:#010x}) {} pc={:#010x}",
+            if write { "W" } else { "R" },
+            P::block_name(block),
+            off,
+            addr,
+            if write {
+                format!("= {:#x}", v)
+            } else {
+                String::new()
+            },
+            m.cur_pc
+        );
     }
 }
 
@@ -70,11 +97,29 @@ pub fn read32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32) -> u32 {
     p.pre_access(block, off, false);
     let v = match p.dispatch_read(block, off) {
         Some(v) => v,
-        None => { note(p, addr, block, off, false, 0); p.misc_mut().generic.entry(block).or_insert_with(RegRam::new).read(off) }
+        None => {
+            note(p, addr, block, off, false, 0);
+            p.misc_mut()
+                .generic
+                .entry(block)
+                .or_insert_with(RegRam::new)
+                .read(off)
+        }
     };
     let m = p.misc_mut();
-    if m.log_all { eprintln!("[rd] {}+0x{:03x} ({:#010x}) -> {:#010x} pc={:#010x}", P::block_name(block), off, addr, v, m.cur_pc); }
-    if let Some(l) = &mut m.mmio_log { l.push((m.cur_pc, addr, v, false)); }
+    if m.log_all {
+        eprintln!(
+            "[rd] {}+0x{:03x} ({:#010x}) -> {:#010x} pc={:#010x}",
+            P::block_name(block),
+            off,
+            addr,
+            v,
+            m.cur_pc
+        );
+    }
+    if let Some(l) = &mut m.mmio_log {
+        l.push((m.cur_pc, addr, v, false));
+    }
     v
 }
 
@@ -82,12 +127,31 @@ pub fn read32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32) -> u32 {
 pub fn write32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32, v: u32) -> WriteEffect {
     let (block, off) = (addr.wrapping_sub(P::BASE) >> 12, addr & 0xfff);
     let m = p.misc_mut();
-    if m.log_all { eprintln!("[wr] {}+0x{:03x} ({:#010x}) <- {:#010x} pc={:#010x}", P::block_name(block), off, addr, v, m.cur_pc); }
-    if let Some(l) = &mut m.mmio_log { l.push((m.cur_pc, addr, v, true)); }
+    if m.log_all {
+        eprintln!(
+            "[wr] {}+0x{:03x} ({:#010x}) <- {:#010x} pc={:#010x}",
+            P::block_name(block),
+            off,
+            addr,
+            v,
+            m.cur_pc
+        );
+    }
+    if let Some(l) = &mut m.mmio_log {
+        l.push((m.cur_pc, addr, v, true));
+    }
     p.pre_access(block, off, true);
     match p.dispatch_write(block, off, v) {
         Some(fx) => fx,
-        None => { note(p, addr, block, off, true, v); p.misc_mut().generic.entry(block).or_insert_with(RegRam::new).write(off, v); WriteEffect::NONE }
+        None => {
+            note(p, addr, block, off, true, v);
+            p.misc_mut()
+                .generic
+                .entry(block)
+                .or_insert_with(RegRam::new)
+                .write(off, v);
+            WriteEffect::NONE
+        }
     }
 }
 
@@ -163,7 +227,12 @@ macro_rules! device_set {
         }
     };
 }
-#[doc(hidden)] #[macro_export]
+#[doc(hidden)]
+#[macro_export]
 macro_rules! __count { () => { 0usize }; ($x:tt $($rest:tt)*) => { 1usize + $crate::__count!($($rest)*) }; }
-#[doc(hidden)] pub use emu_core::{ClockDomain as __ClockDomain, ClockTree as __ClockTree, Dividers as __Dividers};
-#[doc(hidden)] pub use emu_core::clock::divider as __divider;
+#[doc(hidden)]
+pub use emu_core::clock::divider as __divider;
+#[doc(hidden)]
+pub use emu_core::{
+    ClockDomain as __ClockDomain, ClockTree as __ClockTree, Dividers as __Dividers,
+};

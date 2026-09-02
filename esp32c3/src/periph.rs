@@ -7,7 +7,10 @@
 
 use emu_core::{ClockDomain, ClockTree};
 use esp_periph::{device_set, mmio, Device, DeviceSet, Dispatch, Misc, WriteEffect, NO_SOURCE};
-use esp_periph::{Aes, Efuse, Gdma, Gpio, RegRam, Rsa, RtcCntl, Sha, SpiMem, SystemRegs, Systimer, TimerGroup, Uart, UsbSerialJtag};
+use esp_periph::{
+    Aes, Efuse, Gdma, Gpio, RegRam, Rsa, RtcCntl, Sha, SpiMem, SystemRegs, Systimer, TimerGroup,
+    Uart, UsbSerialJtag,
+};
 
 pub const CPU_HZ: u64 = 160_000_000;
 pub const PERIPH_BASE: u32 = 0x6000_0000;
@@ -18,15 +21,29 @@ pub const PERIPH_END: u32 = 0x6010_0000;
 /// enum omits the NMI entries, so its indices are shifted and every source lands on the wrong
 /// line. Only the sources we can assert are listed.
 pub mod src {
-    pub const APB_CTRL: usize = 14; pub const GPIO: usize = 16; pub const SPI2: usize = 19;
-    pub const UART0: usize = 21; pub const UART1: usize = 22; pub const LEDC: usize = 23;
-    pub const EFUSE: usize = 24; pub const USB_SERIAL_JTAG: usize = 26; pub const RTC_CORE: usize = 27;
+    pub const APB_CTRL: usize = 14;
+    pub const GPIO: usize = 16;
+    pub const SPI2: usize = 19;
+    pub const UART0: usize = 21;
+    pub const UART1: usize = 22;
+    pub const LEDC: usize = 23;
+    pub const EFUSE: usize = 24;
+    pub const USB_SERIAL_JTAG: usize = 26;
+    pub const RTC_CORE: usize = 27;
     pub const I2C_EXT0: usize = 29;
-    pub const TG0_T0: usize = 32; pub const TG0_WDT: usize = 33;
-    pub const TG1_T0: usize = 34; pub const TG1_WDT: usize = 35;
-    pub const SYSTIMER_T0: usize = 37; pub const SYSTIMER_T1: usize = 38; pub const SYSTIMER_T2: usize = 39;
-    pub const DMA_CH0: usize = 44; pub const DMA_CH1: usize = 45; pub const DMA_CH2: usize = 46;
-    pub const RSA: usize = 47; pub const AES: usize = 48; pub const SHA: usize = 49;
+    pub const TG0_T0: usize = 32;
+    pub const TG0_WDT: usize = 33;
+    pub const TG1_T0: usize = 34;
+    pub const TG1_WDT: usize = 35;
+    pub const SYSTIMER_T0: usize = 37;
+    pub const SYSTIMER_T1: usize = 38;
+    pub const SYSTIMER_T2: usize = 39;
+    pub const DMA_CH0: usize = 44;
+    pub const DMA_CH1: usize = 45;
+    pub const DMA_CH2: usize = 46;
+    pub const RSA: usize = 47;
+    pub const AES: usize = 48;
+    pub const SHA: usize = 49;
     /// software interrupts, raised by writing `SYSTEM_CPU_INTR_FROM_CPU_n` — this is how the
     /// FreeRTOS port yields, so without them `xPortStartScheduler` just returns
     pub const FROM_CPU0: usize = 50;
@@ -54,12 +71,25 @@ pub struct Intc {
     ram: RegRam,
 }
 
-impl Default for Intc { fn default() -> Self { Self::new() } }
+impl Default for Intc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Intc {
     pub fn new() -> Self {
-        Intc { map: [0; src::COUNT], enable: 0, int_type: 0, pri: [0; 32], thresh: 0,
-               edge_pending: 0, level: 0, prev: 0, ram: RegRam::new() }
+        Intc {
+            map: [0; src::COUNT],
+            enable: 0,
+            int_type: 0,
+            pri: [0; 32],
+            thresh: 0,
+            edge_pending: 0,
+            level: 0,
+            prev: 0,
+            ram: RegRam::new(),
+        }
     }
 
     pub fn read(&self, off: u32) -> u32 {
@@ -67,7 +97,7 @@ impl Intc {
             0x000..=0x0f8 => self.map.get((off / 4) as usize).copied().unwrap_or(0),
             0x104 => self.enable,
             0x108 => self.int_type,
-            0x110 => self.level | self.edge_pending,     // EIP_STATUS: raw source state
+            0x110 => self.level | self.edge_pending, // EIP_STATUS: raw source state
             0x114..=0x190 => self.pri[((off - 0x114) / 4) as usize],
             0x194 => self.thresh,
             _ => self.ram.read(off),
@@ -76,10 +106,14 @@ impl Intc {
 
     pub fn write(&mut self, off: u32, v: u32) {
         match off {
-            0x000..=0x0f8 => { if let Some(m) = self.map.get_mut((off / 4) as usize) { *m = v & 0x1f; } }
+            0x000..=0x0f8 => {
+                if let Some(m) = self.map.get_mut((off / 4) as usize) {
+                    *m = v & 0x1f;
+                }
+            }
             0x104 => self.enable = v,
             0x108 => self.int_type = v,
-            0x10c => self.edge_pending &= !v,            // CPU_INT_CLEAR
+            0x10c => self.edge_pending &= !v, // CPU_INT_CLEAR
             0x114..=0x190 => self.pri[((off - 0x114) / 4) as usize] = v & 0xf,
             0x194 => self.thresh = v & 0xf,
             _ => self.ram.write(off, v),
@@ -90,9 +124,13 @@ impl Intc {
     pub fn update(&mut self, status: &[u32]) {
         let mut lines = 0u32;
         for s in 0..src::COUNT {
-            if status[s / 32] & (1 << (s % 32)) == 0 { continue; }
+            if status[s / 32] & (1 << (s % 32)) == 0 {
+                continue;
+            }
             let n = self.map[s];
-            if n != 0 { lines |= 1 << n; }
+            if n != 0 {
+                lines |= 1 << n;
+            }
         }
         // an edge line latches on the rising edge of its source and stays until CPU_INT_CLEAR
         self.edge_pending |= lines & !self.prev & self.int_type;
@@ -103,45 +141,64 @@ impl Intc {
     /// The highest-priority line the CPU should take, if any.
     pub fn pending(&self) -> Option<u32> {
         let p = (self.level | self.edge_pending) & self.enable & !1;
-        if p == 0 { return None; }
+        if p == 0 {
+            return None;
+        }
         // "interrupts with priority levels lower than the threshold are masked" — so a line at
         // exactly the threshold fires, which is what IDF relies on (it enables with thresh = 1
         // and allocates handlers at priority 1).
         let (mut best, mut best_pri) = (None, 0);
         for n in 1..32 {
             let pri = self.pri[n];
-            if p & (1 << n) != 0 && pri >= self.thresh && pri > best_pri { best_pri = pri; best = Some(n as u32); }
+            if p & (1 << n) != 0 && pri >= self.thresh && pri > best_pri {
+                best_pri = pri;
+                best = Some(n as u32);
+            }
         }
         best
     }
 }
 
-
 /// The C3's cache controller. Only the "operation finished" bits matter to us: the ROM and the
 /// bootloader kick a sync/preload/lock and then poll for done, so a model that never completes
 /// hangs the boot. Register offsets differ from the S3's, which is why this is not shared.
-pub struct Extmem { ram: RegRam }
+pub struct Extmem {
+    ram: RegRam,
+}
 
-impl Default for Extmem { fn default() -> Self { Self::new() } }
+impl Default for Extmem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Extmem {
-    pub fn new() -> Self { Extmem { ram: RegRam::new() } }
+    pub fn new() -> Self {
+        Extmem { ram: RegRam::new() }
+    }
     pub fn read(&self, off: u32) -> u32 {
         let v = self.ram.read(off);
         match off {
-            0x01c => v | (1 << 2),                 // ICACHE_LOCK_CTRL: LOCK_DONE
-            0x028 => v | (1 << 1),                 // ICACHE_SYNC_CTRL: SYNC_DONE
-            0x034 => v | (1 << 1),                 // ICACHE_PRELOAD_CTRL: PRELOAD_DONE
-            0x040 => v | (1 << 3),                 // ICACHE_AUTOLOAD_CTRL: AUTOLOAD_DONE
-            0x0b0 => 0x001,                        // CACHE_STATE: icache idle
-            0x0cc => if v & 1 != 0 { v | (1 << 2) } else { v & !(1 << 2) },   // ICACHE_FREEZE: DONE follows ENA
-            0x3fc => 0x2007_0000,                  // DATE
+            0x01c => v | (1 << 2), // ICACHE_LOCK_CTRL: LOCK_DONE
+            0x028 => v | (1 << 1), // ICACHE_SYNC_CTRL: SYNC_DONE
+            0x034 => v | (1 << 1), // ICACHE_PRELOAD_CTRL: PRELOAD_DONE
+            0x040 => v | (1 << 3), // ICACHE_AUTOLOAD_CTRL: AUTOLOAD_DONE
+            0x0b0 => 0x001,        // CACHE_STATE: icache idle
+            0x0cc => {
+                if v & 1 != 0 {
+                    v | (1 << 2)
+                } else {
+                    v & !(1 << 2)
+                }
+            } // ICACHE_FREEZE: DONE follows ENA
+            0x3fc => 0x2007_0000,  // DATE
             _ => v,
         }
     }
-    pub fn write(&mut self, off: u32, v: u32) { self.ram.write(off, v); }
+    pub fn write(&mut self, off: u32, v: u32) {
+        self.ram.write(off, v);
+    }
 }
-
 
 /// Seed the efuse block the way real C3 silicon reads back. The S3's `Efuse::new` lays the
 /// wafer-version fields out for its own chip; on the C3 they live in BLK1 bits 114 (minor low),
@@ -153,31 +210,48 @@ impl Extmem {
 /// an app whose `min_chip_rev` is above the wafer version.
 pub fn efuse_c3(mac: [u8; 6], rev_major: u32, rev_minor: u32, blk_minor: u32) -> Efuse {
     let mut e = Efuse::new(mac);
-    e.write(0x48, (mac[0] as u32) << 8 | mac[1] as u32);       // BLK1 word 1: MAC high, nothing else
-    // BLK1 word 3 holds WAFER_VERSION_MINOR_LO (bit 114), PKG_VERSION (117) and BLK_VERSION_MINOR (120)
+    e.write(0x48, (mac[0] as u32) << 8 | mac[1] as u32); // BLK1 word 1: MAC high, nothing else
+                                                         // BLK1 word 3 holds WAFER_VERSION_MINOR_LO (bit 114), PKG_VERSION (117) and BLK_VERSION_MINOR (120)
     e.write(0x50, (rev_minor & 7) << 18 | (blk_minor & 7) << 24);
     e.write(0x58, ((rev_minor >> 3) & 1) << 23 | (rev_major & 3) << 24);
-    e                                                          // BLK_VERSION_MAJOR = 1 comes from Efuse::new (0x6c)
+    e // BLK_VERSION_MAJOR = 1 comes from Efuse::new (0x6c)
 }
 impl Device for Intc {
-    fn read(&mut self, off: u32) -> u32 { Intc::read(self, off) }
-    fn write(&mut self, off: u32, v: u32) -> WriteEffect { Intc::write(self, off, v); WriteEffect::NONE }
+    fn read(&mut self, off: u32) -> u32 {
+        Intc::read(self, off)
+    }
+    fn write(&mut self, off: u32, v: u32) -> WriteEffect {
+        Intc::write(self, off, v);
+        WriteEffect::NONE
+    }
 }
 impl Device for Extmem {
-    fn read(&mut self, off: u32) -> u32 { Extmem::read(self, off) }
-    fn write(&mut self, off: u32, v: u32) -> WriteEffect { Extmem::write(self, off, v); WriteEffect::NONE }
+    fn read(&mut self, off: u32) -> u32 {
+        Extmem::read(self, off)
+    }
+    fn write(&mut self, off: u32, v: u32) -> WriteEffect {
+        Extmem::write(self, off, v);
+        WriteEffect::NONE
+    }
 }
 
 /// APB_CTRL + 0xB0 is the hardware RNG (`WDEV_RND_REG`); everything else in the block is plain
 /// configuration. Real silicon seeds this from radio noise — xorshift is enough for the
 /// bootloader's stack canary and for `esp_random` to make progress.
-pub struct Rng { state: u32, pub now: u32 }
+pub struct Rng {
+    state: u32,
+    pub now: u32,
+}
 impl Device for Rng {
     fn read(&mut self, _off: u32) -> u32 {
-        self.state ^= self.state << 13; self.state ^= self.state >> 17; self.state ^= self.state << 5;
+        self.state ^= self.state << 13;
+        self.state ^= self.state >> 17;
+        self.state ^= self.state << 5;
         self.state.wrapping_add(self.now)
     }
-    fn write(&mut self, _off: u32, _v: u32) -> WriteEffect { WriteEffect::NONE }
+    fn write(&mut self, _off: u32, _v: u32) -> WriteEffect {
+        WriteEffect::NONE
+    }
 }
 
 pub struct Peripherals {
@@ -232,25 +306,56 @@ device_set! { Peripherals; clock: (clock) CPU_HZ, [(ClockDomain::Systimer, 10), 
 
 impl DeviceSet for Peripherals {
     const BASE: u32 = PERIPH_BASE;
-    fn block_name(block: u32) -> &'static str { Peripherals::block_name(block) }
-    fn misc(&self) -> &Misc { &self.misc }
-    fn misc_mut(&mut self) -> &mut Misc { &mut self.misc }
+    fn block_name(block: u32) -> &'static str {
+        Peripherals::block_name(block)
+    }
+    fn misc(&self) -> &Misc {
+        &self.misc
+    }
+    fn misc_mut(&mut self) -> &mut Misc {
+        &mut self.misc
+    }
     fn pre_access(&mut self, block: u32, _off: u32, _write: bool) {
-        if block == 0x26 { self.rng.now = self.clock.cycles() as u32; }
+        if block == 0x26 {
+            self.rng.now = self.clock.cycles() as u32;
+        }
     }
 }
 
 impl Peripherals {
     pub fn new(mac: [u8; 6]) -> Self {
         let mut p = Peripherals {
-            uart: [Uart::new(), Uart::new()], usb: UsbSerialJtag::new(CPU_HZ), systimer: Systimer::new(),
-            timg: [TimerGroup::new(), TimerGroup::new()], gpio: Gpio::new(), rtc: RtcCntl::new(),
-            efuse: efuse_c3(mac, 0, 4, 3), system: SystemRegs::new(0x28), extmem: Extmem::new(), intc: Intc::new(),
-            spi0: { let mut s = SpiMem::new(false); s.has_psram = false; s },
-            spi1: { let mut s = SpiMem::new(true); s.has_psram = false; s },   // the C3 has no PSRAM
+            uart: [Uart::new(), Uart::new()],
+            usb: UsbSerialJtag::new(CPU_HZ),
+            systimer: Systimer::new(),
+            timg: [TimerGroup::new(), TimerGroup::new()],
+            gpio: Gpio::new(),
+            rtc: RtcCntl::new(),
+            efuse: efuse_c3(mac, 0, 4, 3),
+            system: SystemRegs::new(0x28),
+            extmem: Extmem::new(),
+            intc: Intc::new(),
+            spi0: {
+                let mut s = SpiMem::new(false);
+                s.has_psram = false;
+                s
+            },
+            spi1: {
+                let mut s = SpiMem::new(true);
+                s.has_psram = false;
+                s
+            }, // the C3 has no PSRAM
             gdma: Gdma::new(),
-            sha: Sha::new(), aes: Aes::new(), rsa: Rsa::new(), rng: Rng { state: 0x2545_f491, now: 0 },
-            misc: Misc::new(), spi_exec: false, clock: Self::new_clock(),
+            sha: Sha::new(),
+            aes: Aes::new(),
+            rsa: Rsa::new(),
+            rng: Rng {
+                state: 0x2545_f491,
+                now: 0,
+            },
+            misc: Misc::new(),
+            spi_exec: false,
+            clock: Self::new_clock(),
             last_status: [0; 4],
         };
         p
@@ -258,30 +363,69 @@ impl Peripherals {
 
     pub fn block_name(block: u32) -> &'static str {
         match block {
-            0x00 => "UART0", 0x02 => "SPI1", 0x03 => "SPI0", 0x04 => "GPIO", 0x05 => "FE2", 0x06 => "FE",
-            0x08 => "RTCCNTL/EFUSE", 0x09 => "IO_MUX", 0x0e => "RTC_I2C", 0x10 => "UART1",
-            0x13 => "I2C0", 0x14 => "UHCI0", 0x16 => "RMT", 0x19 => "LEDC", 0x1c => "NRX", 0x1d => "BB",
-            0x1f => "TIMG0", 0x20 => "TIMG1", 0x23 => "SYSTIMER", 0x24 => "SPI2", 0x26 => "APB_CTRL",
-            0x2b => "TWAI", 0x2d => "I2S", 0x3a => "AES", 0x3b => "SHA", 0x3c => "RSA", 0x3d => "DS",
-            0x3e => "HMAC", 0x3f => "GDMA", 0x40 => "APB_SARADC", 0x43 => "USB_SERIAL_JTAG",
-            0xc0 => "SYSTEM", 0xc1 => "SENSITIVE", 0xc2 => "INTERRUPT", 0xc4 => "EXTMEM",
-            0xc5 => "MMU", 0xcc => "XTS_AES", 0xce => "ASSIST_DEBUG", 0xcf => "DEDICATED_GPIO",
+            0x00 => "UART0",
+            0x02 => "SPI1",
+            0x03 => "SPI0",
+            0x04 => "GPIO",
+            0x05 => "FE2",
+            0x06 => "FE",
+            0x08 => "RTCCNTL/EFUSE",
+            0x09 => "IO_MUX",
+            0x0e => "RTC_I2C",
+            0x10 => "UART1",
+            0x13 => "I2C0",
+            0x14 => "UHCI0",
+            0x16 => "RMT",
+            0x19 => "LEDC",
+            0x1c => "NRX",
+            0x1d => "BB",
+            0x1f => "TIMG0",
+            0x20 => "TIMG1",
+            0x23 => "SYSTIMER",
+            0x24 => "SPI2",
+            0x26 => "APB_CTRL",
+            0x2b => "TWAI",
+            0x2d => "I2S",
+            0x3a => "AES",
+            0x3b => "SHA",
+            0x3c => "RSA",
+            0x3d => "DS",
+            0x3e => "HMAC",
+            0x3f => "GDMA",
+            0x40 => "APB_SARADC",
+            0x43 => "USB_SERIAL_JTAG",
+            0xc0 => "SYSTEM",
+            0xc1 => "SENSITIVE",
+            0xc2 => "INTERRUPT",
+            0xc4 => "EXTMEM",
+            0xc5 => "MMU",
+            0xcc => "XTS_AES",
+            0xce => "ASSIST_DEBUG",
+            0xcf => "DEDICATED_GPIO",
             _ => "?",
         }
     }
 
-    pub fn read32(&mut self, addr: u32) -> u32 { mmio::read32(self, addr) }
+    pub fn read32(&mut self, addr: u32) -> u32 {
+        mmio::read32(self, addr)
+    }
 
     pub fn write32(&mut self, addr: u32, v: u32) {
-        if mmio::write32(self, addr, v).contains(WriteEffect::SPI_EXEC) { self.spi_exec = true; }
+        if mmio::write32(self, addr, v).contains(WriteEffect::SPI_EXEC) {
+            self.spi_exec = true;
+        }
     }
 
     /// Advance every clocked device by `cycles` CPU cycles (16 MHz systimer, 80 MHz APB, ~150 kHz
     /// RTC slow clock), with delivered-tick accounting so a slow clock never drifts.
-    pub fn tick(&mut self, cycles: u64) { Dispatch::tick(self, cycles); }
+    pub fn tick(&mut self, cycles: u64) {
+        Dispatch::tick(self, cycles);
+    }
 
     /// Which interrupt sources are asserted right now.
-    pub fn source_status(&self) -> [u32; 4] { Dispatch::source_status(self) }
+    pub fn source_status(&self) -> [u32; 4] {
+        Dispatch::source_status(self)
+    }
 
     /// Refresh the interrupt matrix; returns true if any source changed.
     pub fn refresh_lines(&mut self) -> bool {

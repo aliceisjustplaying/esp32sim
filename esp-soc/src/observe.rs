@@ -26,29 +26,65 @@ impl Wants {
     /// keep sleeping cores stepping instead of skipping their idle time (changes emulated
     /// timing: an idle core shows as a hot `waiti`; only for observers that count instructions)
     pub const NO_IDLE_SKIP: Wants = Wants(128);
-    pub fn contains(self, o: Wants) -> bool { self.0 & o.0 != 0 }
+    pub fn contains(self, o: Wants) -> bool {
+        self.0 & o.0 != 0
+    }
 }
-impl std::ops::BitOr for Wants { type Output = Wants; fn bitor(self, o: Wants) -> Wants { Wants(self.0 | o.0) } }
+impl std::ops::BitOr for Wants {
+    type Output = Wants;
+    fn bitor(self, o: Wants) -> Wants {
+        Wants(self.0 | o.0)
+    }
+}
 
 /// What every hook gets besides its own arguments.
-pub struct Ctx<'a> { pub symbols: &'a BTreeMap<u32, String>, pub cycles: u64, pub cpu_hz: u64 }
+pub struct Ctx<'a> {
+    pub symbols: &'a BTreeMap<u32, String>,
+    pub cycles: u64,
+    pub cpu_hz: u64,
+}
 impl Ctx<'_> {
     pub fn sym(&self, addr: u32) -> String {
         match self.symbols.range(..=addr).next_back() {
-            Some((&a, n)) if addr - a < 0x10000 => if a == addr { n.clone() } else { format!("{}+{:#x}", n, addr - a) },
+            Some((&a, n)) if addr - a < 0x10000 => {
+                if a == addr {
+                    n.clone()
+                } else {
+                    format!("{}+{:#x}", n, addr - a)
+                }
+            }
             _ => String::new(),
         }
     }
-    pub fn seconds(&self) -> f64 { self.cycles as f64 / self.cpu_hz as f64 }
+    pub fn seconds(&self) -> f64 {
+        self.cycles as f64 / self.cpu_hz as f64
+    }
 }
 
 pub trait Observer<S: Soc> {
     fn name(&self) -> &'static str;
     fn wants(&self) -> Wants;
     /// Before `pc` executes on `core`. A `Stop` ends the run.
-    fn on_insn(&mut self, _cx: &Ctx, _core: usize, _cpu: &S::Core, _bus: &mut S::Bus, _pc: u32) -> Option<Stop> { None }
+    fn on_insn(
+        &mut self,
+        _cx: &Ctx,
+        _core: usize,
+        _cpu: &S::Core,
+        _bus: &mut S::Bus,
+        _pc: u32,
+    ) -> Option<Stop> {
+        None
+    }
     /// After the instruction (and its trap, if any) on `core`.
-    fn after_insn(&mut self, _cx: &Ctx, _core: usize, _cpu: &S::Core, _bus: &mut S::Bus) -> Option<Stop> { None }
+    fn after_insn(
+        &mut self,
+        _cx: &Ctx,
+        _core: usize,
+        _cpu: &S::Core,
+        _bus: &mut S::Bus,
+    ) -> Option<Stop> {
+        None
+    }
     /// The fast path ran `insns` instructions of the block starting at `pc`.
     fn on_block(&mut self, _cx: &Ctx, _core: usize, _pc: u32, _insns: u32) {}
     fn on_trap(&mut self, _cx: &Ctx, _core: usize, _cpu: &S::Core, _pc: u32, _trap: &Trap) {}
@@ -57,5 +93,7 @@ pub trait Observer<S: Soc> {
     fn on_gpio(&mut self, _cycle: u64, _pin: u8, _level: bool) {}
     fn on_round(&mut self, _cx: &Ctx) {}
     /// The end-of-run report (files are written here too).
-    fn report(&mut self, _cx: &Ctx) -> String { String::new() }
+    fn report(&mut self, _cx: &Ctx) -> String {
+        String::new()
+    }
 }

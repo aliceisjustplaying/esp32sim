@@ -24,7 +24,11 @@ pub enum Stop {
 
 /// A secondary core's state as its SoC registers say.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CoreState { Running, Held, Reset }
+pub enum CoreState {
+    Running,
+    Held,
+    Reset,
+}
 
 pub trait Soc: 'static {
     type Core: Core;
@@ -45,7 +49,9 @@ pub trait Soc: 'static {
     fn boot_core(core: &mut Self::Core, entry: u32);
     /// The interrupt input of every core, from the bus's current source state.
     fn irqs(bus: &Self::Bus, out: &mut [<Self::Core as Core>::Irq]);
-    fn core_state(_bus: &Self::Bus, _core: usize) -> CoreState { CoreState::Running }
+    fn core_state(_bus: &Self::Bus, _core: usize) -> CoreState {
+        CoreState::Running
+    }
 }
 
 pub trait SocBus: Bus {
@@ -79,7 +85,9 @@ pub trait SocBus: Bus {
     fn board_ref(&self) -> &dyn BoardModel;
     /// Captured audio so far (left channel) and its sample rate.
     fn audio(&self) -> (&[i16], u32);
-    fn camera_frames(&self) -> u64 { 0 }
+    fn camera_frames(&self) -> u64 {
+        0
+    }
     /// Peripheral source numbers routed to CPU interrupt `line` of `core` (for the end-of-run report).
     fn irq_sources_of(&self, core: usize, line: u32) -> Vec<usize>;
     /// Apply the debug areas to the devices and to the bus's own logging.
@@ -87,11 +95,15 @@ pub trait SocBus: Bus {
     /// Resize the flash array (the JEDEC capacity follows).
     fn set_flash_size(&mut self, bytes: usize);
     /// Resize the PSRAM, on chips that have one.
-    fn set_psram_size(&mut self, _bytes: usize) -> Result<(), String> { Err("this chip has no PSRAM".into()) }
+    fn set_psram_size(&mut self, _bytes: usize) -> Result<(), String> {
+        Err("this chip has no PSRAM".into())
+    }
     /// Strapping pins as the ROM reads them.
     fn set_strap(&mut self, v: u32);
     /// The reset cause the ROM will report (to reproduce a real board's boot).
     fn set_reset_cause(&mut self, cause: u32);
     /// Chip-specific end-of-run statistics (audio, WiFi, crypto, DMA engines).
-    fn report(&self) -> String { String::new() }
+    fn report(&self) -> String {
+        String::new()
+    }
 }

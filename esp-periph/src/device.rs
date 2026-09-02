@@ -10,9 +10,16 @@ impl WriteEffect {
     pub const SPI_EXEC: WriteEffect = WriteEffect(1);
     /// the interrupt source → line mapping changed
     pub const INTMAP: WriteEffect = WriteEffect(2);
-    pub fn contains(self, o: WriteEffect) -> bool { self.0 & o.0 != 0 }
+    pub fn contains(self, o: WriteEffect) -> bool {
+        self.0 & o.0 != 0
+    }
 }
-impl std::ops::BitOr for WriteEffect { type Output = WriteEffect; fn bitor(self, o: WriteEffect) -> WriteEffect { WriteEffect(self.0 | o.0) } }
+impl std::ops::BitOr for WriteEffect {
+    type Output = WriteEffect;
+    fn bitor(self, o: WriteEffect) -> WriteEffect {
+        WriteEffect(self.0 | o.0)
+    }
+}
 
 /// A peripheral: a 4 KiB register block (or a slice of one), optionally clocked, optionally an
 /// interrupt source. The chip's `DeviceSet` table says where it sits and what its sources are
@@ -22,16 +29,24 @@ pub trait Device {
     fn write(&mut self, off: u32, v: u32) -> WriteEffect;
     /// Bit i set = the device's i-th interrupt source (in the order the chip's table lists them)
     /// is asserted right now.
-    fn irq_sources(&self) -> u64 { 0 }
+    fn irq_sources(&self) -> u64 {
+        0
+    }
     /// The clock whose ticks `tick` wants, if the device keeps time.
-    fn clock(&self) -> Option<ClockDomain> { None }
+    fn clock(&self) -> Option<ClockDomain> {
+        None
+    }
     fn tick(&mut self, _ticks: u64) {}
     /// True if the device implements `next_deadline` (so the SoC only asks the timers).
-    fn has_deadline(&self) -> bool { false }
+    fn has_deadline(&self) -> bool {
+        false
+    }
     /// Ticks of its clock until the device could next raise an interrupt, if it can say. The SoC
     /// uses the minimum to decide how long device time may be deferred (conservative: it may be
     /// early, never late).
-    fn next_deadline(&self) -> Option<u64> { None }
+    fn next_deadline(&self) -> Option<u64> {
+        None
+    }
     /// Print what the device does (`--debug <name>`).
     fn debug(&mut self, _on: bool) {}
 }

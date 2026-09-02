@@ -1,1 +1,3 @@
-fn main() { esp32sim::run_cli("s3") }
+fn main() {
+    esp32sim::run_cli("s3")
+}
