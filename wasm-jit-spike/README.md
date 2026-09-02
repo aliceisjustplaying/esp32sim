@@ -1,26 +1,36 @@
 # Wasm-emitting LX7 JIT spike
 
-This disposable crate emits one WebAssembly module for an SRAM LX7 block and
-runs it under Node. Exported memory holds 16 address registers, PC, a 64-bit
-cycle field, and the zero-overhead-loop registers.
+This disposable crate emits WebAssembly for receipt-priced LX7 blocks and runs
+it under Node. It keeps upstream fast mode untouched.
 
-Coverage is three-byte `movi`, `addi`, `add`, `sub`, `and`, `or`, and `xor`;
-the full 24-opcode conditional-branch set plus observed `bltz` and `bgez`;
-`j`; `loop`, `loopnez`, and `loopgtz`; and `l32r`. Branches charge the adopted
-3 cycles taken or 1 not taken, `j` charges 3, and loop setup charges 5.
-`l32r` architecture emits only when the caller resolves its adopted 1 to 2
-cycle interval for that observation. The default fails closed.
+Coverage includes scalar `movi`, `movi.n`, `addi`, `add`, `sub`, `and`, `or`,
+`xor`, `saltu`, `memw`, all 24 conditional branches plus `bltz` and `bgez`,
+`j`, zero-overhead loops, and caller-resolved `l32r`. Register-window coverage
+is `entry`, `call4/8/12`, `callx4/8/12`, `retw`, `retw.n`, and `movsp`, with
+all 64 physical address registers and `WINDOWBASE`, `WINDOWSTART`, and PS
+rotation state represented in wasm memory.
 
-Calls, returns, window operations, exceptions, indirect jumps, other loads and
-stores, special registers, cache operations, floating point, PIE, and traps end
-compilation with opcode and PC. The caller falls back to the interpreter for
-that block. Empty and truncated blocks also fail.
+Window overflow and underflow checks run before mutation. They return a typed
+fallback code so the interpreter takes the exception and the same compiled
+block resumes after its handler. Exceptions and interrupt entry are not
+emitted.
 
-On `calibration/esp32s3-opcode-ladders/tinydraw-opcode-histogram.json`, the
-emitter covers 15,705,620 of 46,690,498 dynamic instructions. The instruction
-fallback rate is 66.362 percent. The 100-case branch-and-loop exit run emits
-88,149 bytes for 600 static guest instructions, or 146.915 bytes per guest
-instruction, including each module's state and section overhead.
+Loads and stores cover 8-, 16-, and 32-bit immediate forms. SRAM is direct
+wasm memory at issue cost. MMIO uses receipt read tiers and the eight-entry
+posted-write state stored with accounting. RTC, eFuse, and NRX write costs
+fail closed where no scalar price exists. Flash and PSRAM call the one
+`env.cache_access` host import for cache state, value, and fill cost.
+
+The committed TinyDraw histogram has 46,690,498 dynamic instructions. The
+covered union accounts for 32,639,139, leaving an instruction fallback rate
+of 30.095 percent. The major unhandled classes are extended ALU and shifts,
+special-register operations, exception and interrupt returns, and cache/TLB
+control operations.
+
+The straight-line run emits 125.180 bytes per static guest instruction. The
+branch-loop run emits 146.915, and the windowed run emits 238.791, including
+module state and section overhead. The SRAM kernel JIT ledger is byte-identical
+to the measured interpreter ledger.
 
 Run the spike tests:
 
