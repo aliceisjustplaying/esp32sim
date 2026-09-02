@@ -1,6 +1,7 @@
 //! esp32sim-c3 — run ESP32-C3 firmware. Mirrors the flags of the ESP32-S3 `esp32sim` binary;
 //! see docs/esp32c3.md. The two will merge behind a `--chip` flag once the C3 model is complete.
 use esp32c3::Stop;
+use esp_soc::observers::{BlockProfile, Breakpoints, Coverage, IrqLatency, Trace, Vcd, Watch};
 use riscv_rv32::bus::Bus;
 use esp_periph::reset_cause_name;
 
@@ -26,6 +27,8 @@ fn main() {
     let mut watch: Option<u32> = None;
     let (mut mac_arg, mut reset_cause, mut strap) = (None::<String>, None::<u32>, None::<u32>);
     let mut flash_at: Vec<String> = Vec::new();
+    let mut debug: Vec<String> = Vec::new();
+    let (mut profile_blocks, mut coverage, mut irq_latency, mut vcd): (bool, Option<Option<String>>, bool, Option<String>) = (false, None, false, None);
 
     let mut i = 1;
     let num = |s: &str| -> u32 { u32::from_str_radix(s.trim_start_matches("0x"), if s.starts_with("0x") { 16 } else { 10 }).unwrap_or(0) };
@@ -61,6 +64,12 @@ fn main() {
             "--strap" => { let v = next(); strap = Some(num(&v)); }
             "--no-reboot" => no_reboot = true,
             "--serial" => serial = Some(next()),
+            "--profile-blocks" => profile_blocks = true,
+            "--coverage" => coverage = Some(None),
+            "--coverage-file" => coverage = Some(Some(next())),
+            "--irq-latency" => irq_latency = true,
+            "--vcd" => vcd = Some(next()),
+            "--debug" => debug.push(next()),
             "-h" | "--help" => usage(),
             _ => { eprintln!("unknown arg {}", a); usage() }
         }
@@ -74,10 +83,14 @@ fn main() {
     }
     let mut m = esp32c3::machine(mac, flash_mb * 1024 * 1024);
     m.bus.periph.misc.log_unknown = log_periph;
-    m.bus.periph.spi1.log = std::env::var("ESP_EMU_DEBUG_SPI").is_ok();
-    m.dbg.trace = trace; m.dbg.trace_from = trace_from; m.dbg.breakpoints = breaks;
+    if !debug.is_empty() { let mut f = esp_soc::DebugFlags::from_env(); for d in &debug { f.parse(d); } m.set_debug(&f); }
+    if !breaks.is_empty() { m.add_observer(Box::new(Breakpoints { pcs: breaks })); }
+    if trace { m.add_observer(Box::new(Trace { from: trace_from })); }
     m.dbg.stop_after_exceptions = stop_exc;
-    if let Some(a) = watch { m.dbg.watch = Some((a, 0)); }
+    if profile_blocks { m.add_observer(Box::new(BlockProfile::new(20))); }
+    if let Some(path) = coverage { m.add_observer(Box::new(Coverage::new(path))); }
+    if irq_latency { m.add_observer(Box::new(IrqLatency::new(1))); }
+    if let Some(p) = &vcd { m.add_observer(Box::new(Vcd::new(p, esp32c3::periph::CPU_HZ))); }
     m.console.mask = match console.as_str() { "usb" => 1, "uart0" => 2, "none" => 0, _ => 3 };
     let cap = (flash_mb * 1024 * 1024).trailing_zeros() as u8;
     m.bus.periph.spi1.jedec[2] = cap; m.bus.periph.spi0.jedec[2] = cap;
@@ -127,7 +140,7 @@ fn main() {
     if let Some(c) = reset_cause { m.bus.periph.rtc.ram.write(0x38, c | (c << 6)); m.bus.periph.rtc.reset_cause = c; }
     if let Some(v) = strap { m.bus.periph.gpio.strap = v; }
     if let Some(s) = max_seconds { m.max_cycles = (s * esp32c3::periph::CPU_HZ as f64) as u64; }
-    if let Some((a, _)) = m.dbg.watch { let v = m.bus.read32(a).unwrap_or(0); m.dbg.watch = Some((a, v)); }
+    if let Some(a) = watch { let v = m.bus.read32(a).unwrap_or(0); m.add_observer(Box::new(Watch { addr: a, value: v })); }
     for &(a, n) in &peeks { eprintln!("[peek before run]\n{}", m.peek(a, n)); }
 
     let t0 = std::time::Instant::now();
@@ -150,6 +163,7 @@ fn main() {
     if let Some((a, w)) = m.bus.last_fault { eprintln!("[emu] last bus fault: {} {:#010x}", if w { "write" } else { "read" }, a); }
     let irqs: Vec<String> = (0..32).filter(|&n| m.irq_hist[0][n] > 0).map(|n| format!("int{}:{}", n, m.irq_hist[0][n])).collect();
     if !irqs.is_empty() { eprintln!("[emu] interrupt lines taken: {}", irqs.join(" ")); }
+    { let r = m.reports(); if !r.is_empty() { eprintln!("{}", r); } }
     for &(a, n) in &peeks { eprintln!("[peek after run]\n{}", m.peek(a, n)); }
     for &(a, n) in &disasms { eprintln!("[disasm {:#010x}]\n{}", a, m.disasm(a, n)); }
 }

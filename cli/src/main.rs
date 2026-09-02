@@ -3,6 +3,7 @@
 //!   esp32sim --rom ROM.elf --bootloader b.bin --ptable p.bin --app firmware.bin [--elf firmware.elf]
 //!               [--boot app|rom] [--max-insns N] [--trace] [--trace-from N] [--break ADDR] [--log-periph]
 use esp32s3::Stop;
+use esp_soc::observers::{BlockProfile, Breakpoints, Coverage, IrqLatency, MmioHeat, PcHist, RegTrace, Trace, Vcd, Watch};
 use std::path::PathBuf;
 
 fn find_rom() -> Option<PathBuf> {
@@ -17,6 +18,8 @@ fn main() {
     let mut rom = find_rom(); let mut bootloader = None; let mut ptable = None; let mut app = None; let mut elfs: Vec<String> = Vec::new();
     let mut boot = "app".to_string(); let mut max_insns = u64::MAX; let mut trace = false; let mut trace_from = 0u64;
     let mut breaks = Vec::new(); let mut log_periph = false; let mut dump_at_end = true; let mut peeks: Vec<(u32, usize)> = Vec::new(); let mut disasms: Vec<(u32, usize)> = Vec::new(); let mut watch = None; let mut stop_exc = u64::MAX; let mut profile = false; let mut wav: Option<String> = None; let mut tft_png: Option<String> = None; let mut gram_png: Option<String> = None; let mut script: Option<String> = None; let mut max_seconds: Option<f64> = None; let mut console = "both".to_string(); let mut console_prefix = false; let mut regtrace: Option<String> = None; let mut regtrace_max = u64::MAX; let mut regtrace_from_pc: Option<u32> = None; let mut efuse_file: Option<String> = None; let mut regs_init: Option<String> = None; let mut web_port: Option<u16> = None; let mut realtime = false; let mut web_dir: Option<String> = None; let mut strap: Option<u32> = None; let mut reset_cause: Option<u32> = None; let mut flash_mb: usize = 8; let mut flash_image: Option<String> = None; let mut board = "atech14".to_string(); let mut no_reboot = false; let mut psram_mb: usize = 2; let mut cam_image: Option<String> = None; let mut cam_fps: f64 = 10.0; let mut stubs: Vec<String> = Vec::new(); let mut regstat: Option<String> = None; let mut trace_fns: Vec<String> = Vec::new(); let mut wifi: Option<String> = None; let mut net_mode = "nat".to_string(); let mut no_jit = false; let mut flash_at: Vec<String> = Vec::new();
+    let mut debug: Vec<String> = Vec::new();
+    let (mut profile_blocks, mut coverage, mut irq_latency, mut vcd): (bool, Option<Option<String>>, bool, Option<String>) = (false, None, false, None);
     let mut i = 1;
     while i < args.len() {
         let a = args[i].as_str();
@@ -70,6 +73,12 @@ fn main() {
             "--flash-image" => flash_image = Some(next()),      // raw flash dump written at offset 0
             "--max-seconds" => max_seconds = Some(next().parse().expect("seconds")),
             "--gram-png" => gram_png = Some(next()),
+            "--profile-blocks" => profile_blocks = true,
+            "--coverage" => coverage = Some(None),
+            "--coverage-file" => coverage = Some(Some(next())),
+            "--irq-latency" => irq_latency = true,
+            "--vcd" => vcd = Some(next()),
+            "--debug" => debug.push(next()),
             _ => { eprintln!("unknown arg {}", a); std::process::exit(2); }
         }
         i += 1;
@@ -77,7 +86,6 @@ fn main() {
     let mut m = esp32s3::machine([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
     m.bus.board = esp32s3::board::make_board(&board).unwrap_or_else(|| { eprintln!("unknown board '{}' (atech14, waveshare-cam, waveshare-lcd4b, none)", board); std::process::exit(2) });
     for (bus, addr, dev) in m.bus.board.i2c_devices() { m.bus.periph.i2c[bus as usize].attach(addr, dev); }
-    if regstat.is_some() { m.bus.periph.regstat = Some(Default::default()); }
     if let Some(spec) = &wifi {
         let mut cfg = esp32s3::wifi::ApConfig { ssid: "esp32sim".into(), bssid: [0x02, 0x53, 0x49, 0x4d, 0x00, 0x01], channel: 6, psk: None };
         for kv in spec.split(',') {
@@ -90,10 +98,10 @@ fn main() {
             }
         }
         eprintln!("[emu] virtual AP '{}' bssid {} channel {} ({})", cfg.ssid, esp32s3::wifi::mac_str(&cfg.bssid), cfg.channel, if cfg.psk.is_some() { "WPA2-PSK" } else { "open" });
-        m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg));
-        let mut net = esp32s3::net::VirtualNet::new();
+        m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg, m.bus.debug.has("wifi-frames")));
+        let mut net = esp32s3::net::VirtualNet::new(m.bus.debug.has("net"));
         if net_mode == "nat" || net_mode == "user" {
-            let nat = esp32s3::nat::Nat::new();
+            let nat = esp32s3::nat::Nat::new(m.bus.debug.has("net"));
             eprintln!("[emu] NAT to the host network enabled (DNS via {}.{}.{}.{})", nat.resolver[0], nat.resolver[1], nat.resolver[2], nat.resolver[3]);
             net.nat = Some(nat);
         }
@@ -114,7 +122,10 @@ fn main() {
         eprintln!("[emu] flash {:#x}: {} ({} bytes)", off, path, data.len());
     }
     if no_jit { for c in &mut m.cores { c.blocks.jit_enabled = false; } }
-    m.dbg.trace = trace; m.dbg.trace_from = trace_from; m.dbg.breakpoints = breaks; m.bus.periph.misc.log_unknown = log_periph;
+    m.bus.periph.misc.log_unknown = log_periph;
+    if !debug.is_empty() { let mut f = esp_soc::DebugFlags::from_env(); for d in &debug { f.parse(d); } m.set_debug(&f); }
+    if !breaks.is_empty() { m.add_observer(Box::new(Breakpoints { pcs: breaks })); }
+    if trace { m.add_observer(Box::new(Trace { from: trace_from })); }
     if let Some(r) = &rom { match std::fs::read(r) { Ok(d) => { m.load_rom(&d).expect("rom"); eprintln!("[emu] ROM loaded from {}", r.display()); } Err(e) => eprintln!("[emu] no ROM ({}): {}", r.display(), e) } }
     if let Some(p) = &bootloader { m.write_flash(0x0, &std::fs::read(p).expect("bootloader")).unwrap(); }
     if let Some(p) = &ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }
@@ -137,11 +148,10 @@ fn main() {
         _ => { eprintln!("--boot app|rom"); std::process::exit(2); }
     }
     for &(a, n) in &peeks { eprintln!("[peek before run]\n{}", m.peek(a, n)); }
-    if let Some(wa) = watch { let v = xtensa_lx7::bus::Bus::read32(&mut m.bus, wa).unwrap_or(0); m.dbg.watch = Some((wa, v)); }
     m.dbg.stop_after_exceptions = stop_exc;
     m.console.mask = match console.as_str() { "usb" => 1, "uart0" => 2, "uart" => 2, "both" => 3, "all" => 7, "none" => 0, _ => 3 };
     m.console.prefix = console_prefix;
-    if let Some(p) = &regtrace { m.dbg.regtrace = Some(esp_soc::RegTrace::new(std::fs::File::create(p).expect("regtrace file"), regtrace_max, regtrace_from_pc)); }
+    if let Some(p) = &regtrace { m.add_observer(Box::new(RegTrace::new(std::fs::File::create(p).expect("regtrace file"), regtrace_max, regtrace_from_pc))); }
     if let Some(p) = &efuse_file {
         let txt = std::fs::read_to_string(p).expect("efuse file");
         let mut n = 0;
@@ -172,10 +182,15 @@ fn main() {
     if realtime { m.rt.enabled = true; }
     if let Some(v) = strap { m.bus.periph.gpio.strap = v; }
     if let Some(c) = reset_cause { m.bus.periph.rtc.ram.write(0x38, c | (c << 6)); }
-    if profile { m.dbg.profile = Some(Default::default()); }
+    if profile { m.add_observer(Box::new(PcHist::new(12))); }
+    if let Some(wa) = watch { let v = xtensa_lx7::bus::Bus::read32(&mut m.bus, wa).unwrap_or(0); m.add_observer(Box::new(Watch { addr: wa, value: v })); }
+    if let Some(p) = &regstat { m.add_observer(Box::new(MmioHeat::new(p, |a| { let b = a.wrapping_sub(esp32s3::periph::PERIPH_BASE) >> 12; format!("{}+0x{:03x}", esp32s3::periph::Peripherals::block_name_pub(b), a & 0xfff) }))); }
+    if profile_blocks { m.add_observer(Box::new(BlockProfile::new(20))); }
+    if let Some(path) = coverage { m.add_observer(Box::new(Coverage::new(path))); }
+    if irq_latency { m.add_observer(Box::new(IrqLatency::new(2))); }
+    if let Some(p) = &vcd { m.add_observer(Box::new(Vcd::new(p, esp32s3::periph::CPU_HZ))); }
     if let Some(p) = &script { m.load_script(&std::fs::read_to_string(p).expect("script")).expect("script"); }
     if let Some(sec) = max_seconds { m.max_cycles = (sec * esp32s3::periph::CPU_HZ as f64) as u64; }
-    m.bus.periph.spi1.log = std::env::var("ESP_EMU_DEBUG_SPI").is_ok();
     let t0 = std::time::Instant::now();
     let stop = loop {
         let stop = m.run(max_insns);
@@ -198,22 +213,11 @@ fn main() {
     if let Some((a, w)) = m.bus.last_fault { eprintln!("[emu] last bus fault: {} {:#010x}", if w { "write" } else { "read" }, a); }
     for &(a, n) in &peeks { eprintln!("[peek after run]\n{}", m.peek(a, n)); }
     for &(a, n) in &disasms { eprintln!("[disasm {:#010x}]\n{}", a, m.disasm(a, n)); }
-    if profile { eprintln!("{}", m.profile_report(12)); }
+    { let r = m.reports(); if !r.is_empty() { eprintln!("{}", r); } }
     eprintln!("{}", m.irq_report());
     if let Some(w) = &wav { match m.write_wav(w) { Ok(n) => eprintln!("[emu] wrote {} samples ({:.2} s) to {}", n, n as f64 / m.bus.periph.audio().sample_rate as f64, w), Err(e) => eprintln!("[emu] wav: {}", e) } }
     eprintln!("[emu] i2s frames out: {} (i2s0 @ {} Hz) {} (i2s1 @ {} Hz)", m.bus.periph.i2s0.frames_out, m.bus.periph.i2s0.sample_rate, m.bus.periph.i2s1.frames_out, m.bus.periph.i2s1.sample_rate);
     { let r = m.bus.board.report(); if !r.is_empty() { eprintln!("{}", r); } }
-    if let (Some(path), Some(st)) = (&regstat, &m.bus.periph.regstat) {
-        use std::io::Write;
-        let mut rows: Vec<_> = st.iter().collect(); rows.sort_by(|a, b| b.1.0.cmp(&a.1.0));
-        let mut f = std::io::BufWriter::new(std::fs::File::create(path).expect("regstat file"));
-        let _ = writeln!(f, "# count kind block+off addr last_value pc symbol");
-        for (&(addr, pc, wr), &(n, val)) in rows {
-            let block = (addr.wrapping_sub(esp32s3::periph::PERIPH_BASE)) >> 12;
-            let _ = writeln!(f, "{} {} {}+0x{:03x} {:#010x} {:#010x} {:#010x} {}", n, if wr { "wr" } else { "rd" }, esp32s3::periph::Peripherals::block_name_pub(block), addr & 0xfff, addr, val, pc, m.sym(pc));
-        }
-        eprintln!("[emu] wrote {} register access rows to {}", st.len(), path);
-    }
     { let w = &m.bus.periph.wifi;
       if w.tx_frames + w.rx_frames > 0 { eprintln!("[emu] wifi: {} frames sent by the station, {} received ({} dropped: no descriptor){}", w.tx_frames, w.rx_frames, w.rx_dropped, w.ap.as_ref().map_or(String::new(), |ap| format!("; AP: {} beacons, {} probe responses, {} data frames from the station, state {:?}", ap.stats.0, ap.stats.1, ap.stats.2, ap.state))); }
       if let Some(n) = &w.net { eprintln!("[emu] net: {} DHCP leases, {} ARP replies, {} DNS answers, {} NTP answers, {} TCP refused, {} pings, {} frames ignored", n.dhcp_acks, n.arp_replies, n.dns_answers, n.ntp_answers, n.tcp_rejects, n.pings, n.unhandled);

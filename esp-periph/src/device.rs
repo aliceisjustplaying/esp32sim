@@ -32,4 +32,6 @@ pub trait Device {
     /// uses the minimum to decide how long device time may be deferred (conservative: it may be
     /// early, never late).
     fn next_deadline(&self) -> Option<u64> { None }
+    /// Print what the device does (`--debug <name>`).
+    fn debug(&mut self, _on: bool) {}
 }

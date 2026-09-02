@@ -3,10 +3,10 @@ use crate::regram::RegRam;
 
 // ------------------------------------------------------------------ SHA accelerator (register/block mode; SHA-1/224/256)
 pub struct Sha { pub mode: u32, pub h: [u32; 16], pub m: [u32; 32], pub busy: bool,
-                 pub block_num: u32, pub dma_pending: bool, pub dma_first: bool, pub blocks: u64, ram: RegRam }
+                 pub block_num: u32, pub dma_pending: bool, pub dma_first: bool, pub blocks: u64, ram: RegRam, pub dbg: bool }
 impl Sha {
     pub fn new() -> Self { Sha { mode: 2, h: [0; 16], m: [0; 32], busy: false, block_num: 0,
-                                 dma_pending: false, dma_first: false, blocks: 0, ram: RegRam::new() } }
+                                 dma_pending: false, dma_first: false, blocks: 0, ram: RegRam::new(), dbg: false } }
     /// 64 bytes for the 32-bit family, 128 for SHA-384/512.
     pub fn block_bytes(&self) -> usize { if self.mode >= 3 { 128 } else { 64 } }
     /// Feed one message block, as the DMA engine does; `first` restarts from the initial state.
@@ -77,7 +77,7 @@ impl Sha {
             0x20 => { self.busy = true; self.dma_pending = true; self.dma_first = false; }   // DMA_CONTINUE
             0x40..=0x7c => { let i = ((off - 0x40) / 4) as usize; self.h[i] = v.swap_bytes(); }
             0x80..=0xfc => self.m[((off - 0x80) / 4) as usize] = v,
-            _ => { if std::env::var("ESP_EMU_DEBUG_SHA").is_ok() { eprintln!("[sha] write +0x{:02x} = {} (mode {})", off, v, self.mode); } self.ram.write(off, v) }
+            _ => { if self.dbg { eprintln!("[sha] write +0x{:02x} = {} (mode {})", off, v, self.mode); } self.ram.write(off, v) }
         }
     }
 }
@@ -161,6 +161,7 @@ fn sha1_block(h: &mut [u32; 16], w0: &[u32]) {
 impl Device for Sha {
     fn read(&mut self, off: u32) -> u32 { Sha::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { Sha::write(self, off, v); WriteEffect::NONE }
+    fn debug(&mut self, on: bool) { self.dbg = on; }
 }
 
 #[cfg(test)]

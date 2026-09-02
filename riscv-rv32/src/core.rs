@@ -17,6 +17,7 @@ impl emu_core::Core for Cpu {
     fn insn_count(&self) -> u64 { self.insn_count }
     fn set_irq(&mut self, line: Option<u32>) { self.irq = line; }
     fn irq_pending(&self) -> bool { self.irq.is_some() }
+    fn irq_bits(irq: &Option<u32>) -> u32 { irq.map_or(0, |l| 1 << (l & 31)) }
     fn idle_advance(&mut self, cycles: u32) { self.insn_count += cycles as u64; }
     fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> { crate::exec::step(self, bus) }
     /// One instruction at a time, but like a block: stop when the bus reports that an interrupt

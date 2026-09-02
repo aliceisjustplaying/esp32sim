@@ -8,7 +8,7 @@ use riscv_rv32::Cpu;
 pub struct C3;
 pub type Machine = esp_soc::Machine<C3>;
 
-pub fn machine(mac: [u8; 6], flash_size: usize) -> Machine { Machine::new(mac, SocBus::new(flash_size, mac)) }
+pub fn machine(mac: [u8; 6], flash_size: usize) -> Machine { let mut m = Machine::new(mac, SocBus::new(flash_size, mac)); m.set_debug(&esp_soc::DebugFlags::from_env()); m }
 
 impl Soc for C3 {
     type Core = Cpu;
@@ -96,7 +96,14 @@ impl esp_soc::SocBus for SocBus {
     fn last_fault(&self) -> Option<(u32, bool)> { self.last_fault }
     fn console_take(&mut self) -> [Vec<u8>; 4] { [std::mem::take(&mut self.periph.usb.tx_out), std::mem::take(&mut self.periph.uart[0].tx_out), Vec::new(), Vec::new()] }
     fn serial_input(&mut self, data: &[u8]) { self.periph.usb.host_input(data); }
-    fn gpio_set_input(&mut self, pin: u8, level: bool) { self.periph.gpio.set_input(pin, level); }
+    fn gpio_set_input(&mut self, pin: u8, level: bool) { self.periph.gpio.set_input(pin, level); if let Some(ev) = &mut self.gpio_events { ev.push((self.cycles, pin, level)); } }
+    fn set_debug(&mut self, f: &esp_soc::DebugFlags) {
+        self.debug = f.clone();
+        for area in f.iter() { esp_periph::Dispatch::debug(&mut self.periph, area, true); }
+        self.periph.misc.log_all = f.has("mmio");
+    }
+    fn observe_gpio(&mut self, on: bool) { self.gpio_events = if on { Some(Vec::new()) } else { None }; }
+    fn take_gpio_events(&mut self) -> Vec<(u64, u8, bool)> { self.gpio_events.as_mut().map(std::mem::take).unwrap_or_default() }
     fn gpio_input(&self) -> u64 { self.periph.gpio.input }
     fn board(&mut self) -> &mut dyn BoardModel { &mut *self.board }
     fn board_ref(&self) -> &dyn BoardModel { &*self.board }

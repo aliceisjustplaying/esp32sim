@@ -41,7 +41,7 @@ esp32sim/
                   systimer, timer groups, interrupt matrix (per core), GPIO, USB-CDC,
                   UARTs, I2C, GDMA + I2S/LCD_CAM, RMT TX, regi2c, RTC WDT, WiFi MAC + virtual
                   AP + NAT; board.rs: atech14 / waveshare-cam / waveshare-lcd4b / none
-  cli/            the `esp32sim` command line
+  cli/            the `esp32sim` command line (--profile-blocks, --coverage, --irq-latency, --vcd, --debug)
   ── ESP32-C3 (RISC-V RV32IMC, single core) ──
   riscv-rv32/     RV32IMC decoder (verified 100% against objdump), interpreter, disassembler
   esp32c3/        the C3 SoC: memory map, interrupt matrix, cache controller, RNG;

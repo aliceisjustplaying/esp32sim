@@ -38,10 +38,10 @@ fn checksum(data: &[u8], init: u32) -> u16 {
 }
 
 impl VirtualNet {
-    pub fn new() -> Self {
+    pub fn new(log: bool) -> Self {
         VirtualNet { gw_mac: [0x02, 0x53, 0x49, 0x4d, 0x00, 0x02], gw_ip: [10, 0, 2, 2], dns_ip: [10, 0, 2, 3],
                      sta_ip: [10, 0, 2, 15], mask: [255, 255, 255, 0],
-                     log: std::env::var("ESP_EMU_DEBUG_NET").is_ok(), nat: None, dhcp_acks: 0, dns_answers: 0, ntp_answers: 0, tcp_rejects: 0, arp_replies: 0, pings: 0, unhandled: 0, now_us: 0 }
+                     log, nat: None, dhcp_acks: 0, dns_answers: 0, ntp_answers: 0, tcp_rejects: 0, arp_replies: 0, pings: 0, unhandled: 0, now_us: 0 }
     }
 
     /// Handle one Ethernet frame from the station; returns frames to send back to it.

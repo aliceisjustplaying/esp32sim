@@ -78,7 +78,7 @@ pub struct WifiMac { pub ram: RegRam, pub ram2: RegRam, pub log: bool,
                      pub rx_base: u32, pub rx_next: u32, pub rx_last: u32, pub rx_frames: u64, pub rx_dropped: u64,
                      pub ap: Option<crate::wifi::VirtualAp>, pub eth_tx: Vec<Vec<u8>>, pub eth_rx: Vec<Vec<u8>>, pub last_rx_us: u64, pub net_polled_us: u64, pub last_rx_desc: u32, pub net: Option<crate::net::VirtualNet> }
 impl WifiMac {
-    pub fn new() -> Self { WifiMac { ram: RegRam::new(), ram2: RegRam::new(), log: std::env::var("ESP_EMU_DEBUG_WIFI").is_ok(), tsf_offset: 0, tsf_latched: 0, now_cycles: 0, rx_base: 0, rx_next: 0, rx_last: 0, rx_frames: 0, rx_dropped: 0, ap: None, eth_tx: Vec::new(), eth_rx: Vec::new(), last_rx_us: 0, net_polled_us: 0, last_rx_desc: 0, net: None, events: 0, pwr_events: 0, txq_complete: 0, txq_error: 0, tx_pending: Vec::new(), tx_frames: 0 } }
+    pub fn new() -> Self { WifiMac { ram: RegRam::new(), ram2: RegRam::new(), log: false, tsf_offset: 0, tsf_latched: 0, now_cycles: 0, rx_base: 0, rx_next: 0, rx_last: 0, rx_frames: 0, rx_dropped: 0, ap: None, eth_tx: Vec::new(), eth_rx: Vec::new(), last_rx_us: 0, net_polled_us: 0, last_rx_desc: 0, net: None, events: 0, pwr_events: 0, txq_complete: 0, txq_error: 0, tx_pending: Vec::new(), tx_frames: 0 } }
     pub fn irq(&self) -> bool { self.events != 0 || self.pwr_events != 0 }
     /// TX queue n has its PLCP0 register at 0xd08 - 8n (hal_mac_txq_enable: (0x0c0067a1 - n) << 3).
     fn txq_of(off: u32) -> Option<u8> { if off <= 0xd08 && (0xd08 - off) % 8 == 0 && (0xd08 - off) / 8 < 16 { Some(((0xd08 - off) / 8) as u8) } else { None } }
@@ -214,7 +214,7 @@ impl Pcnt {
 /// are queued in `tx` for the board (the display), MISO reads back as 0xFF.
 pub struct GpSpi { pub regs: RegRam, pub w: [u32; 16], pub int_raw: u32, pub int_ena: u32, pub tx: Vec<u8>, pub transfers: u64, pub log: bool }
 impl GpSpi {
-    pub fn new() -> Self { GpSpi { regs: RegRam::new(), w: [0; 16], int_raw: 0, int_ena: 0, tx: Vec::new(), transfers: 0, log: std::env::var("ESP_EMU_DEBUG_SPI2").is_ok() } }
+    pub fn new() -> Self { GpSpi { regs: RegRam::new(), w: [0; 16], int_raw: 0, int_ena: 0, tx: Vec::new(), transfers: 0, log: false } }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
     pub fn read(&self, off: u32) -> u32 {
         match off {
@@ -268,7 +268,7 @@ pub struct LcdCam { pub ram: RegRam, pub cam_ctrl: u32, pub cam_ctrl1: u32, pub 
                     pub lcd_clock: u32, pub lcd_user: u32, pub lcd_ctrl: u32, pub lcd_ctrl1: u32, pub lcd_acc: u64, pub lcd_frames: u64, pub lcd_line: Vec<u8>, pub lcd_fifo: std::collections::VecDeque<u8>, pub lcd_log: bool }
 impl LcdCam {
     pub fn new() -> Self { LcdCam { ram: RegRam::new(), cam_ctrl: 0, cam_ctrl1: 0, int_raw: 0, int_ena: 0, running: false, frame_cycles: CPU_HZ / 10, acc: 0, frames: 0, dropped: 0,
-                                    lcd_clock: 0, lcd_user: 0, lcd_ctrl: 0, lcd_ctrl1: 0, lcd_acc: 0, lcd_frames: 0, lcd_line: Vec::new(), lcd_fifo: std::collections::VecDeque::new(), lcd_log: std::env::var("ESP_EMU_DEBUG_LCD").is_ok() } }
+                                    lcd_clock: 0, lcd_user: 0, lcd_ctrl: 0, lcd_ctrl1: 0, lcd_acc: 0, lcd_frames: 0, lcd_line: Vec::new(), lcd_fifo: std::collections::VecDeque::new(), lcd_log: false } }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
     /// LCD RGB mode running: LCD_START (USER bit 27) with LCD_RGB_MODE_EN (CTRL bit 31).
     pub fn lcd_running(&self) -> bool { self.lcd_user & (1 << 27) != 0 && self.lcd_ctrl & (1 << 31) != 0 }
@@ -378,6 +378,7 @@ impl Device for WifiMac {
     fn read(&mut self, off: u32) -> u32 { WifiMac::read(self, 0x33 + (off >> 12), off & 0xfff) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { WifiMac::write(self, 0x33 + (off >> 12), off & 0xfff, v); WriteEffect::NONE }
     fn irq_sources(&self) -> u64 { self.irq() as u64 }
+    fn debug(&mut self, on: bool) { self.log = on; }
 }
 impl Device for Pcnt {
     fn read(&mut self, off: u32) -> u32 { Pcnt::read(self, off) }
@@ -388,11 +389,13 @@ impl Device for GpSpi {
     fn read(&mut self, off: u32) -> u32 { GpSpi::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { GpSpi::write(self, off, v); WriteEffect::NONE }
     fn irq_sources(&self) -> u64 { self.irq() as u64 }
+    fn debug(&mut self, on: bool) { self.log = on; }
 }
 impl Device for LcdCam {
     fn read(&mut self, off: u32) -> u32 { LcdCam::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { LcdCam::write(self, off, v); WriteEffect::NONE }
     fn irq_sources(&self) -> u64 { self.irq() as u64 }
+    fn debug(&mut self, on: bool) { self.lcd_log = on; }
 }
 impl Device for Extmem {
     fn read(&mut self, off: u32) -> u32 { Extmem::read(self, off) }
@@ -446,8 +449,6 @@ pub struct Peripherals {
     pub io_mux: RegRam,
     /// register RAM behind unmodelled blocks, first-touch logging, pc attribution
     pub misc: Misc,
-    /// per-(address, pc, write) access statistics for register reverse engineering (`--regstat FILE`)
-    pub regstat: Option<HashMap<(u32, u32, bool), (u64, u32)>>,
     /// experiment hook: ESP_EMU_FAKE_READ=addr:or[:and],... applied to register reads
     pub fake_reads: HashMap<u32, (u32, u32)>,
     clock: ClockTree<4>,
@@ -523,11 +524,10 @@ impl Peripherals {
             efuse: Efuse::new(mac), system: SystemRegs::new(0x30), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true),
             i2c: [crate::i2c::I2c::new(), crate::i2c::I2c::new()], lcd_cam: LcdCam::new(), spi2: GpSpi::new(), pcnt: Pcnt::new(), wifi: WifiMac::new(), fe: FeIq { word: 0, done: false },
             aes: Aes::new(), rsa: Rsa::new(), sha: Sha::new(), wdev: Wdev::new(), i2c_mst: I2cMst::new(), gdma: Gdma::new(), i2s0: I2s::new(CPU_HZ), i2s1: I2s::new(CPU_HZ), rmt: Rmt::new(CPU_HZ),
-            io_mux: RegRam::new(), misc: Misc::new(), regstat: None, fake_reads: std::env::var("ESP_EMU_FAKE_READ").ok().map(|v| v.split(',').filter_map(|e| { let mut p = e.split(':'); let a = u32::from_str_radix(p.next()?.trim_start_matches("0x"), 16).ok()?; let o = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).ok()?; let m = u32::from_str_radix(p.next().unwrap_or("ffffffff").trim_start_matches("0x"), 16).ok()?; Some((a, (o, m))) }).collect()).unwrap_or_default(),
+            io_mux: RegRam::new(), misc: Misc::new(), fake_reads: std::env::var("ESP_EMU_FAKE_READ").ok().map(|v| v.split(',').filter_map(|e| { let mut p = e.split(':'); let a = u32::from_str_radix(p.next()?.trim_start_matches("0x"), 16).ok()?; let o = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).ok()?; let m = u32::from_str_radix(p.next().unwrap_or("ffffffff").trim_start_matches("0x"), 16).ok()?; Some((a, (o, m))) }).collect()).unwrap_or_default(),
             clock: Self::new_clock(),
             spi_exec: false, last_status: [0; 4], intmatrix_dirty: false,
         };
-        p.misc.log_all = std::env::var("ESP_EMU_LOG_ALL").is_ok();
         p
     }
 
@@ -547,12 +547,10 @@ impl Peripherals {
     pub fn read32(&mut self, addr: u32) -> u32 {
         let mut v = mmio::read32(self, addr);
         if !self.fake_reads.is_empty() { if let Some(&(o, m)) = self.fake_reads.get(&addr) { v = (v & m) | o; } }
-        if let Some(st) = &mut self.regstat { let e = st.entry((addr, self.misc.cur_pc, false)).or_insert((0, 0)); e.0 += 1; e.1 = v; }
         v
     }
 
     pub fn write32(&mut self, addr: u32, v: u32) {
-        if let Some(st) = &mut self.regstat { let e = st.entry((addr, self.misc.cur_pc, true)).or_insert((0, 0)); e.0 += 1; e.1 = v; }
         let fx = mmio::write32(self, addr, v);
         if fx.contains(WriteEffect::SPI_EXEC) { self.spi_exec = true; }
         if fx.contains(WriteEffect::INTMAP) { self.intmatrix_dirty = true; }

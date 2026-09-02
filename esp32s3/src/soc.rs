@@ -11,7 +11,7 @@ pub struct S3;
 pub type Machine = esp_soc::Machine<S3>;
 
 /// A machine with the default 8 MB flash / 2 MB PSRAM and no board (`bus.board` selects one).
-pub fn machine(mac: [u8; 6]) -> Machine { Machine::new(mac, SocBus::new(8 << 20, 2 << 20, mac)) }
+pub fn machine(mac: [u8; 6]) -> Machine { let mut m = Machine::new(mac, SocBus::new(8 << 20, 2 << 20, mac)); m.set_debug(&esp_soc::DebugFlags::from_env()); m }
 
 impl Soc for S3 {
     type Core = Cpu;
@@ -108,7 +108,14 @@ impl esp_soc::SocBus for SocBus {
         [std::mem::take(&mut self.periph.usb.tx_out), std::mem::take(&mut self.periph.uart[0].tx_out), std::mem::take(&mut self.periph.uart[1].tx_out), std::mem::take(&mut self.periph.uart[2].tx_out)]
     }
     fn serial_input(&mut self, data: &[u8]) { self.periph.usb.host_input(data); }
-    fn gpio_set_input(&mut self, pin: u8, level: bool) { self.periph.gpio.set_input(pin, level); }
+    fn gpio_set_input(&mut self, pin: u8, level: bool) { self.periph.gpio.set_input(pin, level); if let Some(ev) = &mut self.gpio_events { ev.push((self.cycles, pin, level)); } }
+    fn set_debug(&mut self, f: &esp_soc::DebugFlags) {
+        self.debug = f.clone();
+        for area in f.iter() { esp_periph::Dispatch::debug(&mut self.periph, area, true); }
+        self.periph.misc.log_all = f.has("mmio");
+    }
+    fn observe_gpio(&mut self, on: bool) { self.gpio_events = if on { Some(Vec::new()) } else { None }; }
+    fn take_gpio_events(&mut self) -> Vec<(u64, u8, bool)> { self.gpio_events.as_mut().map(std::mem::take).unwrap_or_default() }
     fn gpio_input(&self) -> u64 { self.periph.gpio.input }
     fn board(&mut self) -> &mut dyn BoardModel { &mut *self.board }
     fn board_ref(&self) -> &dyn BoardModel { &*self.board }

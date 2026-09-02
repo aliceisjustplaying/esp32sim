@@ -69,6 +69,10 @@ pub trait SocBus: Bus {
     fn serial_input(&mut self, data: &[u8]);
     fn gpio_set_input(&mut self, pin: u8, level: bool);
     fn gpio_input(&self) -> u64;
+    /// Start/stop recording GPIO edges (outputs as they reach the board, inputs as they are set).
+    fn observe_gpio(&mut self, on: bool);
+    /// (cycle, pin, level) edges recorded since the last call.
+    fn take_gpio_events(&mut self) -> Vec<(u64, u8, bool)>;
     fn board(&mut self) -> &mut dyn BoardModel;
     fn board_ref(&self) -> &dyn BoardModel;
     /// Captured audio so far (left channel) and its sample rate.
@@ -76,4 +80,6 @@ pub trait SocBus: Bus {
     fn camera_frames(&self) -> u64 { 0 }
     /// Peripheral source numbers routed to CPU interrupt `line` of `core` (for the end-of-run report).
     fn irq_sources_of(&self, core: usize, line: u32) -> Vec<usize>;
+    /// Apply the debug areas to the devices and to the bus's own logging.
+    fn set_debug(&mut self, f: &crate::debug::DebugFlags);
 }

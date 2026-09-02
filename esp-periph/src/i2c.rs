@@ -38,7 +38,7 @@ pub struct I2c {
 impl I2c {
     pub fn new() -> Self {
         I2c { regs: RegRam::new(), tx: VecDeque::new(), rx: VecDeque::new(), int_raw: 0, int_ena: 0, cmd: [0; 8], devices: Vec::new(), cur: None, expect_addr: false, nack: false,
-              log: std::env::var("ESP_EMU_DEBUG_I2C").is_ok(), transactions: 0 }
+              log: false, transactions: 0 }
     }
     pub fn attach(&mut self, addr: u8, dev: Box<dyn I2cDevice>) { self.devices.push((addr, dev)); }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
@@ -137,4 +137,5 @@ impl Device for I2c {
     fn read(&mut self, off: u32) -> u32 { I2c::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { I2c::write(self, off, v); WriteEffect::NONE }
     fn irq_sources(&self) -> u64 { self.irq() as u64 }
+    fn debug(&mut self, on: bool) { self.log = on; }
 }

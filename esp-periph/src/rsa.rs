@@ -10,10 +10,10 @@ use crate::regram::RegRam;
 ///   Z = X * Y mod M    (0x810, LENGTH = words-1)
 ///   Z = X ^ Y mod M    (0x80c, LENGTH = words-1)
 pub struct Rsa { pub mem: Vec<u32>, pub m_prime: u32, pub length: u32, pub int_ena: u32, pub int_raw: u32,
-                 pub constant_time: u32, pub search_open: u32, pub search_pos: u32, pub ops: u64, ram: RegRam }
+                 pub constant_time: u32, pub search_open: u32, pub search_pos: u32, pub ops: u64, ram: RegRam, pub dbg: bool }
 impl Rsa {
     pub fn new() -> Self { Rsa { mem: vec![0; 512], m_prime: 0, length: 0, int_ena: 0, int_raw: 0,
-                                 constant_time: 0, search_open: 0, search_pos: 0, ops: 0, ram: RegRam::new() } }
+                                 constant_time: 0, search_open: 0, search_pos: 0, ops: 0, ram: RegRam::new(), dbg: false } }
     pub fn irq(&self) -> bool { self.int_raw != 0 && self.int_ena != 0 }
     fn block(&self, base: usize, words: usize) -> Vec<u32> { self.mem[base..base + words.min(128)].to_vec() }
     pub fn read(&mut self, off: u32) -> u32 {
@@ -44,7 +44,7 @@ impl Rsa {
     }
     /// Publish a result in the Z block, zero-padded to `words`, and raise the completion flag.
     fn finish(&mut self, z: Vec<u32>, words: usize) {
-        if std::env::var("ESP_EMU_DEBUG_RSA").is_ok() {
+        if self.dbg {
             eprintln!("[rsa] op #{} len={} -> {} words, z[0]={:08x} int_ena={}", self.ops, self.length, words, z.first().copied().unwrap_or(0), self.int_ena);
         }
         let words = words.min(128);
@@ -58,6 +58,7 @@ impl Device for Rsa {
     fn read(&mut self, off: u32) -> u32 { Rsa::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { Rsa::write(self, off, v); WriteEffect::NONE }
     fn irq_sources(&self) -> u64 { self.irq() as u64 }
+    fn debug(&mut self, on: bool) { self.dbg = on; }
 }
 
 #[cfg(test)]

@@ -35,6 +35,8 @@ pub trait Dispatch {
     fn cycles_until_deadline(&self) -> u32;
     /// (block, name) of every modelled device, for tools and docs.
     fn devices() -> &'static [(u32, &'static str)];
+    /// Switch debug output on for every device whose name starts with `area` (case-insensitive).
+    fn debug(&mut self, area: &str, on: bool);
 }
 
 /// Per-chip dispatch state that is not a device: the register RAM behind unmodelled blocks,
@@ -46,9 +48,11 @@ pub struct Misc {
     pub log_all: bool,
     /// pc of the instruction making the access (`Bus::note_pc`)
     pub cur_pc: u32,
+    /// (pc, addr, value, write) of every access, while an observer wants them
+    pub mmio_log: Option<Vec<(u32, u32, u32, bool)>>,
 }
 impl Misc {
-    pub fn new() -> Misc { Misc { generic: HashMap::new(), seen: HashSet::new(), log_unknown: false, log_all: false, cur_pc: 0 } }
+    pub fn new() -> Misc { Misc { generic: HashMap::new(), seen: HashSet::new(), log_unknown: false, log_all: false, cur_pc: 0, mmio_log: None } }
 }
 impl Default for Misc { fn default() -> Self { Self::new() } }
 
@@ -68,16 +72,18 @@ pub fn read32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32) -> u32 {
         Some(v) => v,
         None => { note(p, addr, block, off, false, 0); p.misc_mut().generic.entry(block).or_insert_with(RegRam::new).read(off) }
     };
-    let m = p.misc();
+    let m = p.misc_mut();
     if m.log_all { eprintln!("[rd] {}+0x{:03x} ({:#010x}) -> {:#010x} pc={:#010x}", P::block_name(block), off, addr, v, m.cur_pc); }
+    if let Some(l) = &mut m.mmio_log { l.push((m.cur_pc, addr, v, false)); }
     v
 }
 
 #[inline]
 pub fn write32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32, v: u32) -> WriteEffect {
     let (block, off) = (addr.wrapping_sub(P::BASE) >> 12, addr & 0xfff);
-    let m = p.misc();
+    let m = p.misc_mut();
     if m.log_all { eprintln!("[wr] {}+0x{:03x} ({:#010x}) <- {:#010x} pc={:#010x}", P::block_name(block), off, addr, v, m.cur_pc); }
+    if let Some(l) = &mut m.mmio_log { l.push((m.cur_pc, addr, v, true)); }
     p.pre_access(block, off, true);
     match p.dispatch_write(block, off, v) {
         Some(fx) => fx,
@@ -150,6 +156,10 @@ macro_rules! device_set {
                 best.min(u32::MAX as u64) as u32
             }
             fn devices() -> &'static [(u32, &'static str)] { &[$(($block, $name)),*] }
+            fn debug(&mut self, area: &str, on: bool) {
+                let area = area.to_ascii_lowercase();
+                $( if $name.to_ascii_lowercase().starts_with(&area) { $crate::Device::debug(&mut self.$($f)+, on); } )*
+            }
         }
     };
 }

@@ -26,9 +26,9 @@ pub struct GdmaInCh {
 }
 impl GdmaInCh { pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 } }
 
-pub struct Gdma { pub out: [GdmaOutCh; GDMA_CHANNELS], pub inp: [GdmaInCh; GDMA_CHANNELS], ram: RegRam, pub misc: u32 }
+pub struct Gdma { pub out: [GdmaOutCh; GDMA_CHANNELS], pub inp: [GdmaInCh; GDMA_CHANNELS], ram: RegRam, pub misc: u32, pub dbg: bool }
 impl Gdma {
-    pub fn new() -> Self { Gdma { out: [GdmaOutCh::default(); GDMA_CHANNELS], inp: [GdmaInCh::default(); GDMA_CHANNELS], ram: RegRam::new(), misc: 0 } }
+    pub fn new() -> Self { Gdma { out: [GdmaOutCh::default(); GDMA_CHANNELS], inp: [GdmaInCh::default(); GDMA_CHANNELS], ram: RegRam::new(), misc: 0, dbg: false } }
     pub fn read(&self, off: u32) -> u32 {
         if off < GDMA_CH_STRIDE * GDMA_CHANNELS as u32 {
             let ch = (off / GDMA_CH_STRIDE) as usize; let o = off % GDMA_CH_STRIDE; let c = &self.out[ch]; let r = &self.inp[ch];
@@ -72,7 +72,7 @@ impl Gdma {
                 0x64 => c.conf1 = v, 0x70 => c.int_ena = v, 0x74 => c.int_raw &= !v,
                 0x80 => {
                     c.link = v & 0xF_FFFF;
-                    if v & (1 << 21) != 0 || v & (1 << 22) != 0 { c.desc = DMA_ADDR_BASE | (v & 0xF_FFFF); c.buf_pos = 0; c.running = true; if c.peri_sel == 5 && std::env::var("ESP_EMU_DEBUG_LCD").is_ok() { eprintln!("[lcd] gdma out link {} at {:#010x}", if v & (1 << 22) != 0 { "RESTART" } else { "START" }, c.desc); } }   // START / RESTART
+                    if v & (1 << 21) != 0 || v & (1 << 22) != 0 { c.desc = DMA_ADDR_BASE | (v & 0xF_FFFF); c.buf_pos = 0; c.running = true; if c.peri_sel == 5 && self.dbg { eprintln!("[lcd] gdma out link {} at {:#010x}", if v & (1 << 22) != 0 { "RESTART" } else { "START" }, c.desc); } }   // START / RESTART
                     if v & (1 << 20) != 0 { c.running = false; }                                                                                 // STOP
                 }
                 0xa4 => c.pri = v, 0xa8 => c.peri_sel = v & 0x3f,
@@ -97,5 +97,6 @@ impl Device for Gdma {
     fn read(&mut self, off: u32) -> u32 { Gdma::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { Gdma::write(self, off, v); WriteEffect::NONE }
     /// bits 0..5 = out channels, bits 5..10 = in channels
+    fn debug(&mut self, on: bool) { self.dbg = on; }
     fn irq_sources(&self) -> u64 { (0..GDMA_CHANNELS).fold(0, |m, i| m | ((self.out[i].irq() as u64) << i) | ((self.inp[i].irq() as u64) << (GDMA_CHANNELS + i))) }
 }

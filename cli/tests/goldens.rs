@@ -70,6 +70,23 @@ fn panel_sid() {
     expect_u64("panel-sid.insns", r.insns);
 }
 
+/// Observers attached must not change the run (the block-path ones run at full speed), and
+/// each must produce its report.
+#[test] #[ignore = "needs the ESP32-S3 mask ROM ELF"]
+fn atech_script1_with_observers() {
+    let (cov, vcd) = (tmp("cov.txt"), tmp("atech.vcd"));
+    let (r, wav) = atech(&["--profile-blocks", "--coverage-file", cov.to_str().unwrap(), "--irq-latency", "--vcd", vcd.to_str().unwrap()]);
+    expect_text("atech-script1.console.txt", &r.stdout);
+    expect_sha("atech-script1.wav.sha256", &wav);
+    expect_u64("atech-script1.insns", r.insns);
+    for tag in ["[profile-blocks] top", "[coverage] ", "[irq-latency] per core", "[vcd] wrote"] { assert!(r.stderr.contains(tag), "missing {} in:\n{}", tag, r.stderr); }
+    assert!(r.stderr.contains("core0 int9"), "the systimer line should show up in the latency table");
+    let v = std::fs::read_to_string(&vcd).unwrap();
+    assert!(v.starts_with("$timescale 1ps $end") && v.contains("gpio2 $end") && v.contains("core0_int9 $end"), "vcd header");
+    let c = std::fs::read_to_string(&cov).unwrap();
+    assert!(c.lines().count() > 5000, "coverage rows: {}", c.lines().count());
+}
+
 /// Stock ESP-IDF hello_world from the mask ROM through the bootloader into app_main, on UART0.
 #[test] #[ignore = "needs the ESP32-S3 mask ROM ELF"]
 fn hello_world_s3() {
@@ -80,4 +97,21 @@ fn hello_world_s3() {
     assert!(r.stdout.contains("Hello world!"), "app_main never printed:\n{}", r.stdout);
     expect_text("hello-s3.console.txt", &r.stdout);
     expect_u64("hello-s3.insns", r.insns);
+}
+
+/// The block profile attributes time to symbols when an ELF is loaded, and the per-instruction
+/// `--profile` (slow path, idle cores stepping) still agrees on the hottest function.
+#[test] #[ignore = "needs the ESP32-S3 mask ROM ELF"]
+fn hello_world_s3_profiles() {
+    let h = "examples/hello_world/build"; let rom = rom("esp32s3_rev0");
+    let base = ["--rom", rom.to_str().unwrap(), "--board", "none", "--boot", "rom", "--no-dump", "--console", "none",
+        "--bootloader", &format!("{h}/bootloader/bootloader.bin"), "--ptable", &format!("{h}/partition_table/partition-table.bin"), "--app", &format!("{h}/hello_world.bin"),
+        "--elf", &format!("{h}/hello_world.elf"), "--max-seconds", "1"];
+    let mut a = base.to_vec(); a.push("--profile-blocks");
+    let r = run(BIN, &a);
+    let line = r.stderr.lines().skip_while(|l| !l.starts_with("[profile-blocks]")).nth(1).unwrap_or("");
+    assert!(line.contains("ets_delay_us"), "hottest function should be the ROM's delay loop, got: {:?}", line);
+    let mut b = base.to_vec(); b.push("--profile");
+    let r = run(BIN, &b);
+    assert!(r.stderr.contains("[profile] top 12 pcs"), "{}", r.stderr);
 }

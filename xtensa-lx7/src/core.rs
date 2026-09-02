@@ -18,6 +18,7 @@ impl emu_core::Core for Cpu {
     fn insn_count(&self) -> u64 { self.insn_count }
     fn set_irq(&mut self, lines: u32) { self.interrupt = (self.interrupt & !INTTYPE_LEVEL) | (lines & INTTYPE_LEVEL); }
     fn irq_pending(&self) -> bool { self.check_interrupts_pending() != 0 }
+    fn irq_bits(irq: &u32) -> u32 { *irq }
     fn idle_advance(&mut self, cycles: u32) { self.advance_ccount(cycles) }
     fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> { crate::exec::step(self, bus) }
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }

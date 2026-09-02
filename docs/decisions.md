@@ -212,6 +212,26 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **Check for leftover runs before benchmarking.** A background emulator from an earlier session at
   100 % CPU is indistinguishable from "the emulator got slower".
 
+## Architecture (the 2026-09 refactor)
+- **One table per chip, expanded to static calls.** The first `esp-periph` dispatch was a table of
+  fn pointers and `dyn Device` calls with a runtime divider table for the clocks; it measured
+  0.57 → 0.87× of baseline after three rounds of tuning, because `source_status`, tick delivery and
+  the timer-deadline query each turned ~25 inlined field checks into ~50 indirect calls, and the
+  clock divisions stopped folding to multiplies. `device_set!` keeps the table as the single source
+  of truth and generates the read/write match, the source scan, tick delivery and the deadline
+  query with direct calls — 0.98× of baseline, and a peripheral is still one line.
+- **Nothing per-block in the cores for features they do not own.** A cost-model branch in the LX7
+  block loop (`match &cpu.cost`) cost 4 % by itself; the same branch in the machine after
+  `Core::run` is within noise. Hooks for analyses, cost models and observers live in
+  `Machine`, next to the block boundary the core already returns to; the cores stay 1 IPC.
+- **Observers pay only for what they ask.** `Wants` bits decide per hook whether the machine calls
+  anyone; `INSN` is the only one that leaves the fast path, `NO_IDLE_SKIP` the only one that changes
+  emulated timing. The goldens run with `--profile-blocks --coverage --irq-latency --vcd`
+  attached and stay byte-identical, which is the test that they are analyses and not modifications.
+- **The C3's `Core::run` stops at `block_break`**, like the LX7's block interpreter, so the machine
+  re-derives its interrupt line after the same instruction the old per-step loop did. Without it
+  the shared run loop would have delayed C3 interrupts by up to a quantum.
+
 ## WebAssembly build
 - **The SoC crate compiled for `wasm32-unknown-unknown` without a single change** — `std::net`,
   threads and files all *compile* there and fail only when used. The hazards are the ones that

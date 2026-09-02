@@ -121,6 +121,20 @@ wasm/         esp32sim-wasm: C ABI over Machine for the browser; the JIT is abse
   efuses and the captured audio, sets `RESET_CAUSE`, and restarts both cores at the ROM reset
   vector — the path used by `esp_restart()` (RTC watchdog) and `SW_PROCPU_RST`.
 
+## Observers
+
+Analyses attach to a run without touching the scheduler (`esp-soc/src/observe.rs`). An
+observer says what it wants — `INSN` (every instruction: the run single-steps), `BLOCK` (every
+block the fast path ran, at full JIT speed), `TRAP`, `IRQ` (a line appears at a core), `MMIO`,
+`GPIO`, `ROUND` — and the machine only pays for hooks somebody asked for. The classic tools are
+observers now (`--trace`, `--break`, `--watch`, `--regtrace`, `--profile`, `--regstat`), and so
+are the full-speed analyses: `--profile-blocks` (time per function, no JIT penalty, no timing
+change), `--coverage[-file]` (block starts per function), `--irq-latency` (raised → taken per
+line), `--vcd` (GPIO edges and interrupt lines as a waveform). Only `INSN` observers force the
+slow path, and only those that say `NO_IDLE_SKIP` change emulated timing — `--profile` does,
+`--break` does not, exactly as before. A `CostModel` (`Machine::set_cost_model`) charges the
+cores' cycle counters per a silicon-calibrated model after each block, outside the cores.
+
 ## Scheduling and time
 
 `Machine::run` interleaves the cores in quanta of 64 instructions. A core sitting in `waiti`

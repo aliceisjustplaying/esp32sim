@@ -42,6 +42,9 @@ pub struct SocBus {
     pub last_fault: Option<(u32, bool)>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
+    /// GPIO edges for observers, while one wants them: (cycle, pin, level)
+    pub gpio_events: Option<Vec<(u64, u8, bool)>>,
+    pub debug: esp_soc::DebugFlags,
     /// Software TLB: the last resolved mapping per 64 KiB page, so loads, stores and fetches skip
     /// the address-range walk and the flash MMU. Cleared whenever the MMU changes.
     tlb: Vec<TlbEntry>,
@@ -80,7 +83,7 @@ impl SocBus {
         let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
-            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false,
+            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
         let mut b = bus_uninit;
@@ -403,7 +406,7 @@ impl SocBus {
             if eof { self.periph.gdma.out[out_ch].int_raw |= (1 << 0) | (1 << 1); self.periph.gdma.out[out_ch].eof_desc = desc; break; }
             desc = next;
         }
-        if std::env::var("ESP_EMU_DEBUG_AES").is_ok() {
+        if self.debug.has("aes") {
             eprintln!("[aes] dma block_mode={} num_blocks={} mode={} bytes={}", self.periph.aes.block_mode, self.periph.aes.num_blocks, self.periph.aes.mode, input.len());
         }
         // transform (ECB and CBC cover what the crypto libraries ask for here)
@@ -473,7 +476,7 @@ impl SocBus {
             let len = ((dw0 >> 12) & 0xfff) as usize;
             let mut frame = Vec::with_capacity(len);
             for i in 0..len { frame.push(self.read8(pkt + i as u32).unwrap_or(0)); }
-            if self.periph.wifi.log || std::env::var("ESP_EMU_DEBUG_WIFI_FRAMES").is_ok() { eprintln!("[wifi] TX slot {} desc {:#010x} pkt {:#010x} {}", slot, desc, pkt, crate::wifi::describe(&frame)); }
+            if self.periph.wifi.log || self.debug.has("wifi-frames") { eprintln!("[wifi] TX slot {} desc {:#010x} pkt {:#010x} {}", slot, desc, pkt, crate::wifi::describe(&frame)); }
             self.periph.wifi.tx_done(slot);
             self.irq_dirty = true;
             let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
@@ -670,7 +673,11 @@ impl SocBus {
                 self.periph.wifi.eth_rx.extend(replies);
             }
         }
-        if !self.periph.gpio.changes.is_empty() { let ch = std::mem::take(&mut self.periph.gpio.changes); self.board.gpio_changes(&ch); }
+        if !self.periph.gpio.changes.is_empty() {
+            let ch = std::mem::take(&mut self.periph.gpio.changes);
+            if let Some(ev) = &mut self.gpio_events { for &(pin, level) in &ch { ev.push((self.cycles, pin, level)); } }
+            self.board.gpio_changes(&ch);
+        }
         if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
         if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
         0

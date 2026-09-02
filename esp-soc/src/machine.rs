@@ -2,34 +2,19 @@
 //! everything around a run that is the same for every chip — console capture, action scripts,
 //! function stubs and probes, tracing and watchpoints, the web UI protocol, real-time pacing,
 //! image loading, reboot.
+use crate::observe::{Ctx, Observer, Wants};
 use crate::soc::{CoreState, Soc, SocBus, Stop};
 use crate::web::WebServer;
 use crate::{elf, png};
 use emu_core::core::pc_bit;
-use emu_core::{Bus, Core, Trap};
+use emu_core::{Bus, Core, CostModel, Trap};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug)]
 pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bool), Poke(u32, u32) }
 
-/// Tracing, breakpoints, watchpoints and profiling: everything that makes a run single-step.
-pub struct Debug {
-    pub trace: bool,
-    pub trace_from: u64,
-    pub breakpoints: Vec<u32>,
-    /// stop when the 32-bit word at this address changes (address, last value)
-    pub watch: Option<(u32, u32)>,
-    pub stop_on_unimplemented: bool,
-    pub stop_after_exceptions: u64,
-    /// pc histogram (`--profile`)
-    pub profile: Option<HashMap<u32, u64>>,
-    /// compact per-instruction register trace for hardware comparison (`--regtrace`)
-    pub regtrace: Option<RegTrace>,
-}
-pub struct RegTrace { pub out: std::io::BufWriter<std::fs::File>, pub core: usize, pub max: u64, pub from_pc: Option<u32>, pub armed: bool, pub count: u64 }
-impl RegTrace {
-    pub fn new(out: std::fs::File, max: u64, from_pc: Option<u32>) -> Self { RegTrace { out: std::io::BufWriter::new(out), core: 0, max, from_pc, armed: from_pc.is_none(), count: 0 } }
-}
+/// The stop conditions that are not observers.
+pub struct Debug { pub stop_on_unimplemented: bool, pub stop_after_exceptions: u64 }
 
 /// Guest console output: everything ever printed (`all`), the per-source backlogs the web UI
 /// replays to a late client, and what goes to stdout.
@@ -77,6 +62,10 @@ pub struct Machine<S: Soc> {
     pub bus: S::Bus,
     pub symbols: BTreeMap<u32, String>,
     pub dbg: Debug,
+    /// analyses watching the run (`add_observer`); `probes` is the union of what they want
+    pub observers: Vec<Box<dyn Observer<S>>>,
+    probes: Wants,
+    prev_irq: Vec<u32>,
     pub exceptions: u64,
     pub interrupts: u64,
     pub irq_hist: Vec<[u64; 32]>,
@@ -87,6 +76,8 @@ pub struct Machine<S: Soc> {
     pub web: Option<WebServer>,
     ws: WebState,
     pub rt: Realtime,
+    debug_rom: bool,
+    cost: Option<Box<dyn CostModel>>,
 }
 
 const QUANTUM: u64 = 64;
@@ -97,17 +88,48 @@ impl<S: Soc> Machine<S> {
             mac, reboots: 0, stubs: HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: HashMap::new(),
             cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(),
             bus, symbols: BTreeMap::new(),
-            dbg: Debug { trace: false, trace_from: 0, breakpoints: Vec::new(), watch: None, stop_on_unimplemented: true, stop_after_exceptions: u64::MAX, profile: None, regtrace: None },
+            dbg: Debug { stop_on_unimplemented: true, stop_after_exceptions: u64::MAX },
+            observers: Vec::new(), probes: Wants::NONE, prev_irq: vec![0; S::CORES],
             exceptions: 0, interrupts: 0, irq_hist: vec![[0; 32]; S::CORES],
             script: Script { events: Vec::new(), pos: 0, log: true, knob_next: 0 }, max_cycles: u64::MAX,
             console: Console { all: Vec::new(), usb: Vec::new(), uart0: Vec::new(), mask: 3, prefix: false, capture: false },
             web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, px_pending: 0, px_sent: 0, cam_pushed: u64::MAX, cam_sent: false },
-            rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: std::env::var("ESP_EMU_RT_LOG").is_ok(), log_last: None, log_insns: (0, 0) },
+            rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: false, log_last: None, log_insns: (0, 0) },
+            debug_rom: false, cost: None,
         }
     }
 
+    /// Which parts of the model print what they do (`--debug`, `ESP_EMU_DEBUG`).
+    pub fn set_debug(&mut self, f: &crate::debug::DebugFlags) { self.rt.log = f.has("rt"); self.debug_rom = f.has("rom"); self.bus.set_debug(f); }
     pub fn seconds(&self) -> f64 { self.bus.cycles() as f64 / S::CPU_HZ as f64 }
     pub fn insns(&self) -> u64 { self.cores.iter().map(|c| c.insn_count()).sum() }
+
+    // ------------------------------------------------------------------ observers
+    pub fn add_observer(&mut self, o: Box<dyn Observer<S>>) {
+        self.probes = self.probes | o.wants();
+        self.observers.push(o);
+        self.bus.misc().mmio_log = if self.probes.contains(Wants::MMIO) { Some(Vec::new()) } else { None };
+        self.bus.observe_gpio(self.probes.contains(Wants::GPIO));
+    }
+    /// Charge the cores' cycle counters per a silicon-calibrated model instead of 1 cycle per instruction.
+    pub fn set_cost_model(&mut self, m: Box<dyn CostModel>) { self.cost = Some(m); }
+    pub fn has_observer(&self, name: &str) -> bool { self.observers.iter().any(|o| o.name() == name) }
+    /// Every observer's end-of-run report, in the order they were added (files are written now).
+    pub fn reports(&mut self) -> String {
+        let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+        self.observers.iter_mut().map(|o| o.report(&cx)).filter(|r| !r.is_empty()).collect::<Vec<_>>().join("\n")
+    }
+    /// Deliver the MMIO and GPIO events the bus recorded since the last call.
+    fn deliver_events(&mut self) {
+        if self.probes.contains(Wants::MMIO) {
+            let log = self.bus.misc().mmio_log.as_mut().map(std::mem::take).unwrap_or_default();
+            if !log.is_empty() { let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ }; for o in &mut self.observers { if o.wants().contains(Wants::MMIO) { for &(pc, a, v, w) in &log { o.on_mmio(&cx, pc, a, v, w); } } } }
+        }
+        if self.probes.contains(Wants::GPIO) {
+            let ev = self.bus.take_gpio_events();
+            if !ev.is_empty() { for o in &mut self.observers { if o.wants().contains(Wants::GPIO) { for &(c, p, l) in &ev { o.on_gpio(c, p, l); } } } }
+        }
+    }
 
     // ------------------------------------------------------------------ images
     pub fn load_rom(&mut self, rom_elf: &[u8]) -> Result<(), String> {
@@ -119,7 +141,7 @@ impl<S: Soc> Machine<S> {
             if s.paddr != s.vaddr { let _ = self.bus.load_bytes(s.paddr, &s.data); }
         }
         // RAM initialisers live in sections without program headers (.data.interface.*, .data_*)
-        let dbg = std::env::var("ESP_EMU_DEBUG").is_ok();
+        let dbg = self.debug_rom;
         if dbg { eprintln!("[emu] rom: {} segments, {} alloc sections", e.segments.len(), e.sections.len()); }
         for s in &e.sections {
             if dbg { eprintln!("[emu]   section {:<36} addr {:#010x} len {:#x} bss={}", s.name, s.addr, s.data.len(), s.is_bss); }
@@ -223,6 +245,15 @@ impl<S: Soc> Machine<S> {
         let mut irqs = [<S::Core as Core>::Irq::default(); 4];
         S::irqs(&self.bus, &mut irqs[..S::CORES]);
         for (i, c) in self.cores.iter_mut().enumerate() { c.set_irq(irqs[i]); }
+        if self.probes.contains(Wants::IRQ) {
+            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            for i in 0..S::CORES {
+                let now = S::Core::irq_bits(&irqs[i]);
+                let mut rising = now & !self.prev_irq[i];
+                self.prev_irq[i] = now;
+                while rising != 0 { let line = rising.trailing_zeros(); rising &= rising - 1; for o in &mut self.observers { if o.wants().contains(Wants::IRQ) { o.on_irq_raised(&cx, i, line); } } }
+            }
+        }
     }
 
     // ------------------------------------------------------------------ execution
@@ -240,6 +271,16 @@ impl<S: Soc> Machine<S> {
             if let Some(&ret) = self.stubs.get(&pc) { cpu.return_from_stub(ret); self.stub_hits += 1; return (1, None); }
         }
         let (used, trap) = cpu.run(&mut self.bus, budget);
+        if let Some(m) = &self.cost { let c = m.cycles(pc, used); if c > used { self.cores[core].idle_advance(c - used); } }
+        if self.probes.contains(Wants::BLOCK | Wants::TRAP) {
+            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            let cpu = &self.cores[core];
+            for o in &mut self.observers {
+                let w = o.wants();
+                if w.contains(Wants::BLOCK) && used > 0 { o.on_block(&cx, core, pc, used); }
+                if let (true, Some(t)) = (w.contains(Wants::TRAP), &trap) { o.on_trap(&cx, core, cpu, pc, t); }
+            }
+        }
         match trap {
             None => {}
             Some(Trap::Exception(_)) => { self.exceptions += 1; }
@@ -266,35 +307,32 @@ impl<S: Soc> Machine<S> {
         if self.stub_bloom & pc_bit(pc) != 0 && !cpu.waiting() {
             if let Some(&ret) = self.stubs.get(&pc) { cpu.return_from_stub(ret); self.stub_hits += 1; return None; }
         }
-        if !self.dbg.breakpoints.is_empty() && self.dbg.breakpoints.contains(&pc) && cpu.insn_count() > 0 { return Some(Stop::Breakpoint(pc)); }
-        if self.dbg.trace && cpu.insn_count() >= self.dbg.trace_from {
-            if let Ok(b) = self.bus.fetch(pc) {
-                let sym = match self.symbols.range(..=pc).next_back() { Some((&a, n)) if pc - a < 0x10000 => if a == pc { n.clone() } else { format!("{}+{:#x}", n, pc - a) }, _ => String::new() };
-                let cpu = &self.cores[core];
-                eprintln!("{}{:>10} {:08x}: {:<w$} {}  {}", if core == 1 { "C1 " } else { "" }, cpu.insn_count(), pc, cpu.disasm(pc, b), sym, cpu.trace_regs(), w = S::Core::TRACE_WIDTH);
-            }
+        {
+            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            for o in &mut self.observers { if o.wants().contains(Wants::INSN) { if let Some(stop) = o.on_insn(&cx, core, &self.cores[core], &mut self.bus, pc) { return Some(stop); } } }
         }
         let cpu = &mut self.cores[core];
-        if let Some(rt) = &mut self.dbg.regtrace {
-            if core == rt.core && !cpu.waiting() {
-                if !rt.armed && rt.from_pc == Some(pc) { rt.armed = true; }
-                if rt.armed && rt.count >= rt.max { return Some(Stop::Halted); }
-                if rt.armed { rt.count += 1; use std::io::Write; let _ = writeln!(rt.out, "{}", cpu.regtrace_line(pc)); }
-            }
-        }
         self.bus.note_pc(pc);
-        if let Some(h) = &mut self.dbg.profile { *h.entry(pc).or_insert(0) += 1; }
-        match cpu.step(&mut self.bus) {
+        let r = cpu.step(&mut self.bus);
+        if let Some(m) = &self.cost { let c = m.cycles(pc, 1); if c > 1 { cpu.idle_advance(c - 1); } }
+        if let (true, Err(t)) = (self.probes.contains(Wants::TRAP), &r) {
+            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            let cpu = &self.cores[core];
+            for o in &mut self.observers { if o.wants().contains(Wants::TRAP) { o.on_trap(&cx, core, cpu, pc, t); } }
+        }
+        let cpu = &self.cores[core];
+        match r {
             Ok(()) => {}
-            Err(t @ Trap::Exception(_)) => { self.exceptions += 1; if self.dbg.trace { if let Some(l) = cpu.trace_trap(core, pc, &t) { eprintln!("{}", l); } } }
-            Err(t @ Trap::Interrupt(irq)) => { self.interrupts += 1; self.irq_hist[core][(irq & 31) as usize] += 1; if self.dbg.trace { if let Some(l) = cpu.trace_trap(core, pc, &t) { eprintln!("{}", l); } } }
+            Err(Trap::Exception(_)) => { self.exceptions += 1; }
+            Err(Trap::Interrupt(irq)) => { self.interrupts += 1; self.irq_hist[core][(irq & 31) as usize] += 1; }
             Err(Trap::Unimplemented(p, raw)) => { if self.dbg.stop_on_unimplemented { return Some(Stop::Unimplemented(p, raw)); } }
             Err(Trap::Simcall) => return Some(Stop::Simcall(pc)),
             Err(Trap::Ebreak(p)) => { self.exceptions += 1; if !cpu.has_trap_handler() { return Some(Stop::Ebreak(p)); } }
         }
         self.refresh_irq();
-        if let Some((wa, wv)) = self.dbg.watch {
-            if let Ok(v) = self.bus.read32(wa) { if v != wv { self.dbg.watch = Some((wa, v)); return Some(Stop::Watch(wa, wv, v)); } }
+        {
+            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            for o in &mut self.observers { if o.wants().contains(Wants::INSN) { if let Some(stop) = o.after_insn(&cx, core, &self.cores[core], &mut self.bus) { return Some(stop); } } }
         }
         if self.exceptions >= self.dbg.stop_after_exceptions { return Some(Stop::Exceptions(self.exceptions)); }
         None
@@ -308,9 +346,9 @@ impl<S: Soc> Machine<S> {
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
         for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); c.flush_caches(); }
         // the fast path cannot honour per-instruction observers; those runs single-step
-        let d = &self.dbg;
-        let blocks = !(d.trace || d.profile.is_some() || d.regtrace.is_some() || d.watch.is_some() || !d.breakpoints.is_empty());
-        let slow_path = d.trace || d.profile.is_some() || d.regtrace.is_some() || d.watch.is_some();
+        let blocks = !self.probes.contains(Wants::INSN);
+        let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
+        let trace = self.has_observer("trace");
         let mut n = 0u64;
         let mut on = [true; 4];
         let mut idle = [true; 4];
@@ -321,7 +359,7 @@ impl<S: Soc> Machine<S> {
                     CoreState::Reset => { self.core_held[i] = true; false }
                     CoreState::Held => false,
                     CoreState::Running => {
-                        if self.core_held[i] { self.core_held[i] = false; S::reset_core(&mut self.cores[i], i); if self.dbg.trace { eprintln!("          ** core{} released from reset", i); } }
+                        if self.core_held[i] { self.core_held[i] = false; S::reset_core(&mut self.cores[i], i); if trace { eprintln!("          ** core{} released from reset", i); } }
                         true
                     }
                 };
@@ -366,6 +404,10 @@ impl<S: Soc> Machine<S> {
             if self.bus.refresh_irq() { self.present_irqs(); }
         }
         self.after_round_rest();
+        if self.probes.0 != 0 {
+            self.deliver_events();
+            if self.probes.contains(Wants::ROUND) { let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ }; for o in &mut self.observers { if o.wants().contains(Wants::ROUND) { o.on_round(&cx); } } }
+        }
     }
 
     #[inline]
@@ -590,16 +632,6 @@ impl<S: Soc> Machine<S> {
     pub fn write_gram_png(&self, path: &str) -> std::io::Result<()> {
         let Some((px, cols, rows)) = self.bus.board_ref().gram() else { return Err(std::io::Error::other("this board has no TFT")) };
         png::write_png_rgb565(path, &px, cols, rows, 2)
-    }
-
-    pub fn profile_report(&self, top: usize) -> String {
-        let Some(h) = &self.dbg.profile else { return String::new() };
-        let mut v: Vec<(u32, u64)> = h.iter().map(|(a, c)| (*a, *c)).collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
-        let total: u64 = v.iter().map(|x| x.1).sum();
-        let mut s = format!("[profile] top {} pcs of {} instructions\n", top, total);
-        for (a, c) in v.iter().take(top) { s += &format!("  {:08x} {:>6.2}%  {}\n", a, *c as f64 * 100.0 / total as f64, self.sym(*a)); }
-        s
     }
 
     pub fn disasm(&mut self, addr: u32, n: usize) -> String {

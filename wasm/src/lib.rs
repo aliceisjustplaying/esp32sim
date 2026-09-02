@@ -121,8 +121,8 @@ pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize)
         }
     }
     log(&format!("[emu] virtual AP '{}' ({}), subnet 10.0.2.0/24, no NAT in the browser", cfg.ssid, if cfg.psk.is_some() { "WPA2-PSK" } else { "open" }));
-    m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg));
-    m.bus.periph.wifi.net = Some(esp32s3::net::VirtualNet::new());
+    m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg, m.bus.debug.has("wifi-frames")));
+    m.bus.periph.wifi.net = Some(esp32s3::net::VirtualNet::new(m.bus.debug.has("net")));
 }
 
 /// `--stub NAME[=value]`: return `value` immediately when execution reaches the function's entry.
@@ -135,6 +135,29 @@ pub unsafe extern "C" fn esp32sim_stub(e: *mut Emu, name: *const u8, len: usize,
         Some(addr) => { m.stubs.insert(addr, value); log(&format!("[emu] stub {} @ {:#x} -> returns {:#x}", name, addr, value)); 0 }
         None => { log(&format!("[emu] stub: no symbol '{}' (load the app ELF first)", name)); 1 }
     })
+}
+
+/// Attach an analysis: `profile-blocks`, `coverage`, `irq-latency` (no argument), `trace-fn`
+/// (arg = symbol prefix as text). Returns 1 for an unknown name.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_observer(e: *mut Emu, name: *const u8, len: usize, arg: *const u8, arg_len: usize) -> u32 {
+    use esp_soc::observers::{BlockProfile, Coverage, IrqLatency};
+    let e = &mut *e; let (name, arg) = (text(name, len).to_string(), text(arg, arg_len).to_string());
+    either!(e, m => match name.as_str() {
+        "profile-blocks" => { m.add_observer(Box::new(BlockProfile::new(20))); 0 }
+        "coverage" => { m.add_observer(Box::new(Coverage::new(None))); 0 }
+        "irq-latency" => { let n = m.cores.len(); m.add_observer(Box::new(IrqLatency::new(n))); 0 }
+        "trace-fn" => { let n: Vec<(u32, String)> = m.symbols.iter().filter(|(_, s)| s.starts_with(&arg)).map(|(a, s)| (*a, s.clone())).collect(); for (a, s) in n { m.fn_probes.insert(a, s); } 0 }
+        _ => { log(&format!("[emu] unknown observer '{}'", name)); 1 }
+    })
+}
+
+/// Every observer's report so far, as `emu` messages in the outbox.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_reports(e: *mut Emu) {
+    let e = &mut *e;
+    let r = either!(e, m => m.reports());
+    either!(e, m => if let Some(w) = &m.web { for line in r.lines() { w.send_text(&format!("{{\"t\":\"emu\",\"msg\":\"{}\"}}", esp_soc::web::json_escape(line))); } });
 }
 
 /// Start from the mask ROM (the normal path) or, with `app_direct` set, straight into the app image.

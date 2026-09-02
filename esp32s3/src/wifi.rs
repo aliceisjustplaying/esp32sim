@@ -71,7 +71,7 @@ pub struct VirtualAp {
 }
 
 impl VirtualAp {
-    pub fn new(cfg: ApConfig) -> Self {
+    pub fn new(cfg: ApConfig, log: bool) -> Self {
         let mut wpa = Wpa::default();
         if let Some(psk) = &cfg.psk {
             wpa.pmk.copy_from_slice(&crate::crypto::pbkdf2_sha1(psk.as_bytes(), cfg.ssid.as_bytes(), 4096, 32));
@@ -81,7 +81,7 @@ impl VirtualAp {
             for i in 0..16 { wpa.gtk[i] = seed[(i + 3) % 20] ^ 0x5a; }
         }
         VirtualAp { cfg, wpa, state: StaState::Idle, sta: [0; 6], aid: 1, next_beacon_us: 100_000, beacon_interval_us: 102_400, seq: 0,
-                    queue: Vec::new(), pn: 0, log: std::env::var("ESP_EMU_DEBUG_WIFI_FRAMES").is_ok(), stats: (0, 0, 0) }
+                    queue: Vec::new(), pn: 0, log, stats: (0, 0, 0) }
     }
     fn hdr(&mut self, fc: u16, a1: &[u8; 6], a3: &[u8; 6]) -> Vec<u8> {
         let mut f = Vec::with_capacity(128);

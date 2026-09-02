@@ -51,9 +51,9 @@ pub struct Nat {
 }
 
 impl Nat {
-    pub fn new() -> Self {
+    pub fn new(log: bool) -> Self {
         Nat { tcp: Vec::new(), udp: Vec::new(), isn: 0x1000, resolver: host_resolver(),
-              log: std::env::var("ESP_EMU_DEBUG_NET").is_ok(),
+              log,
               tcp_opened: 0, tcp_refused: 0, udp_flows: 0, bytes_to_host: 0, bytes_to_guest: 0 }
     }
 

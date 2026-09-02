@@ -44,6 +44,9 @@ pub struct SocBus {
     pub last_fault: Option<(u32, bool)>,
     /// a peripheral write may have moved an interrupt line: re-derive before the next instruction
     pub irq_dirty: bool,
+    /// GPIO edges for observers, while one wants them: (cycle, pin, level)
+    pub gpio_events: Option<Vec<(u64, u8, bool)>>,
+    pub debug: esp_soc::DebugFlags,
 }
 
 impl SocBus {
@@ -56,7 +59,7 @@ impl SocBus {
             flash: vec![0xff; flash_size],
             mmu: [MMU_INVALID; MMU_ENTRIES],
             periph: Peripherals::new(mac), board: Box::new(esp_soc::NoBoard),
-            cycles: 0, last_fault: None, irq_dirty: true,
+            cycles: 0, last_fault: None, irq_dirty: true, gpio_events: None, debug: Default::default(),
         }
     }
 

@@ -17,7 +17,7 @@ pub struct UsbSerialJtag {
     ram: RegRam,
 }
 impl UsbSerialJtag {
-    pub fn new(cpu_hz: u64) -> Self { UsbSerialJtag { sof_period: cpu_hz / 4000, connected: true, dbg: std::env::var("ESP_EMU_DEBUG_USB").is_ok(), sof_count: 0, sof_acc: 0, tx_fifo: Vec::new(), tx_out: Vec::new(), rx: Default::default(), int_raw: 0, int_ena: 0, conf0: 0, ram: RegRam::new() } }
+    pub fn new(cpu_hz: u64) -> Self { UsbSerialJtag { sof_period: cpu_hz / 4000, connected: true, dbg: false, sof_count: 0, sof_acc: 0, tx_fifo: Vec::new(), tx_out: Vec::new(), rx: Default::default(), int_raw: 0, int_ena: 0, conf0: 0, ram: RegRam::new() } }
     /// advance by CPU cycles; raise SOF interrupt every 1 ms of emulated time
     pub fn tick(&mut self, cycles: u64) { if !self.connected { return; } self.sof_acc += cycles; if self.sof_acc >= self.sof_period { self.sof_acc -= self.sof_period; self.int_raw |= 1 << 1; if self.dbg { self.sof_count += 1; } } /* 4x per tick: HWCDC's tick hook clears it each tick */ }
     pub fn read(&mut self, off: u32) -> u32 {
@@ -53,4 +53,5 @@ impl Device for UsbSerialJtag {
     fn irq_sources(&self) -> u64 { self.irq() as u64 }
     fn clock(&self) -> Option<ClockDomain> { Some(ClockDomain::Cpu) }
     fn tick(&mut self, cycles: u64) { UsbSerialJtag::tick(self, cycles) }
+    fn debug(&mut self, on: bool) { self.dbg = on; }
 }

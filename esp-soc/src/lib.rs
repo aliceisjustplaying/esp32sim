@@ -3,15 +3,20 @@
 //! the scheduler, device time, console, action scripts, the web UI protocol, real-time pacing,
 //! the image loaders and the board model.
 pub mod board;
+pub mod debug;
 pub mod elf;
 pub mod host;
 pub mod image;
 pub mod machine;
+pub mod observe;
+pub mod observers;
 pub mod picture;
 pub mod png;
 pub mod soc;
 pub mod web;
 
 pub use board::{Board, BoardModel, NoBoard};
-pub use machine::{Console, Debug, Machine, Realtime, RegTrace, Script, ScriptAction};
+pub use debug::DebugFlags;
+pub use machine::{Console, Debug, Machine, Realtime, Script, ScriptAction};
+pub use observe::{Ctx, Observer, Wants};
 pub use soc::{CoreState, Soc, SocBus, Stop};

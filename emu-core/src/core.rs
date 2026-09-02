@@ -34,6 +34,8 @@ pub trait Core {
     fn set_irq(&mut self, irq: Self::Irq);
     /// An interrupt could be taken now (the idle skip is only allowed when this is false).
     fn irq_pending(&self) -> bool;
+    /// The lines asserted in an `Irq` value, one bit per line (for observers).
+    fn irq_bits(irq: &Self::Irq) -> u32;
     /// Let cycles pass without executing anything (the core is in `waiti`/`wfi`): advances
     /// whatever counter the core keeps and raises its own timer interrupts if they fall due.
     fn idle_advance(&mut self, cycles: u32);
@@ -77,6 +79,16 @@ pub trait Core {
     /// The function-probe argument summary, e.g. `a2=.. a3=.. a4=..`, and the return address.
     fn probe_args(&self) -> String;
     fn return_address(&self) -> u32;
+}
+
+/// How many cycles a run of instructions costs. The emulator's own accounting is 1 instruction
+/// = 1 cycle; a model calibrated on silicon adds the difference to the core's cycle counter
+/// after each block (`Machine::set_cost_model`), which is what `esp_cpu_get_cycle_count` and
+/// the core's timer interrupts see. Device time stays instruction-paced: that is the
+/// scheduler's clock, not the core's, and the cores stay untouched.
+pub trait CostModel {
+    /// Cycles for `insns` instructions starting at `pc` (the block start, or a single instruction).
+    fn cycles(&self, pc: u32, insns: u32) -> u32;
 }
 
 /// Bloom bit for a pc; the machine's stub/probe tables and the cores' block boundaries agree on it.

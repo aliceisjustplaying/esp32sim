@@ -48,16 +48,19 @@ esp32sim --flash-image flash.bin --boot rom ...
 | `--break PC` (repeatable) | stop at PC |
 | `--watch ADDR` | stop when a word changes |
 | `--peek ADDR,N`, `--disasm ADDR,N` | dump memory / disassemble at exit |
-| `--profile` | top PCs by instruction count |
+| `--profile` | top PCs by instruction count (single-steps, and keeps idle cores stepping: an idle core shows as a hot `waiti`) |
+| `--profile-blocks` | time per function from the block path — full speed, no timing change; needs `--elf` for names |
+| `--coverage`, `--coverage-file F` | block starts reached, per function; with a file, one `addr symbol` line each |
+| `--irq-latency` | cycles from an interrupt line appearing at a core to the core taking it, per line |
+| `--vcd F` | GPIO edges and interrupt lines as a VCD waveform (1 ps units) |
+| `--debug AREAS` | what the model prints: device names or prefixes (`spi`, `usb`, `i2c`, `wifi`, `gdma`, `sha`, `rsa`, `lcd_cam`), `net`, `wifi-frames`, `aes`, `rom`, `mmio`, `rt`; also `ESP_EMU_DEBUG=a,b` |
 | `--log-periph` | log the first access to every unknown peripheral register |
 | `--no-jit` | run blocks through the interpreter instead of native code (aarch64 hosts compile blocks to machine code by default); the two must produce identical results, so this is the oracle when something looks wrong |
 | `--stop-after-exceptions N` | stop after N exceptions |
 | `--regtrace F`, `--regtrace-from-pc PC`, `--regtrace-max N` | register trace file for `hw/compare.py` |
 
-Environment: `ESP_EMU_DEBUG` (misc), `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`,
-`ESP_EMU_DEBUG_I2C` (bus traces), `ESP_EMU_DEBUG_WIFI` / `ESP_EMU_DEBUG_WIFI_FRAMES` / `ESP_EMU_DEBUG_NET`, `ESP_EMU_LOG_ALL` (every peripheral access),
-`ESP_EMU_RT_LOG` (20 ms windows that took > 40 ms wall, with PCs), `ESP_EMU_DEBUG_LCD` (LCD engine
-start/reset, DMA link restarts, descriptor completions), `ESP_EMU_DEBUG_SPI2`.
+Environment: `ESP_EMU_DEBUG=wifi,spi,net` is `--debug` for every run (the older
+`ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_NET`, `ESP_EMU_LOG_ALL`, `ESP_EMU_RT_LOG`... still work as aliases).
 `XTENSA_DIS_FILES=a.dis:b.dis` feeds the decoder equivalence test.
 
 ## Action scripts
