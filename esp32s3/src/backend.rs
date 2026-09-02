@@ -373,8 +373,10 @@ impl MeasuredBootScheduler {
                 };
             }
             let core = self.next_core();
-            if self.advance_waiting_core(core) {
-                continue;
+            match self.advance_waiting_core(core) {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(error) => return self.refusal(core, error),
             }
             let core_index = core_index(core);
             let before = self.backend.engine().state().cores[core_index].cycle;
@@ -406,14 +408,14 @@ impl MeasuredBootScheduler {
         }
     }
 
-    fn advance_waiting_core(&mut self, core: CoreId) -> bool {
+    fn advance_waiting_core(&mut self, core: CoreId) -> Result<bool, MeasuredStepError> {
         let index = core_index(core);
         let cpu = match core {
             CoreId::Core0 => &self.machine.cpu,
             CoreId::Core1 => &self.machine.cpu1,
         };
         if !cpu.waiting || cpu.check_interrupts_pending() != 0 {
-            return false;
+            return Ok(false);
         }
         let current = self.core_cycles[index];
         let other = self.core_cycles[1 - index];
@@ -426,8 +428,8 @@ impl MeasuredBootScheduler {
         let elapsed = target.saturating_sub(current);
         self.core_cycles[index] = target;
         self.machine.advance_measured_clocks(core, elapsed);
-        let _deadline_result = self.machine.advance_measured_devices(target);
-        true
+        self.machine.advance_measured_devices(target)?;
+        Ok(true)
     }
 
     fn console_contains(&self, marker: &[u8]) -> bool {
@@ -729,6 +731,30 @@ mod tests {
     const RESET_PC: u32 = 0x4038_0000;
     const BEQZ_N_A6: [u8; 2] = [0x8c, 0x06];
 
+    struct FailingDeadlineBoard;
+
+    impl backend_api::DeadlineModel for FailingDeadlineBoard {
+        fn next_deadline(&self) -> Option<backend_api::VirtualCycle> {
+            Some(7)
+        }
+
+        fn advance_to(
+            &mut self,
+            cycle: backend_api::VirtualCycle,
+        ) -> Result<(), backend_api::DeadlineError> {
+            Err(backend_api::DeadlineError::TimeReversed {
+                current: cycle + 1,
+                requested: cycle,
+            })
+        }
+    }
+
+    impl crate::board::BoardModel for FailingDeadlineBoard {
+        fn name(&self) -> &'static str {
+            "failing-deadline"
+        }
+    }
+
     fn instruction_machine(instruction: &[u8]) -> crate::Machine {
         let mut machine = crate::Machine::new([0; 6]);
         set_receipt_config_registers(&mut machine);
@@ -996,6 +1022,32 @@ mod tests {
         assert!(machine
             .next_measured_deadline()
             .is_some_and(|cycle| cycle > 3));
+    }
+
+    #[test]
+    fn waiting_core_deadline_failure_stops_with_typed_refusal() {
+        let mut machine = crate::Machine::new([0; 6]);
+        machine.bus.board = Box::new(FailingDeadlineBoard);
+        machine.cpu.waiting = true;
+        let mut scheduler = MeasuredBootScheduler::new(machine);
+
+        let stop = scheduler.run_until(b"never-ready", 1);
+
+        assert!(matches!(
+            stop,
+            MeasuredBootStop::Refusal {
+                boot_cycle: 7,
+                core_cycles: [7, 0],
+                refusal: MeasuredBootRefusal {
+                    error: MeasuredStepError::Deadline(backend_api::DeadlineError::TimeReversed {
+                        current: 8,
+                        requested: 7,
+                    }),
+                    core: CoreId::Core0,
+                    ..
+                },
+            }
+        ));
     }
 
     #[test]
