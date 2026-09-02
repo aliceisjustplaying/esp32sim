@@ -17,6 +17,7 @@ impl Soc for S3 {
     type Core = Cpu;
     type Bus = SocBus;
     const NAME: &'static str = "esp32s3";
+    const ROM_ELF: &'static str = "esp32s3_rev0_rom.elf";
     const CPU_HZ: u64 = periph::CPU_HZ;
     const CORES: usize = 2;
     const IDLE_CHUNK: u64 = 64 * 8;
@@ -109,6 +110,29 @@ impl esp_soc::SocBus for SocBus {
     }
     fn serial_input(&mut self, data: &[u8]) { self.periph.usb.host_input(data); }
     fn gpio_set_input(&mut self, pin: u8, level: bool) { self.periph.gpio.set_input(pin, level); if let Some(ev) = &mut self.gpio_events { ev.push((self.cycles, pin, level)); } }
+    fn set_flash_size(&mut self, bytes: usize) {
+        self.flash = vec![0xff; bytes];
+        let cap = bytes.trailing_zeros() as u8; self.periph.spi1.jedec[2] = cap; self.periph.spi0.jedec[2] = cap;
+        self.rebuild_page_table();
+    }
+    fn set_psram_size(&mut self, bytes: usize) -> Result<(), String> { self.psram = vec![0; bytes]; self.rebuild_page_table(); Ok(()) }
+    fn set_strap(&mut self, v: u32) { self.periph.gpio.strap = v; }
+    fn set_reset_cause(&mut self, c: u32) { self.periph.rtc.ram.write(0x38, c | (c << 6)); }
+    fn report(&self) -> String {
+        let p = &self.periph;
+        let mut s = format!("[emu] i2s frames out: {} (i2s0 @ {} Hz) {} (i2s1 @ {} Hz)\n", p.i2s0.frames_out, p.i2s0.sample_rate, p.i2s1.frames_out, p.i2s1.sample_rate);
+        { let r = self.board.report(); if !r.is_empty() { s += &r; s += "\n"; } }
+        { let w = &p.wifi;
+          if w.tx_frames + w.rx_frames > 0 { s += &format!("[emu] wifi: {} frames sent by the station, {} received ({} dropped: no descriptor){}\n", w.tx_frames, w.rx_frames, w.rx_dropped, w.ap.as_ref().map_or(String::new(), |ap| format!("; AP: {} beacons, {} probe responses, {} data frames from the station, state {:?}", ap.stats.0, ap.stats.1, ap.stats.2, ap.state))); }
+          if let Some(n) = &w.net { s += &format!("[emu] net: {} DHCP leases, {} ARP replies, {} DNS answers, {} NTP answers, {} TCP refused, {} pings, {} frames ignored\n", n.dhcp_acks, n.arp_replies, n.dns_answers, n.ntp_answers, n.tcp_rejects, n.pings, n.unhandled);
+            if let Some(t) = &n.nat { s += &format!("[emu] nat: {} TCP connections ({} failed), {} UDP flows, {} bytes out, {} bytes in\n", t.tcp_opened, t.tcp_refused, t.udp_flows, t.bytes_to_host, t.bytes_to_guest); } } }
+        { let (a, sh, r) = (&p.aes, &p.sha, &p.rsa);
+          if a.blocks + sh.blocks + r.ops > 0 { s += &format!("[emu] crypto: {} AES blocks, {} SHA blocks, {} RSA/MPI operations\n", a.blocks, sh.blocks, r.ops); } }
+        if p.lcd_cam.lcd_frames > 0 { s += &format!("[emu] lcd: {} RGB frames\n", p.lcd_cam.lcd_frames); }
+        if p.lcd_cam.frames + p.lcd_cam.dropped > 0 { s += &format!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)\n", p.lcd_cam.frames, p.lcd_cam.dropped); }
+        if p.rmt.tx_count > 0 { s += &format!("[emu] rmt tx {}\n", p.rmt.tx_count); }
+        s.trim_end().to_string()
+    }
     fn set_debug(&mut self, f: &esp_soc::DebugFlags) {
         self.debug = f.clone();
         for area in f.iter() { esp_periph::Dispatch::debug(&mut self.periph, area, true); }

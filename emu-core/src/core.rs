@@ -53,6 +53,10 @@ pub trait Core {
     fn set_boundaries(&mut self, _bloom: u64) {}
     /// Throw away decoded/compiled code (after loading an image or changing boundaries).
     fn flush_caches(&mut self) {}
+    /// Enable/disable native code generation, if the core has it (`--no-jit`: the interpreter is the oracle).
+    fn set_jit(&mut self, _on: bool) {}
+    /// (blocks built, cache flushes, blocks compiled, native code bytes) for the end-of-run report.
+    fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> { None }
     /// Registers worth printing in a trace line, in the core's conventional order.
     fn regs(&self, out: &mut Vec<(&'static str, u32)>);
     /// Argument `n` of the function about to be entered, per the core's calling convention

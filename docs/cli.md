@@ -1,9 +1,13 @@
 # Command line
 
 ```
-esp32sim --boot rom --bootloader B.bin --ptable P.bin --app A.bin [--elf X.elf ...] [options]
+esp32sim [--chip s3|c3] --boot rom --bootloader B.bin --ptable P.bin --app A.bin [--elf X.elf ...] [options]
 esp32sim --flash-image flash.bin --boot rom ...
 ```
+
+One binary for both chips; `esp32sim-c3` is `esp32sim --chip c3`. The C3 defaults differ where
+the chip does (`--boot rom`, `--console uart0`, `--flash-mb 4`) and refuses the S3-only flags
+(board, WiFi, camera, PSRAM, register presets).
 
 ## Images and boot
 | Flag | Meaning |
@@ -11,7 +15,10 @@ esp32sim --flash-image flash.bin --boot rom ...
 | `--boot rom\|app` | `rom`: start at the mask ROM reset vector (real boot chain). `app`: load the app image segments and jump to its entry |
 | `--bootloader F`, `--ptable F`, `--app F` | written to flash at 0x0 / 0x8000 / 0x10000 |
 | `--flash-image F` | whole flash dump written at 0 |
-| `--rom F` | mask ROM ELF (default: `~/.espressif/tools/esp-rom-elfs/*/esp32s3_rev0_rom.elf`) |
+| `--chip s3\|c3` | which chip (default s3) |
+| `--rom F` | mask ROM ELF (default: the chip's in `~/.espressif/tools/esp-rom-elfs/*/`) |
+| `--mac xx:xx:xx:xx:xx:xx` | the station MAC the efuses report |
+| `--serial TEXT` | bytes into the USB-Serial/JTAG console before the run |
 | `--elf F` (repeatable) | symbols for logs/profiles (app ELF, bootloader ELF) |
 | `--flash-mb N`, `--psram-mb N` | flash size (JEDEC follows it) and octal PSRAM size (default 8 / 2) |
 | `--board atech14\|waveshare-cam\|none` | board model (default atech14) |

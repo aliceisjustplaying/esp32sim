@@ -24,6 +24,8 @@ impl emu_core::Core for Cpu {
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }
     fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
     fn flush_caches(&mut self) { self.blocks.flush(); }
+    fn set_jit(&mut self, on: bool) { self.blocks.jit_enabled = on; }
+    fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> { Some((self.blocks.builds, self.blocks.flushes, self.blocks.compiled, self.blocks.code_bytes())) }
     fn regs(&self, out: &mut Vec<(&'static str, u32)>) {
         for (i, n) in AR.iter().enumerate() { out.push((n, self.get_ar(i as u8))); }
         out.push(("ps", self.ps)); out.push(("wb", self.windowbase));

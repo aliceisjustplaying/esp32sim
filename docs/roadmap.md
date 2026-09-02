@@ -21,7 +21,7 @@ Ordered by value; each item links to its plan where one exists.
    against objdump, the C3 memory map and interrupt matrix, and unmodified IDF firmware booting
    from the mask ROM through the bootloader into FreeRTOS and `app_main` — verified against a
    real C3 module, 205/208 console lines identical over three boots. Left: `--boot app`, more
-   peripherals on demand, WiFi/BLE, and merging the two CLIs behind `--chip`.
+   peripherals on demand, WiFi/BLE. (The two CLIs are one binary now: `--chip`.)
 6. **More boards** — Touch-LCD-4B done (`waveshare-lcd4b`: LVGL panel, touch/swipe, SID player audio).
    Next candidates as firmware needs them; `--board waveshare-*` variants share the codec/PSRAM/I2C work.
 7. **Peripherals on demand** — LEDC, PCNT, ADC, SPI2/3 masters, RX sides of I2S/RMT/UART DMA,

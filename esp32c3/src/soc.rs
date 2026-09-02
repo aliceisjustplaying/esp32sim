@@ -14,6 +14,7 @@ impl Soc for C3 {
     type Core = Cpu;
     type Bus = SocBus;
     const NAME: &'static str = "esp32c3";
+    const ROM_ELF: &'static str = "esp32c3_rev3_rom.elf";
     const CPU_HZ: u64 = periph::CPU_HZ;
     const CORES: usize = 1;
     const IDLE_CHUNK: u64 = 64;
@@ -97,6 +98,12 @@ impl esp_soc::SocBus for SocBus {
     fn console_take(&mut self) -> [Vec<u8>; 4] { [std::mem::take(&mut self.periph.usb.tx_out), std::mem::take(&mut self.periph.uart[0].tx_out), Vec::new(), Vec::new()] }
     fn serial_input(&mut self, data: &[u8]) { self.periph.usb.host_input(data); }
     fn gpio_set_input(&mut self, pin: u8, level: bool) { self.periph.gpio.set_input(pin, level); if let Some(ev) = &mut self.gpio_events { ev.push((self.cycles, pin, level)); } }
+    fn set_flash_size(&mut self, bytes: usize) {
+        self.flash = vec![0xff; bytes];
+        let cap = bytes.trailing_zeros() as u8; self.periph.spi1.jedec[2] = cap; self.periph.spi0.jedec[2] = cap;
+    }
+    fn set_strap(&mut self, v: u32) { self.periph.gpio.strap = v; }
+    fn set_reset_cause(&mut self, c: u32) { self.periph.rtc.ram.write(0x38, c | (c << 6)); self.periph.rtc.reset_cause = c; }
     fn set_debug(&mut self, f: &esp_soc::DebugFlags) {
         self.debug = f.clone();
         for area in f.iter() { esp_periph::Dispatch::debug(&mut self.periph, area, true); }

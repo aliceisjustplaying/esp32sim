@@ -45,19 +45,11 @@ dependencies = [
 name = "esp32sim"
 version = "0.1.0"
 dependencies = [
- "esp-soc",
- "esp32s3",
- "xtensa-lx7",
-]
-
-[[package]]
-name = "esp32sim-c3"
-version = "0.1.0"
-dependencies = [
+ "emu-core",
  "esp-periph",
  "esp-soc",
  "esp32c3",
- "riscv-rv32",
+ "esp32s3",
 ]
 
 [[package]]
@@ -68,8 +60,6 @@ dependencies = [
  "esp-soc",
  "esp32c3",
  "esp32s3",
- "riscv-rv32",
- "xtensa-lx7",
 ]
 
 [[package]]

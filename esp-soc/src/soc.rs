@@ -30,6 +30,8 @@ pub trait Soc: 'static {
     type Core: Core;
     type Bus: SocBus;
     const NAME: &'static str;
+    /// The mask ROM ELF's file name in espressif/esp-rom-elfs.
+    const ROM_ELF: &'static str;
     const CPU_HZ: u64;
     const CORES: usize;
     /// How far time jumps when every core sleeps (a multiple of the 64-instruction quantum).
@@ -82,4 +84,14 @@ pub trait SocBus: Bus {
     fn irq_sources_of(&self, core: usize, line: u32) -> Vec<usize>;
     /// Apply the debug areas to the devices and to the bus's own logging.
     fn set_debug(&mut self, f: &crate::debug::DebugFlags);
+    /// Resize the flash array (the JEDEC capacity follows).
+    fn set_flash_size(&mut self, bytes: usize);
+    /// Resize the PSRAM, on chips that have one.
+    fn set_psram_size(&mut self, _bytes: usize) -> Result<(), String> { Err("this chip has no PSRAM".into()) }
+    /// Strapping pins as the ROM reads them.
+    fn set_strap(&mut self, v: u32);
+    /// The reset cause the ROM will report (to reproduce a real board's boot).
+    fn set_reset_cause(&mut self, cause: u32);
+    /// Chip-specific end-of-run statistics (audio, WiFi, crypto, DMA engines).
+    fn report(&self) -> String { String::new() }
 }

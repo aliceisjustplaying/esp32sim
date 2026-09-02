@@ -10,6 +10,7 @@ mod common;
 use common::*;
 
 const BIN: &str = env!("CARGO_BIN_EXE_esp32sim");
+const BIN_C3: &str = env!("CARGO_BIN_EXE_esp32sim-c3");
 const FW: &str = "web/wasm/fw/public";
 
 fn atech(extra: &[&str]) -> (Run, Vec<u8>) {
@@ -114,4 +115,24 @@ fn hello_world_s3_profiles() {
     let mut b = base.to_vec(); b.push("--profile");
     let r = run(BIN, &b);
     assert!(r.stderr.contains("[profile] top 12 pcs"), "{}", r.stderr);
+}
+
+/// hello_world from the C3 mask ROM, with the MAC / reset cause / straps of the real module the
+/// boot log was compared against (`hw/c3-hello-world-real.txt`, `docs/esp32c3.md`).
+#[test] #[ignore = "needs the ESP32-C3 mask ROM ELF"]
+fn hello_world_c3() {
+    let h = "examples/hello_world-c3/build"; let rom = rom("esp32c3_rev3");
+    let r = run(BIN_C3, &["--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
+        "--mac", "3c:84:27:b6:a7:1c", "--reset-cause", "0x15", "--strap", "0xd",
+        "--bootloader", &format!("{h}/bootloader/bootloader.bin"), "--ptable", &format!("{h}/partition_table/partition-table.bin"), "--app", &format!("{h}/hello_world.bin"),
+        "--elf", &format!("{h}/hello_world.elf"), "--max-seconds", "3"]);
+    assert!(r.stdout.contains("Hello world!"), "app_main never printed:\n{}", r.stdout);
+    expect_text("hello-c3.console.txt", &r.stdout);
+    expect_u64("hello-c3.insns", r.insns);
+    // the same run through the one binary
+    let r2 = run(BIN, &["--chip", "c3", "--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
+        "--mac", "3c:84:27:b6:a7:1c", "--reset-cause", "0x15", "--strap", "0xd",
+        "--bootloader", &format!("{h}/bootloader/bootloader.bin"), "--ptable", &format!("{h}/partition_table/partition-table.bin"), "--app", &format!("{h}/hello_world.bin"),
+        "--elf", &format!("{h}/hello_world.elf"), "--max-seconds", "3"]);
+    assert_eq!(r.stdout, r2.stdout); assert_eq!(r.insns, r2.insns);
 }

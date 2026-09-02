@@ -14,7 +14,8 @@ licensed, and contains no third-party emulator code (QEMU was consulted for inst
 *semantics* only).
 
 ```
-cli/          esp32sim binary: argument parsing, image loading, run loop, reports
+cli/          esp32sim binary, both chips: argument parsing, image loading, run loop, reports
+              (`--chip s3|c3`; the setup that is chip-specific is one function per chip)
 esp-soc/      Machine<S: Soc>, written once for every chip: the scheduler (64-instruction quanta,
               idle skipping, per-core reset state), lazy device time, console capture, action
               scripts, function stubs/probes, tracing and watchpoints, the web UI protocol,
