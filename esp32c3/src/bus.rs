@@ -151,7 +151,7 @@ macro_rules! rd {
     ($self:ident, $addr:expr, $n:expr, $conv:expr) => {{
         let addr = $addr;
         match $self.resolve(addr) {
-            Some((b, o, _)) if o + $n <= b.len() => Ok($conv(&b[o..o + $n])),
+            Some((b, o, _)) if b.len().saturating_sub(o) >= $n => Ok($conv(&b[o..o + $n])),
             _ => { $self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
     }};
