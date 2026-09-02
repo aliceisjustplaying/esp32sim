@@ -40,12 +40,12 @@ fn sha1(msg: &[u8]) -> [u8; 20] {
     m.extend_from_slice(&((msg.len() as u64) * 8).to_be_bytes());
     for chunk in m.chunks(64) {
         let mut w = [0u32; 80];
-        for i in 0..16 { w[i] = u32::from_be_bytes([chunk[4 * i], chunk[4 * i + 1], chunk[4 * i + 2], chunk[4 * i + 3]]); }
+        for (i, word) in w[..16].iter_mut().enumerate() { *word = u32::from_be_bytes([chunk[4 * i], chunk[4 * i + 1], chunk[4 * i + 2], chunk[4 * i + 3]]); }
         for i in 16..80 { w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1); }
         let (mut a, mut b, mut c, mut d, mut e) = (h[0], h[1], h[2], h[3], h[4]);
-        for i in 0..80 {
+        for (i, &word) in w.iter().enumerate() {
             let (f, k) = match i { 0..=19 => ((b & c) | (!b & d), 0x5A827999), 20..=39 => (b ^ c ^ d, 0x6ED9EBA1), 40..=59 => ((b & c) | (b & d) | (c & d), 0x8F1BBCDC), _ => (b ^ c ^ d, 0xCA62C1D6) };
-            let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(w[i]);
+            let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(word);
             e = d; d = c; c = b.rotate_left(30); b = a; a = t;
         }
         h[0] = h[0].wrapping_add(a); h[1] = h[1].wrapping_add(b); h[2] = h[2].wrapping_add(c); h[3] = h[3].wrapping_add(d); h[4] = h[4].wrapping_add(e);
@@ -147,8 +147,7 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
     }
     // read loop
     let mut read_exact = |n: usize| -> Option<Vec<u8>> { let mut v = vec![0u8; n]; let mut got = 0; while got < n { match stream.read(&mut v[got..]) { Ok(0) | Err(_) => return None, Ok(k) => got += k } } Some(v) };
-    loop {
-        let Some(h) = read_exact(2) else { break };
+    while let Some(h) = read_exact(2) {
         let op = h[0] & 0xf; let masked = h[1] & 0x80 != 0; let mut len = (h[1] & 0x7f) as u64;
         if len == 126 { let Some(e) = read_exact(2) else { break }; len = u16::from_be_bytes([e[0], e[1]]) as u64; }
         else if len == 127 { let Some(e) = read_exact(8) else { break }; len = u64::from_be_bytes(e.try_into().unwrap()); }

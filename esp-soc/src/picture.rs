@@ -67,11 +67,11 @@ pub fn to_yuyv(p: &Picture, w: u32, h: u32) -> Vec<u8> {
         let sy = (y as u64 * p.h as u64 / h as u64) as usize;
         for x2 in 0..w / 2 {
             let mut px = [(0u8, 0u8, 0u8); 2];
-            for k in 0..2 {
+            for (k, pixel) in px.iter_mut().enumerate() {
                 let x = x2 * 2 + k as u32;
                 let sx = (x as u64 * p.w as u64 / w as u64) as usize;
                 let o = (sy * p.w as usize + sx) * 3;
-                px[k] = yuv(p.rgb[o], p.rgb[o + 1], p.rgb[o + 2]);
+                *pixel = yuv(p.rgb[o], p.rgb[o + 1], p.rgb[o + 2]);
             }
             let o = ((y * w + x2 * 2) * 2) as usize;
             out[o] = px[0].0; out[o + 1] = ((px[0].1 as u16 + px[1].1 as u16) / 2) as u8; out[o + 2] = px[1].0; out[o + 3] = ((px[0].2 as u16 + px[1].2 as u16) / 2) as u8;

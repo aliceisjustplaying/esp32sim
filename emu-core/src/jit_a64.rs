@@ -27,8 +27,10 @@ pub struct Asm {
     fixups: Vec<(usize, usize, Fix)>,
 }
 
+#[allow(clippy::new_without_default, reason = "assembler construction reserves its expected code capacity")]
 impl Asm {
     pub fn new() -> Self { Asm { code: Vec::with_capacity(256), labels: Vec::new(), fixups: Vec::new() } }
+    #[allow(clippy::len_without_is_empty, reason = "the length is exposed as a code offset, not as a collection API")]
     pub fn len(&self) -> usize { self.code.len() }
     pub fn here(&self) -> usize { self.code.len() }
     fn e(&mut self, w: u32) { self.code.push(w); }
@@ -106,11 +108,11 @@ impl Asm {
     pub fn tst(&mut self, rn: Reg, rm: Reg) { self.ands(ZR, rn, rm); }
     /// `and` with a contiguous mask `((1 << ones) - 1) << shift` (32-bit).
     pub fn and_mask(&mut self, rd: Reg, rn: Reg, ones: u32, shift: u32) {
-        debug_assert!(ones >= 1 && ones <= 31 && ones + shift <= 32);
+        debug_assert!((1..=31).contains(&ones) && ones + shift <= 32);
         self.e(0x1200_0000 | ((32 - shift) & 31) << 16 | (ones - 1) << 10 | rn << 5 | rd);
     }
     pub fn tst_mask(&mut self, rn: Reg, ones: u32, shift: u32) {
-        debug_assert!(ones >= 1 && ones <= 31 && ones + shift <= 32);
+        debug_assert!((1..=31).contains(&ones) && ones + shift <= 32);
         self.e(0x7200_0000 | ((32 - shift) & 31) << 16 | (ones - 1) << 10 | rn << 5 | ZR);
     }
     pub fn lsl_imm(&mut self, rd: Reg, rn: Reg, sh: u32) { let sh = sh & 31; self.e(0x5300_0000 | ((32 - sh) & 31) << 16 | (31 - sh) << 10 | rn << 5 | rd); }
@@ -138,10 +140,10 @@ impl Asm {
     pub fn cneg(&mut self, rd: Reg, rn: Reg, c: Cond) { self.csneg(rd, rn, rn, c.invert()); }
 
     // ---------------------------------------------------------------- memory
-    pub fn ldr(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off % 4 == 0 && off < 16384); self.e(0xb940_0000 | (off / 4) << 10 | rn << 5 | rt); }
-    pub fn str(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off % 4 == 0 && off < 16384); self.e(0xb900_0000 | (off / 4) << 10 | rn << 5 | rt); }
-    pub fn ldr_x(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off % 8 == 0 && off < 32768); self.e(0xf940_0000 | (off / 8) << 10 | rn << 5 | rt); }
-    pub fn str_x(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off % 8 == 0 && off < 32768); self.e(0xf900_0000 | (off / 8) << 10 | rn << 5 | rt); }
+    pub fn ldr(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(4) && off < 16384); self.e(0xb940_0000 | (off / 4) << 10 | rn << 5 | rt); }
+    pub fn str(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(4) && off < 16384); self.e(0xb900_0000 | (off / 4) << 10 | rn << 5 | rt); }
+    pub fn ldr_x(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(8) && off < 32768); self.e(0xf940_0000 | (off / 8) << 10 | rn << 5 | rt); }
+    pub fn str_x(&mut self, rt: Reg, rn: Reg, off: u32) { debug_assert!(off.is_multiple_of(8) && off < 32768); self.e(0xf900_0000 | (off / 8) << 10 | rn << 5 | rt); }
     /// `ldr wt, [xn, wm, uxtw #2]`
     pub fn ldr_idx(&mut self, rt: Reg, rn: Reg, wm: Reg) { self.e(0xb860_0800 | wm << 16 | 0b010 << 13 | 1 << 12 | rn << 5 | rt); }
     /// `str wt, [xn, wm, uxtw #2]`

@@ -29,7 +29,7 @@ impl emu_core::Core for Cpu {
         }
         (budget, None)
     }
-    fn regs(&self, out: &mut Vec<(&'static str, u32)>) { for i in 1..32 { out.push((X[i], self.x[i])); } out.push(("mstatus", self.mstatus)); }
+    fn regs(&self, out: &mut Vec<(&'static str, u32)>) { for (&name, &value) in X[1..].iter().zip(&self.x[1..]) { out.push((name, value)); } out.push(("mstatus", self.mstatus)); }
     fn arg(&self, n: usize) -> u32 { self.x[10 + n] }
     fn return_from_stub(&mut self, v: u32) { self.x[10] = v; self.pc = self.x[1]; self.insn_count += 1; }
     fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String { crate::disasm::format(&crate::decode::decode(pc, bytes)).replace('\t', " ") }
@@ -38,7 +38,7 @@ impl emu_core::Core for Cpu {
     fn trace_regs(&self) -> String { format!("ra={:08x} sp={:08x} a0={:08x} a1={:08x}", self.x[1], self.x[2], self.x[10], self.x[11]) }
     fn regtrace_line(&self, pc: u32) -> String {
         let mut s = format!("{:08x}", pc);
-        for i in 1..32 { s += &format!(" {:08x}", self.x[i]); }
+        for value in &self.x[1..] { s += &format!(" {:08x}", value); }
         s += &format!(" {:08x}", self.mstatus);
         s
     }

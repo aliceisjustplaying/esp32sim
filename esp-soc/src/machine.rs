@@ -247,8 +247,8 @@ impl<S: Soc> Machine<S> {
         for (i, c) in self.cores.iter_mut().enumerate() { c.set_irq(irqs[i]); }
         if self.probes.contains(Wants::IRQ) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
-            for i in 0..S::CORES {
-                let now = S::Core::irq_bits(&irqs[i]);
+            for (i, irq) in irqs.iter().enumerate().take(S::CORES) {
+                let now = S::Core::irq_bits(irq);
                 let mut rising = now & !self.prev_irq[i];
                 self.prev_irq[i] = now;
                 while rising != 0 { let line = rising.trailing_zeros(); rising &= rising - 1; for o in &mut self.observers { if o.wants().contains(Wants::IRQ) { o.on_irq_raised(&cx, i, line); } } }
@@ -354,8 +354,8 @@ impl<S: Soc> Machine<S> {
         let mut idle = [true; 4];
         loop {
             if n >= max_insns { self.drain_console(); return Stop::MaxInsns; }
-            for i in 1..S::CORES {
-                on[i] = match S::core_state(&self.bus, i) {
+            for (i, state) in on.iter_mut().enumerate().take(S::CORES).skip(1) {
+                *state = match S::core_state(&self.bus, i) {
                     CoreState::Reset => { self.core_held[i] = true; false }
                     CoreState::Held => false,
                     CoreState::Running => {
@@ -364,11 +364,11 @@ impl<S: Soc> Machine<S> {
                     }
                 };
             }
-            for i in 0..S::CORES { idle[i] = !on[i] || (self.cores[i].waiting() && !self.cores[i].irq_pending()); }
+            for (i, state) in idle.iter_mut().enumerate().take(S::CORES) { *state = !on[i] || (self.cores[i].waiting() && !self.cores[i].irq_pending()); }
             if idle[..S::CORES].iter().all(|&x| x) && !slow_path {
                 // every core asleep: let time pass in larger steps until a device raises a line
                 let chunk = S::IDLE_CHUNK;
-                for i in 0..S::CORES { if on[i] { self.cores[i].idle_advance(chunk as u32); } }
+                for (i, &enabled) in on.iter().enumerate().take(S::CORES) { if enabled { self.cores[i].idle_advance(chunk as u32); } }
                 n += chunk;
                 self.after_round(chunk);
                 if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
