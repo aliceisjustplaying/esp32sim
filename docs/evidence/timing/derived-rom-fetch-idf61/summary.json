@@ -1,0 +1,407 @@
+{
+  "adoption": {
+    "adopted": false,
+    "hardware_confirmation": "add a mask-ROM straight-line fetch cell to H1",
+    "reason": "the two cells yield different, noninteger residuals",
+    "tier_candidate": "exact"
+  },
+  "cells": {
+    "0x52e0": {
+      "boots": [
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 6659,
+          "target_median_cycles": 6685
+        },
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-2-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 6659,
+          "target_median_cycles": 6685
+        },
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-3-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 6659,
+          "target_median_cycles": 6685
+        },
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-4-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 6659,
+          "target_median_cycles": 6685
+        }
+      ],
+      "path": {
+        "candidate_cycles_per_fetch": {
+          "decimal": -0.0008275654529040024,
+          "denominator": 13292,
+          "numerator": -11
+        },
+        "instruction_counts_by_price_class": {
+          "branch_not_taken": 2,
+          "branch_taken": 4,
+          "call8_retw_pair": 1,
+          "issue": 6638,
+          "loop_setup": 1
+        },
+        "instruction_segments": [
+          {
+            "instructions": [
+              "0x400570c8",
+              "0x400570cb",
+              "0x400570ce",
+              "0x400570d1",
+              "0x400570d4",
+              "0x400570d7",
+              "0x400570da",
+              "0x400570dc",
+              "0x400570df",
+              "0x400570e2",
+              "0x400570e5"
+            ],
+            "kind": "prefix",
+            "repeat": 1
+          },
+          {
+            "instructions": [
+              "0x400570e8",
+              "0x400570ea",
+              "0x400570ec",
+              "0x400570ee",
+              "0x400570f0"
+            ],
+            "kind": "loop_body",
+            "repeat": 1326
+          },
+          {
+            "instructions": [
+              "0x400570f3",
+              "0x400570fd",
+              "0x40057104",
+              "0x4005710c",
+              "0x40057112"
+            ],
+            "kind": "aligned_tail",
+            "repeat": 1
+          }
+        ],
+        "known_priced_cycles": {
+          "decimal": 6664.5,
+          "denominator": 2,
+          "numerator": 13329
+        },
+        "length_bytes": 21216,
+        "matched_receipt_cycles": 6659,
+        "residual_cycles": {
+          "decimal": -5.5,
+          "denominator": 2,
+          "numerator": -11
+        },
+        "rom_instruction_fetches": 6646
+      }
+    },
+    "zero_length": {
+      "boots": [
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 31,
+          "target_median_cycles": 57
+        },
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-2-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 31,
+          "target_median_cycles": 57
+        },
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-3-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 31,
+          "target_median_cycles": 57
+        },
+        {
+          "archive": "docs/evidence/timing/idf61-rebaseline-3db3985/receipts/boot-4-recovered.tar.gz",
+          "baseline_median_cycles": 26,
+          "matched_cycles": 31,
+          "target_median_cycles": 57
+        }
+      ],
+      "path": {
+        "candidate_cycles_per_fetch": {
+          "decimal": -0.21875,
+          "denominator": 32,
+          "numerator": -7
+        },
+        "instruction_counts_by_price_class": {
+          "branch_not_taken": 2,
+          "branch_taken": 4,
+          "call8_retw_pair": 1,
+          "issue": 8,
+          "loop_setup": 1
+        },
+        "instruction_segments": [
+          {
+            "instructions": [
+              "0x400570c8",
+              "0x400570cb",
+              "0x400570ce",
+              "0x400570d1",
+              "0x400570d4",
+              "0x400570d7",
+              "0x400570da",
+              "0x400570dc",
+              "0x400570df",
+              "0x400570e2",
+              "0x400570e5"
+            ],
+            "kind": "prefix",
+            "repeat": 1
+          },
+          {
+            "instructions": [
+              "0x400570e8",
+              "0x400570ea",
+              "0x400570ec",
+              "0x400570ee",
+              "0x400570f0"
+            ],
+            "kind": "loop_body",
+            "repeat": 0
+          },
+          {
+            "instructions": [
+              "0x400570f3",
+              "0x400570fd",
+              "0x40057104",
+              "0x4005710c",
+              "0x40057112"
+            ],
+            "kind": "aligned_tail",
+            "repeat": 1
+          }
+        ],
+        "known_priced_cycles": {
+          "decimal": 34.5,
+          "denominator": 2,
+          "numerator": 69
+        },
+        "length_bytes": 0,
+        "matched_receipt_cycles": 31,
+        "residual_cycles": {
+          "decimal": -3.5,
+          "denominator": 2,
+          "numerator": -7
+        },
+        "rom_instruction_fetches": 16
+      }
+    }
+  },
+  "instruction_catalog": [
+    {
+      "address": "0x400570c8",
+      "bytes": "362100",
+      "instruction": "entry a1, 16",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570cb",
+      "bytes": "303074",
+      "instruction": "extui a3, a3, 0, 8",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570ce",
+      "bytes": "807311",
+      "instruction": "slli a7, a3, 8",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570d1",
+      "bytes": "703320",
+      "instruction": "or a3, a3, a7",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570d4",
+      "bytes": "007311",
+      "instruction": "slli a7, a3, 16",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570d7",
+      "bytes": "703320",
+      "instruction": "or a3, a3, a7",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570da",
+      "bytes": "5d02",
+      "instruction": "mov.n a5, a2",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570dc",
+      "bytes": "07e2cc",
+      "instruction": "bbsi a2, 0, 0x400570ac",
+      "price_class": "branch_not_taken"
+    },
+    {
+      "address": "0x400570df",
+      "bytes": "17e2d6",
+      "instruction": "bbsi a2, 1, 0x400570b9",
+      "price_class": "branch_not_taken"
+    },
+    {
+      "address": "0x400570e2",
+      "bytes": "407441",
+      "instruction": "srli a7, a4, 4",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570e5",
+      "bytes": "76970a",
+      "instruction": "loopnez a7, 0x400570f3",
+      "price_class": "loop_setup"
+    },
+    {
+      "address": "0x400570e8",
+      "bytes": "3905",
+      "instruction": "s32i.n a3, a5, 0",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570ea",
+      "bytes": "3915",
+      "instruction": "s32i.n a3, a5, 4",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570ec",
+      "bytes": "3925",
+      "instruction": "s32i.n a3, a5, 8",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570ee",
+      "bytes": "3935",
+      "instruction": "s32i.n a3, a5, 12",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570f0",
+      "bytes": "52c510",
+      "instruction": "addi a5, a5, 16",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570f3",
+      "bytes": "376406",
+      "instruction": "bbci a4, 3, 0x400570fd",
+      "price_class": "branch_taken"
+    },
+    {
+      "address": "0x400570f6",
+      "bytes": "3905",
+      "instruction": "s32i.n a3, a5, 0",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570f8",
+      "bytes": "3915",
+      "instruction": "s32i.n a3, a5, 4",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570fa",
+      "bytes": "52c508",
+      "instruction": "addi a5, a5, 8",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x400570fd",
+      "bytes": "276403",
+      "instruction": "bbci a4, 2, 0x40057104",
+      "price_class": "branch_taken"
+    },
+    {
+      "address": "0x40057100",
+      "bytes": "3905",
+      "instruction": "s32i.n a3, a5, 0",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x40057102",
+      "bytes": "4b55",
+      "instruction": "addi.n a5, a5, 4",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x40057104",
+      "bytes": "176404",
+      "instruction": "bbci a4, 1, 0x4005710c",
+      "price_class": "branch_taken"
+    },
+    {
+      "address": "0x40057107",
+      "bytes": "325500",
+      "instruction": "s16i a3, a5, 0",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x4005710a",
+      "bytes": "2b55",
+      "instruction": "addi.n a5, a5, 2",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x4005710c",
+      "bytes": "076402",
+      "instruction": "bbci a4, 0, 0x40057112",
+      "price_class": "branch_taken"
+    },
+    {
+      "address": "0x4005710f",
+      "bytes": "324500",
+      "instruction": "s8i a3, a5, 0",
+      "price_class": "issue"
+    },
+    {
+      "address": "0x40057112",
+      "bytes": "1df0",
+      "instruction": "retw.n",
+      "price_class": "call8_retw_pair"
+    }
+  ],
+  "pricing": {
+    "callx8_retw_pair_cycles": {
+      "decimal": 7.5,
+      "denominator": 2,
+      "numerator": 15
+    },
+    "conditional_branch_cycles": {
+      "not_taken": 1,
+      "taken": 3
+    },
+    "independent_sram_store_additive_cycles": 0,
+    "issue_cycles": 1,
+    "load_use_additive_cycles": 0,
+    "loop_alignment_additive_cycles": 0,
+    "loop_setup_cycles": 5,
+    "source": "docs/evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json"
+  },
+  "rom": {
+    "crosses_elf_region": false,
+    "elf_section": ".text",
+    "memset_address": "0x400570c8",
+    "memset_size_bytes": 76,
+    "path_address_range": [
+      "0x400570c8",
+      "0x40057112"
+    ],
+    "sha256": "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd"
+  },
+  "schema_version": 1
+}
