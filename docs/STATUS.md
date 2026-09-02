@@ -32,6 +32,14 @@ what is adopted, and what the hardware queue holds. The goal is
 - The TinyDraw V2 board harvest is merged. It includes GP-SPI2 DMA,
   CST820 touch, the CO5300 panel, timestamped GPIO edges, browser touch,
   and the paced-stroke workflow, with the defect dispositions below.
+- The shared cache model is merged at `4608137`. One I-cache and one D-cache
+  are shared by both live cores, with no per-core cache state. Geometry comes
+  from typed `ChipConfig`; unmatched geometry is refused by name. The model
+  provides explicit invalidation and writeback, carries no timing, and keeps
+  the TRM-silent LRU policy behind `ReplacementPolicy`. All available IDF 6.1
+  cold, hot, and hot-hit cache receipts replay deterministically. The missing
+  16-line I-cache receipt is tested as model-only behavior, not a measured
+  claim.
 - The wasm JIT accounting spike is committed at
   [`evidence/wasm-jit-accounting-spike-2026-09-01/result.json`](evidence/wasm-jit-accounting-spike-2026-09-01/result.json).
   On an Apple M1 Pro in Chrome 151, the accounting-off median is 10,486.56
@@ -283,31 +291,29 @@ mode (needs GOAL milestone 2).
 - The interpreter-versus-native-JIT architectural conformance gate is merged
   at `2d42032`. Its committed corpus and 128 deterministic randomized SRAM
   blocks compare registers, PC, touched memory, and the complete SRAM image.
-- Milestone 2 Task 2 is parked on branch `codex/overnight-task2` at `b48075e`.
-  The SHA-256-pinned TinyDraw SRAM kernel and deterministic ledger pass, but
-  the real IDF `_WindowOverflow12` and `_WindowUnderflow12` handler bodies
-  total 28 priced cycles against the 35-cycle correlation receipt. The missing
-  seven cycles are in the trigger and return path, whose sequence totals R2
-  keeps out of the price table.
+- Milestone 2 Task 2 is parked on branch `codex/overnight-task2` at `17047d4`.
+  The SHA-256-pinned TinyDraw SRAM kernel and deterministic ledger pass on
+  explicitly pinned core 0. Shared cache state is transactional across both
+  live cores. The real IDF `_WindowOverflow12` and `_WindowUnderflow12`
+  handler bodies total 28 priced cycles against the 35-cycle correlation
+  receipt. The missing seven cycles are in the trigger and return path, whose
+  sequence totals R2 keeps out of the price table.
 - ESP32-S3 TRM v1.8, section 4.3.3.2, page 405, specifies one
   dual-core-shared I-cache and one dual-core-shared D-cache, with each core
-  on its own bus. GOAL now adopts that topology. Task 5 resumes with shared
-  cache state and the brief-directed LRU fallback because the TRM does not
-  specify a replacement policy.
+  on its own bus. GOAL and the merged Task 5 cache model adopt that topology.
+  LRU is isolated behind a policy enum because the TRM does not specify a
+  replacement policy.
 - Root `LICENSE` file on the fork: waiting on the upstream author; the maintainer owns the contact.
 - `.github/workflows/pages.yml` fetches the mask ROM unpinned from `releases/latest`: dormant because it triggers only on `main`, the upstream mirror; pin or remove it when the workflow is next touched.
 - `periph.rs` and `machine.rs` decomposition: deliberately deferred; extract only what Task 3b forces under the build-exactly-the-thing rule.
 
 ## Proposed next steps
 
-1. Proposal: complete Task 5's receipt-replay gate with shared I-cache and
-   D-cache state, register-derived `ChipConfig`, and the brief-directed LRU
-   fallback.
-2. Proposal: disaggregate the 35-cycle window-pair receipt into priced
+1. Proposal: disaggregate the 35-cycle window-pair receipt into priced
    instructions and additive delays, or revise the mandatory correlation
-   boundary, then resume Task 2 from `b48075e`.
-3. Proposal: provide a pinned mask ROM ELF and the calibration-only RGB565
+   boundary, then resume Task 2 from `17047d4`.
+2. Proposal: provide a pinned mask ROM ELF and the calibration-only RGB565
    oracle bytes so the parked ROM, interrupt, and RGB565 correlation attempts
    can execute real code paths.
-4. Proposal: merge Task 2 only after its mandatory window-pair exit passes;
+3. Proposal: merge Task 2 only after its mandatory window-pair exit passes;
    unknown operations and configurations remain fail-closed.
