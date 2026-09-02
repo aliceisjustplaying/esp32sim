@@ -2,11 +2,12 @@ use std::process::Command;
 
 use backend_api::{Backend, CoreId};
 use esp32s3::{Esp32Backend, Machine, MeasuredStep};
-use wasm_jit_spike::{emit_sram, REGISTER_COUNT, SRAM_IMAGE_OFFSET};
+use wasm_jit_spike::{emit_sram, REGISTER_COUNT};
 
 const KERNEL: &[u8] = include_bytes!("../../esp32s3/tests/fixtures/tinydraw-sram-kernel.bin");
 const KERNEL_START: u32 = 0x4038_645b;
 const KERNEL_INSTRUCTIONS: usize = 7;
+const KERNEL_BYTES: usize = 19;
 const SRAM_BASE: u32 = 0x3fc8_9000;
 const SRAM_LEN: usize = 0x400;
 
@@ -20,8 +21,14 @@ fn sram_kernel_jit_ledger_is_byte_identical_to_measured_interpreter() {
     sram[4..8].copy_from_slice(&0x3fc8_9100u32.to_le_bytes());
     sram[0x2c4..0x2c8].copy_from_slice(&0x1234_5678u32.to_le_bytes());
 
-    let module = emit_sram(KERNEL_START, KERNEL, registers, SRAM_BASE, &sram)
-        .expect("the committed SRAM kernel emits");
+    let module = emit_sram(
+        KERNEL_START,
+        &KERNEL[..KERNEL_BYTES],
+        registers,
+        SRAM_BASE,
+        &sram,
+    )
+    .expect("the committed SRAM kernel emits");
     execute_node(&module.bytes);
     assert_eq!(module.canonical_ledger, expected);
 }
@@ -81,7 +88,7 @@ const fs = require('fs');
 WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
   instance.exports.run();
   const view = new DataView(instance.exports.memory.buffer);
-  if (view.getUint32(Number(process.argv[2]), true) === 0) process.exit(2);
+  if (view.getBigUint64(72, true) === 0n) process.exit(2);
 }).catch(error => { console.error(error); process.exit(1); });
 "#;
     let path = std::path::Path::new("/tmp").join(format!(
@@ -92,7 +99,6 @@ WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
     let output = Command::new("node")
         .args(["-e", SCRIPT])
         .arg(&path)
-        .arg((SRAM_IMAGE_OFFSET + 0x100).to_string())
         .output()
         .expect("run wasm");
     std::fs::remove_file(path).expect("remove wasm");

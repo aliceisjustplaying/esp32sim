@@ -49,6 +49,7 @@ pub struct EmittedModule {
     pub bytes: Vec<u8>,
     pub instruction_count: usize,
     pub cycle_cost: u64,
+    pub canonical_ledger: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -132,6 +133,7 @@ pub fn emit_with_options(
         bytes: wasm_module(body, &state),
         instruction_count,
         cycle_cost,
+        canonical_ledger: Vec::new(),
     })
 }
 
