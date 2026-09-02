@@ -1,5 +1,6 @@
 use backend_api::{
-    price_operation, CacheFillPosition, CacheKind, CoreId, CostExpression, Operation, ReceiptId,
+    price_operation, CacheFillPosition, CacheKind, ChipConfig, CoreId, CostExpression, Operation,
+    ReceiptId,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -21,7 +22,7 @@ fn receipt(bytes: &[u8], expected_sha256: &str) -> Value {
 }
 
 fn cycles(operation: Operation) -> u64 {
-    price_operation(CoreId::Core0, operation)
+    price_operation(ChipConfig::RECEIPT_SCOPE, CoreId::Core0, operation)
         .expect("receipt-backed operation prices")
         .0
         .cycles()
@@ -43,12 +44,20 @@ fn branch_receipt_and_model_assert_three_and_one_exactly() {
         receipt["matchedResults"]["adoptedBeqzCpuCycles"]["taken"],
         3
     );
-    let taken = price_operation(CoreId::Core0, Operation::BranchZero { taken: true })
-        .expect("taken branch is adopted")
-        .0;
-    let not_taken = price_operation(CoreId::Core0, Operation::BranchZero { taken: false })
-        .expect("not-taken branch is adopted")
-        .0;
+    let taken = price_operation(
+        ChipConfig::RECEIPT_SCOPE,
+        CoreId::Core0,
+        Operation::BranchZero { taken: true },
+    )
+    .expect("taken branch is adopted")
+    .0;
+    let not_taken = price_operation(
+        ChipConfig::RECEIPT_SCOPE,
+        CoreId::Core0,
+        Operation::BranchZero { taken: false },
+    )
+    .expect("not-taken branch is adopted")
+    .0;
     assert_eq!(taken.receipt, ReceiptId::BeqzAdoption2bf3ffd);
     assert_eq!(taken.cycles(), Some(3));
     assert_eq!(not_taken.cycles(), Some(1));
@@ -72,6 +81,7 @@ fn mmio_receipt_and_model_assert_three_n_minus_eight_exactly() {
     );
     for count in [3, 4, 16, 4096] {
         let component = price_operation(
+            ChipConfig::RECEIPT_SCOPE,
             CoreId::Core0,
             Operation::SameValueMmioWriteRun {
                 address: 0x600c_001c,
