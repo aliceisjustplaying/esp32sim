@@ -1,5 +1,5 @@
 use backend_api::{Backend, CoreId};
-use esp32s3::{Esp32Backend, Machine, MeasuredStep};
+use esp32s3::{machine, Esp32Backend, Machine, MeasuredMachine, MeasuredStep};
 
 const KERNEL: &[u8] = include_bytes!("fixtures/tinydraw-sram-kernel.bin");
 const KERNEL_START: u32 = 0x4038_645b;
@@ -26,7 +26,7 @@ fn receipt_config(machine: &mut Machine) {
 }
 
 fn run_kernel() -> Vec<u8> {
-    let mut machine = Machine::new([0; 6]);
+    let mut machine = machine([0; 6]);
     receipt_config(&mut machine);
     machine
         .bus
@@ -40,9 +40,9 @@ fn run_kernel() -> Vec<u8> {
         .bus
         .load_bytes(0x3fc8_92c4, &0x1234_5678u32.to_le_bytes())
         .expect("kernel input value maps into SRAM");
-    machine.cpu.pc = KERNEL_START;
-    machine.cpu.set_ar(2, 0x3fc8_9000);
-    machine.cpu.set_ar(3, 7);
+    machine.cores[0].pc = KERNEL_START;
+    machine.cores[0].set_ar(2, 0x3fc8_9000);
+    machine.cores[0].set_ar(3, 7);
 
     let mut backend = Esp32Backend::default();
     for _ in 0..KERNEL_INSTRUCTIONS {
