@@ -1,0 +1,202 @@
+{
+  "adoptedAdditiveDelays": {
+    "spi2DmaContentionOnPsramToSramCopy": {
+      "cycles": 0,
+      "pairedBootMedianRangeCyclesPer32768ByteCopy": [
+        0,
+        3.5
+      ],
+      "scope": "CPU-copy slowdown attributable to concurrent SPI2 DMA",
+      "tier": "exact"
+    }
+  },
+  "cellCount": 5,
+  "cells": {
+    "copy_psram_to_sram_dma_active": {
+      "boots": [
+        {
+          "cyclesPerOperation": {
+            "max": 13.1033935546875,
+            "median": 12.942626953125,
+            "min": 12.937255859375,
+            "p90": 13.1033935546875
+          },
+          "max": 107343,
+          "median": 106026,
+          "min": 105982,
+          "p90": 107343
+        },
+        {
+          "cyclesPerOperation": {
+            "max": 13.3067626953125,
+            "median": 13.128662109375,
+            "min": 13.1246337890625,
+            "p90": 13.29052734375
+          },
+          "max": 109009,
+          "median": 107550,
+          "min": 107517,
+          "p90": 108876
+        }
+      ],
+      "classification": {
+        "medianRange": [
+          12.942626953125,
+          13.128662109375
+        ],
+        "tier": "distribution"
+      },
+      "operationsPerTrial": 8192
+    },
+    "copy_psram_to_sram_idle": {
+      "boots": [
+        {
+          "cyclesPerOperation": {
+            "max": 19.5828857421875,
+            "median": 12.9423828125,
+            "min": 12.937255859375,
+            "p90": 13.1031494140625
+          },
+          "max": 160423,
+          "median": 106024,
+          "min": 105982,
+          "p90": 107341
+        },
+        {
+          "cyclesPerOperation": {
+            "max": 19.586181640625,
+            "median": 13.1280517578125,
+            "min": 13.124755859375,
+            "p90": 13.2862548828125
+          },
+          "max": 160450,
+          "median": 107545,
+          "min": 107518,
+          "p90": 108841
+        }
+      ],
+      "classification": {
+        "medianRange": [
+          12.9423828125,
+          13.1280517578125
+        ],
+        "tier": "distribution"
+      },
+      "operationsPerTrial": 8192
+    },
+    "copy_sram_to_sram_dma_active": {
+      "boots": [
+        {
+          "cyclesPerOperation": {
+            "max": 8.1666259765625,
+            "median": 8.0047607421875,
+            "min": 7.9998779296875,
+            "p90": 8.1666259765625
+          },
+          "max": 66901,
+          "median": 65575,
+          "min": 65535,
+          "p90": 66901
+        },
+        {
+          "cyclesPerOperation": {
+            "max": 8.1666259765625,
+            "median": 8.0048828125,
+            "min": 7.9998779296875,
+            "p90": 8.1666259765625
+          },
+          "max": 66901,
+          "median": 65576,
+          "min": 65535,
+          "p90": 66901
+        }
+      ],
+      "classification": {
+        "range": [
+          8,
+          9
+        ],
+        "tier": "interval"
+      },
+      "operationsPerTrial": 8192
+    },
+    "spi2_32k_submit_only": {
+      "boots": [
+        {
+          "cyclesPerOperation": {
+            "max": 6802,
+            "median": 5755,
+            "min": 5754,
+            "p90": 5755
+          },
+          "max": 6802,
+          "median": 5755,
+          "min": 5754,
+          "p90": 5755
+        },
+        {
+          "cyclesPerOperation": {
+            "max": 6799,
+            "median": 5755,
+            "min": 5755,
+            "p90": 5755
+          },
+          "max": 6799,
+          "median": 5755,
+          "min": 5755,
+          "p90": 5755
+        }
+      ],
+      "classification": {
+        "tier": "exact",
+        "value": 5755
+      },
+      "operationsPerTrial": 1
+    },
+    "spi2_32k_submit_to_complete": {
+      "boots": [
+        {
+          "cyclesPerOperation": {
+            "max": 402932,
+            "median": 401589,
+            "min": 401589,
+            "p90": 401589
+          },
+          "max": 402932,
+          "median": 401589,
+          "min": 401589,
+          "p90": 401589
+        },
+        {
+          "cyclesPerOperation": {
+            "max": 402932,
+            "median": 401589,
+            "min": 401588,
+            "p90": 401589
+          },
+          "max": 402932,
+          "median": 401589,
+          "min": 401588,
+          "p90": 401589
+        }
+      ],
+      "classification": {
+        "tier": "exact",
+        "value": 401589
+      },
+      "operationsPerTrial": 1
+    }
+  },
+  "correlationTargets": {
+    "spi2_32k_submit_only": {
+      "cycles": 5755,
+      "tier": "exact"
+    },
+    "spi2_32k_submit_to_complete": {
+      "cycles": 401589,
+      "tier": "exact"
+    }
+  },
+  "schemaVersion": 1,
+  "statistics": "raw CCOUNT min, median, nearest-rank p90, and max"
+}
