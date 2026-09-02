@@ -24,6 +24,16 @@ points there.
   operations are refused by name, never faked.
 - Do not claim "cycle-accurate" without qualifying which tier and
   which cost classes the claim covers.
+- IDF 6.1 is authoritative. Every receipt pins its toolchain, and an
+  IDF 6.1 probe value is adopted when probe-level results differ across
+  toolchains.
+- The price table contains only per-instruction costs and additive
+  delays. Sequence totals are correlation targets and never prices.
+- Configuration-dependent costs are selected by a `ChipConfig` derived
+  from the registers firmware programs. An unreceipted configuration is
+  refused by name.
+- IDF 6.1 and the exact board configuration may be baked in. No more
+  TinyDraw-specific state may be baked in.
 
 ## Engine discipline
 
@@ -38,6 +48,11 @@ points there.
   scaffolding that assumes a second core can be added later.
 - No TypeScript execution engine is ever built. The web shell is a
   thin transport and UI client.
+- The accuracy target is exact on SRAM kernels, within 1 percent on
+  frame-scale work, and distribution agreement on RTC and PSRAM paths.
+- Board scope is exactly the Waveshare ESP32-S3-Touch-AMOLED-1.8. Other
+  ESP32-S3 board configurations require their own receipts and are
+  refused by name when unmatched.
 
 ## Checkouts and worktrees
 
@@ -79,6 +94,10 @@ points there.
   opportunistically.
 - Stop and report when blocked or when a finding contradicts the goal
   or the evidence; do not guess.
+- A hardware probe reaches the queue only after emulator dry-run and ELF
+  verification pass. A capture ends at the final requested boot, with no
+  product-restore stage. Flashing a product image requires an explicit
+  measurement task.
 
 ## Prose
 
