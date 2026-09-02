@@ -106,6 +106,7 @@ pub struct SocBus {
     /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
     /// have passed, so guest-visible time is exact while idle rounds cost nothing.
     tick_pending: u32, tick_budget: u32,
+    measured_timing_active: bool,
     pending_spi2_dma: Option<PendingSpi2Dma>,
 }
 
@@ -134,6 +135,7 @@ impl SocBus {
             spi2_dma_fault: None, spi2_dma_timing_fault: None, last_spi2_dma_timing: None,
             board_deadline_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
+            measured_timing_active: false,
             pending_spi2_dma: None,
         };
         let mut b = bus_uninit;
@@ -190,6 +192,7 @@ impl SocBus {
         &mut self,
         target: backend_api::VirtualCycle,
     ) -> Result<(), crate::board::BoardDeadlineError> {
+        self.measured_timing_active = true;
         if target < self.cycles {
             return Err(crate::board::BoardDeadlineError::TimeReversed {
                 current: self.cycles,
@@ -337,47 +340,60 @@ impl SocBus {
         };
         self.periph.write32(a, w);
         if let Some(mut transfer) = self.periph.spi2.take_transfer() {
-            let dma_completion = match self.spi2_dma_payload(&mut transfer) {
-                Ok(completion) => completion,
-                Err(fault) => {
+            if !self.measured_timing_active {
+                if let Err(fault) = self.spi2_dma_payload_fast(&mut transfer) {
                     self.spi2_dma_fault = Some(fault);
                     return;
                 }
-            };
-            // GPIO carries chip select and command/data pins for existing boards. Deliver every
-            // preceding edge before the synchronous SPI transaction so the board observes bus order.
-            if !self.periph.gpio.changes.is_empty() {
-                let changes = std::mem::take(&mut self.periph.gpio.changes);
-                self.board.gpio_changes(&changes);
-            }
-            match dma_completion {
-                Some(completion) if self.board.name() == "waveshare-amoled18-v2" => {
-                    let request = Spi2DmaRequest {
-                        submitted_at: self.cycles,
-                        bytes: transfer.data_len,
-                        clock_hz: self.spi2_clock_hz(),
-                        mode: self.spi2_mode(),
-                    };
-                    match self.board.schedule_spi2_dma(request) {
-                        Ok(timing) => {
-                            self.last_spi2_dma_timing = Some(timing);
-                            self.pending_spi2_dma = Some(PendingSpi2Dma {
-                                transfer,
-                                completion,
-                            });
-                        }
-                        Err(fault) => {
-                            self.spi2_dma_timing_fault = Some(fault);
-                            return;
-                        }
-                    }
+                if !self.periph.gpio.changes.is_empty() {
+                    let changes = std::mem::take(&mut self.periph.gpio.changes);
+                    self.board.gpio_changes(&changes);
                 }
-                completion => {
-                    if let Some(completion) = completion {
-                        self.apply_spi2_dma_completion(completion);
+                let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
+                self.periph.spi2.finish_transfer(transfer, &rx);
+            } else {
+                let dma_completion = match self.spi2_dma_payload_measured(&mut transfer) {
+                    Ok(completion) => completion,
+                    Err(fault) => {
+                        self.spi2_dma_fault = Some(fault);
+                        return;
                     }
-                    let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
-                    self.periph.spi2.finish_transfer(transfer, &rx);
+                };
+                // GPIO carries chip select and command/data pins for existing boards. Deliver every
+                // preceding edge before the synchronous SPI transaction so the board observes bus order.
+                if !self.periph.gpio.changes.is_empty() {
+                    let changes = std::mem::take(&mut self.periph.gpio.changes);
+                    self.board.gpio_changes(&changes);
+                }
+                match dma_completion {
+                    Some(completion) if self.board.name() == "waveshare-amoled18-v2" => {
+                        let request = Spi2DmaRequest {
+                            submitted_at: self.cycles,
+                            bytes: transfer.data_len,
+                            clock_hz: self.spi2_clock_hz(),
+                            mode: self.spi2_mode(),
+                        };
+                        match self.board.schedule_spi2_dma(request) {
+                            Ok(timing) => {
+                                self.last_spi2_dma_timing = Some(timing);
+                                self.pending_spi2_dma = Some(PendingSpi2Dma {
+                                    transfer,
+                                    completion,
+                                });
+                            }
+                            Err(fault) => {
+                                self.spi2_dma_timing_fault = Some(fault);
+                                return;
+                            }
+                        }
+                    }
+                    completion => {
+                        if let Some(completion) = completion {
+                            self.apply_spi2_dma_completion(completion);
+                        }
+                        let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
+                        self.periph.spi2.finish_transfer(transfer, &rx);
+                    }
                 }
             }
         }
@@ -393,7 +409,106 @@ impl SocBus {
 
     /// Replace the GP-SPI2 data phase with bytes from its active GDMA TX descriptor chain.
     /// ESP-IDF uses this path for both small panel commands and full color transfers.
-    fn spi2_dma_payload(
+    fn spi2_dma_payload_fast(
+        &mut self,
+        transfer: &mut crate::periph::GpSpiTransfer,
+    ) -> Result<(), DmaDescriptorFault> {
+        let Some(ch) = self.periph.gdma.out_channel_for(0) else {
+            return Ok(());
+        };
+        let mut payload = Vec::with_capacity(transfer.data_len);
+        let mut visited = HashSet::new();
+        let mut steps = 0;
+        while payload.len() < transfer.data_len {
+            let c = self.periph.gdma.out[ch];
+            if !c.running || c.desc == 0 {
+                break;
+            }
+            if steps == SPI2_DMA_DESCRIPTOR_STEP_BUDGET {
+                return Err(DmaDescriptorFault::StepBudgetExceeded {
+                    budget: SPI2_DMA_DESCRIPTOR_STEP_BUDGET,
+                });
+            }
+            steps += 1;
+            if !visited.insert(c.desc) {
+                return Err(DmaDescriptorFault::Cycle { descriptor: c.desc });
+            }
+            let dw0 = self
+                .read32(c.desc)
+                .map_err(|fault| DmaDescriptorFault::Read {
+                    descriptor: c.desc,
+                    word: DmaDescriptorWord::Control,
+                    fault,
+                })?;
+            let length = (dw0 >> 12) & 0xfff;
+            let eof = dw0 & (1 << 30) != 0;
+            let buf = self
+                .read32(c.desc + 4)
+                .map_err(|fault| DmaDescriptorFault::Read {
+                    descriptor: c.desc,
+                    word: DmaDescriptorWord::Buffer,
+                    fault,
+                })?;
+            let next = self
+                .read32(c.desc + 8)
+                .map_err(|fault| DmaDescriptorFault::Read {
+                    descriptor: c.desc,
+                    word: DmaDescriptorWord::Next,
+                    fault,
+                })?;
+            let remaining = length.saturating_sub(c.buf_pos) as usize;
+            if remaining != 0 {
+                let take = remaining.min(transfer.data_len - payload.len());
+                for i in 0..take {
+                    let address = buf + c.buf_pos + i as u32;
+                    payload.push(self.read8(address).map_err(|fault| {
+                        DmaDescriptorFault::BufferRead {
+                            descriptor: c.desc,
+                            address,
+                            fault,
+                        }
+                    })?);
+                }
+                self.periph.gdma.out[ch].buf_pos += take as u32;
+                if take < remaining {
+                    continue;
+                }
+            }
+            if self.periph.gdma.out[ch].conf0 & (1 << 2) != 0 {
+                let _ = self.write32(c.desc, dw0 & !(1 << 31));
+            }
+            let out = &mut self.periph.gdma.out[ch];
+            out.int_raw |= 1 << 0;
+            if eof {
+                out.int_raw |= 1 << 1;
+                out.eof_desc = c.desc;
+            }
+            if next == 0 {
+                out.running = false;
+                out.desc = 0;
+                out.int_raw |= 1 << 3;
+            } else {
+                out.desc = next;
+                out.buf_pos = 0;
+            }
+            self.irq_dirty = true;
+            if eof {
+                break;
+            }
+        }
+        if !payload.is_empty() && transfer.tx.len() < transfer.data_offset + transfer.data_len {
+            transfer
+                .tx
+                .resize(transfer.data_offset + transfer.data_len, 0);
+        }
+        let n = payload
+            .len()
+            .min(transfer.tx.len().saturating_sub(transfer.data_offset));
+        transfer.tx[transfer.data_offset..transfer.data_offset + n].copy_from_slice(&payload[..n]);
+        Ok(())
+    }
+
+    fn spi2_dma_payload_measured(
         &mut self,
         transfer: &mut crate::periph::GpSpiTransfer,
     ) -> Result<Option<Spi2DmaCompletionPlan>, DmaDescriptorFault> {
@@ -990,7 +1105,9 @@ impl SocBus {
                 self.irq_dirty = true;
             }
         }
-        self.deliver_spi2_dma_completion();
+        if self.measured_timing_active {
+            self.deliver_spi2_dma_completion();
+        }
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
@@ -1136,6 +1253,42 @@ mod gp_spi_board_tests {
         assert_eq!(&*events.lock().unwrap(), &["spi:2:[11, 22, 33, 44]:0"]);
         assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+    }
+
+    #[test]
+    fn waveshare_fast_mode_completes_unpriced_spi2_gdma_immediately() {
+        const SPI2: u32 = 0x6002_4000;
+        const DESC: u32 = 0x3fc9_0100;
+        const DATA: u32 = 0x3fca_0000;
+        const TRANSFER_BYTES: u32 = 64;
+
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.write32(
+            DESC,
+            TRANSFER_BYTES | (TRANSFER_BYTES << 12) | (1 << 30) | (1 << 31),
+        )
+        .unwrap();
+        bus.write32(DESC + 4, DATA).unwrap();
+        bus.write32(DESC + 8, 0).unwrap();
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+        bus.periph.gdma.out[0].peri_sel = 0;
+        bus.periph.gdma.out[0].desc = DESC;
+        bus.periph.gdma.out[0].running = true;
+
+        bus.write32(SPI2 + 0x0c, 1 << 12).unwrap();
+        bus.write32(SPI2 + 0x10, (1 << 27) | (1 << 13)).unwrap();
+        bus.write32(SPI2 + 0x1c, (TRANSFER_BYTES * 8) - 1).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+
+        assert!(!bus.measured_timing_active);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+        assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
+        assert_eq!(bus.spi2_dma_timing_fault, None);
+        assert_eq!(bus.last_spi2_dma_timing, None);
+        assert!(bus.pending_spi2_dma.is_none());
     }
 
     #[test]
