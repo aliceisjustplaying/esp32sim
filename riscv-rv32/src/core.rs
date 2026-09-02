@@ -57,8 +57,8 @@ impl emu_core::Core for Cpu {
         (budget, None)
     }
     fn regs(&self, out: &mut Vec<(&'static str, u32)>) {
-        for i in 1..32 {
-            out.push((X[i], self.x[i]));
+        for (&name, &value) in X.iter().zip(&self.x).skip(1) {
+            out.push((name, value));
         }
         out.push(("mstatus", self.mstatus));
     }

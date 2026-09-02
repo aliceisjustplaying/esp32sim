@@ -81,8 +81,8 @@ fn decoder_matches_objdump() {
             }
 
             let mut bytes = [0u8; 4];
-            for i in 0..len {
-                bytes[i] = ((word >> (8 * i)) & 0xff) as u8;
+            for (i, byte) in bytes.iter_mut().enumerate().take(len) {
+                *byte = ((word >> (8 * i)) & 0xff) as u8;
             }
             let insn = decode(addr, bytes);
             let mine = disasm::format(&insn);
