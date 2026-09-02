@@ -655,10 +655,11 @@ fn chip_config_from_registers(machine: &crate::Machine) -> ChipConfig {
     let spi1 = &machine.bus.periph.spi1.regs;
     let extmem = &machine.bus.periph.extmem.ram;
     let cpu_mhz = match ((system.read(0x60) >> 10) & 3, system.read(0x10) & 3) {
+        (0, _) => 40,
         (1, 0) => 80,
         (1, 1) => 160,
         (1, 2) => 240,
-        _ => 0,
+        _ => 40,
     };
     let clock_mhz = |register: u32| {
         if register & (1 << 31) != 0 {
@@ -673,6 +674,7 @@ fn chip_config_from_registers(machine: &crate::Machine) -> ChipConfig {
     let dcache_control = extmem.read(0x0);
     ChipConfig {
         cpu_mhz,
+        apb_mhz: cpu_mhz.min(80),
         flash_mode: if spi0.read(0x8) & spi1.read(0x8) & (1 << 24) != 0 {
             FlashMode::Qio
         } else {
@@ -910,6 +912,28 @@ mod tests {
         assert_eq!(
             chip_config_from_registers(&machine),
             ChipConfig::RECEIPT_SCOPE
+        );
+    }
+
+    #[test]
+    fn reset_configuration_uses_the_xtal_clock_and_register_defaults() {
+        let machine = crate::machine([0; 6]);
+        assert_eq!(
+            chip_config_from_registers(&machine),
+            ChipConfig {
+                cpu_mhz: 40,
+                apb_mhz: 40,
+                flash_mode: FlashMode::Other,
+                flash_mhz: 160,
+                psram_mode: PsramMode::Other,
+                psram_mhz: 160,
+                icache_size_bytes: 16 * 1024,
+                icache_ways: 4,
+                icache_line_bytes: 16,
+                dcache_size_bytes: 32 * 1024,
+                dcache_ways: 8,
+                dcache_line_bytes: 16,
+            }
         );
     }
 
