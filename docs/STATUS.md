@@ -334,6 +334,7 @@ mode (needs GOAL milestone 2).
 
 ## Review residuals
 
+- Fast-mode TinyDraw boot regressed at `da5e01b` because Waveshare SPI2 GDMA timing also ran in fast mode; `2f498dc` limits it to measured timing, and `esp32s3/tests/fast_boot_smoke.rs` now guards READY.
 - The interpreter-versus-native-JIT architectural conformance gate is merged
   at `2d42032`. Its committed corpus and 128 deterministic randomized SRAM
   blocks compare registers, PC, touched memory, and the complete SRAM image.
