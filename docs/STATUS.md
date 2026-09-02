@@ -312,7 +312,13 @@ mode (needs GOAL milestone 2).
   executed a real exception. The corrected recursion reaches the first real
   `_WindowOverflow8` entry and refuses. Two receipt classes are missing:
   exception-entry delay and the `rfwo` and `rfwu` instruction costs. The
-  correlation stays ignored pending hardware queue item H1.
+  correlation stays ignored pending hardware queue item H1. Direct execution
+  of the real IDF 6.1 level 1, level 3, and window-vector paths reaches `l32r`
+  before completing each entry or resume ledger. Its adopted cost is interval,
+  so R8 forbids deriving exact exception-entry delay E or return-redirect cost
+  R. The window-handler ledger contributes 18 known cycles, but its residual
+  cannot be evaluated without E and R. Receipt:
+  [`evidence/timing/derived-exception-idf61/`](evidence/timing/derived-exception-idf61/README.md).
 - ESP32-S3 TRM v1.8, section 4.3.3.2, page 405, specifies one
   dual-core-shared I-cache and one dual-core-shared D-cache, with each core
   on its own bus. GOAL and the merged Task 5 cache model adopt that topology.
