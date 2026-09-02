@@ -37,14 +37,14 @@ impl Sha {
     }
     fn h64(&self) -> [u64; 8] {
         let mut v = [0u64; 8];
-        for i in 0..8 { v[i] = ((self.h[2 * i] as u64) << 32) | self.h[2 * i + 1] as u64; }
+        for (i, vi) in v.iter_mut().enumerate() { *vi = ((self.h[2 * i] as u64) << 32) | self.h[2 * i + 1] as u64; }
         v
     }
     fn compress(&mut self) {
         // message words are written by software as the bytes of the block; interpret big-endian per SHA
         if self.mode >= 3 {
             let mut w = [0u64; 16];
-            for j in 0..16 { w[j] = ((self.m[2 * j].swap_bytes() as u64) << 32) | self.m[2 * j + 1].swap_bytes() as u64; }
+            for (j, wj) in w.iter_mut().enumerate() { *wj = ((self.m[2 * j].swap_bytes() as u64) << 32) | self.m[2 * j + 1].swap_bytes() as u64; }
             let mut h = self.h64();
             sha512_block(&mut h, &w);
             self.set_h64(&h);
@@ -105,10 +105,10 @@ fn sha512_block(h: &mut [u64; 8], w0: &[u64; 16]) {
     }
     let (mut a, mut b, mut c, mut d) = (h[0], h[1], h[2], h[3]);
     let (mut e, mut f, mut g, mut hh) = (h[4], h[5], h[6], h[7]);
-    for i in 0..80 {
+    for (i, &wi) in w.iter().enumerate() {
         let s1 = e.rotate_right(14) ^ e.rotate_right(18) ^ e.rotate_right(41);
         let ch = (e & f) ^ (!e & g);
-        let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+        let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(wi);
         let s0 = a.rotate_right(28) ^ a.rotate_right(34) ^ a.rotate_right(39);
         let maj = (a & b) ^ (a & c) ^ (b & c);
         let t2 = s0.wrapping_add(maj);
@@ -150,9 +150,9 @@ fn sha1_block(h: &mut [u32; 16], w0: &[u32]) {
     w[..16].copy_from_slice(&w0[..16]);
     for i in 16..80 { w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1); }
     let (mut a, mut b, mut c, mut d, mut e) = (h[0], h[1], h[2], h[3], h[4]);
-    for i in 0..80 {
+    for (i, &wi) in w.iter().enumerate() {
         let (f, k) = match i { 0..=19 => ((b & c) | (!b & d), 0x5A827999), 20..=39 => (b ^ c ^ d, 0x6ED9EBA1), 40..=59 => ((b & c) | (b & d) | (c & d), 0x8F1BBCDC), _ => (b ^ c ^ d, 0xCA62C1D6) };
-        let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(w[i]);
+        let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(wi);
         e = d; d = c; c = b.rotate_left(30); b = a; a = t;
     }
     h[0] = h[0].wrapping_add(a); h[1] = h[1].wrapping_add(b); h[2] = h[2].wrapping_add(c); h[3] = h[3].wrapping_add(d); h[4] = h[4].wrapping_add(e);
@@ -163,6 +163,8 @@ impl Device for Sha {
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { Sha::write(self, off, v); WriteEffect::NONE }
     fn debug(&mut self, on: bool) { self.dbg = on; }
 }
+
+impl Default for Sha { fn default() -> Self { Self::new() } }
 
 #[cfg(test)]
 mod sha_tests {

@@ -87,6 +87,8 @@ impl Gdma {
     pub fn in_channel_for(&self, peri: u32) -> Option<usize> { (0..GDMA_CHANNELS).find(|&i| self.inp[i].running && self.inp[i].peri_sel == peri) }
 }
 
+impl Default for Gdma { fn default() -> Self { Self::new() } }
+
 /// One DMA descriptor (dma_descriptor_t): dw0 = size[11:0] length[23:12] suc_eof[30] owner[31]; dw1 = buffer; dw2 = next
 pub struct DmaDesc { pub addr: u32, pub size: u32, pub length: u32, pub eof: bool, pub owner_dma: bool, pub buf: u32, pub next: u32 }
 pub fn read_desc(mem: &dyn Fn(u32) -> u32, addr: u32) -> DmaDesc {

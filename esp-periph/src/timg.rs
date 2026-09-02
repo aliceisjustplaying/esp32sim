@@ -72,6 +72,7 @@ impl TimerGroup {
         }
     }
 }
+impl Default for TimerGroup { fn default() -> Self { Self::new() } }
 
 impl Device for TimerGroup {
     fn read(&mut self, off: u32) -> u32 { TimerGroup::read(self, off) }

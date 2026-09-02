@@ -67,6 +67,8 @@ impl RtcCntl {
     }
 }
 
+impl Default for RtcCntl { fn default() -> Self { Self::new() } }
+
 impl Device for RtcCntl {
     fn read(&mut self, off: u32) -> u32 { RtcCntl::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { RtcCntl::write(self, off, v); WriteEffect::NONE }

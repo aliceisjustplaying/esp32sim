@@ -56,6 +56,8 @@ impl I2c {
         }
     }
 
+    /// FIFO reset bits are independent and may both be set by one write.
+    #[allow(clippy::possible_missing_else)]
     pub fn write(&mut self, off: u32, v: u32) {
         match off {
             0x04 => { self.regs.write(off, v & !(1 << 5)); if v & (1 << 5) != 0 { self.run(); } }               // CTR.TRANS_START
@@ -117,6 +119,8 @@ impl I2c {
         }
     }
 }
+
+impl Default for I2c { fn default() -> Self { Self::new() } }
 
 // ------------------------------------------------------------------ devices
 

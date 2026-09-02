@@ -86,6 +86,7 @@ impl Device for Systimer {
     fn tick(&mut self, ticks: u64) { Systimer::tick(self, ticks) }
     /// Systimer ticks until the earliest armed comparator fires.
     fn has_deadline(&self) -> bool { true }
+    #[allow(clippy::implicit_saturating_sub)] // The explicit overdue branch documents that missed alarms fire now.
     fn next_deadline(&self) -> Option<u64> {
         let mut best: Option<u64> = None;
         for t in 0..3 {
@@ -104,3 +105,5 @@ impl Device for Systimer {
         best
     }
 }
+
+impl Default for Systimer { fn default() -> Self { Self::new() } }
