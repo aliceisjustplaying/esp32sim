@@ -83,7 +83,7 @@ def disassembly() -> str:
 40370106: 1df0 retw.n
 40370200 <exception_level1_handler>:
 40370200: 03e620 rsr.epc1 a2
-40370203: 223b addi.n a2, a2, 3
+40370203: c22203 addi a2, a2, 3
 40370205: 13e620 wsr.epc1 a2
 40370208: 002000 rsync
 4037020b: 003000 rfe
@@ -128,7 +128,7 @@ def test_verified_encodings_cover_all_six_h1_cells() -> None:
     assert result["cells"]["call12_window_pair"]["callMnemonic"] == "call12"
     assert result["cells"]["syscall_rfe_pair"]["knownTerms"] == [
         "rsr.epc1",
-        "addi.n",
+        "addi",
         "wsr.epc1",
         "rsync",
         "rfe",
