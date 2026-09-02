@@ -107,8 +107,12 @@ python -m espefuse --port /dev/cu.usbmodem101 summary          # the revision fi
 The C6 is in the WebAssembly build too — pick board `esp32c6` on the page, or open it directly:
 
     https://joakimeriksson.github.io/esp32sim/?fw=c6-hello
+    https://joakimeriksson.github.io/esp32sim/?fw=c6-energy-scan
 
-Console-only, real time, from the same mask ROM and binaries. See [wasm.md](wasm.md).
+The first is console-only; the second is the energy scanner on the Waveshare board at real time,
+with the panel, the WS2812 and a BOOT button on the page (its firmware is published under
+`web/wasm/fw/public/`, and the `bb_init` stub is resolved through the manifest's `symbols` map,
+so no ELF ships). See [wasm.md](wasm.md).
 
 ## What is modelled
 
@@ -165,8 +169,10 @@ ENERGY_SCAN_DIR=~/work/esp32/energy_scan examples/waveshare-c6-lcd147/run.sh --m
 - `esp_ieee802154_energy_detect` programs a duration, issues `ED_START` and takes the `ED_DONE`
   interrupt; the model completes the scan after the programmed symbols with a synthetic 2.4 GHz
   picture — a −93 dBm floor with the three non-overlapping WiFi channels (802.15.4 channels
-  11–14, 16–19, 21–24) sitting on it, wandering by a few dB (`Ieee802154::set_channel_dbm`
-  moves them). ~260 scans in 8 s, 16 bars on the screen.
+  11–14, 16–19, 21–24) sitting on it. The picture moves: every 2.5 s a network changes level or
+  a burst lands on a channel and fades, and levels drift 1 dB per 100 ms toward their targets,
+  all from one xorshift so a run is reproducible (`Ieee802154::set_channel_dbm` sets a level
+  outright). ~260 scans in 8 s, 16 bars on the screen.
 - The PHY blob's init runs, with one stub: `--stub bb_init=0` skips the baseband calibration
   (TX DC, IQ, power-detector tones), a set of hardware handshakes on undocumented registers at
   `0x600A0000` that spin forever without them. Everything before it (`rf_init`, the parameter

@@ -74,6 +74,7 @@ the tab falls half a second behind. `Date.now()` is passed in for the emulated S
 | Atech 14-port synth | real time | ST7735 and WS2812 decoded, buttons/knob, scripted scenario |
 | ESP32-C3 hello_world | real time | the other chip: one RV32IMC core, console only — pick board `esp32c3` |
 | ESP32-C6 hello_world | real time | the newest chip: one RV32IMAC core, console only — pick board `esp32c6` |
+| ESP32-C6 802.15.4 energy scanner | real time | the Waveshare ESP32-C6-LCD-1.47: LVGL spectrum on the ST7789 over SPI2+GDMA, WS2812, energy detect from the MAC model's moving 2.4 GHz picture; BOOT on the page — board `waveshare-c6-lcd147` |
 
 The interpreter in the browser is the basic-block interpreter — V8 executes the module natively
 but the AArch64 JIT is not available (wasm has no executable memory) — so throughput is about
