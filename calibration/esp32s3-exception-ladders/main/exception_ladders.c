@@ -73,15 +73,15 @@ static bool counters_zero(cache_counters_t counters) {
 }
 
 static void emit_refusal(const char *name) {
-  printf("CAL_RECORD {\"type\":\"refusal\",\"name\":\"%s\"," 
-         "\"reason\":\"cache-counter mismatch after %u attempts\"," 
+  printf("CAL_RECORD {\"type\":\"refusal\",\"name\":\"%s\","
+         "\"reason\":\"cache-counter mismatch after %u attempts\","
          "\"tierCandidate\":\"exact\"}\n", name, MAX_ATTEMPTS);
   fflush(stdout);
 }
 
 static void emit_metric(const char *name, const uint32_t *samples) {
-  printf("CAL_RECORD {\"type\":\"metric\",\"name\":\"%s\"," 
-         "\"memory\":\"iram\",\"access_pattern\":\"exception-ladder\"," 
+  printf("CAL_RECORD {\"type\":\"metric\",\"name\":\"%s\","
+         "\"memory\":\"iram\",\"access_pattern\":\"exception-ladder\","
          "\"operations_per_trial\":1,\"bytes_per_operation\":0,"
          "\"ccount_samples\":[", name);
   for (uint32_t index = 0; index < SAMPLES; ++index) {
@@ -155,12 +155,12 @@ void app_main(void) {
   esp_chip_info_t chip = {0};
   esp_chip_info(&chip);
   const uint32_t cpu_hz = esp_rom_get_cpu_ticks_per_us() * 1000000u;
-  printf("CAL_RECORD {\"type\":\"configuration\"," 
-         "\"schema_version\":\"1.0.0\",\"harness_version\":\"1.1.0\"," 
-         "\"idf_version\":\"%s\",\"target\":\"esp32s3\"," 
-         "\"chip_revision\":%u,\"cores\":%u,\"cpu_hz\":%" PRIu32 "," 
-         "\"ccount_hz\":%" PRIu32 ",\"probe\":\"exception-ladders\"," 
-         "\"samples_per_cell\":%u,\"max_attempts_per_cell\":%u," 
+  printf("CAL_RECORD {\"type\":\"configuration\","
+         "\"schema_version\":\"1.0.0\",\"harness_version\":\"1.1.0\","
+         "\"idf_version\":\"%s\",\"target\":\"esp32s3\","
+         "\"chip_revision\":%u,\"cores\":%u,\"cpu_hz\":%" PRIu32 ","
+         "\"ccount_hz\":%" PRIu32 ",\"probe\":\"exception-ladders\","
+         "\"samples_per_cell\":%u,\"max_attempts_per_cell\":%u,"
          "\"recursion_depth\":%u}\n", esp_get_idf_version(), chip.revision,
          chip.cores, cpu_hz, cpu_hz, SAMPLES, MAX_ATTEMPTS, RECURSION_DEPTH);
   fflush(stdout);
