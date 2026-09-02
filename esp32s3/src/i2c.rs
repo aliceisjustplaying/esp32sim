@@ -3,6 +3,8 @@ pub use esp_periph::i2c::*;
 use std::collections::HashMap;
 
 pub struct Ch32v003 { pub regs: [u8; 8], ptr: u8, first: bool, pub writes: u64 }
+impl Default for Ch32v003 { fn default() -> Self { Self::new() } }
+
 impl Ch32v003 {
     pub fn new() -> Self { let mut r = [0u8; 8]; r[2] = 0xff; r[4] = 0xff; Ch32v003 { regs: r, ptr: 0, first: true, writes: 0 } }
 }

@@ -60,6 +60,7 @@ impl Nat {
     // -------------------------------------------------------------- UDP
 
     /// Forward a UDP datagram and remember the flow so replies find their way back.
+    #[allow(clippy::too_many_arguments, reason = "packet fields stay explicit at the protocol boundary")]
     pub fn udp_out(&mut self, gmac: &[u8; 6], gip: &[u8; 4], sport: u16, dip: &[u8; 4], reply_src: &[u8; 4],
                    dport: u16, payload: &[u8], now_us: u64) {
         let idx = self.udp.iter().position(|f| f.guest_port == sport && f.dst_ip == *dip && f.dst_port == dport);

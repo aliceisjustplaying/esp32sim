@@ -121,7 +121,7 @@ impl VirtualNet {
 
     /// BOOTP/DHCP: answer DISCOVER with OFFER and REQUEST with ACK.
     fn dhcp(&mut self, d: &[u8], src: &[u8; 6]) -> Vec<Vec<u8>> {
-        if d.len() < 240 || d[0] != 1 || &d[236..240] != [0x63, 0x82, 0x53, 0x63] { return Vec::new(); }
+        if d.len() < 240 || d[0] != 1 || d[236..240] != [0x63, 0x82, 0x53, 0x63] { return Vec::new(); }
         let mut msg_type = 0u8;
         let mut i = 240;
         while i + 1 < d.len() {
@@ -157,9 +157,9 @@ impl VirtualNet {
         udp.extend_from_slice(&b);
 
         if reply_type == 5 { self.dhcp_acks += 1; }
-        if self.log { eprintln!("[net] DHCP {} -> {} for {}", if msg_type == 1 { "DISCOVER" } else { "REQUEST" },
+        if self.log { eprintln!("[net] DHCP {} -> {} for {}.{}.{}.{}", if msg_type == 1 { "DISCOVER" } else { "REQUEST" },
                                 if reply_type == 2 { "OFFER" } else { "ACK" },
-                                format!("{}.{}.{}.{}", self.sta_ip[0], self.sta_ip[1], self.sta_ip[2], self.sta_ip[3])); }
+                                self.sta_ip[0], self.sta_ip[1], self.sta_ip[2], self.sta_ip[3]); }
         // Unicast the reply unless the client asked for a broadcast one (BOOTP flags bit 15): a
         // unicast frame travels under the pairwise key, which keeps the group key out of the picture.
         let want_bcast = d[10] & 0x80 != 0;
@@ -227,6 +227,7 @@ impl VirtualNet {
     }
 
     /// SNTP: hand out the host's clock, so firmware waiting for time gets it.
+    #[allow(clippy::identity_op, reason = "the zero leap-indicator field remains visible in the packed header")]
     fn ntp(&mut self, q: &[u8], src: &[u8; 6], sip: &[u8; 4], dip: &[u8; 4], sport: u16) -> Vec<Vec<u8>> {
         if q.len() < 48 { return Vec::new(); }
         let now = std::time::Duration::from_millis(crate::host::unix_time_ms());
