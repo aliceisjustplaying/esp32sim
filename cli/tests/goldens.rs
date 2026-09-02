@@ -91,23 +91,21 @@ fn atech_script1_with_observers() {
 /// Stock ESP-IDF hello_world from the mask ROM through the bootloader into app_main, on UART0.
 #[test] #[ignore = "needs the ESP32-S3 mask ROM ELF"]
 fn hello_world_s3() {
-    let h = "examples/hello_world/build"; let rom = rom("esp32s3_rev0");
+    let rom = rom("esp32s3_rev0");
     let r = run(BIN, &["--rom", rom.to_str().unwrap(), "--board", "none", "--boot", "rom", "--no-dump", "--console", "uart0",
-        "--bootloader", &format!("{h}/bootloader/bootloader.bin"), "--ptable", &format!("{h}/partition_table/partition-table.bin"), "--app", &format!("{h}/hello_world.bin"),
-        "--elf", &format!("{h}/hello_world.elf"), "--max-seconds", "3"]);
+        "--bootloader", &format!("{FW}/hello-bootloader.bin"), "--ptable", &format!("{FW}/hello-ptable.bin"), "--app", &format!("{FW}/hello_world.bin"), "--max-seconds", "3"]);
     assert!(r.stdout.contains("Hello world!"), "app_main never printed:\n{}", r.stdout);
     expect_text("hello-s3.console.txt", &r.stdout);
     expect_u64("hello-s3.insns", r.insns);
 }
 
-/// The block profile attributes time to symbols when an ELF is loaded, and the per-instruction
+/// The block profile attributes time to symbols (the ROM's here), and the per-instruction
 /// `--profile` (slow path, idle cores stepping) still agrees on the hottest function.
 #[test] #[ignore = "needs the ESP32-S3 mask ROM ELF"]
 fn hello_world_s3_profiles() {
-    let h = "examples/hello_world/build"; let rom = rom("esp32s3_rev0");
+    let rom = rom("esp32s3_rev0");
     let base = ["--rom", rom.to_str().unwrap(), "--board", "none", "--boot", "rom", "--no-dump", "--console", "none",
-        "--bootloader", &format!("{h}/bootloader/bootloader.bin"), "--ptable", &format!("{h}/partition_table/partition-table.bin"), "--app", &format!("{h}/hello_world.bin"),
-        "--elf", &format!("{h}/hello_world.elf"), "--max-seconds", "1"];
+        "--bootloader", &format!("{FW}/hello-bootloader.bin"), "--ptable", &format!("{FW}/hello-ptable.bin"), "--app", &format!("{FW}/hello_world.bin"), "--max-seconds", "1"];
     let mut a = base.to_vec(); a.push("--profile-blocks");
     let r = run(BIN, &a);
     let line = r.stderr.lines().skip_while(|l| !l.starts_with("[profile-blocks]")).nth(1).unwrap_or("");
@@ -121,18 +119,16 @@ fn hello_world_s3_profiles() {
 /// boot log was compared against (`hw/c3-hello-world-real.txt`, `docs/esp32c3.md`).
 #[test] #[ignore = "needs the ESP32-C3 mask ROM ELF"]
 fn hello_world_c3() {
-    let h = "examples/hello_world-c3/build"; let rom = rom("esp32c3_rev3");
+    let rom = rom("esp32c3_rev3");
     let r = run(BIN_C3, &["--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
         "--mac", "3c:84:27:b6:a7:1c", "--reset-cause", "0x15", "--strap", "0xd",
-        "--bootloader", &format!("{h}/bootloader/bootloader.bin"), "--ptable", &format!("{h}/partition_table/partition-table.bin"), "--app", &format!("{h}/hello_world.bin"),
-        "--elf", &format!("{h}/hello_world.elf"), "--max-seconds", "3"]);
+        "--bootloader", &format!("{FW}/c3-hello-bootloader.bin"), "--ptable", &format!("{FW}/c3-hello-ptable.bin"), "--app", &format!("{FW}/c3-hello_world.bin"), "--max-seconds", "3"]);
     assert!(r.stdout.contains("Hello world!"), "app_main never printed:\n{}", r.stdout);
     expect_text("hello-c3.console.txt", &r.stdout);
     expect_u64("hello-c3.insns", r.insns);
     // the same run through the one binary
     let r2 = run(BIN, &["--chip", "c3", "--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
         "--mac", "3c:84:27:b6:a7:1c", "--reset-cause", "0x15", "--strap", "0xd",
-        "--bootloader", &format!("{h}/bootloader/bootloader.bin"), "--ptable", &format!("{h}/partition_table/partition-table.bin"), "--app", &format!("{h}/hello_world.bin"),
-        "--elf", &format!("{h}/hello_world.elf"), "--max-seconds", "3"]);
+        "--bootloader", &format!("{FW}/c3-hello-bootloader.bin"), "--ptable", &format!("{FW}/c3-hello-ptable.bin"), "--app", &format!("{FW}/c3-hello_world.bin"), "--max-seconds", "3"]);
     assert_eq!(r.stdout, r2.stdout); assert_eq!(r.insns, r2.insns);
 }
