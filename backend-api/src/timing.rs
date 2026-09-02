@@ -10,16 +10,6 @@ pub enum CostTier {
     Unexplained,
 }
 
-/// Tier expected after the missing evidence is collected.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum TierCandidate {
-    Exact,
-    Affine,
-    Interval,
-    Distribution,
-    Unexplained,
-}
-
 /// Committed receipts that support the adopted cost classes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ReceiptId {
@@ -56,29 +46,11 @@ pub enum CostClass {
         cache: CacheKind,
         position: CacheFillPosition,
     },
-    WindowOverflowUnderflowPair,
     LoopAlignment {
         body_residue: u8,
     },
     InternalInstruction,
     UnknownMmio,
-    Interrupt {
-        level: InterruptLevel,
-        phase: InterruptPhase,
-    },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum InterruptLevel {
-    Level1,
-    Level3,
-    Other(u8),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum InterruptPhase {
-    Entry,
-    Resume,
 }
 
 /// A scalar expression retained in block metadata for later JIT compilation.
@@ -140,17 +112,12 @@ pub enum Operation {
         position: CacheFillPosition,
         line: u32,
     },
-    WindowOverflowUnderflowPair,
     LoopBackEdge {
         body_residue: u8,
     },
     InternalInstruction,
     UnknownMmio {
         address: u32,
-    },
-    Interrupt {
-        level: InterruptLevel,
-        phase: InterruptPhase,
     },
 }
 
@@ -168,17 +135,9 @@ pub enum TimingMutation {
         cache: CacheKind,
         line: u32,
     },
-    RecordWindowPair {
-        core: CoreId,
-    },
     RecordLoopBackEdge {
         core: CoreId,
         body_residue: u8,
-    },
-    RecordInterrupt {
-        core: CoreId,
-        level: InterruptLevel,
-        phase: InterruptPhase,
     },
 }
 
@@ -189,15 +148,12 @@ pub enum RefusalReason {
     CostNotAdopted,
     InvalidAffineDomain,
     CycleOverflow,
-    InterruptResumeWithoutAcceptance,
-    InterruptResumeLevelMismatch,
-    NonInterruptExceptionReturn,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TimingRefusal {
     pub class: CostClass,
-    pub tier_candidate: TierCandidate,
+    pub tier_candidate: CostTier,
     pub reason: RefusalReason,
 }
 
@@ -243,7 +199,7 @@ pub fn price_operation(
             if component.cycles().is_none() {
                 return Err(TimingRefusal {
                     class,
-                    tier_candidate: TierCandidate::Affine,
+                    tier_candidate: CostTier::Affine,
                     reason: RefusalReason::InvalidAffineDomain,
                 });
             }
@@ -265,7 +221,7 @@ pub fn price_operation(
                 cache,
                 position: CacheFillPosition::First,
             },
-            tier_candidate: TierCandidate::Exact,
+            tier_candidate: CostTier::Exact,
             reason: RefusalReason::FirstLinePoolingUnresolved,
         }),
         Operation::CacheLineFill {
@@ -287,13 +243,6 @@ pub fn price_operation(
                 Some(TimingMutation::RecordCacheFill { core, cache, line }),
             ))
         }
-        Operation::WindowOverflowUnderflowPair => {
-            let class = CostClass::WindowOverflowUnderflowPair;
-            Ok((
-                exact(class, 35, ReceiptId::Idf61ToolchainDelta),
-                Some(TimingMutation::RecordWindowPair { core }),
-            ))
-        }
         Operation::LoopBackEdge { body_residue } => {
             let class = CostClass::LoopAlignment { body_residue };
             Ok((
@@ -307,33 +256,13 @@ pub fn price_operation(
         }
         Operation::InternalInstruction => Err(TimingRefusal {
             class: CostClass::InternalInstruction,
-            tier_candidate: TierCandidate::Exact,
+            tier_candidate: CostTier::Exact,
             reason: RefusalReason::CostNotAdopted,
         }),
         Operation::UnknownMmio { .. } => Err(TimingRefusal {
             class: CostClass::UnknownMmio,
-            tier_candidate: TierCandidate::Unexplained,
+            tier_candidate: CostTier::Unexplained,
             reason: RefusalReason::UnknownMmioRegister,
         }),
-        Operation::Interrupt { level, phase } => {
-            let class = CostClass::Interrupt { level, phase };
-            let cycles = match (level, phase) {
-                (InterruptLevel::Level1, InterruptPhase::Entry) => 227,
-                (InterruptLevel::Level1, InterruptPhase::Resume) => 143,
-                (InterruptLevel::Level3, InterruptPhase::Entry) => 222,
-                (InterruptLevel::Level3, InterruptPhase::Resume) => 139,
-                (InterruptLevel::Other(_), _) => {
-                    return Err(TimingRefusal {
-                        class,
-                        tier_candidate: TierCandidate::Exact,
-                        reason: RefusalReason::CostNotAdopted,
-                    });
-                }
-            };
-            Ok((
-                exact(class, cycles, ReceiptId::Idf61ToolchainDelta),
-                Some(TimingMutation::RecordInterrupt { core, level, phase }),
-            ))
-        }
     }
 }

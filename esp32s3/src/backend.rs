@@ -1,13 +1,12 @@
 //! Receipt-backed measured adapter for the ESP32-S3 interpreter.
 
 use backend_api::{
-    price_operation, Backend, CoreId, CostComponent, ExecutionOutcome, InterruptLevel,
-    InterruptPhase, Operation, RefusalReason, TierCandidate, TimingMutation, TimingRefusal,
-    TransactionEngine, TransactionReceipt,
+    price_operation, Backend, CoreId, CostComponent, ExecutionOutcome, Operation, RefusalReason,
+    TimingMutation, TimingRefusal, TransactionEngine,
 };
 use xtensa_lx7::measured::{complete_instruction, plan_instruction, CompletionError, PlanError};
 use xtensa_lx7::measured::{InstructionObservation, MemoryClass, TimingPlan, TimingSource};
-use xtensa_lx7::state::{Cpu, INTTYPE_LEVEL, INT_LEVEL};
+use xtensa_lx7::state::INTTYPE_LEVEL;
 use xtensa_lx7::{Op, Trap};
 
 /// Product adapter. Fake and product adapters both delegate scheduling state,
@@ -15,12 +14,6 @@ use xtensa_lx7::{Op, Trap};
 #[derive(Clone, Debug, Default)]
 pub struct Esp32Backend {
     engine: TransactionEngine,
-    accepted_interrupts: [Vec<AcceptedInterrupt>; 2],
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct AcceptedInterrupt {
-    level: InterruptLevel,
 }
 
 impl Esp32Backend {
@@ -34,16 +27,6 @@ impl Esp32Backend {
                     .branch_taken
                     .expect("a decoded zero branch records its outcome"),
             }),
-            Op::Rfe => self.resume_operation(observation.core, InterruptLevel::Level1),
-            Op::Rfue => Err(TimingRefusal {
-                class: backend_api::CostClass::InternalInstruction,
-                tier_candidate: TierCandidate::Exact,
-                reason: RefusalReason::NonInterruptExceptionReturn,
-            }),
-            Op::Rfi => self.resume_operation(
-                observation.core,
-                interrupt_level(observation.instruction.imm as u8),
-            ),
             _ => Ok(observation
                 .access_memory
                 .map_or(Operation::InternalInstruction, |memory| {
@@ -59,100 +42,6 @@ impl Esp32Backend {
                     }
                 })),
         }
-    }
-
-    fn resume_operation(
-        &self,
-        core: CoreId,
-        returned_level: InterruptLevel,
-    ) -> Result<Operation, TimingRefusal> {
-        let class = backend_api::CostClass::Interrupt {
-            level: returned_level,
-            phase: InterruptPhase::Resume,
-        };
-        let Some(active) = self.accepted_interrupts[core_index(core)].last() else {
-            return Err(TimingRefusal {
-                class,
-                tier_candidate: TierCandidate::Exact,
-                reason: RefusalReason::InterruptResumeWithoutAcceptance,
-            });
-        };
-        if active.level != returned_level {
-            return Err(TimingRefusal {
-                class,
-                tier_candidate: TierCandidate::Exact,
-                reason: RefusalReason::InterruptResumeLevelMismatch,
-            });
-        }
-        Ok(Operation::Interrupt {
-            level: returned_level,
-            phase: InterruptPhase::Resume,
-        })
-    }
-
-    fn matching_resume_level(
-        &self,
-        observation: &InstructionObservation,
-    ) -> Result<Option<InterruptLevel>, TimingRefusal> {
-        match observation.instruction.op {
-            Op::Rfe => {
-                self.resume_operation(observation.core, InterruptLevel::Level1)?;
-                Ok(Some(InterruptLevel::Level1))
-            }
-            Op::Rfue => Err(TimingRefusal {
-                class: backend_api::CostClass::InternalInstruction,
-                tier_candidate: TierCandidate::Exact,
-                reason: RefusalReason::NonInterruptExceptionReturn,
-            }),
-            Op::Rfi => {
-                let level = interrupt_level(observation.instruction.imm as u8);
-                self.resume_operation(observation.core, level)?;
-                Ok(Some(level))
-            }
-            _ => Ok(None),
-        }
-    }
-
-    /// Accept the highest-priority pending interrupt as one priced transaction.
-    /// Unsupported levels restore the CPU and leave timing state unchanged.
-    pub fn accept_interrupt(
-        &mut self,
-        core: CoreId,
-        cpu: &mut Cpu,
-    ) -> Result<Option<(u32, TransactionReceipt)>, TimingRefusal> {
-        let before = cpu.clone();
-        let Some(Trap::Interrupt(irq)) = cpu.check_interrupts() else {
-            return Ok(None);
-        };
-        let operation = Operation::Interrupt {
-            level: interrupt_level(INT_LEVEL[irq as usize]),
-            phase: InterruptPhase::Entry,
-        };
-        match self.execute(backend_api::TraceEvent {
-            core,
-            pc: before.pc,
-            operation,
-            outcome: ExecutionOutcome::Committed,
-        }) {
-            Ok(receipt) => {
-                self.accepted_interrupts[core_index(core)].push(AcceptedInterrupt {
-                    level: interrupt_level(INT_LEVEL[irq as usize]),
-                });
-                Ok(Some((irq, receipt)))
-            }
-            Err(refusal) => {
-                *cpu = before;
-                Err(refusal)
-            }
-        }
-    }
-}
-
-const fn interrupt_level(level: u8) -> InterruptLevel {
-    match level {
-        1 => InterruptLevel::Level1,
-        3 => InterruptLevel::Level3,
-        other => InterruptLevel::Other(other),
     }
 }
 
@@ -172,7 +61,7 @@ impl TimingSource for Esp32Backend {
         let (component, mutation) = price_operation(observation.core, operation)?;
         let cycles = component.cycles().ok_or(TimingRefusal {
             class: component.class,
-            tier_candidate: TierCandidate::Unexplained,
+            tier_candidate: backend_api::CostTier::Unexplained,
             reason: RefusalReason::CycleOverflow,
         })?;
         Ok(TimingPlan {
@@ -188,7 +77,6 @@ impl TimingSource for Esp32Backend {
         components: &[CostComponent],
         mutations: &[TimingMutation],
     ) -> Result<(), TimingRefusal> {
-        let resume_level = self.matching_resume_level(observation)?;
         self.engine.execute_priced(
             observation.core,
             observation.pc,
@@ -196,12 +84,6 @@ impl TimingSource for Esp32Backend {
             components.to_vec(),
             mutations.to_vec(),
         )?;
-        if let Some(level) = resume_level {
-            let popped = self.accepted_interrupts[core_index(observation.core)]
-                .pop()
-                .expect("a validated interrupt resume has active context");
-            debug_assert_eq!(popped.level, level);
-        }
         Ok(())
     }
 }
@@ -215,7 +97,6 @@ pub enum MeasuredStep {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MeasuredStepError {
-    Timing(TimingRefusal),
     Plan(PlanError),
     Completion(CompletionError),
     Deadline(crate::board::BoardDeadlineError),
@@ -249,19 +130,8 @@ impl MeasuredMachine for crate::Machine {
         self.advance_measured_devices(self.bus.cycles)?;
         let index = core_index(core);
         let before_cycle = backend.engine().state().cores[index].cycle;
-        let interrupt = {
-            let cpu = &mut self.cores[index];
-            backend
-                .accept_interrupt(core, cpu)
-                .map_err(MeasuredStepError::Timing)?
-        };
-        if let Some((irq, receipt)) = interrupt {
-            let completion = receipt
-                .entry
-                .expect("accepted interrupt has a ledger entry")
-                .completion;
-            advance_measured_clocks(self, core, completion.saturating_sub(before_cycle));
-            self.advance_measured_devices(completion)?;
+        let interrupt = self.cores[index].check_interrupts();
+        if let Some(Trap::Interrupt(irq)) = interrupt {
             self.interrupts = self.interrupts.saturating_add(1);
             self.irq_hist[index][irq as usize] =
                 self.irq_hist[index][irq as usize].saturating_add(1);
@@ -345,14 +215,11 @@ mod tests {
     use super::*;
     use crate::board::WaveshareAmoled18V2;
     use backend_api::contract_suite::{assert_backend_contract, assert_receipt_correlation};
-    use backend_api::{CacheFillPosition, CacheKind, CostClass, ReceiptId};
+    use backend_api::{CacheFillPosition, CacheKind, ReceiptId};
     use xtensa_lx7::state::ps;
 
     const RESET_PC: u32 = 0x4000_0400;
     const BEQZ_N_A6: [u8; 2] = [0x8c, 0x06];
-    const RFE: [u8; 3] = [0x00, 0x30, 0x00];
-    const RFUE: [u8; 3] = [0x00, 0x31, 0x00];
-    const RFI3: [u8; 3] = [0x10, 0x33, 0x00];
 
     fn branch_machine(register: u32) -> crate::Machine {
         let mut machine = crate::machine([0; 6]);
@@ -375,26 +242,6 @@ mod tests {
             .run_trace(&[])
             .expect("empty suffix preserves the completed ledger")
             .canonical_ledger
-    }
-
-    fn machine_with_instruction(pc: u32, instruction: &[u8]) -> crate::Machine {
-        let mut machine = crate::Machine::new([0; 6]);
-        machine
-            .bus
-            .load_bytes(pc, instruction)
-            .expect("test instruction maps in mask ROM");
-        machine
-    }
-
-    fn interrupt_machine(irq: u32, vector: u32, return_instruction: &[u8]) -> crate::Machine {
-        let mut machine = machine_with_instruction(vector, return_instruction);
-        machine.cpu.ps = 0;
-        machine
-            .advance_measured_devices(0)
-            .expect("initial device state synchronizes");
-        machine.cpu.intenable = 1 << irq;
-        machine.cpu.interrupt = 1 << irq;
-        machine
     }
 
     #[test]
@@ -477,197 +324,6 @@ mod tests {
         assert_eq!(planned.cores[0].ccount, control.cores[0].ccount);
         assert_eq!(planned.cores[0].insn_count, control.cores[0].insn_count);
         assert_eq!(planned.bus.cycles, control.bus.cycles);
-    }
-
-    #[test]
-    fn accepted_level_one_and_three_interrupts_are_priced_ledger_transactions() {
-        for (irq, expected) in [(0, 227), (11, 222)] {
-            let mut backend = Esp32Backend::default();
-            let mut cpu = Cpu::new(0);
-            cpu.ps = 0;
-            cpu.intenable = 1 << irq;
-            cpu.interrupt = 1 << irq;
-            let (_, receipt) = backend
-                .accept_interrupt(CoreId::Core0, &mut cpu)
-                .expect("adopted interrupt level prices")
-                .expect("pending interrupt is accepted");
-            let entry = receipt.entry.expect("acceptance is ledgered");
-            assert_eq!(entry.completion, expected);
-            assert_eq!(entry.components[0].receipt, ReceiptId::Idf61ToolchainDelta);
-            assert!(matches!(
-                entry.components[0].class,
-                CostClass::Interrupt {
-                    phase: InterruptPhase::Entry,
-                    ..
-                }
-            ));
-            assert_eq!(
-                backend
-                    .engine()
-                    .state()
-                    .cores
-                    .map(|core| core.committed_instructions),
-                [0, 0]
-            );
-            assert_eq!(backend.engine().state().committed_interrupt_entries[0], 1);
-            assert_eq!(backend.accepted_interrupts[0].len(), 1);
-        }
-    }
-
-    #[test]
-    fn accepted_interrupts_resume_only_through_matching_product_return() {
-        for (irq, vector, instruction, entry, resume) in [
-            (0, 0x4000_0300, RFE.as_slice(), 227, 143),
-            (11, 0x4000_01c0, RFI3.as_slice(), 222, 139),
-        ] {
-            let mut machine = interrupt_machine(irq, vector, instruction);
-            let mut backend = Esp32Backend::default();
-            assert_eq!(
-                machine.step_measured(&mut backend, CoreId::Core0),
-                Ok(MeasuredStep::Interrupt(irq))
-            );
-            assert_eq!(machine.cpu.pc, vector);
-            assert_eq!(backend.accepted_interrupts[0].len(), 1);
-            assert_eq!(
-                machine.step_measured(&mut backend, CoreId::Core0),
-                Ok(MeasuredStep::Instruction)
-            );
-            assert_eq!(machine.cpu.pc, RESET_PC);
-            assert!(backend.accepted_interrupts[0].is_empty());
-            assert_eq!(backend.engine().ledger().len(), 2);
-            assert_eq!(backend.engine().ledger()[0].completion, entry);
-            assert_eq!(backend.engine().ledger()[1].start, entry);
-            assert_eq!(backend.engine().ledger()[1].completion, entry + resume);
-            assert_eq!(
-                backend.engine().ledger()[1].components[0].class,
-                CostClass::Interrupt {
-                    level: interrupt_level(INT_LEVEL[irq as usize]),
-                    phase: InterruptPhase::Resume,
-                }
-            );
-            assert_eq!(
-                backend.engine().ledger()[1].components[0].receipt,
-                ReceiptId::Idf61ToolchainDelta
-            );
-            assert_eq!(backend.engine().state().committed_interrupt_resumes[0], 1);
-        }
-    }
-
-    #[test]
-    fn mismatched_return_preserves_active_context_cpu_and_entry_ledger() {
-        let mut machine = interrupt_machine(0, 0x4000_0300, &RFI3);
-        let mut backend = Esp32Backend::default();
-        assert_eq!(
-            machine.step_measured(&mut backend, CoreId::Core0),
-            Ok(MeasuredStep::Interrupt(0))
-        );
-        let before = machine.cpu.clone();
-        let before_state = backend.engine().state().clone();
-        assert!(matches!(
-            machine.step_measured(&mut backend, CoreId::Core0),
-            Err(MeasuredStepError::Plan(PlanError::Timing(TimingRefusal {
-                reason: RefusalReason::InterruptResumeLevelMismatch,
-                ..
-            })))
-        ));
-        assert_eq!(machine.cpu.pc, before.pc);
-        assert_eq!(machine.cpu.ps, before.ps);
-        assert_eq!(machine.cpu.ccount, before.ccount);
-        assert_eq!(backend.engine().state(), &before_state);
-        assert_eq!(backend.engine().ledger().len(), 1);
-        assert_eq!(backend.accepted_interrupts[0].len(), 1);
-
-        machine
-            .bus
-            .load_bytes(machine.cpu.pc, &RFE)
-            .expect("matching return replaces the mismatched test instruction");
-        assert_eq!(
-            machine.step_measured(&mut backend, CoreId::Core0),
-            Ok(MeasuredStep::Instruction)
-        );
-        assert!(backend.accepted_interrupts[0].is_empty());
-    }
-
-    #[test]
-    fn rfue_never_consumes_an_active_interrupt_context() {
-        let mut machine = interrupt_machine(0, 0x4000_0300, &RFUE);
-        let mut backend = Esp32Backend::default();
-        assert_eq!(
-            machine.step_measured(&mut backend, CoreId::Core0),
-            Ok(MeasuredStep::Interrupt(0))
-        );
-        let before = machine.cpu.clone();
-        let before_state = backend.engine().state().clone();
-        assert!(matches!(
-            machine.step_measured(&mut backend, CoreId::Core0),
-            Err(MeasuredStepError::Plan(PlanError::Timing(TimingRefusal {
-                reason: RefusalReason::NonInterruptExceptionReturn,
-                ..
-            })))
-        ));
-        assert_eq!(machine.cpu.pc, before.pc);
-        assert_eq!(machine.cpu.ps, before.ps);
-        assert_eq!(machine.cpu.ccount, before.ccount);
-        assert_eq!(backend.engine().state(), &before_state);
-        assert_eq!(backend.engine().ledger().len(), 1);
-        assert_eq!(backend.accepted_interrupts[0].len(), 1);
-    }
-
-    #[test]
-    fn unmatched_exception_returns_refuse_without_any_mutation() {
-        for (instruction, reason) in [
-            (
-                RFE.as_slice(),
-                RefusalReason::InterruptResumeWithoutAcceptance,
-            ),
-            (RFUE.as_slice(), RefusalReason::NonInterruptExceptionReturn),
-        ] {
-            let mut machine = machine_with_instruction(RESET_PC, instruction);
-            let before = machine.cpu.clone();
-            let mut backend = Esp32Backend::default();
-            let result = machine.step_measured(&mut backend, CoreId::Core0);
-            assert!(matches!(
-                result,
-                Err(MeasuredStepError::Plan(PlanError::Timing(TimingRefusal {
-                    reason: observed,
-                    ..
-                }))) if observed == reason
-            ));
-            assert_eq!(machine.cpu.pc, before.pc);
-            assert_eq!(machine.cpu.ps, before.ps);
-            assert_eq!(machine.cpu.ccount, before.ccount);
-            assert_eq!(machine.cpu.insn_count, before.insn_count);
-            assert_eq!(
-                backend.engine().state(),
-                &TransactionEngine::default().state().clone()
-            );
-            assert!(backend.engine().ledger().is_empty());
-            assert!(backend.accepted_interrupts[0].is_empty());
-        }
-    }
-
-    #[test]
-    fn unsupported_interrupt_level_fails_closed_without_cpu_or_ledger_change() {
-        let mut backend = Esp32Backend::default();
-        let mut cpu = Cpu::new(0);
-        cpu.ps = 0;
-        cpu.intenable = 1 << 19;
-        cpu.interrupt = 1 << 19;
-        let before = cpu.clone();
-        let refusal = backend
-            .accept_interrupt(CoreId::Core0, &mut cpu)
-            .expect_err("level 2 interrupt timing is not adopted");
-        assert_eq!(
-            refusal.class,
-            CostClass::Interrupt {
-                level: InterruptLevel::Other(2),
-                phase: InterruptPhase::Entry,
-            }
-        );
-        assert_eq!(cpu.pc, before.pc);
-        assert_eq!(cpu.ps, before.ps);
-        assert!(backend.engine().ledger().is_empty());
-        assert!(backend.accepted_interrupts[0].is_empty());
     }
 
     #[test]
