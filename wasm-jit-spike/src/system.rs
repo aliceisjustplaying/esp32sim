@@ -1,5 +1,5 @@
 use backend_api::{
-    price_operation, CoreId, ExecutionOutcome, InstructionCost, MmioTier, Operation,
+    price_operation, ChipConfig, CoreId, ExecutionOutcome, InstructionCost, MmioTier, Operation,
     TransactionEngine,
 };
 use xtensa_lx7::state::ps;
@@ -154,6 +154,7 @@ pub fn emit_host_memory(
     initial_registers: [u32; REGISTER_COUNT],
     classes: &[HostMemoryClass],
     posted_mmio_writes: u8,
+    config: ChipConfig,
 ) -> Result<EmittedModule, CompileError> {
     let instructions = decode_block(base_pc, block)?;
     if instructions.len() != classes.len() {
@@ -170,8 +171,9 @@ pub fn emit_host_memory(
                 op: instruction.op,
             });
         }
+        validate_external_config(config, *pc, instruction.op, *class)?;
         emit_current_pc_guard(&mut body, *pc);
-        emit_host_access(&mut body, *pc, instruction, *class)?;
+        emit_host_access(&mut body, *pc, instruction, *class, config)?;
         emit_state_store_const(
             &mut body,
             PC_OFFSET,
@@ -566,6 +568,7 @@ fn emit_host_access(
     pc: u32,
     instruction: &Insn,
     class: HostMemoryClass,
+    config: ChipConfig,
 ) -> Result<(), CompileError> {
     let store = is_store(instruction.op);
     emit_i32_const(body, HOST_ADDRESS_OFFSET as i32);
@@ -607,7 +610,9 @@ fn emit_host_access(
         emit_i32_store(body);
     }
     match class {
-        HostMemoryClass::Mmio(tier) => emit_mmio_cost(body, pc, instruction.op, tier, store)?,
+        HostMemoryClass::Mmio(tier) => {
+            emit_mmio_cost(body, pc, instruction.op, tier, store, config)?;
+        }
         HostMemoryClass::Flash | HostMemoryClass::Psram => {
             emit_cycle_charge(body, 1);
             emit_dynamic_host_cycles(body);
@@ -622,31 +627,36 @@ fn emit_mmio_cost(
     op: Op,
     tier: MmioTier,
     store: bool,
+    config: ChipConfig,
 ) -> Result<(), CompileError> {
     if !store {
-        let cycles = match tier {
-            MmioTier::Fast => 9,
-            MmioTier::Apb => 15,
-            MmioTier::Nrx => 18,
-            MmioTier::Rtc | MmioTier::Efuse => {
-                return Err(CompileError::IntervalCost { pc, op });
-            }
-        };
+        let cycles = priced_cycles(config, pc, op, Operation::MmioRead { tier })?;
         emit_cycle_charge(body, cycles);
         return Ok(());
     }
-    let drain = match tier {
-        MmioTier::Fast => 4,
-        MmioTier::Apb => 15,
-        MmioTier::Nrx | MmioTier::Rtc | MmioTier::Efuse => {
-            return Err(CompileError::IntervalCost { pc, op });
-        }
-    };
+    let enqueue = priced_cycles(
+        config,
+        pc,
+        op,
+        Operation::MmioWrite {
+            tier,
+            buffer_has_room: true,
+        },
+    )?;
+    let drain = priced_cycles(
+        config,
+        pc,
+        op,
+        Operation::MmioWrite {
+            tier,
+            buffer_has_room: false,
+        },
+    )?;
     emit_state_load(body, POSTED_WRITES_OFFSET);
     emit_i32_const(body, 8);
     body.push(0x49);
     body.extend_from_slice(&[0x04, 0x40]);
-    emit_cycle_charge(body, 1);
+    emit_cycle_charge(body, enqueue);
     body.push(0x05);
     emit_cycle_charge(body, drain);
     body.push(0x0b);
@@ -656,6 +666,40 @@ fn emit_mmio_cost(
     body.push(0x6a);
     emit_i32_store(body);
     Ok(())
+}
+
+fn validate_external_config(
+    config: ChipConfig,
+    pc: u32,
+    op: Op,
+    class: HostMemoryClass,
+) -> Result<(), CompileError> {
+    match class {
+        HostMemoryClass::Mmio(tier) => {
+            let _cycles = priced_cycles(config, pc, op, Operation::MmioRead { tier })?;
+        }
+        HostMemoryClass::Flash | HostMemoryClass::Psram => {
+            let _cycles = priced_cycles(config, pc, op, Operation::HotCacheHit)?;
+        }
+    }
+    Ok(())
+}
+
+fn priced_cycles(
+    config: ChipConfig,
+    pc: u32,
+    op: Op,
+    operation: Operation,
+) -> Result<u64, CompileError> {
+    match price_operation(config, CoreId::Core0, operation) {
+        Ok((component, _mutation)) => component
+            .cycles()
+            .ok_or(CompileError::IntervalCost { pc, op }),
+        Err(refusal) if refusal.configuration.is_some() => {
+            Err(CompileError::UnpricedConfiguration { config })
+        }
+        Err(_refusal) => Err(CompileError::IntervalCost { pc, op }),
+    }
 }
 
 fn emit_dynamic_host_cycles(body: &mut Vec<u8>) {
