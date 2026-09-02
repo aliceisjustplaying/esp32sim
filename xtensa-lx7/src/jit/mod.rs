@@ -174,13 +174,15 @@ mod native {
     /// Most code one block can need, with slack; the cache is flushed when less than this is free.
     pub const MAX_BLOCK_CODE: usize = 24 * 1024;
 
+    type Stub<'a> = Box<dyn FnOnce(&mut Asm) + 'a>;
+
     struct Gen<'a> {
         a: Asm,
-        exit: Label, exit_trap: Label, exit_trap_pre: Label, exit_left: Label,
+        exit_trap: Label, exit_trap_pre: Label, exit_left: Label,
         /// shared tails: `w9` holds the pc to store, then leave with EXIT_CUT / EXIT_LEFT
         cut_w9: Label, left_w9: Label, loop_shared: Label,
         pc0: u32,
-        stubs: Vec<Box<dyn FnOnce(&mut Asm) + 'a>>,
+        stubs: Vec<Stub<'a>>,
     }
 
     impl<'a> Gen<'a> {
@@ -238,17 +240,16 @@ mod native {
         a.bind(body);
         let body_at = a.here();
         let (cut_w9, left_w9, loop_shared) = (a.label(), a.label(), a.label());
-        let mut g = Gen { a, exit, exit_trap, exit_trap_pre, exit_left, cut_w9, left_w9, loop_shared, pc0, stubs: Vec::new() };
+        let mut g = Gen { a, exit_trap, exit_trap_pre, exit_left, cut_w9, left_w9, loop_shared, pc0, stubs: Vec::new() };
         // windows already verified free within this block (reset when a helper may have rotated them)
         let mut checked_w: u32 = 0;
 
-        let n = insns.len();
         let mut pc = pc0;
-        for k in 0..n {
-            let i = insns[k].insn;
-            let max_ar = insns[k].max_ar;
+        for block_insn in insns.iter_mut() {
+            let i = block_insn.insn;
+            let max_ar = block_insn.max_ar;
             let next = pc.wrapping_add(i.len as u32);
-            insns[k].off = ((g.a.here() - body_at) * 4) as u32;
+            block_insn.off = ((g.a.here() - body_at) * 4) as u32;
             // budget: cut before this instruction if none left
             let cut = g.cut_stub(pc);
             g.a.cbz(LEFT, cut);
@@ -436,7 +437,7 @@ mod native {
                 // ---- everything else: the interpreter
                 _ => {
                     g.a.mov_x(0, CPU); g.a.mov_x(1, BUS);
-                    g.a.mov64(2, &insns[k] as *const BlockInsn as u64);
+                    g.a.mov64(2, (&raw const *block_insn) as u64);
                     g.a.mov32(3, pc);
                     g.call(H_EXEC);
                     let tr = g.exit_trap;
