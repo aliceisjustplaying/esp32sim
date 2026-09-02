@@ -178,17 +178,21 @@ extern "C" {
     fn host_log(ptr: *const u8, len: usize);
 }
 #[cfg(not(target_arch = "wasm32"))]
+#[expect(
+    unsafe_code,
+    reason = "the native logging shim receives a raw ABI string"
+)]
 unsafe fn host_log(ptr: *const u8, len: usize) {
-    eprintln!(
-        "{}",
-        String::from_utf8_lossy(std::slice::from_raw_parts(ptr, len))
-    );
+    // SAFETY: The caller supplies a readable string pointer for exactly `len` bytes and retains it
+    // for this call.
+    let message = unsafe { std::slice::from_raw_parts(ptr, len) };
+    eprintln!("{}", String::from_utf8_lossy(message));
 }
 
+#[expect(unsafe_code, reason = "host logging crosses the imported native ABI")]
 fn log(s: &str) {
-    unsafe {
-        host_log(s.as_ptr(), s.len());
-    }
+    // SAFETY: `s` supplies a valid pointer and length for the call, and the host does not retain it.
+    unsafe { host_log(s.as_ptr(), s.len()) };
 }
 
 pub struct Emu {
@@ -198,32 +202,56 @@ pub struct Emu {
     booted: bool,
 }
 
+#[expect(
+    unsafe_code,
+    reason = "WASM callers pass buffers as pointer-length pairs"
+)]
 unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
     if len == 0 {
         &[]
     } else {
-        std::slice::from_raw_parts(ptr, len)
+        // SAFETY: The caller guarantees that `ptr` is readable for `len` bytes and that the
+        // returned borrow does not outlive the allocation.
+        unsafe { std::slice::from_raw_parts(ptr, len) }
     }
 }
+#[expect(unsafe_code, reason = "WASM callers pass text as pointer-length pairs")]
 unsafe fn text<'a>(ptr: *const u8, len: usize) -> &'a str {
-    std::str::from_utf8(bytes(ptr, len)).unwrap_or("")
+    // SAFETY: This function forwards its pointer and lifetime contract to `bytes`.
+    let data = unsafe { bytes(ptr, len) };
+    std::str::from_utf8(data).unwrap_or("")
 }
 
 /// Buffers the page fills before handing them to `esp32sim_load` / `esp32sim_in_*`.
+#[expect(unsafe_code, reason = "the WASM interface exports a stable ABI symbol")]
 #[no_mangle]
 pub extern "C" fn esp32sim_alloc(len: usize) -> *mut u8 {
-    let mut v = vec![0u8; len.max(1)];
-    let p = v.as_mut_ptr();
-    std::mem::forget(v);
-    p
+    Vec::leak(vec![0u8; len.max(1)]).as_mut_ptr()
 }
+/// Release a buffer returned by `esp32sim_alloc`.
+///
+/// # Safety
+/// `ptr` must come from `esp32sim_alloc(len)` and must not be used after this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM interface reclaims an ABI-owned allocation"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_free(ptr: *mut u8, len: usize) {
-    drop(Vec::from_raw_parts(ptr, len.max(1), len.max(1)));
+    // SAFETY: The caller guarantees this pointer and length came from `esp32sim_alloc` and still
+    // have unique ownership.
+    drop(unsafe { Vec::from_raw_parts(ptr, len.max(1), len.max(1)) });
 }
 
 /// `board` is a CLI board name (atech14, waveshare-cam, waveshare-lcd4b, none) for the ESP32-S3,
 /// or `esp32c3` for the RISC-V chip, which is console-only and takes no board. Null on failure.
+///
+/// # Safety
+/// `board` must be readable for `board_len` bytes and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM constructor reads an ABI pointer-length pair"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_new(
     board: *const u8,
@@ -232,7 +260,8 @@ pub unsafe extern "C" fn esp32sim_new(
     psram_mb: u32,
 ) -> *mut Emu {
     std::panic::set_hook(Box::new(|info| log(&format!("[emu] panic: {}", info))));
-    let board = text(board, board_len).to_string();
+    // SAFETY: The caller guarantees that the board name is readable for this call.
+    let board = unsafe { text(board, board_len) }.to_string();
     let (flash_mb, psram_mb) = (flash_mb.max(1) as usize, psram_mb as usize);
     let m: Box<dyn MachineApi> = if board == "esp32c3" || board == "c3" {
         let mut m = esp32c3::machine([0x3c, 0x84, 0x27, 0xb6, 0xa7, 0x1c], flash_mb << 20);
@@ -270,20 +299,41 @@ fn prepare<S: Soc>(m: &mut Machine<S>) {
     m.console.capture = true;
 }
 
+/// Destroy an emulator returned by `esp32sim_new`.
+///
+/// # Safety
+/// A non-null `e` must come from `esp32sim_new` and must not be used after this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM destructor reclaims an ABI-owned allocation"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_delete(e: *mut Emu) {
     if !e.is_null() {
-        drop(Box::from_raw(e));
+        // SAFETY: The caller guarantees unique ownership of a pointer returned by `esp32sim_new`.
+        drop(unsafe { Box::from_raw(e) });
     }
 }
 
 /// kind: 0 mask-ROM ELF, 1 bootloader (flash 0x0), 2 partition table (0x8000), 3 app (0x10000),
 /// 4 ELF for symbols, 5 whole flash image (0x0), 6 script text, 7 camera picture (BMP/PPM).
 /// Returns 0, or 1 with the reason logged.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access. `ptr` must be readable for `len`
+/// bytes and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM loader receives emulator and buffer ABI pointers"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_load(e: *mut Emu, kind: u32, ptr: *const u8, len: usize) -> u32 {
-    let e = &mut *e;
-    match e.m.load(kind, bytes(ptr, len), text(ptr, len)) {
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller guarantees a readable input buffer for this call.
+    let data = unsafe { bytes(ptr, len) };
+    let input_text = std::str::from_utf8(data).unwrap_or("");
+    match e.m.load(kind, data, input_text) {
         Ok(()) => 0,
         Err(msg) => {
             log(&format!("[emu] load kind {}: {}", kind, msg));
@@ -293,6 +343,14 @@ pub unsafe extern "C" fn esp32sim_load(e: *mut Emu, kind: u32, ptr: *const u8, l
 }
 
 /// Write bytes into flash at an arbitrary offset (a data partition's contents).
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access. `ptr` must be readable for `len`
+/// bytes and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM flash loader receives emulator and buffer ABI pointers"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_load_at(
     e: *mut Emu,
@@ -300,8 +358,11 @@ pub unsafe extern "C" fn esp32sim_load_at(
     ptr: *const u8,
     len: usize,
 ) -> u32 {
-    let e = &mut *e;
-    match e.m.write_flash(offset as usize, bytes(ptr, len)) {
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller guarantees a readable input buffer for this call.
+    let data = unsafe { bytes(ptr, len) };
+    match e.m.write_flash(offset as usize, data) {
         Ok(()) => 0,
         Err(msg) => {
             log(&format!("[emu] flash {:#x}: {}", offset, msg));
@@ -312,9 +373,18 @@ pub unsafe extern "C" fn esp32sim_load_at(
 
 /// Attach the virtual access point and subnet: `ssid=NAME,psk=PASS,chan=N`. No NAT — the browser
 /// has no sockets — so DHCP, DNS, SNTP and ICMP answer, and connections past the gateway are refused.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access. `spec` must be readable for `len`
+/// bytes and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM WiFi setup receives emulator and text ABI pointers"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize) {
-    let e = &mut *e;
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
     let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else {
         log("[emu] wifi: the C3 radio is not modelled");
         return;
@@ -325,7 +395,9 @@ pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize)
         channel: 6,
         psk: None,
     };
-    for kv in text(spec, len).split(',') {
+    // SAFETY: The caller guarantees a readable setup string for this call.
+    let spec = unsafe { text(spec, len) };
+    for kv in spec.split(',') {
         match kv.split_once('=') {
             Some(("ssid", v)) => cfg.ssid = v.to_string(),
             Some(("chan", v)) | Some(("channel", v)) => cfg.channel = v.parse().unwrap_or(6),
@@ -351,6 +423,14 @@ pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize)
 
 /// `--stub NAME[=value]`: return `value` immediately when execution reaches the function's entry.
 /// NAME is a symbol (needs the ELF loaded) or a hex address. Returns 1 if it cannot be resolved.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access. `name` must be readable for `len`
+/// bytes and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM stub setup receives emulator and text ABI pointers"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_stub(
     e: *mut Emu,
@@ -358,11 +438,23 @@ pub unsafe extern "C" fn esp32sim_stub(
     len: usize,
     value: u32,
 ) -> u32 {
-    (&mut *e).m.stub(text(name, len), value)
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller guarantees a readable symbol name for this call.
+    let name = unsafe { text(name, len) };
+    e.m.stub(name, value)
 }
 
 /// Attach an analysis: `profile-blocks`, `coverage`, `irq-latency` (no argument), `trace-fn`
 /// (arg = symbol prefix as text). Returns 1 for an unknown name.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access. `name` and `arg` must be readable for
+/// their respective lengths and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM observer setup receives emulator and text ABI pointers"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_observer(
     e: *mut Emu,
@@ -371,13 +463,27 @@ pub unsafe extern "C" fn esp32sim_observer(
     arg: *const u8,
     arg_len: usize,
 ) -> u32 {
-    (&mut *e).m.observer(text(name, len), text(arg, arg_len))
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller guarantees a readable observer name for this call.
+    let name = unsafe { text(name, len) };
+    // SAFETY: The caller guarantees a readable observer argument for this call.
+    let arg = unsafe { text(arg, arg_len) };
+    e.m.observer(name, arg)
 }
 
 /// Every observer's report so far, as `emu` messages in the outbox.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM report function receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_reports(e: *mut Emu) {
-    let e = &mut *e;
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
     let r = e.m.reports();
     if let Some(w) = e.m.web() {
         for line in r.lines() {
@@ -390,9 +496,17 @@ pub unsafe extern "C" fn esp32sim_reports(e: *mut Emu) {
 }
 
 /// Start from the mask ROM (the normal path) or, with `app_direct` set, straight into the app image.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM boot function receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_boot(e: *mut Emu, app_direct: u32) -> u32 {
-    let e = &mut *e;
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
     if let Err(msg) = e.m.boot(app_direct != 0) {
         log(&format!("[emu] boot: {}", msg));
         return 1;
@@ -409,9 +523,17 @@ pub unsafe extern "C" fn esp32sim_boot(e: *mut Emu, app_direct: u32) -> u32 {
 /// Run for `cycles` more emulated cycles. Returns 0 while the machine can go on; otherwise a stop
 /// code: 2 unimplemented instruction, 3 breakpoint/ebreak, 4 exception limit, 5 semihosting call.
 /// A chip reset (esp_restart, watchdog) reboots through the ROM and keeps going, like the CLI.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM run function receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_run(e: *mut Emu, cycles: u32, unix_ms: f64) -> u32 {
-    let e = &mut *e;
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
     if !e.booted {
         return 9;
     }
@@ -422,55 +544,145 @@ pub unsafe extern "C" fn esp32sim_run(e: *mut Emu, cycles: u32, unix_ms: f64) ->
 }
 
 /// The emulated CPU clock, so the driver paces the right chip: 240 MHz on the S3, 160 on the C3.
+///
+/// # Safety
+/// `e` must identify a live emulator that is not being mutated concurrently.
+#[expect(
+    unsafe_code,
+    reason = "the WASM clock query receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_cpu_hz(e: *mut Emu) -> f64 {
-    (&*e).m.cpu_hz()
+    // SAFETY: The caller guarantees a live emulator without concurrent mutation.
+    let e = unsafe { &*e };
+    e.m.cpu_hz()
 }
+/// Return the current emulated cycle count.
+///
+/// # Safety
+/// `e` must identify a live emulator that is not being mutated concurrently.
+#[expect(
+    unsafe_code,
+    reason = "the WASM cycle query receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_cycles(e: *mut Emu) -> f64 {
-    (&*e).m.cycles()
+    // SAFETY: The caller guarantees a live emulator without concurrent mutation.
+    let e = unsafe { &*e };
+    e.m.cycles()
 }
+/// Return the current emulated instruction count.
+///
+/// # Safety
+/// `e` must identify a live emulator that is not being mutated concurrently.
+#[expect(
+    unsafe_code,
+    reason = "the WASM instruction query receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_insns(e: *mut Emu) -> f64 {
-    (&*e).m.insns()
+    // SAFETY: The caller guarantees a live emulator without concurrent mutation.
+    let e = unsafe { &*e };
+    e.m.insns()
 }
 
 /// Drain what the machine sent since the last call; then index it with the accessors below.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM output drain receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_out_take(e: *mut Emu) -> u32 {
-    let e = &mut *e;
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
     e.out = e.m.web().map(|w| w.take_outbox()).unwrap_or_default();
     e.out.len() as u32
 }
+/// Return the kind of one message from the last output drain.
+///
+/// # Safety
+/// `e` must identify a live emulator that is not being mutated concurrently.
+#[expect(
+    unsafe_code,
+    reason = "the WASM output query receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_out_kind(e: *mut Emu, i: u32) -> u32 {
-    (&*e).out.get(i as usize).map(|m| m.0 as u32).unwrap_or(0)
+    // SAFETY: The caller guarantees a live emulator without concurrent mutation.
+    let e = unsafe { &*e };
+    e.out.get(i as usize).map(|m| m.0 as u32).unwrap_or(0)
 }
+/// Return the data pointer for one message from the last output drain.
+///
+/// # Safety
+/// `e` must identify a live emulator that is not being mutated concurrently. The returned pointer
+/// is valid only until the next mutable operation on `e`.
+#[expect(
+    unsafe_code,
+    reason = "the WASM output query receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_out_ptr(e: *mut Emu, i: u32) -> *const u8 {
-    (&*e)
-        .out
+    // SAFETY: The caller guarantees a live emulator without concurrent mutation.
+    let e = unsafe { &*e };
+    e.out
         .get(i as usize)
         .map(|m| m.1.as_ptr())
         .unwrap_or(std::ptr::null())
 }
+/// Return the data length for one message from the last output drain.
+///
+/// # Safety
+/// `e` must identify a live emulator that is not being mutated concurrently.
+#[expect(
+    unsafe_code,
+    reason = "the WASM output query receives an emulator ABI pointer"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_out_len(e: *mut Emu, i: u32) -> usize {
-    (&*e).out.get(i as usize).map(|m| m.1.len()).unwrap_or(0)
+    // SAFETY: The caller guarantees a live emulator without concurrent mutation.
+    let e = unsafe { &*e };
+    e.out.get(i as usize).map(|m| m.1.len()).unwrap_or(0)
 }
 
-/// Page inputs, in the WebSocket protocol: JSON text (buttons, knob, touch, serial) or binary (camera).
+/// Page input in the WebSocket JSON protocol.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access. `ptr` must be readable for `len`
+/// bytes and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM text input receives emulator and buffer ABI pointers"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_in_text(e: *mut Emu, ptr: *const u8, len: usize) {
-    let e = &mut *e;
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller guarantees a readable input buffer for this call.
+    let input = unsafe { text(ptr, len) };
     if let Some(w) = e.m.web() {
-        w.push_incoming(text(ptr, len).to_string());
+        w.push_incoming(input.to_string());
     }
 }
+/// Page input in the WebSocket binary protocol.
+///
+/// # Safety
+/// `e` must identify a live emulator with exclusive access. `ptr` must be readable for `len`
+/// bytes and remain valid for this call.
+#[expect(
+    unsafe_code,
+    reason = "the WASM binary input receives emulator and buffer ABI pointers"
+)]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_in_bin(e: *mut Emu, ptr: *const u8, len: usize) {
-    let e = &mut *e;
+    // SAFETY: The caller guarantees a live, exclusively accessible emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller guarantees a readable input buffer for this call.
+    let input = unsafe { bytes(ptr, len) };
     if let Some(w) = e.m.web() {
-        w.push_incoming_bin(bytes(ptr, len).to_vec());
+        w.push_incoming_bin(input.to_vec());
     }
 }
