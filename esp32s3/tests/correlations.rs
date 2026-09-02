@@ -3,6 +3,7 @@ use esp32s3::{Esp32Backend, Machine, MeasuredStep};
 
 const ELF: &[u8] =
     include_bytes!("/Users/sarah/src/a/tinydraw/out/build/esp32-vector-v2/tinydraw_esp32.elf");
+const CORRELATION_CORE: CoreId = CoreId::Core0;
 
 fn receipt_config(machine: &mut Machine) {
     machine.bus.periph.system.ram.write(0x10, 6);
@@ -14,7 +15,12 @@ fn receipt_config(machine: &mut Machine) {
     machine.bus.periph.spi0.regs.write(0x40, 1 << 21);
     machine.bus.periph.spi0.regs.write(0x50, 0x0001_0001);
     machine.bus.periph.extmem.ram.write(0x0, 2 << 3);
-    machine.bus.periph.extmem.ram.write(0x60, 1 << 3);
+    machine
+        .bus
+        .periph
+        .extmem
+        .ram
+        .write(0x60, (1 << 3) | (1 << 1));
 }
 
 fn idf_handler_machine() -> Machine {
@@ -61,7 +67,7 @@ fn run_idf61_window_pair() -> u64 {
     for pc in (0x4037_4100..=0x4037_4127).step_by(3) {
         machine.cpu.pc = pc;
         assert_eq!(
-            machine.step_measured(&mut backend, CoreId::Core0),
+            machine.step_measured(&mut backend, CORRELATION_CORE),
             Ok(MeasuredStep::Instruction),
             "real IDF handler instruction at {pc:#x} must price"
         );
@@ -81,13 +87,17 @@ fn run_idf61_window_pair() -> u64 {
     for pc in (0x4037_4140..=0x4037_4167).step_by(3) {
         machine.cpu.pc = pc;
         assert_eq!(
-            machine.step_measured(&mut backend, CoreId::Core0),
+            machine.step_measured(&mut backend, CORRELATION_CORE),
             Ok(MeasuredStep::Instruction),
             "real IDF handler instruction at {pc:#x} must price"
         );
     }
     let report = backend.run_trace(&[]).expect("handler ledger totals");
     assert_eq!(report.ledger.len(), 28);
+    assert!(report
+        .ledger
+        .iter()
+        .all(|entry| entry.core == CORRELATION_CORE));
     report.total_cycles
 }
 
