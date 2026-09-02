@@ -1,7 +1,7 @@
 //! ESP32-S3 memory map: internal SRAM (512 KiB, IRAM/DRAM aliases), mask ROM, RTC
 //! memories, external flash + PSRAM through the 512-entry cache MMU, peripherals.
+use crate::board::{Board, Spi2DmaRequest, Spi2DmaTiming, Spi2DmaTimingRefusal, Spi2Mode};
 use crate::periph::{Peripherals, PERIPH_BASE, PERIPH_END};
-use crate::board::Board;
 use std::collections::HashSet;
 use xtensa_lx7::bus::{Bus, Fault};
 use xtensa_lx7::measured::{MeasuredBus, MemoryClass};
@@ -56,6 +56,11 @@ struct Spi2DmaCompletion {
     payload: Vec<u8>,
 }
 
+struct PendingSpi2Dma {
+    transfer: crate::periph::GpSpiTransfer,
+    completion: Spi2DmaCompletion,
+}
+
 pub struct SocBus {
     pub sram: Vec<u8>,
     pub irom: Vec<u8>,
@@ -70,6 +75,8 @@ pub struct SocBus {
     pub cycles: u64,
     pub last_fault: Option<(u32, bool)>,
     pub spi2_dma_fault: Option<DmaDescriptorFault>,
+    pub spi2_dma_timing_fault: Option<Spi2DmaTimingRefusal>,
+    pub last_spi2_dma_timing: Option<Spi2DmaTiming>,
     pub board_deadline_fault: Option<crate::board::BoardDeadlineError>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
@@ -91,6 +98,7 @@ pub struct SocBus {
     /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
     /// have passed, so guest-visible time is exact while idle rounds cost nothing.
     tick_pending: u32, tick_budget: u32,
+    pending_spi2_dma: Option<PendingSpi2Dma>,
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
@@ -114,8 +122,8 @@ impl SocBus {
         let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
-            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, board_deadline_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
-            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
+            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, spi2_dma_timing_fault: None, last_spi2_dma_timing: None, board_deadline_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
+            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0, pending_spi2_dma: None,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -191,14 +199,8 @@ impl SocBus {
             }
         }
         self.board.advance_to(target)?;
-        for edge in self.board.take_edges() {
-            if let Some(events) = &mut self.gpio_events {
-                events.push((edge.cycle, edge.pin, edge.level));
-            }
-            if self.periph.gpio.set_input(edge.pin, edge.level) {
-                self.irq_dirty = true;
-            }
-        }
+        self.deliver_board_edges();
+        self.deliver_spi2_dma_completion();
         self.refresh_tick_budget();
         Ok(())
     }
@@ -344,15 +346,32 @@ impl SocBus {
         let channel = self.periph.gdma.out_channel_for(0);
         match self.spi2_dma_completion() {
             Ok(Some(completion)) => {
-                for (descriptor, control) in completion.descriptor_writebacks {
-                    if let Err(fault) = self.write32(descriptor, control) {
-                        self.fail_spi2_dma(completion.channel, DmaDescriptorFault::Writeback { descriptor, fault });
-                        return;
-                    }
-                }
-                self.periph.gdma.out[completion.channel] = completion.final_channel;
                 self.periph.spi2.complete_dma_tx(&completion.payload);
-                self.irq_dirty = true;
+                if self.board.name() == "waveshare-amoled18-v2" {
+                    let request = Spi2DmaRequest {
+                        submitted_at: self.cycles,
+                        bytes: completion.payload.len(),
+                        clock_hz: self.spi2_clock_hz(),
+                        mode: self.spi2_mode(),
+                    };
+                    match self.board.schedule_spi2_dma(request) {
+                        Ok(timing) => {
+                            self.last_spi2_dma_timing = Some(timing);
+                            let transfer = self
+                                .periph
+                                .spi2
+                                .take_transfer()
+                                .expect("completed DMA data retains its GP-SPI transfer");
+                            self.pending_spi2_dma = Some(PendingSpi2Dma {
+                                transfer,
+                                completion,
+                            });
+                        }
+                        Err(fault) => self.spi2_dma_timing_fault = Some(fault),
+                    }
+                } else if let Err(fault) = self.apply_spi2_dma_completion(completion) {
+                    self.fail_spi2_dma(channel.expect("a DMA completion has a channel"), fault);
+                }
             }
             Ok(None) => {}
             Err(fault) => {
@@ -361,6 +380,61 @@ impl SocBus {
                 }
             }
         }
+    }
+
+    fn apply_spi2_dma_completion(
+        &mut self,
+        completion: Spi2DmaCompletion,
+    ) -> Result<(), DmaDescriptorFault> {
+        for (descriptor, control) in completion.descriptor_writebacks {
+            self.write32(descriptor, control).map_err(|fault| {
+                DmaDescriptorFault::Writeback { descriptor, fault }
+            })?;
+        }
+        self.periph.gdma.out[completion.channel] = completion.final_channel;
+        self.irq_dirty = true;
+        Ok(())
+    }
+
+    fn deliver_spi2_dma_completion(&mut self) {
+        if !self.board.take_spi2_dma_completion() {
+            return;
+        }
+        let Some(pending) = self.pending_spi2_dma.take() else {
+            return;
+        };
+        if let Err(fault) = self.apply_spi2_dma_completion(pending.completion) {
+            let channel = self.periph.gdma.out_channel_for(0).unwrap_or(0);
+            self.fail_spi2_dma(channel, fault);
+            return;
+        }
+        let rx = self
+            .board
+            .spi_transfer(2, &pending.transfer.tx, pending.transfer.rx_len);
+        self.periph.spi2.finish_transfer(pending.transfer, &rx);
+    }
+
+    fn spi2_mode(&self) -> Spi2Mode {
+        let user = self.periph.spi2.regs.read(0x10);
+        if user & (1 << 14) != 0 {
+            Spi2Mode::Octal
+        } else if user & (1 << 13) != 0 {
+            Spi2Mode::Quad
+        } else if user & (1 << 12) != 0 {
+            Spi2Mode::Dual
+        } else {
+            Spi2Mode::Single
+        }
+    }
+
+    fn spi2_clock_hz(&self) -> u32 {
+        let clock = self.periph.spi2.regs.read(0x0c);
+        if clock & (1 << 31) != 0 {
+            return crate::periph::APB_HZ as u32;
+        }
+        let predivider = ((clock >> 18) & 0xf) + 1;
+        let divider = predivider * (((clock >> 12) & 0x3f) + 1);
+        crate::periph::APB_HZ as u32 / divider
     }
 
     fn fail_spi2_dma(&mut self, channel: usize, fault: DmaDescriptorFault) {
@@ -951,14 +1025,8 @@ impl SocBus {
                 return 0;
             }
         }
-        for edge in self.board.take_edges() {
-            if let Some(events) = &mut self.gpio_events {
-                events.push((edge.cycle, edge.pin, edge.level));
-            }
-            if self.periph.gpio.set_input(edge.pin, edge.level) {
-                self.irq_dirty = true;
-            }
-        }
+        self.deliver_board_edges();
+        self.deliver_spi2_dma_completion();
         self.complete_spi2_dma();
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
