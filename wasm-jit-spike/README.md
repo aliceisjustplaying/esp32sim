@@ -1,26 +1,29 @@
 # Wasm-emitting LX7 JIT spike
 
-This disposable crate emits a WebAssembly module for one straight-line LX7
-block, runs it under Node's WebAssembly runtime, and keeps a compiled-in 64-bit
-cycle ledger. The state layout is 16 physical address registers, final PC, and
-the ledger in exported linear memory.
+This disposable crate emits one WebAssembly module for an SRAM LX7 block and
+runs it under Node. Exported memory holds 16 address registers, PC, a 64-bit
+cycle field, and the zero-overhead-loop registers.
 
-Worked block shapes are three-byte `movi`, `addi`, `add`, `sub`, `and`, `or`,
-and `xor` instructions in SRAM. Every worked instruction has exact cost 1 from
-the straight-line SRAM issue price in `docs/STATUS.md`. The emitter decodes real
-LX7 bytes with `xtensa-lx7`; the exit test executes the same bytes through the
-product interpreter and compares all 16 registers and PC.
+Coverage is three-byte `movi`, `addi`, `add`, `sub`, `and`, `or`, and `xor`;
+the full 24-opcode conditional-branch set plus observed `bltz` and `bgez`;
+`j`; `loop`, `loopnez`, and `loopgtz`; and `l32r`. Branches charge the adopted
+3 cycles taken or 1 not taken, `j` charges 3, and loop setup charges 5.
+`l32r` architecture emits only when the caller resolves its adopted 1 to 2
+cycle interval for that observation. The default fails closed.
 
-Branches, calls, returns, window operations, loops, loads, stores, special
-registers, cache operations, floating point, PIE, and traps are unsupported.
-They fail compilation by opcode and PC. Empty and truncated blocks also fail.
+Calls, returns, window operations, exceptions, indirect jumps, other loads and
+stores, special registers, cache operations, floating point, PIE, and traps end
+compilation with opcode and PC. The caller falls back to the interpreter for
+that block. Empty and truncated blocks also fail.
 
-Run the exit test:
+On `calibration/esp32s3-opcode-ladders/tinydraw-opcode-histogram.json`, the
+emitter covers 15,705,620 of 46,690,498 dynamic instructions. The instruction
+fallback rate is 66.362 percent. The 100-case branch-and-loop exit run emits
+88,149 bytes for 600 static guest instructions, or 146.915 bytes per guest
+instruction, including each module's state and section overhead.
+
+Run the spike tests:
 
 ```sh
-cargo test --manifest-path wasm-jit-spike/Cargo.toml -- --nocapture
+TMPDIR=/tmp cargo test --manifest-path wasm-jit-spike/Cargo.toml -- --nocapture
 ```
-
-The deterministic 100-block run emitted 43,890 module bytes for 1,993 guest
-instructions, or 22.022 wasm bytes per guest instruction. The module includes
-its 80-byte initial-state data segment, so the ratio includes fixed overhead.
