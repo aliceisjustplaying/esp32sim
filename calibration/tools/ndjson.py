@@ -170,6 +170,7 @@ class CellContract:
     family: str = ""
     factors: tuple[tuple[str, int], ...] = ()
     clock_domain: str | None = None
+    known_terms: tuple[str, ...] = ()
 
     def factor_map(self) -> dict[str, int]:
         return dict(self.factors)
@@ -324,7 +325,7 @@ class ManifestContract:
                 cell,
                 path_name,
                 {"id", "family", "samples", "variants"},
-                {"status", "factors", "clockDomain"},
+                {"status", "factors", "clockDomain", "knownTerms"},
             )
             family = _string(cell["family"], f"{path_name}.family")
             if "status" in cell:
@@ -357,6 +358,11 @@ class ManifestContract:
                     raise ValidationError(
                         f"{path_name}.clockDomain has unsupported value {clock_domain!r}"
                     )
+            known_terms: tuple[str, ...] = ()
+            if "knownTerms" in cell:
+                known_terms = tuple(
+                    _string_list(cell["knownTerms"], f"{path_name}.knownTerms")
+                )
             cells.append(
                 CellContract(
                     id=_string(cell["id"], f"{path_name}.id"),
@@ -366,6 +372,7 @@ class ManifestContract:
                     family=family,
                     factors=factors,
                     clock_domain=clock_domain,
+                    known_terms=known_terms,
                 )
             )
         ids = [cell.id for cell in cells]
