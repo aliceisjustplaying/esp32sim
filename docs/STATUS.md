@@ -280,6 +280,10 @@ H1. Capture the IDF 6.1 `esp32s3-exception-ladders` image: 100 samples each
 for non-tail `call4`, `call8`, and `call12` recursion past the register-file
 knee, `syscall` with a bare level-1 `rfe` handler, `rfe` alone with EPC1 set to
 the next instruction, and `rfi 3` alone with EPC3 set to the next instruction.
+Add a straight-line mask-ROM instruction-fetch cell. The two existing ROM
+`memset` paths produce different, noninteger residuals and cannot adopt a ROM
+fetch price under R8; receipt:
+[`evidence/timing/derived-rom-fetch-idf61/`](evidence/timing/derived-rom-fetch-idf61/README.md).
 Require zero cache-counter deltas, verified encodings, and a passing emulator
 dry-run. The estimated board time is about two seconds. Nothing is flashed
 until the maintainer starts the next capture session.
