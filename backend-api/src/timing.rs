@@ -26,6 +26,7 @@ pub enum PsramMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ChipConfig {
     pub cpu_mhz: u16,
+    pub apb_mhz: u16,
     pub flash_mode: FlashMode,
     pub flash_mhz: u16,
     pub psram_mode: PsramMode,
@@ -41,6 +42,7 @@ pub struct ChipConfig {
 impl ChipConfig {
     pub const RECEIPT_SCOPE: Self = Self {
         cpu_mhz: 240,
+        apb_mhz: 80,
         flash_mode: FlashMode::Qio,
         flash_mhz: 80,
         psram_mode: PsramMode::OctalDtr,
