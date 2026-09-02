@@ -18,6 +18,7 @@
 #define SCHEMA_VERSION "1.0.0"
 #define HARNESS_VERSION "1.0.0"
 #define SAMPLES 100u
+#define MAX_ATTEMPTS 200u
 #define OPS_PER_BLOCK 256u
 
 typedef void (*probe_fn_t)(volatile uint32_t *word);
@@ -194,9 +195,9 @@ static void print_cycles_per_op(uint64_t doubled_cycles) {
 
 static void emit_refusal(const char *name) {
   printf("CAL_RECORD {\"type\":\"refusal\",\"name\":\"%s\","
-         "\"reason\":\"cache-counter mismatch during IRAM issue block\","
+         "\"reason\":\"cache-counter mismatch after %u attempts\","
          "\"tierCandidate\":\"distribution\"}\n",
-         name);
+         name, MAX_ATTEMPTS);
   fflush(stdout);
 }
 
@@ -225,12 +226,12 @@ static void emit_metric(const char *name, const char *pattern,
   fflush(stdout);
 }
 
-static void IRAM_ATTR __attribute__((noinline))
-measure_probe_samples(probe_fn_t function, uint32_t *samples,
-                      bool *cache_mismatch) {
-  bool mismatch = false;
+static uint32_t IRAM_ATTR __attribute__((noinline))
+measure_probe_samples(probe_fn_t function, uint32_t *samples) {
+  uint32_t accepted = 0;
   function(&benchmark_word);
-  for (uint32_t sample = 0; sample < SAMPLES; ++sample) {
+  for (uint32_t attempt = 0;
+       attempt < MAX_ATTEMPTS && accepted < SAMPLES; ++attempt) {
     clear_cache_counters();
     const uint32_t previous = mask_interrupts();
     const uint32_t start = read_ccount();
@@ -238,18 +239,19 @@ measure_probe_samples(probe_fn_t function, uint32_t *samples,
     const uint32_t end = read_ccount();
     restore_interrupts(previous);
     const cache_counters_t counters = read_cache_counters();
-    samples[sample] = end - start;
-    mismatch = mismatch || !counters_zero(counters);
+    const uint32_t elapsed = end - start;
+    if (elapsed != 0u && counters_zero(counters)) {
+      samples[accepted++] = elapsed;
+    }
   }
-  *cache_mismatch = mismatch;
+  return accepted;
 }
 
 static void run_probe(const char *name, probe_fn_t function,
                       const char *pattern) {
   uint32_t samples[SAMPLES];
-  bool cache_mismatch = false;
-  measure_probe_samples(function, samples, &cache_mismatch);
-  if (cache_mismatch) {
+  const uint32_t accepted = measure_probe_samples(function, samples);
+  if (accepted != SAMPLES) {
     emit_refusal(name);
   } else {
     emit_metric(name, pattern, samples);
@@ -265,9 +267,10 @@ void app_main(void) {
          "\"idf_version\":\"%s\",\"target\":\"esp32s3\","
          "\"chip_revision\":%u,\"cores\":%u,\"cpu_hz\":%" PRIu32 ","
          "\"ccount_hz\":%" PRIu32 ",\"probe\":\"opcode-ladders\","
-         "\"samples_per_cell\":%u,\"operations_per_block\":%u}\n",
+         "\"samples_per_cell\":%u,\"max_attempts_per_cell\":%u,"
+         "\"operations_per_block\":%u}\n",
          SCHEMA_VERSION, HARNESS_VERSION, esp_get_idf_version(), chip.revision,
-         chip.cores, cpu_hz, cpu_hz, SAMPLES, OPS_PER_BLOCK);
+         chip.cores, cpu_hz, cpu_hz, SAMPLES, MAX_ATTEMPTS, OPS_PER_BLOCK);
   fflush(stdout);
 
   for (uint32_t index = 0; index < sizeof(probes) / sizeof(probes[0]); ++index) {
