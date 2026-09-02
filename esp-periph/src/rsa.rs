@@ -35,7 +35,7 @@ impl Rsa {
             0x804 => self.length = v,
             0x80c => { let n = self.length as usize + 1; let z = crate::crypto::bn_modexp(&self.block(384, n), &self.block(256, n), &self.block(0, n)); self.finish(z, n); }
             0x810 => { let n = self.length as usize + 1; let z = crate::crypto::bn_mod(&crate::crypto::bn_mul(&self.block(384, n), &self.block(256, n)), &self.block(0, n)); self.finish(z, n); }
-            0x814 => { let n = (self.length as usize + 1) / 2; let z = crate::crypto::bn_mul(&self.block(384, n), &self.block(128 + n, n)); self.finish(z, 2 * n); }
+            0x814 => { let n = (self.length as usize).div_ceil(2); let z = crate::crypto::bn_mul(&self.block(384, n), &self.block(128 + n, n)); self.finish(z, 2 * n); }
             0x81c => self.int_raw = 0,                    // clears the interrupt signal, not the idle status
             0x820 => self.constant_time = v, 0x824 => self.search_open = v, 0x828 => self.search_pos = v,
             0x82c => self.int_ena = v,
@@ -53,6 +53,8 @@ impl Rsa {
         self.ops += 1;
     }
 }
+
+impl Default for Rsa { fn default() -> Self { Self::new() } }
 
 impl Device for Rsa {
     fn read(&mut self, off: u32) -> u32 { Rsa::read(self, off) }
@@ -105,4 +107,3 @@ mod rsa_tests {
         assert!(r.read(0x808) == 1, "memory-init query must read back ready");
     }
 }
-

@@ -101,6 +101,7 @@ fn usb_sof_cadence_follows_the_cpu_clock() {
 
 // ------------------------------------------------------------------ I2S clock tree
 #[test]
+#[allow(clippy::identity_op)] // Keep the slot-width field's bit position explicit in this register encoding.
 fn i2s_frame_rate_from_the_clock_registers() {
     let mut i = I2s::new(240_000_000);
     assert_eq!(i.sample_rate, 44100, "until the clock is programmed");
@@ -168,6 +169,7 @@ fn table_dispatch_ranges_delta_alias_and_fallback() {
 }
 
 #[test]
+#[allow(clippy::unnecessary_min_or_max)] // Keep both timer candidates visible in this deadline-selection assertion.
 fn table_sources_ticks_deadlines_and_debug() {
     let mut c = chip();
     c.a.irq = 1; c.b.irq = 0b10; c.wide.irq = 1;

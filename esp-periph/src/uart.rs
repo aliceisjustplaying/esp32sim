@@ -26,6 +26,7 @@ impl Uart {
     }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
 }
+impl Default for Uart { fn default() -> Self { Self::new() } }
 
 impl Device for Uart {
     fn read(&mut self, off: u32) -> u32 { Uart::read(self, off) }

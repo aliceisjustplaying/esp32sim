@@ -70,7 +70,7 @@ pub fn read32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32) -> u32 {
     p.pre_access(block, off, false);
     let v = match p.dispatch_read(block, off) {
         Some(v) => v,
-        None => { note(p, addr, block, off, false, 0); p.misc_mut().generic.entry(block).or_insert_with(RegRam::new).read(off) }
+        None => { note(p, addr, block, off, false, 0); p.misc_mut().generic.entry(block).or_default().read(off) }
     };
     let m = p.misc_mut();
     if m.log_all { eprintln!("[rd] {}+0x{:03x} ({:#010x}) -> {:#010x} pc={:#010x}", P::block_name(block), off, addr, v, m.cur_pc); }
@@ -87,7 +87,7 @@ pub fn write32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32, v: u32) -> WriteEf
     p.pre_access(block, off, true);
     match p.dispatch_write(block, off, v) {
         Some(fx) => fx,
-        None => { note(p, addr, block, off, true, v); p.misc_mut().generic.entry(block).or_insert_with(RegRam::new).write(off, v); WriteEffect::NONE }
+        None => { note(p, addr, block, off, true, v); p.misc_mut().generic.entry(block).or_default().write(off, v); WriteEffect::NONE }
     }
 }
 

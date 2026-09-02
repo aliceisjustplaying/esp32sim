@@ -15,14 +15,14 @@ pub fn sha1(data: &[u8]) -> [u8; 20] {
         for i in 0..16 { w[i] = u32::from_be_bytes([block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]]); }
         for i in 16..80 { w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1); }
         let (mut a, mut b, mut c, mut d, mut e) = (h[0], h[1], h[2], h[3], h[4]);
-        for i in 0..80 {
+        for (i, &wi) in w.iter().enumerate() {
             let (f, k) = match i {
                 0..=19 => ((b & c) | ((!b) & d), 0x5A827999u32),
                 20..=39 => (b ^ c ^ d, 0x6ED9EBA1),
                 40..=59 => ((b & c) | (b & d) | (c & d), 0x8F1BBCDC),
                 _ => (b ^ c ^ d, 0xCA62C1D6),
             };
-            let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(w[i]);
+            let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(wi);
             e = d; d = c; c = b.rotate_left(30); b = a; a = t;
         }
         h[0] = h[0].wrapping_add(a); h[1] = h[1].wrapping_add(b); h[2] = h[2].wrapping_add(c);
@@ -38,7 +38,7 @@ pub fn hmac_sha1(key: &[u8], data: &[u8]) -> [u8; 20] {
     if key.len() > 64 { k[..20].copy_from_slice(&sha1(key)); } else { k[..key.len()].copy_from_slice(key); }
     let mut inner = Vec::with_capacity(64 + data.len());
     let mut outer = Vec::with_capacity(84);
-    for i in 0..64 { inner.push(k[i] ^ 0x36); outer.push(k[i] ^ 0x5c); }
+    for &ki in &k { inner.push(ki ^ 0x36); outer.push(ki ^ 0x5c); }
     inner.extend_from_slice(data);
     outer.extend_from_slice(&sha1(&inner));
     sha1(&outer)
@@ -75,7 +75,7 @@ pub fn prf(key: &[u8], label: &str, data: &[u8], bits: usize) -> Vec<u8> {
         out.extend_from_slice(&hmac_sha1(key, &buf));
         i += 1;
     }
-    out.truncate((bits + 7) / 8);
+    out.truncate(bits.div_ceil(8));
     out
 }
 
@@ -188,7 +188,7 @@ pub fn aes128_encrypt_block(key: &[u8; 16], block: &[u8; 16]) -> [u8; 16] {
     let rk = expand_key(key);
     let mut s = *block;
     for i in 0..16 { s[i] ^= rk[0][i]; }
-    for round in 1..11 {
+    for (round, key) in rk.iter().enumerate().skip(1) {
         for b in s.iter_mut() { *b = SBOX[*b as usize]; }
         // ShiftRows (column-major state: byte i is row i%4, column i/4)
         let t = s;
@@ -200,7 +200,7 @@ pub fn aes128_encrypt_block(key: &[u8; 16], block: &[u8; 16]) -> [u8; 16] {
                 for r in 0..4 { s[4 * c + r] = col[r] ^ x ^ xtime(col[r] ^ col[(r + 1) % 4]); }
             }
         }
-        for i in 0..16 { s[i] ^= rk[round][i]; }
+        for i in 0..16 { s[i] ^= key[i]; }
     }
     s
 }
@@ -211,14 +211,14 @@ pub fn aes_key_wrap(kek: &[u8; 16], plain: &[u8]) -> Vec<u8> {
     let mut a = [0xa6u8; 8];
     let mut r: Vec<[u8; 8]> = (0..n).map(|i| { let mut b = [0u8; 8]; b.copy_from_slice(&plain[i * 8..i * 8 + 8]); b }).collect();
     for j in 0..6u64 {
-        for i in 0..n {
+        for (i, ri) in r.iter_mut().enumerate() {
             let mut block = [0u8; 16];
-            block[..8].copy_from_slice(&a); block[8..].copy_from_slice(&r[i]);
+            block[..8].copy_from_slice(&a); block[8..].copy_from_slice(ri);
             let b = aes128_encrypt_block(kek, &block);
             a.copy_from_slice(&b[..8]);
             let t = j * n as u64 + i as u64 + 1;
             for (k, tb) in t.to_be_bytes().iter().enumerate() { a[k] ^= tb; }
-            r[i].copy_from_slice(&b[8..]);
+            ri.copy_from_slice(&b[8..]);
         }
     }
     let mut out = Vec::with_capacity(8 + n * 8);
@@ -304,7 +304,7 @@ fn bn_shl(a: &[u32], bits: u32) -> Vec<u32> {
     if bits == 0 { return a.to_vec(); }
     let mut out = Vec::with_capacity(a.len() + 1);
     let mut carry = 0u32;
-    for &w in a { out.push((w << bits) | carry); carry = (w >> (32 - bits)) as u32; }
+    for &w in a { out.push((w << bits) | carry); carry = w >> (32 - bits); }
     out.push(carry);
     out
 }
@@ -420,9 +420,9 @@ mod bn_tests {
         let back = super::bn_mul(&q, &b);
         let mut sum = back.clone();
         let mut carry = 0u64;                                   // sum = q*b + r
-        for i in 0..sum.len() {
-            let t = sum[i] as u64 + *r.get(i).unwrap_or(&0) as u64 + carry;
-            sum[i] = t as u32; carry = t >> 32;
+        for (i, word) in sum.iter_mut().enumerate() {
+            let t = *word as u64 + *r.get(i).unwrap_or(&0) as u64 + carry;
+            *word = t as u32; carry = t >> 32;
         }
         assert_eq!(bn_trim(&sum), bn_trim(&a));
         assert_eq!(bn_cmp(&r, &b), std::cmp::Ordering::Less);

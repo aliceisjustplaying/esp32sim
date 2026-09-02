@@ -58,7 +58,7 @@ impl SpiMem {
         let addr_bits = ((user1 >> 26) & 0x3f) + 1;
         let addr = if addr_bits > 24 { addr_reg } else { addr_reg & 0xff_ffff };
         let fsize = flash.len();
-        let mut rd = |a: u32, n: usize| -> Vec<u8> { (0..n).map(|i| { let x = a as usize + i; if x < fsize { flash[x] } else { 0xff } }).collect() };
+        let rd = |a: u32, n: usize| -> Vec<u8> { (0..n).map(|i| { let x = a as usize + i; if x < fsize { flash[x] } else { 0xff } }).collect() };
         let misc = self.regs.read(0x34);
         if self.has_psram && cmd & (1 << 18) != 0 && misc & 1 != 0 && misc & 2 == 0 {   // USR command with CS0 disabled, CS1 enabled: the octal PSRAM
             let c16 = user2 & 0xffff;
@@ -90,9 +90,9 @@ impl SpiMem {
                 0x01 | 0x31 | 0x11 => self.status &= !0x02,        // WRSR*: latch consumed (keep QE set)
                 0x15 => self.set_w_bytes(&[0x00]),
                 0x02 | 0x32 | 0x38 => { let d = self.w_bytes(mosi_bytes); for (i, b) in d.iter().enumerate() { let x = addr as usize + i; if x < fsize { flash[x] &= *b; } } self.dirty.push((DirtyMem::Flash, addr as usize, d.len())); self.status &= !0x02; }
-                0x20 => { let a = (addr as usize) & !0xfff; for x in a..(a + 0x1000).min(fsize) { flash[x] = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x1000)); self.status &= !0x02; }
-                0x52 => { let a = (addr as usize) & !0x7fff; for x in a..(a + 0x8000).min(fsize) { flash[x] = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x8000)); self.status &= !0x02; }
-                0xd8 => { let a = (addr as usize) & !0xffff; for x in a..(a + 0x10000).min(fsize) { flash[x] = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x10000)); self.status &= !0x02; }
+                0x20 => { let a = (addr as usize) & !0xfff; for b in flash.iter_mut().take((a + 0x1000).min(fsize)).skip(a) { *b = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x1000)); self.status &= !0x02; }
+                0x52 => { let a = (addr as usize) & !0x7fff; for b in flash.iter_mut().take((a + 0x8000).min(fsize)).skip(a) { *b = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x8000)); self.status &= !0x02; }
+                0xd8 => { let a = (addr as usize) & !0xffff; for b in flash.iter_mut().take((a + 0x10000).min(fsize)).skip(a) { *b = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x10000)); self.status &= !0x02; }
                 0xc7 | 0x60 => { for b in flash.iter_mut() { *b = 0xff; } self.dirty.push((DirtyMem::Flash, 0, fsize)); self.status &= !0x02; }
                 _ => { if has_miso { self.set_w_bytes(&vec![0u8; miso_bytes]); } }
             }
@@ -111,8 +111,8 @@ impl SpiMem {
             self.dirty.push((DirtyMem::Flash, (addr & 0xff_ffff) as usize, d.len()));
             self.status &= !0x02;
         }
-        if cmd & (1 << 24) != 0 { let a = (addr as usize) & !0xfff; for x in a..(a + 0x1000).min(fsize) { flash[x] = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x1000)); self.status &= !0x02; }      // SE
-        if cmd & (1 << 23) != 0 { let a = (addr as usize) & !0xffff; for x in a..(a + 0x10000).min(fsize) { flash[x] = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x10000)); }    // BE
+        if cmd & (1 << 24) != 0 { let a = (addr as usize) & !0xfff; for b in flash.iter_mut().take((a + 0x1000).min(fsize)).skip(a) { *b = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x1000)); self.status &= !0x02; }      // SE
+        if cmd & (1 << 23) != 0 { let a = (addr as usize) & !0xffff; for b in flash.iter_mut().take((a + 0x10000).min(fsize)).skip(a) { *b = 0xff; } self.dirty.push((DirtyMem::Flash, a, 0x10000)); }    // BE
         if cmd & (1 << 22) != 0 { for b in flash.iter_mut() { *b = 0xff; } self.dirty.push((DirtyMem::Flash, 0, fsize)); }                          // CE
     }
 }

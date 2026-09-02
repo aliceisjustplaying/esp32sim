@@ -13,7 +13,7 @@ pub struct Gpio {
     pub strap: u32,
 }
 impl Gpio {
-    pub fn new() -> Self { Gpio { out: 0, enable: 0, input: !0u64 & ((1u64 << 49) - 1), status: 0, pin: [0; 49], func_in_sel: [0x3c; 256], func_out_sel: [0x100; 49], ram: RegRam::new(), changes: Vec::new(), strap: 0x0f, input_changes: Vec::new() } }
+    pub fn new() -> Self { Gpio { out: 0, enable: 0, input: (1u64 << 49) - 1, status: 0, pin: [0; 49], func_in_sel: [0x3c; 256], func_out_sel: [0x100; 49], ram: RegRam::new(), changes: Vec::new(), strap: 0x0f, input_changes: Vec::new() } }
     fn note_out(&mut self, old: u64) {
         let vis = self.out & self.enable; let oldvis = old & self.enable;
         let diff = vis ^ oldvis;
@@ -47,7 +47,7 @@ impl Gpio {
             0x38 => self.strap,
             0x3c => self.input as u32, 0x40 => (self.input >> 32) as u32,
             0x44 => self.status as u32, 0x50 => (self.status >> 32) as u32,
-            0x5c => (self.status as u32), 0x68 => (self.status >> 32) as u32,     // PCPU_INT: interrupt status seen by core 0
+            0x5c => self.status as u32, 0x68 => (self.status >> 32) as u32,     // PCPU_INT: interrupt status seen by core 0
             0x74..=0x134 => self.pin[((off - 0x74) / 4) as usize],
             0x154..=0x550 => self.func_in_sel[((off - 0x154) / 4) as usize],
             0x554..=0x614 => self.func_out_sel[((off - 0x554) / 4) as usize],
@@ -85,6 +85,8 @@ impl Gpio {
         if matches!(off, 0x4 | 0x8 | 0xc | 0x10 | 0x14 | 0x18 | 0x20 | 0x24 | 0x28 | 0x2c | 0x30 | 0x34) { self.note_out(old); }
     }
 }
+
+impl Default for Gpio { fn default() -> Self { Self::new() } }
 
 impl Device for Gpio {
     fn read(&mut self, off: u32) -> u32 { Gpio::read(self, off) }

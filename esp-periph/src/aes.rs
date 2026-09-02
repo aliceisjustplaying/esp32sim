@@ -65,6 +65,8 @@ impl Aes {
     }
 }
 
+impl Default for Aes { fn default() -> Self { Self::new() } }
+
 impl Device for Aes {
     fn read(&mut self, off: u32) -> u32 { Aes::read(self, off) }
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { Aes::write(self, off, v); WriteEffect::NONE }
