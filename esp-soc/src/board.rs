@@ -17,6 +17,7 @@ pub enum Spi2Mode {
     Single,
     Dual,
     Quad,
+    Octal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
