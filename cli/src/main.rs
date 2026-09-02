@@ -2,8 +2,124 @@
 //!
 //!   esp32sim --rom ROM.elf --bootloader b.bin --ptable p.bin --app firmware.bin [--elf firmware.elf]
 //!               [--boot app|rom] [--max-insns N] [--trace] [--trace-from N] [--break ADDR] [--log-periph]
-use esp32s3::{Machine, Stop};
+use esp32s3::backend::{MeasuredBootRefusal, MeasuredBootScheduler, MeasuredBootStop};
+use esp32s3::{Machine, MeasuredStepError, Stop};
 use std::path::PathBuf;
+
+const MEASURED_READY_MARKER: &[u8] = b"TINYDRAW_VECTOR_V2_READY";
+
+fn sha256(path: &std::path::Path) -> Result<String, String> {
+    let output = std::process::Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(path)
+        .output()
+        .map_err(|error| format!("cannot run shasum for {}: {error}", path.display()))?;
+    if !output.status.success() {
+        return Err(format!("shasum failed for {}", path.display()));
+    }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|error| format!("shasum output is not UTF-8: {error}"))?;
+    let digest = text
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| format!("shasum returned no digest for {}", path.display()))?;
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!(
+            "shasum returned an invalid digest for {}",
+            path.display()
+        ));
+    }
+    Ok(digest.to_string())
+}
+
+fn refusal_class(refusal: &MeasuredBootRefusal) -> String {
+    match refusal.error {
+        MeasuredStepError::Unpriced(class) => format!("{class:?}"),
+        other => format!("{other:?}"),
+    }
+}
+
+fn measured_report(stop: MeasuredBootStop, elf_sha256: &str, rom_elf_sha256: &str) -> String {
+    match stop {
+        MeasuredBootStop::Refusal {
+            boot_cycle,
+            core_cycles,
+            refusal,
+        } => {
+            let config = refusal.configuration;
+            format!(
+                concat!(
+                    "{{\n",
+                    "  \"schema\": 1,\n",
+                    "  \"image\": {{\n",
+                    "    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n",
+                    "    \"elf_sha256\": \"{}\",\n",
+                    "    \"rom_elf_sha256\": \"{}\"\n",
+                    "  }},\n",
+                    "  \"outcome\": \"refusal\",\n",
+                    "  \"boot_cycle\": {},\n",
+                    "  \"core_cycles\": [{}, {}],\n",
+                    "  \"ready\": false,\n",
+                    "  \"deterministic_runs\": 2,\n",
+                    "  \"refusals\": [\n",
+                    "    {{\n",
+                    "      \"class\": \"{}\",\n",
+                    "      \"chip_config\": {{\n",
+                    "        \"cpu_mhz\": {},\n",
+                    "        \"flash_mode\": \"{:?}\",\n",
+                    "        \"flash_mhz\": {},\n",
+                    "        \"psram_mode\": \"{:?}\",\n",
+                    "        \"psram_mhz\": {},\n",
+                    "        \"icache_size_bytes\": {},\n",
+                    "        \"icache_ways\": {},\n",
+                    "        \"icache_line_bytes\": {},\n",
+                    "        \"dcache_size_bytes\": {},\n",
+                    "        \"dcache_ways\": {},\n",
+                    "        \"dcache_line_bytes\": {}\n",
+                    "      }},\n",
+                    "      \"count\": 1,\n",
+                    "      \"first_core\": \"{:?}\",\n",
+                    "      \"first_pc\": \"{:#010x}\",\n",
+                    "      \"first_symbol\": \"{}\"\n",
+                    "    }}\n",
+                    "  ]\n",
+                    "}}\n"
+                ),
+                elf_sha256,
+                rom_elf_sha256,
+                boot_cycle,
+                core_cycles[0],
+                core_cycles[1],
+                refusal_class(&refusal),
+                config.cpu_mhz,
+                config.flash_mode,
+                config.flash_mhz,
+                config.psram_mode,
+                config.psram_mhz,
+                config.icache_size_bytes,
+                config.icache_ways,
+                config.icache_line_bytes,
+                config.dcache_size_bytes,
+                config.dcache_ways,
+                config.dcache_line_bytes,
+                refusal.core,
+                refusal.pc,
+                esp32s3::web::json_escape(&refusal.symbol),
+            )
+        }
+        MeasuredBootStop::Ready {
+            boot_cycle,
+            core_cycles,
+        } => format!(
+            "{{\n  \"schema\": 1,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"ready\",\n  \"boot_cycle\": {boot_cycle},\n  \"core_cycles\": [{}, {}],\n  \"ready\": true,\n  \"deterministic_runs\": 2,\n  \"refusals\": []\n}}\n",
+            core_cycles[0], core_cycles[1]
+        ),
+        MeasuredBootStop::StepLimit { core_cycles } => format!(
+            "{{\n  \"schema\": 1,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"step_limit\",\n  \"core_cycles\": [{}, {}]\n}}\n",
+            core_cycles[0], core_cycles[1]
+        ),
+    }
+}
 
 fn find_rom() -> Option<PathBuf> {
     let home = std::env::var("HOME").ok()?;
@@ -67,6 +183,7 @@ fn main() {
     let mut net_mode = "nat".to_string();
     let mut no_jit = false;
     let mut flash_at: Vec<String> = Vec::new();
+    let mut measured = false;
     let mut i = 1;
     while i < args.len() {
         let a = args[i].as_str();
@@ -172,6 +289,7 @@ fn main() {
             "--wifi" => wifi = Some(next()),
             "--net" => net_mode = next(),
             "--flash-image" => flash_image = Some(next()), // raw flash dump written at offset 0
+            "--measured" => measured = true,
             "--max-seconds" => max_seconds = Some(next().parse().expect("seconds")),
             "--gram-png" => gram_png = Some(next()),
             _ => {
@@ -301,6 +419,23 @@ fn main() {
         match std::fs::read(r) {
             Ok(d) => {
                 m.load_rom(&d).expect("rom");
+                if measured {
+                    let parsed = esp32s3::elf::parse(&d).expect("measured ROM symbols");
+                    let mut symbols = std::collections::BTreeMap::new();
+                    for (name, address) in parsed.by_name {
+                        symbols
+                            .entry(address)
+                            .and_modify(|current: &mut String| {
+                                if name < *current {
+                                    current.clone_from(&name);
+                                }
+                            })
+                            .or_insert(name);
+                    }
+                    for (address, name) in symbols {
+                        m.symbols.entry(address).or_insert(name);
+                    }
+                }
                 eprintln!("[emu] ROM loaded from {}", r.display());
             }
             Err(e) => eprintln!("[emu] no ROM ({}): {}", r.display(), e),
@@ -493,6 +628,28 @@ fn main() {
         m.max_cycles = (sec * esp32s3::periph::CPU_HZ as f64) as u64;
     }
     m.bus.periph.spi1.log = std::env::var("ESP_EMU_DEBUG_SPI").is_ok();
+    if measured {
+        let Some(elf_path) = elfs.last().map(PathBuf::from) else {
+            eprintln!("--measured requires --elf");
+            std::process::exit(2);
+        };
+        let Some(rom_path) = rom.as_ref() else {
+            eprintln!("--measured requires --rom");
+            std::process::exit(2);
+        };
+        let elf_sha256 = sha256(&elf_path).unwrap_or_else(|error| {
+            eprintln!("{error}");
+            std::process::exit(2)
+        });
+        let rom_elf_sha256 = sha256(rom_path).unwrap_or_else(|error| {
+            eprintln!("{error}");
+            std::process::exit(2)
+        });
+        let mut scheduler = MeasuredBootScheduler::new(m);
+        let stop = scheduler.run_until(MEASURED_READY_MARKER, max_insns);
+        print!("{}", measured_report(stop, &elf_sha256, &rom_elf_sha256));
+        return;
+    }
     let t0 = std::time::Instant::now();
     let stop = loop {
         let stop = m.run(max_insns);
