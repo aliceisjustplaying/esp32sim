@@ -132,7 +132,7 @@ impl VirtualAp {
         let fc = u16::from_le_bytes([f[0], f[1]]);
         let (ty, st) = ((fc >> 2) & 3, (fc >> 4) & 0xf);
         let mut a2 = [0u8; 6]; a2.copy_from_slice(&f[10..16]);
-        let to_us = |a1: &[u8]| a1 == &[0xff; 6] || a1 == &self.cfg.bssid;
+        let to_us = |a1: &[u8]| a1 == [0xff; 6] || a1 == self.cfg.bssid;
         match (ty, st) {
             (0, 4) => {                                                                      // probe request: for us or wildcard?
                 let ssid_ok = ies(f, 24).iter().any(|(id, d)| *id == 0 && (d.is_empty() || *d == self.cfg.ssid.as_bytes()));

@@ -242,7 +242,7 @@ impl DeviceSet for Peripherals {
 
 impl Peripherals {
     pub fn new(mac: [u8; 6]) -> Self {
-        let mut p = Peripherals {
+        Peripherals {
             uart: [Uart::new(), Uart::new()], usb: UsbSerialJtag::new(CPU_HZ), systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], gpio: Gpio::new(), rtc: RtcCntl::new(),
             efuse: efuse_c3(mac, 0, 4, 3), system: SystemRegs::new(0x28), extmem: Extmem::new(), intc: Intc::new(),
@@ -252,8 +252,7 @@ impl Peripherals {
             sha: Sha::new(), aes: Aes::new(), rsa: Rsa::new(), rng: Rng { state: 0x2545_f491, now: 0 },
             misc: Misc::new(), spi_exec: false, clock: Self::new_clock(),
             last_status: [0; 4],
-        };
-        p
+        }
     }
 
     pub fn block_name(block: u32) -> &'static str {

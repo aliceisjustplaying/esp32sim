@@ -6,6 +6,7 @@
 //!   - WS2812 12-LED ring on GPIO 8 (via RMT)
 //!   - rotary encoder CLK 5 / DT 4 / SW 9, buttons GPIO 17 / 16 (active low)
 //!   - MAX98357A I2S amp: BCLK 12, LRCLK 13, DIN 10
+//!
 //! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
 pub use esp_soc::board::{Board, BoardModel, NoBoard};
@@ -53,6 +54,8 @@ pub struct St7735 {
     pub frames: u64,             // RAMWR commands seen
     pub pixels_written: u64,
 }
+
+impl Default for St7735 { fn default() -> Self { Self::new() } }
 
 impl St7735 {
     pub const COLS: usize = 132;
@@ -158,7 +161,7 @@ impl St7735 {
     pub fn histogram(&self, top: usize) -> Vec<(u16, usize)> {
         let mut m: std::collections::HashMap<u16, usize> = Default::default();
         for &p in &self.gram { if p != 0 { *m.entry(p).or_insert(0) += 1; } }
-        let mut v: Vec<(u16, usize)> = m.into_iter().collect(); v.sort_by(|a, b| b.1.cmp(&a.1)); v.truncate(top); v
+        let mut v: Vec<(u16, usize)> = m.into_iter().collect(); v.sort_by_key(|a| std::cmp::Reverse(a.1)); v.truncate(top); v
     }
 }
 
@@ -183,6 +186,8 @@ pub struct Atech14 {
     pub ring: Ring,
     pub gpio_events: u64,
 }
+
+impl Default for Atech14 { fn default() -> Self { Self::new() } }
 
 impl Atech14 {
     pub fn new() -> Self { Atech14 { tft: St7735::new(), ring: Ring::new(12), gpio_events: 0 } }
@@ -215,6 +220,8 @@ impl BoardModel for Atech14 {
 /// CH32V003 IO expander, ES8311 speaker codec + ES7210 mic ADC on I2C0, audio on I2S0
 /// (MCLK 10, BCLK 11, LRCLK 12, DIN 13, DOUT 14), buttons GPIO 0 / 15.
 pub struct WaveshareCam { pub gpio_events: u64, pub preview_dirty: bool, sensor: std::sync::Arc<std::sync::Mutex<crate::i2c::SensorState>>, picture: Option<picture::Picture>, frame: Option<(u32, u32, std::sync::Arc<Vec<u8>>)>, pub frames: u64 }
+impl Default for WaveshareCam { fn default() -> Self { Self::new() } }
+
 impl WaveshareCam { pub fn new() -> Self { WaveshareCam { gpio_events: 0, preview_dirty: false, sensor: Default::default(), picture: None, frame: None, frames: 0 } } }
 impl BoardModel for WaveshareCam {
     fn name(&self) -> &'static str { "waveshare-cam" }
@@ -257,6 +264,8 @@ pub struct WaveshareLcd4b {
     pub panel: std::sync::Arc<std::sync::Mutex<crate::i2c::St7701State>>,
     pub touch_state: std::sync::Arc<std::sync::Mutex<crate::i2c::TouchState>>,
 }
+impl Default for WaveshareLcd4b { fn default() -> Self { Self::new() } }
+
 impl WaveshareLcd4b {
     pub fn new() -> Self { WaveshareLcd4b { gpio_events: 0, w: 480, h: 480, frame: vec![0; 480 * 480], frames: 0, panel: Default::default(), touch_state: Default::default() } }
 }
@@ -275,7 +284,7 @@ impl BoardModel for WaveshareLcd4b {
     }
     fn lcd_frame(&mut self, w: u32, h: u32, rgb565: &[u8]) {
         if (w, h) != (self.w, self.h) { self.w = w; self.h = h; self.frame = vec![0; (w * h) as usize]; }
-        for (i, px) in rgb565.chunks_exact(2).enumerate().take(self.frame.len()) { self.frame[i] = u16::from_le_bytes([px[0], px[1]]); }
+        for (i, px) in rgb565.as_chunks::<2>().0.iter().enumerate().take(self.frame.len()) { self.frame[i] = u16::from_le_bytes([px[0], px[1]]); }
         self.frames += 1;
     }
     fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> { Some((self.w, self.h, self.frame.clone(), self.frames)) }

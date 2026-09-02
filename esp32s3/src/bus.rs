@@ -160,13 +160,6 @@ impl SocBus {
         Some(e)
     }
 
-    /// Resolve an address to (buffer, offset, writable) — the slow path, for loaders.
-    fn resolve(&mut self, addr: u32) -> Option<(&mut Vec<u8>, usize, bool)> {
-        let e = self.lookup(addr)?;
-        let o = e.off as usize + (addr - e.lo) as usize;
-        Some((self.buf_mut(e.src as u8), o, e.writable != 0))
-    }
-
     /// Record that `len` bytes at `off` of the page group starting at `vbase` changed. An
     /// instruction can begin up to two bytes before a page boundary, so the previous page is
     /// bumped too when the write touches the first bytes of one.
@@ -515,6 +508,7 @@ impl SocBus {
     }
 
     /// Write one received frame into the next RX descriptor (rx_ctrl header + frame + FCS) and raise the RX event.
+    #[allow(clippy::identity_op, reason = "rx_state zero remains visible in the packed descriptor layout")]
     fn wifi_rx_deliver(&mut self, frame: &[u8], now_us: u64) {
         let desc = self.periph.wifi.rx_next | crate::periph::DMA_ADDR_BASE;
         if desc == 0 { self.periph.wifi.rx_dropped += 1; return; }
@@ -615,7 +609,7 @@ impl Bus for SocBus {
         if let Some(w) = b.get(o..o + 4) { return Ok(w.try_into().unwrap()); }
         // last bytes of a buffer (or of a mapped page): what physical memory has, zero beyond
         let mut r = [0u8; 4];
-        for i in 0..4 { if let Some(x) = b.get(o + i) { r[i] = *x; } }
+        for (i, byte) in r.iter_mut().enumerate() { if let Some(x) = b.get(o + i) { *byte = *x; } }
         Ok(r)
     }
     #[inline(always)]
@@ -656,7 +650,7 @@ impl SocBus {
         if self.periph.aes.dma_pending { self.aes_dma_step(); }
         if self.periph.sha.dma_pending { self.sha_dma_step(); }
         if self.periph.wifi.ap.is_some() { self.wifi_air_step(); }
-        if self.periph.wifi.net.is_some() {
+        if let Some(net) = &mut self.periph.wifi.net {
             let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
             let out = std::mem::take(&mut self.periph.wifi.eth_tx);
             // Frames from the station are handled the moment they are sent, but reading the host
@@ -666,7 +660,6 @@ impl SocBus {
             let due = now_us.wrapping_sub(self.periph.wifi.net_polled_us) >= NET_POLL_US;
             if !out.is_empty() || due {
                 if due { self.periph.wifi.net_polled_us = now_us; }
-                let net = self.periph.wifi.net.as_mut().unwrap();
                 let mut replies = Vec::new();
                 for e in out { replies.extend(net.handle(&e, now_us)); }
                 replies.extend(net.poll(now_us));

@@ -41,6 +41,8 @@ pub const CPU_HZ: u64 = 240_000_000;
 // ------------------------------------------------------------------ Interrupt matrix
 /// `status` is the live source state, refreshed by `Peripherals::pre_access` before a read.
 pub struct IntMatrix { pub map: [[u32; NUM_SOURCES]; 2], ram: RegRam, pub status: [u32; 4] }
+impl Default for IntMatrix { fn default() -> Self { Self::new() } }
+
 impl IntMatrix {
     pub fn new() -> Self { IntMatrix { map: [[6; NUM_SOURCES]; 2], ram: RegRam::new(), status: [0; 4] } }
     pub fn read(&self, off: u32) -> u32 { let status = &self.status;
@@ -77,17 +79,19 @@ pub struct WifiMac { pub ram: RegRam, pub ram2: RegRam, pub log: bool,
                      /// RX descriptor ring: base written by the driver (0x088), the descriptor the hardware fills next, the last one filled
                      pub rx_base: u32, pub rx_next: u32, pub rx_last: u32, pub rx_frames: u64, pub rx_dropped: u64,
                      pub ap: Option<crate::wifi::VirtualAp>, pub eth_tx: Vec<Vec<u8>>, pub eth_rx: Vec<Vec<u8>>, pub last_rx_us: u64, pub net_polled_us: u64, pub last_rx_desc: u32, pub net: Option<crate::net::VirtualNet> }
+impl Default for WifiMac { fn default() -> Self { Self::new() } }
+
 impl WifiMac {
     pub fn new() -> Self { WifiMac { ram: RegRam::new(), ram2: RegRam::new(), log: false, tsf_offset: 0, tsf_latched: 0, now_cycles: 0, rx_base: 0, rx_next: 0, rx_last: 0, rx_frames: 0, rx_dropped: 0, ap: None, eth_tx: Vec::new(), eth_rx: Vec::new(), last_rx_us: 0, net_polled_us: 0, last_rx_desc: 0, net: None, events: 0, pwr_events: 0, txq_complete: 0, txq_error: 0, tx_pending: Vec::new(), tx_frames: 0 } }
     pub fn irq(&self) -> bool { self.events != 0 || self.pwr_events != 0 }
     /// TX queue n has its PLCP0 register at 0xd08 - 8n (hal_mac_txq_enable: (0x0c0067a1 - n) << 3).
-    fn txq_of(off: u32) -> Option<u8> { if off <= 0xd08 && (0xd08 - off) % 8 == 0 && (0xd08 - off) / 8 < 16 { Some(((0xd08 - off) / 8) as u8) } else { None } }
+    fn txq_of(off: u32) -> Option<u8> { if off <= 0xd08 && (0xd08 - off).is_multiple_of(8) && (0xd08 - off) / 8 < 16 { Some(((0xd08 - off) / 8) as u8) } else { None } }
     pub fn read(&mut self, block: u32, off: u32) -> u32 {
         let v = match (block, off) {
             (0x33, 0xd14) => self.ram.read(off) | 1,                 // hal_init: writes bit 1, waits for bit 0
             (0x33, 0xc3c) => self.events,
             (0x33, 0x088) => self.rx_base & 0xf_ffff, (0x33, 0x08c) => self.rx_next & 0xf_ffff, (0x33, 0x090) => self.rx_last,
-            (0x33, 0xca8) => (self.txq_error & 0x7ff),                 // txq state types 0/1 (errors/collisions)
+            (0x33, 0xca8) => self.txq_error & 0x7ff,                 // txq state types 0/1 (errors/collisions)
             (0x33, 0xcb0) => self.txq_complete & 0xf,                    // txq state type 2: completed queues
             (0x35, 0x118) => self.pwr_events,
             (0x35, 0x18) => self.tsf_latched as u32,
@@ -152,6 +156,8 @@ impl WifiMac {
 /// 2 disable). Inputs arrive through the GPIO matrix (signals 33 + 4*unit .. 36 + 4*unit).
 /// Counters are 16-bit signed; high/low limits, thresholds and zero crossings raise the unit's interrupt.
 pub struct Pcnt { pub conf: [[u32; 3]; 4], pub cnt: [i16; 4], pub status: [u32; 4], pub int_raw: u32, pub int_ena: u32, pub ctrl: u32, ram: RegRam, pub events: u64 }
+impl Default for Pcnt { fn default() -> Self { Self::new() } }
+
 impl Pcnt {
     pub fn new() -> Self { Pcnt { conf: [[0; 3]; 4], cnt: [0; 4], status: [0; 4], int_raw: 0, int_ena: 0, ctrl: 0, ram: RegRam::new(), events: 0 } }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
@@ -185,7 +191,7 @@ impl Pcnt {
                 let mode = if level { (conf0 >> (sh + 2)) & 3 } else { (conf0 >> sh) & 3 };          // pos_mode / neg_mode
                 let mut delta: i32 = match mode { 1 => 1, 2 => -1, _ => 0 };
                 if delta != 0 {
-                    let ctrl_level = sig(35 + 4 * u as u32 + ch).map_or(true, |(_, l)| l);
+                    let ctrl_level = sig(35 + 4 * u as u32 + ch).is_none_or(|(_, l)| l);
                     let cm = if ctrl_level { (conf0 >> (sh + 4)) & 3 } else { (conf0 >> (sh + 6)) & 3 };   // hctrl / lctrl
                     match cm { 1 => delta = -delta, 2 => delta = 0, _ => {} }
                 }
@@ -213,6 +219,8 @@ impl Pcnt {
 /// USR until the transfer is done. Transfers complete instantly; the bytes that went out on MOSI
 /// are queued in `tx` for the board (the display), MISO reads back as 0xFF.
 pub struct GpSpi { pub regs: RegRam, pub w: [u32; 16], pub int_raw: u32, pub int_ena: u32, pub tx: Vec<u8>, pub transfers: u64, pub log: bool }
+impl Default for GpSpi { fn default() -> Self { Self::new() } }
+
 impl GpSpi {
     pub fn new() -> Self { GpSpi { regs: RegRam::new(), w: [0; 16], int_raw: 0, int_ena: 0, tx: Vec::new(), transfers: 0, log: false } }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
@@ -237,15 +245,15 @@ impl GpSpi {
         let user = self.regs.read(0x10); let user1 = self.regs.read(0x14); let user2 = self.regs.read(0x18);
         let start = self.tx.len();
         if user & (1 << 31) != 0 {                                        // command phase, LSB byte first
-            let n = (((user2 >> 28) & 0xf) + 1 + 7) / 8; let c = user2 & 0xffff;
+            let n = (((user2 >> 28) & 0xf) + 1).div_ceil(8); let c = user2 & 0xffff;
             for i in 0..n { self.tx.push((c >> (8 * i)) as u8); }
         }
         if user & (1 << 30) != 0 {                                        // address phase, MSB first from the top of ADDR
-            let bits = (user1 >> 27) + 1; let n = (bits + 7) / 8; let a = self.regs.read(0x04);
+            let bits = (user1 >> 27) + 1; let n = bits.div_ceil(8); let a = self.regs.read(0x04);
             for i in 0..n { self.tx.push((a >> (24 - 8 * i)) as u8); }
         }
         if user & (1 << 27) != 0 {                                        // MOSI data phase from W0.. (or W8.. with HIGHPART)
-            let bits = (self.regs.read(0x1c) & 0x3ffff) + 1; let n = ((bits + 7) / 8) as usize;
+            let bits = (self.regs.read(0x1c) & 0x3ffff) + 1; let n = bits.div_ceil(8) as usize;
             let base = if user & (1 << 25) != 0 { 8 } else { 0 };
             for i in 0..n.min((16 - base) * 4) { self.tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8); }
         }
@@ -266,6 +274,8 @@ pub struct LcdCam { pub ram: RegRam, pub cam_ctrl: u32, pub cam_ctrl1: u32, pub 
                     pub frame_cycles: u64, pub acc: u64, pub frames: u64, pub dropped: u64,
                     // LCD side (RGB / DPI mode): the panel is refreshed from a GDMA out-channel on trigger 5
                     pub lcd_clock: u32, pub lcd_user: u32, pub lcd_ctrl: u32, pub lcd_ctrl1: u32, pub lcd_acc: u64, pub lcd_frames: u64, pub lcd_line: Vec<u8>, pub lcd_fifo: std::collections::VecDeque<u8>, pub lcd_log: bool }
+impl Default for LcdCam { fn default() -> Self { Self::new() } }
+
 impl LcdCam {
     pub fn new() -> Self { LcdCam { ram: RegRam::new(), cam_ctrl: 0, cam_ctrl1: 0, int_raw: 0, int_ena: 0, running: false, frame_cycles: CPU_HZ / 10, acc: 0, frames: 0, dropped: 0,
                                     lcd_clock: 0, lcd_user: 0, lcd_ctrl: 0, lcd_ctrl1: 0, lcd_acc: 0, lcd_frames: 0, lcd_line: Vec::new(), lcd_fifo: std::collections::VecDeque::new(), lcd_log: false } }
@@ -312,6 +322,8 @@ impl LcdCam {
 
 // ------------------------------------------------------------------ EXTMEM (cache controller; MMU table lives in the bus)
 pub struct Extmem { pub ram: RegRam }
+impl Default for Extmem { fn default() -> Self { Self::new() } }
+
 impl Extmem {
     pub fn new() -> Self { Extmem { ram: RegRam::new() } }
     pub fn read(&self, off: u32) -> u32 {
@@ -334,6 +346,8 @@ impl Extmem {
 
 // ------------------------------------------------------------------ WDEV (radio) block: only the hardware RNG register matters to us
 pub struct Wdev { state: u64, ram: RegRam }
+impl Default for Wdev { fn default() -> Self { Self::new() } }
+
 impl Wdev {
     pub fn new() -> Self { Wdev { state: 0x9E37_79B9_7F4A_7C15, ram: RegRam::new() } }
     pub fn read(&mut self, off: u32) -> u32 {
@@ -347,6 +361,8 @@ impl Wdev {
 
 // ------------------------------------------------------------------ I2C_MST: analog "regi2c" master (PLL / SAR ADC trim registers)
 pub struct I2cMst { pub ram: RegRam, pub ana: std::collections::HashMap<u32, u8> }
+impl Default for I2cMst { fn default() -> Self { Self::new() } }
+
 impl I2cMst {
     pub fn new() -> Self { I2cMst { ram: RegRam::new(), ana: Default::default() } }
     pub fn read(&mut self, off: u32) -> u32 {
@@ -518,7 +534,7 @@ impl DeviceSet for Peripherals {
 
 impl Peripherals {
     pub fn new(mac: [u8; 6]) -> Self {
-        let mut p = Peripherals {
+        Peripherals {
             usb: UsbSerialJtag::new(CPU_HZ), uart: [Uart::new(), Uart::new(), Uart::new()], systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], intmatrix: IntMatrix::new(), gpio: Gpio::new(), rtc: RtcCntl::new(),
             efuse: Efuse::new(mac), system: SystemRegs::new(0x30), extmem: Extmem::new(), spi0: SpiMem::new(false), spi1: SpiMem::new(true),
@@ -527,8 +543,7 @@ impl Peripherals {
             io_mux: RegRam::new(), misc: Misc::new(), fake_reads: std::env::var("ESP_EMU_FAKE_READ").ok().map(|v| v.split(',').filter_map(|e| { let mut p = e.split(':'); let a = u32::from_str_radix(p.next()?.trim_start_matches("0x"), 16).ok()?; let o = u32::from_str_radix(p.next().unwrap_or("0").trim_start_matches("0x"), 16).ok()?; let m = u32::from_str_radix(p.next().unwrap_or("ffffffff").trim_start_matches("0x"), 16).ok()?; Some((a, (o, m))) }).collect()).unwrap_or_default(),
             clock: Self::new_clock(),
             spi_exec: false, last_status: [0; 4], intmatrix_dirty: false,
-        };
-        p
+        }
     }
 
     pub fn block_name_pub(block: u32) -> String { Self::block_name(block).to_string() }
@@ -562,13 +577,13 @@ impl Peripherals {
         let block = (addr - PERIPH_BASE) >> 12; let off = addr & 0xfff;
         match block {
             0x08 => self.rtc.ram.write(off, v),
-            0xc0 => { if off >= 0x30 && off <= 0x3c { return false; } self.system.ram.write(off, v) }
+            0xc0 => { if (0x30..=0x3c).contains(&off) { return false; } self.system.ram.write(off, v) }
             0xc4 => self.extmem.ram.write(off, v),
             0x09 => self.io_mux.write(off, v),
             0x02 => { if off == 0 || (0x58..=0x94).contains(&off) { return false; } self.spi1.regs.write(off, v) }
             0x03 => { if off == 0 { return false; } self.spi0.regs.write(off, v) }
             0x0e => self.i2c_mst.ram.write(off, v),
-            0x26 | 0xc1 => self.misc.generic.entry(block).or_insert_with(RegRam::new).write(off, v),
+            0x26 | 0xc1 => self.misc.generic.entry(block).or_default().write(off, v),
             _ => return false,
         }
         true
@@ -605,8 +620,8 @@ impl Peripherals {
     pub fn cpu_lines_both(&self) -> (u32, u32) {
         let st = self.last_status;
         let (mut l0, mut l1) = (0u32, 0u32);
-        for w in 0..4 {
-            let mut bits = st[w];
+        for (w, &word) in st.iter().enumerate() {
+            let mut bits = word;
             while bits != 0 {
                 let b = bits.trailing_zeros(); bits &= bits - 1;
                 let src = w * 32 + b as usize; if src >= NUM_SOURCES { break; }
