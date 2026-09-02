@@ -234,7 +234,14 @@ pub fn price_operation(
     core: CoreId,
     operation: Operation,
 ) -> Result<(CostComponent, Option<TimingMutation>), TimingRefusal> {
-    if config != ChipConfig::RECEIPT_SCOPE {
+    let configuration_scoped = matches!(
+        operation,
+        Operation::MmioRead { .. }
+            | Operation::MmioWrite { .. }
+            | Operation::CacheLineFill { .. }
+            | Operation::HotCacheHit
+    );
+    if configuration_scoped && config != ChipConfig::RECEIPT_SCOPE {
         return Err(TimingRefusal {
             class: operation.cost_class(),
             tier_candidate: CostTier::Unexplained,
@@ -390,10 +397,12 @@ pub fn price_operation(
             exact(CostClass::HotCacheHit, 0, ReceiptId::HotHitAdoption),
             None,
         )),
-        Operation::DmaAdditiveDelay => Ok((
-            exact(CostClass::DmaAdditiveDelay, 0, ReceiptId::RegisterBlocks),
-            None,
-        )),
+        Operation::DmaAdditiveDelay => Err(TimingRefusal {
+            class: CostClass::DmaAdditiveDelay,
+            tier_candidate: CostTier::Exact,
+            reason: RefusalReason::CostNotAdopted,
+            configuration: None,
+        }),
         Operation::UnadoptedInstruction => Err(TimingRefusal {
             class: CostClass::UnadoptedInstruction,
             tier_candidate: CostTier::Exact,

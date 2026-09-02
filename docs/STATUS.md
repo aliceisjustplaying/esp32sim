@@ -85,11 +85,12 @@ integration trunk milestone resolves that once, on `alice`.
 
 All numbers come from ESP32-S3 rev 0.2 silicon on the physical board via
 CCOUNT probes, hardware cache counters where applicable, independent boot
-cohorts, and fail-closed parsing. `C240-Q80-O80-I32-D64` below means CPU at
-240 MHz, QIO flash at 80 MHz, octal DTR PSRAM at 80 MHz, 32-byte I-cache
-lines, and 64-byte D-cache lines. Pricing derives this `ChipConfig` from the
-registers firmware programs. Any mismatch is a typed refusal naming the
-configuration.
+cohorts, and fail-closed parsing. Internal CPU, IRAM, SRAM, and mask-ROM rows
+carry no configuration key. `C240-Q80-O80-I32-D64` below scopes external
+memory and MMIO rows to a 240 MHz CPU, QIO flash at 80 MHz, octal DTR PSRAM at
+80 MHz, 32-byte I-cache lines, and 64-byte D-cache lines. Pricing derives this
+`ChipConfig` from the registers firmware programs. Any mismatch on a scoped
+row is a typed refusal naming the configuration.
 
 ### Price table
 
@@ -98,22 +99,22 @@ does not provide a scalar total; measured mode records it at its named tier.
 
 | Cost class | Tier | Price | ChipConfig scope | Receipt |
 | --- | --- | --- | --- | --- |
-| Straight-line instruction issue | exact | 1 cycle per instruction | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
-| `mull`, `mulsh`, `muluh`, `nsa`, `nsau`, `sext`, `memw`, `extw`, `rsr`, `wsr`, `xsr`, `rsync`, `movsp`, `min`, `max`, `minu`, `maxu` | exact | 1 cycle per instruction | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| Conditional branches, wide and narrow | exact | 3 cycles taken, 1 not taken | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `j` | exact | 3 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `jx` | exact | 6 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `loop`, `loopnez`, `loopgtz` setup | exact | 5 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `quos`, `quou` | exact | 4 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `rems`, `remu` | exact | 5 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `l32r` | interval | 1 to 2 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `s32c1i` | exact | 6 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| `isync` | interval | 6 to 7 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| Load-use dependency at distance 1 | exact | +1 additive cycle; distance 2 is +0 | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
-| Independent aligned SRAM load or store | exact | +0 additive cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz` |
+| Straight-line instruction issue | exact | 1 cycle per instruction | none (internal CPU domain) | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| `mull`, `mulsh`, `muluh`, `nsa`, `nsau`, `sext`, `memw`, `extw`, `rsr`, `wsr`, `xsr`, `rsync`, `movsp`, `min`, `max`, `minu`, `maxu` | exact | 1 cycle per instruction | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| Conditional branches, wide and narrow | exact | 3 cycles taken, 1 not taken | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `j` | exact | 3 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `jx` | exact | 6 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `loop`, `loopnez`, `loopgtz` setup | exact | 5 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `quos`, `quou` | exact | 4 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `rems`, `remu` | exact | 5 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `l32r` | interval | 1 to 2 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `s32c1i` | exact | 6 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `isync` | interval | 6 to 7 cycles | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| Load-use dependency at distance 1 | exact | +1 additive cycle; distance 2 is +0 | none (internal CPU domain) | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| Independent aligned SRAM load or store | exact | +0 additive cycles | none (internal CPU domain) | `evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz` |
 | Hot I-cache hit from flash | exact | +0 additive cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-rev02-tinydraw-1ddd64b-4a2c659-hot-hit-adoption.json` |
 | Hot D-cache load hit from flash or PSRAM | exact | +0 additive cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-rev02-tinydraw-1ddd64b-4a2c659-hot-hit-adoption.json` |
-| Loop body alignment at residue +3 mod 4 | exact | +1 additive cycle per iteration | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| Loop body alignment at residue +3 mod 4 | exact | +1 additive cycle per iteration | none (internal CPU domain) | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
 | First cache-line fill, I-flash / D-flash / D-PSRAM | exact | 203 / 114 / 81 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
 | Subsequent cache-line fill, I-flash / D-flash / D-PSRAM | interval | adopted centers 266 / 473 / 170 cycles, ladder residuals ±1 / ±2 / ±2 | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-rev02-tinydraw-a91d1d7-cache-burst-adoption.json` |
 | MMIO read, SYSTEM / SENSITIVE / EXTMEM / ASSIST_DEBUG | exact | 9 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
@@ -126,7 +127,6 @@ does not provide a scalar total; measured mode records it at its named tier.
 | MMIO write steady drain, APB peripheral blocks | exact | 15 cycles per write | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
 | MMIO write steady drain, NRX | interval | 17 to 18 cycles per write | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
 | MMIO write steady drain, RTC | distribution | 69.7265625 to 70.62890625 cycles observed | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
-| Concurrent SPI2 DMA effect on a 32 KiB PSRAM-to-SRAM CPU copy | exact | +0 additive cycles within the observed 0 to 3.5-cycle range | `C240-Q80-O80-I32-D64`; SPI2 quad 40 MHz, 32 KiB transfer | `evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json` |
 
 ### Correlation targets
 
@@ -144,6 +144,7 @@ instructions and delays and are never themselves prices.
 | ROM BBPLL first / steady same-value write | exact | 836 / 835 matched cycles | `evidence/timing/rom-i2c-bbpll-0a41b6f/README.md` |
 | ROM `_xtos_set_intlevel(0x00040c00)` restore | exact | 15 matched cycles | `evidence/timing/esp32s3-rev02-tinydraw-d42615b-xtos-intlevel-adoption.json` |
 | `rgb565_stage_five_scalar_oracle_hot` | exact | 50 cycles | `evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz` |
+| Concurrent SPI2 DMA during a 32 KiB PSRAM-to-SRAM CPU copy | exact observation | active-minus-idle paired medians 3.5 / 0 cycles; no scalar price adopted | `evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json` |
 | SPI2 quad 40 MHz 32 KiB submit / submit-to-complete | exact | 5,755 / 401,589 cycles | `evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json` |
 
 The IDF 6.1 rebaseline has 210 identities: 105 single-core identities were
