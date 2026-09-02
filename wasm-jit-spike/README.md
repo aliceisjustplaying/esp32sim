@@ -17,9 +17,11 @@ emitted.
 
 Loads and stores cover 8-, 16-, and 32-bit immediate forms. SRAM is direct
 wasm memory at issue cost. MMIO uses receipt read tiers and the eight-entry
-posted-write state stored with accounting. RTC, eFuse, and NRX write costs
-fail closed where no scalar price exists. Flash and PSRAM call the one
-`env.cache_access` host import for cache state, value, and fill cost.
+posted-write state stored with accounting. The caller supplies the
+register-derived `ChipConfig`; MMIO and cache pricing refuse unmatched
+configurations by name. RTC, eFuse, and NRX write costs fail closed where no
+scalar price exists. Flash and PSRAM call the one `env.cache_access` host
+import for cache state, value, and fill cost.
 
 The committed TinyDraw histogram has 46,690,498 dynamic instructions. The
 covered union accounts for 32,639,139, leaving an instruction fallback rate
