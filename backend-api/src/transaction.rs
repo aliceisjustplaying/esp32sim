@@ -37,10 +37,7 @@ pub struct SchedulerState {
     pub cores: [CoreState; 2],
     pub last_mmio_write: Option<(u32, u32, u32)>,
     pub committed_cache_fills: u64,
-    pub committed_window_pairs: [u64; 2],
     pub committed_loop_edges: [u64; 2],
-    pub committed_interrupt_entries: [u64; 2],
-    pub committed_interrupt_resumes: [u64; 2],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,30 +127,9 @@ const fn format_free_class_code(class: crate::CostClass) -> u16 {
             cache: crate::CacheKind::DataPsram,
             position: crate::CacheFillPosition::Subsequent,
         } => 8,
-        crate::CostClass::WindowOverflowUnderflowPair => 9,
         crate::CostClass::LoopAlignment { .. } => 10,
         crate::CostClass::InternalInstruction => 11,
         crate::CostClass::UnknownMmio => 12,
-        crate::CostClass::Interrupt {
-            level: crate::InterruptLevel::Level1,
-            phase: crate::InterruptPhase::Entry,
-        } => 13,
-        crate::CostClass::Interrupt {
-            level: crate::InterruptLevel::Level1,
-            phase: crate::InterruptPhase::Resume,
-        } => 14,
-        crate::CostClass::Interrupt {
-            level: crate::InterruptLevel::Level3,
-            phase: crate::InterruptPhase::Entry,
-        } => 15,
-        crate::CostClass::Interrupt {
-            level: crate::InterruptLevel::Level3,
-            phase: crate::InterruptPhase::Resume,
-        } => 16,
-        crate::CostClass::Interrupt {
-            level: crate::InterruptLevel::Other(_),
-            ..
-        } => 17,
     }
 }
 
@@ -235,7 +211,7 @@ impl TransactionEngine {
                 .map_or(crate::CostClass::InternalInstruction, |component| {
                     component.class
                 }),
-            tier_candidate: crate::TierCandidate::Unexplained,
+            tier_candidate: crate::CostTier::Unexplained,
             reason: crate::RefusalReason::CycleOverflow,
         })?;
         let completion = start.checked_add(cycles).ok_or(TimingRefusal {
@@ -244,7 +220,7 @@ impl TransactionEngine {
                 .map_or(crate::CostClass::InternalInstruction, |component| {
                     component.class
                 }),
-            tier_candidate: crate::TierCandidate::Unexplained,
+            tier_candidate: crate::CostTier::Unexplained,
             reason: crate::RefusalReason::CycleOverflow,
         })?;
         if outcome == ExecutionOutcome::Faulted {
@@ -255,17 +231,7 @@ impl TransactionEngine {
         }
         let state = &mut self.state.cores[core.index()];
         state.cycle = completion;
-        if !components.iter().all(|component| {
-            matches!(
-                component.class,
-                crate::CostClass::Interrupt {
-                    phase: crate::InterruptPhase::Entry,
-                    ..
-                }
-            )
-        }) {
-            state.committed_instructions = state.committed_instructions.saturating_add(1);
-        }
+        state.committed_instructions = state.committed_instructions.saturating_add(1);
         let entry = LedgerEntry {
             core,
             pc,
@@ -288,20 +254,9 @@ impl TransactionEngine {
                 self.state.committed_cache_fills =
                     self.state.committed_cache_fills.saturating_add(1);
             }
-            Some(TimingMutation::RecordWindowPair { core }) => {
-                let count = &mut self.state.committed_window_pairs[core.index()];
-                *count = count.saturating_add(1);
-            }
             Some(TimingMutation::RecordLoopBackEdge { core, .. }) => {
                 let count = &mut self.state.committed_loop_edges[core.index()];
                 *count = count.saturating_add(1);
-            }
-            Some(TimingMutation::RecordInterrupt { core, phase, .. }) => {
-                let counts = match phase {
-                    crate::InterruptPhase::Entry => &mut self.state.committed_interrupt_entries,
-                    crate::InterruptPhase::Resume => &mut self.state.committed_interrupt_resumes,
-                };
-                counts[core.index()] = counts[core.index()].saturating_add(1);
             }
             None => {}
         }
@@ -318,7 +273,7 @@ impl TransactionEngine {
             .try_fold(0u64, |total, core| total.checked_add(core.cycle))
             .ok_or(TimingRefusal {
                 class: crate::CostClass::InternalInstruction,
-                tier_candidate: crate::TierCandidate::Unexplained,
+                tier_candidate: crate::CostTier::Unexplained,
                 reason: crate::RefusalReason::CycleOverflow,
             })?;
         Ok(TraceReport {
