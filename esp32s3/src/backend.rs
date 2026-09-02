@@ -8,9 +8,9 @@ use backend_api::{
 };
 use xtensa_lx7::measured::{complete_instruction, plan_instruction, CompletionError, PlanError};
 use xtensa_lx7::measured::{
-    AccessKind, InstructionObservation, MemoryClass, TimingPlan, TimingSource,
+    AccessKind, InstructionObservation, MeasuredBus, MemoryClass, TimingPlan, TimingSource,
 };
-use xtensa_lx7::state::INTTYPE_LEVEL;
+use xtensa_lx7::state::{exc, INTTYPE_LEVEL};
 use xtensa_lx7::{Op, Trap};
 
 /// Product adapter. Fake and product adapters both delegate scheduling state,
@@ -53,8 +53,7 @@ impl Esp32Backend {
             S32c1i => InstructionCost::AtomicStore,
             L32r => InstructionCost::LiteralLoad,
             Isync => InstructionCost::InstructionSync,
-            Call0 | Call4 | Call8 | Call12 | Callx0 | Callx4 | Callx8 | Callx12 | Ret | RetN
-            | Retw | RetwN | Ill | IllN | Break | BreakN | Syscall | Simcall => {
+            Rfe | Rfue | Rfde | Rfwo | Rfwu | Rfi | Simcall => {
                 return Operation::UnadoptedInstruction;
             }
             _ => InstructionCost::Issue,
@@ -253,6 +252,42 @@ pub enum MeasuredStepError {
     Plan(PlanError),
     Completion(CompletionError),
     Deadline(crate::board::BoardDeadlineError),
+    Unpriced(UnpricedTimingClass),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnpricedTimingClass {
+    ExceptionEntry(ExceptionEntryClass),
+    ExceptionReturn(ExceptionReturnClass),
+    InterruptEntry { irq: u32 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExceptionEntryClass {
+    WindowOverflow4,
+    WindowOverflow8,
+    WindowOverflow12,
+    WindowUnderflow4,
+    WindowUnderflow8,
+    WindowUnderflow12,
+    Syscall,
+    IllegalInstruction,
+    InstructionFetchError,
+    LoadStoreError,
+    LoadStoreAlignment,
+    LoadError,
+    StoreError,
+    Other(u32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExceptionReturnClass {
+    Rfwo,
+    Rfwu,
+    Rfe,
+    Rfue,
+    Rfi,
+    Rfde,
 }
 
 /// Receipt-priced execution operations for an ESP32-S3 machine.
@@ -286,10 +321,23 @@ impl MeasuredMachine for crate::Machine {
         let before_cycle = backend.engine().state().cores[index].cycle;
         let interrupt = self.cores[index].check_interrupts();
         if let Some(Trap::Interrupt(irq)) = interrupt {
-            self.interrupts = self.interrupts.saturating_add(1);
-            self.irq_hist[index][irq as usize] =
-                self.irq_hist[index][irq as usize].saturating_add(1);
-            return Ok(MeasuredStep::Interrupt(irq));
+            return Err(MeasuredStepError::Unpriced(
+                UnpricedTimingClass::InterruptEntry { irq },
+            ));
+        }
+
+        let instruction = {
+            let cpu = &self.cores[index];
+            let bytes = self
+                .bus
+                .measured_fetch(cpu.pc)
+                .map_err(|_| MeasuredStepError::Plan(PlanError::Fetch { pc: cpu.pc }))?;
+            xtensa_lx7::decode(cpu.pc, bytes)
+        };
+        if let Some(class) = exception_return_class(instruction.op) {
+            return Err(MeasuredStepError::Unpriced(
+                UnpricedTimingClass::ExceptionReturn(class),
+            ));
         }
 
         let pending = {
@@ -311,6 +359,9 @@ impl MeasuredMachine for crate::Machine {
                 self.advance_measured_devices(completion)?;
                 Ok(MeasuredStep::Instruction)
             }
+            Err(CompletionError::Trap(Trap::Exception(cause))) => Err(MeasuredStepError::Unpriced(
+                UnpricedTimingClass::ExceptionEntry(exception_entry_class(cause)),
+            )),
             Err(CompletionError::Trap(trap)) => Ok(MeasuredStep::Trap(trap)),
             Err(error) => Err(MeasuredStepError::Completion(error)),
         }
@@ -354,6 +405,43 @@ fn refresh_measured_interrupt_lines(machine: &mut crate::Machine) {
             (machine.cores[0].interrupt & !INTTYPE_LEVEL) | (core0 & INTTYPE_LEVEL);
         machine.cores[1].interrupt =
             (machine.cores[1].interrupt & !INTTYPE_LEVEL) | (core1 & INTTYPE_LEVEL);
+    }
+}
+
+const fn exception_return_class(op: Op) -> Option<ExceptionReturnClass> {
+    match op {
+        Op::Rfwo => Some(ExceptionReturnClass::Rfwo),
+        Op::Rfwu => Some(ExceptionReturnClass::Rfwu),
+        Op::Rfe => Some(ExceptionReturnClass::Rfe),
+        Op::Rfue => Some(ExceptionReturnClass::Rfue),
+        Op::Rfi => Some(ExceptionReturnClass::Rfi),
+        Op::Rfde => Some(ExceptionReturnClass::Rfde),
+        _ => None,
+    }
+}
+
+const fn exception_entry_class(cause: u32) -> ExceptionEntryClass {
+    match cause {
+        0x201 => ExceptionEntryClass::WindowOverflow4,
+        0x202 => ExceptionEntryClass::WindowOverflow8,
+        0x203 => ExceptionEntryClass::WindowOverflow12,
+        0x301 => ExceptionEntryClass::WindowUnderflow4,
+        0x302 => ExceptionEntryClass::WindowUnderflow8,
+        0x303 => ExceptionEntryClass::WindowUnderflow12,
+        exc::SYSCALL => ExceptionEntryClass::Syscall,
+        exc::ILLEGAL => ExceptionEntryClass::IllegalInstruction,
+        exc::IFETCH_ERROR
+        | exc::IFETCH_PIF_DATA_ERROR
+        | exc::IFETCH_PIF_ADDR_ERROR
+        | exc::ITLB_MISS
+        | exc::IFETCH_PROHIBITED => ExceptionEntryClass::InstructionFetchError,
+        exc::LOAD_STORE_ERROR | exc::LS_PIF_DATA_ERROR | exc::LS_PIF_ADDR_ERROR => {
+            ExceptionEntryClass::LoadStoreError
+        }
+        exc::LOAD_STORE_ALIGNMENT => ExceptionEntryClass::LoadStoreAlignment,
+        exc::DTLB_MISS | exc::LOAD_PROHIBITED => ExceptionEntryClass::LoadError,
+        exc::STORE_PROHIBITED => ExceptionEntryClass::StoreError,
+        other => ExceptionEntryClass::Other(other),
     }
 }
 
@@ -438,13 +526,18 @@ mod tests {
     const RESET_PC: u32 = 0x4000_0400;
     const BEQZ_N_A6: [u8; 2] = [0x8c, 0x06];
 
-    fn branch_machine(register: u32) -> crate::Machine {
+    fn instruction_machine(instruction: &[u8]) -> crate::Machine {
         let mut machine = crate::machine([0; 6]);
         set_receipt_config_registers(&mut machine);
         machine
             .bus
-            .load_bytes(RESET_PC, &BEQZ_N_A6)
-            .expect("test branch maps in mask ROM");
+            .load_bytes(RESET_PC, instruction)
+            .expect("test instruction maps in mask ROM");
+        machine
+    }
+
+    fn branch_machine(register: u32) -> crate::Machine {
+        let mut machine = instruction_machine(&BEQZ_N_A6);
         machine.cores[0].set_ar(6, register);
         machine
     }
@@ -598,11 +691,69 @@ mod tests {
         let before = backend.engine().state().clone();
         assert!(matches!(
             machine.step_measured(&mut backend, CoreId::Core0),
-            Ok(MeasuredStep::Trap(Trap::Exception(_)))
+            Err(MeasuredStepError::Unpriced(
+                UnpricedTimingClass::ExceptionEntry(ExceptionEntryClass::WindowOverflow12)
+            ))
         ));
         assert_eq!(backend.engine().state(), &before);
         assert!(backend.engine().ledger().is_empty());
         assert_eq!(machine.bus.cycles, 0);
+    }
+
+    #[test]
+    fn hardware_exception_entries_refuse_by_typed_class() {
+        for (instruction, register, expected) in [
+            ([0x00, 0x50, 0x00], None, ExceptionEntryClass::Syscall),
+            (
+                [0x00, 0x00, 0x00],
+                None,
+                ExceptionEntryClass::IllegalInstruction,
+            ),
+            (
+                [0x22, 0x23, 0x00],
+                Some(0x7000_0000),
+                ExceptionEntryClass::LoadError,
+            ),
+            (
+                [0x22, 0x63, 0x00],
+                Some(0x7000_0000),
+                ExceptionEntryClass::StoreError,
+            ),
+        ] {
+            let mut machine = instruction_machine(&instruction);
+            if let Some(value) = register {
+                machine.cores[0].set_ar(3, value);
+            }
+            let mut backend = Esp32Backend::default();
+            assert_eq!(
+                machine.step_measured(&mut backend, CoreId::Core0),
+                Err(MeasuredStepError::Unpriced(
+                    UnpricedTimingClass::ExceptionEntry(expected)
+                ))
+            );
+            assert!(backend.engine().ledger().is_empty());
+        }
+    }
+
+    #[test]
+    fn exception_return_family_refuses_by_instruction_name() {
+        for (instruction, expected) in [
+            ([0x00, 0x34, 0x00], ExceptionReturnClass::Rfwo),
+            ([0x00, 0x35, 0x00], ExceptionReturnClass::Rfwu),
+            ([0x00, 0x30, 0x00], ExceptionReturnClass::Rfe),
+            ([0x10, 0x33, 0x00], ExceptionReturnClass::Rfi),
+            ([0x00, 0x32, 0x00], ExceptionReturnClass::Rfde),
+        ] {
+            let mut machine = instruction_machine(&instruction);
+            let mut backend = Esp32Backend::default();
+            assert_eq!(
+                machine.step_measured(&mut backend, CoreId::Core0),
+                Err(MeasuredStepError::Unpriced(
+                    UnpricedTimingClass::ExceptionReturn(expected)
+                ))
+            );
+            assert!(backend.engine().ledger().is_empty());
+        }
     }
 
     #[test]
