@@ -25,8 +25,11 @@ pub fn tlb_index(addr: u32) -> usize { (((addr >> 16) ^ (addr >> 24)) as usize) 
 #[derive(Clone, Copy)]
 pub struct TlbEntry { pub lo: u32, pub hi: u32, pub base: *mut u8, pub vbase: u32, pub writable: u32, pub off: u32, pub src: u32 }
 impl TlbEntry { pub const EMPTY: TlbEntry = TlbEntry { lo: 1, hi: 0, base: std::ptr::null_mut(), vbase: 0, writable: 0, off: 0, src: 0 }; }
-// Entries only ever point into the owning bus's buffers, which live as long as the bus.
+// SAFETY: Entries point into their owning bus's buffers, and moving an entry does not dereference
+// its pointer. The buffers outlive every entry created from them.
 unsafe impl Send for TlbEntry {}
+// SAFETY: Shared access to an entry does not dereference or mutate its pointer. Memory access
+// through the pointer is synchronized by the owning bus's exclusive execution.
 unsafe impl Sync for TlbEntry {}
 
 /// What generated code needs to access memory without calling back: the TLB and the
