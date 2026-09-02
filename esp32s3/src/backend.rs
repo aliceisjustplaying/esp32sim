@@ -1,11 +1,15 @@
 //! Receipt-backed measured adapter for the ESP32-S3 interpreter.
 
 use backend_api::{
-    price_operation, Backend, ChipConfig, CoreId, CostComponent, ExecutionOutcome, FlashMode,
-    Operation, PsramMode, RefusalReason, TimingMutation, TimingRefusal, TransactionEngine,
+    price_operation, Backend, CacheFillPosition, CacheKind, ChipConfig, CoreId, CostComponent,
+    ExecutionOutcome, FlashMode, InstructionCost, MmioTier, Operation, PsramMode, RefusalReason,
+    TimingMutation, TimingRefusal, TransactionEngine,
 };
+use std::collections::BTreeSet;
 use xtensa_lx7::measured::{complete_instruction, plan_instruction, CompletionError, PlanError};
-use xtensa_lx7::measured::{InstructionObservation, MemoryClass, TimingPlan, TimingSource};
+use xtensa_lx7::measured::{
+    AccessKind, InstructionObservation, MemoryClass, TimingPlan, TimingSource,
+};
 use xtensa_lx7::state::INTTYPE_LEVEL;
 use xtensa_lx7::{Op, Trap};
 
@@ -15,6 +19,8 @@ use xtensa_lx7::{Op, Trap};
 pub struct Esp32Backend {
     engine: TransactionEngine,
     config: ChipConfig,
+    previous_load: [Option<u8>; 2],
+    seen_cache_lines: BTreeSet<(CoreId, CacheKind, u32)>,
 }
 
 impl Default for Esp32Backend {
@@ -22,36 +28,80 @@ impl Default for Esp32Backend {
         Self {
             engine: TransactionEngine::default(),
             config: ChipConfig::RECEIPT_SCOPE,
+            previous_load: [None; 2],
+            seen_cache_lines: BTreeSet::new(),
         }
     }
 }
 
 impl Esp32Backend {
-    fn operation_for(
-        &self,
-        observation: &InstructionObservation,
-    ) -> Result<Operation, TimingRefusal> {
-        match observation.instruction.op {
-            Op::Beqz | Op::BeqzN => Ok(Operation::BranchZero {
+    fn instruction_operation(&self, observation: &InstructionObservation) -> Operation {
+        use Op::*;
+        let kind = match observation.instruction.op {
+            Beqz | Bnez | Bltz | Bgez | BeqzN | BnezN | Beqi | Bnei | Blti | Bgei | Bltui
+            | Bgeui | Bnone | Beq | Blt | Bltu | Ball | Bbc | Bbci | Bany | Bne | Bge | Bgeu
+            | Bnall | Bbs | Bbsi | Bf | Bt => InstructionCost::Branch {
                 taken: observation
                     .branch_taken
-                    .expect("a decoded zero branch records its outcome"),
-            }),
-            _ => Ok(observation
-                .access_memory
-                .map_or(Operation::InternalInstruction, |memory| {
-                    if memory == MemoryClass::Mmio {
-                        Operation::UnknownMmio {
-                            address: observation
-                                .access
-                                .expect("classified memory access has an access shape")
-                                .address,
-                        }
-                    } else {
-                        Operation::InternalInstruction
-                    }
-                })),
+                    .expect("conditional branch has an outcome"),
+            },
+            J => InstructionCost::Jump,
+            Jx => InstructionCost::JumpRegister,
+            Loop | Loopnez | Loopgtz => InstructionCost::LoopSetup,
+            Quos | Quou => InstructionCost::Quotient,
+            Rems | Remu => InstructionCost::Remainder,
+            S32c1i => InstructionCost::AtomicStore,
+            L32r => InstructionCost::LiteralLoad,
+            Isync => InstructionCost::InstructionSync,
+            Call0 | Call4 | Call8 | Call12 | Callx0 | Callx4 | Callx8 | Callx12 | Ret | RetN
+            | Retw | RetwN | Ill | IllN | Break | BreakN | Syscall | Simcall => {
+                return Operation::UnadoptedInstruction;
+            }
+            _ => InstructionCost::Issue,
+        };
+        Operation::Instruction(kind)
+    }
+
+    fn cache_fill(&self, observation: &InstructionObservation) -> Option<Operation> {
+        let (cache, address, line_bytes) = match observation.fetch_memory {
+            MemoryClass::Flash => (
+                CacheKind::InstructionFlash,
+                observation.pc,
+                self.config.icache_line_bytes,
+            ),
+            _ => match (observation.access_memory, observation.access) {
+                (Some(MemoryClass::Flash), Some(access)) => (
+                    CacheKind::DataFlash,
+                    access.address,
+                    self.config.dcache_line_bytes,
+                ),
+                (Some(MemoryClass::Psram), Some(access)) => (
+                    CacheKind::DataPsram,
+                    access.address,
+                    self.config.dcache_line_bytes,
+                ),
+                _ => return None,
+            },
+        };
+        let line = address / u32::from(line_bytes);
+        let key = (observation.core, cache, line);
+        if self.seen_cache_lines.contains(&key) {
+            return Some(Operation::HotCacheHit);
         }
+        let position = if self
+            .seen_cache_lines
+            .iter()
+            .any(|(core, kind, _)| *core == observation.core && *kind == cache)
+        {
+            CacheFillPosition::Subsequent
+        } else {
+            CacheFillPosition::First
+        };
+        Some(Operation::CacheLineFill {
+            cache,
+            position,
+            line,
+        })
     }
 }
 
@@ -67,18 +117,60 @@ impl Backend for Esp32Backend {
 
 impl TimingSource for Esp32Backend {
     fn price(&self, observation: &InstructionObservation) -> Result<TimingPlan, TimingRefusal> {
-        let operation = self.operation_for(observation)?;
-        let (component, mutation) = price_operation(self.config, observation.core, operation)?;
-        let cycles = component.cycles().ok_or(TimingRefusal {
-            class: component.class,
-            tier_candidate: backend_api::CostTier::Unexplained,
-            reason: RefusalReason::CycleOverflow,
-            configuration: None,
-        })?;
+        let access = observation.access;
+        let primary = if observation.access_memory == Some(MemoryClass::Mmio) {
+            let access = access.expect("classified access has a shape");
+            let tier = mmio_tier(access.address).ok_or(TimingRefusal {
+                class: backend_api::CostClass::UnknownMmio,
+                tier_candidate: backend_api::CostTier::Unexplained,
+                reason: RefusalReason::UnknownMmioRegister,
+                configuration: None,
+            })?;
+            match access.kind {
+                AccessKind::Load => Operation::MmioRead { tier },
+                AccessKind::Store | AccessKind::Atomic => Operation::MmioWrite {
+                    tier,
+                    buffer_has_room: self.engine.state().posted_mmio_writes < 8,
+                },
+            }
+        } else {
+            self.instruction_operation(observation)
+        };
+        let mut operations = vec![primary];
+        if access.is_some_and(|_| observation.access_memory == Some(MemoryClass::InternalSram)) {
+            operations.push(Operation::IndependentSramAccess);
+        }
+        if let Some(cache) = self.cache_fill(observation) {
+            operations.push(cache);
+        }
+        if self.previous_load[core_index(observation.core)]
+            .is_some_and(|register| observation.read_registers & (1 << register) != 0)
+        {
+            operations.push(Operation::Instruction(InstructionCost::LoadUse));
+        }
+        if let Some(body_residue) = observation.loop_back_edge_residue {
+            operations.push(Operation::LoopBackEdge { body_residue });
+        }
+        let mut components = Vec::new();
+        let mut mutations = Vec::new();
+        for operation in operations {
+            let (component, mutation) = price_operation(self.config, observation.core, operation)?;
+            components.push(component);
+            mutations.extend(mutation);
+        }
+        let cycles = components
+            .iter()
+            .try_fold(0u64, |sum, component| sum.checked_add(component.cycles()?))
+            .ok_or(TimingRefusal {
+                class: components[0].class,
+                tier_candidate: backend_api::CostTier::Unexplained,
+                reason: RefusalReason::CycleOverflow,
+                configuration: None,
+            })?;
         Ok(TimingPlan {
             cycles,
-            components: vec![component],
-            mutations: mutation.into_iter().collect(),
+            components,
+            mutations,
         })
     }
 
@@ -95,7 +187,24 @@ impl TimingSource for Esp32Backend {
             components.to_vec(),
             mutations.to_vec(),
         )?;
+        self.previous_load[core_index(observation.core)] = observation.load_destination;
+        for mutation in mutations {
+            if let TimingMutation::RecordCacheFill { core, cache, line } = *mutation {
+                self.seen_cache_lines.insert((core, cache, line));
+            }
+        }
         Ok(())
+    }
+}
+
+fn mmio_tier(address: u32) -> Option<MmioTier> {
+    match address {
+        0x600c_0000..=0x600c_ffff => Some(MmioTier::Fast),
+        0x6000_8000..=0x6000_8fff => Some(MmioTier::Rtc),
+        0x6000_7000..=0x6000_7fff => Some(MmioTier::Efuse),
+        0x6001_cc00..=0x6001_cfff => Some(MmioTier::Nrx),
+        0x6000_0000..=0x600b_ffff => Some(MmioTier::Apb),
+        _ => None,
     }
 }
 
@@ -336,7 +445,7 @@ mod tests {
             let entry = &backend.engine().ledger()[0];
             assert_eq!(entry.start, 0);
             assert_eq!(entry.completion, expected);
-            assert_eq!(entry.components[0].receipt, ReceiptId::BeqzAdoption2bf3ffd);
+            assert_eq!(entry.components[0].receipt, ReceiptId::OpcodeLadders);
             assert_eq!(machine.cores[0].ccount, expected as u32);
             assert_eq!(machine.bus.cycles, expected);
         }

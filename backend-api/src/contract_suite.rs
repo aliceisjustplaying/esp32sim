@@ -1,6 +1,6 @@
 use crate::{
-    Backend, CacheFillPosition, CacheKind, CoreId, ExecutionOutcome, Operation, ReceiptId,
-    TraceEvent,
+    Backend, CacheFillPosition, CacheKind, CoreId, ExecutionOutcome, InstructionCost, Operation,
+    ReceiptId, TraceEvent,
 };
 
 /// Run backend-neutral invariants against one adapter implementation.
@@ -10,13 +10,13 @@ pub fn assert_backend_contract<B: Backend + Default>() {
         TraceEvent {
             core: CoreId::Core0,
             pc: 0x4200_0000,
-            operation: Operation::BranchZero { taken: false },
+            operation: Operation::Instruction(InstructionCost::Branch { taken: false }),
             outcome: ExecutionOutcome::Committed,
         },
         TraceEvent {
             core: CoreId::Core1,
             pc: 0x4200_1000,
-            operation: Operation::BranchZero { taken: true },
+            operation: Operation::Instruction(InstructionCost::Branch { taken: true }),
             outcome: ExecutionOutcome::Committed,
         },
     ];
@@ -32,13 +32,8 @@ pub fn assert_backend_contract<B: Backend + Default>() {
 /// transaction engine and assert its exact ledger values.
 pub fn assert_receipt_correlation<B: Backend + Default>() {
     let operations = [
-        Operation::BranchZero { taken: true },
-        Operation::BranchZero { taken: false },
-        Operation::SameValueMmioWriteRun {
-            address: 0x600c_001c,
-            value: 1,
-            count: 16,
-        },
+        Operation::Instruction(InstructionCost::Branch { taken: true }),
+        Operation::Instruction(InstructionCost::Branch { taken: false }),
         Operation::CacheLineFill {
             cache: CacheKind::InstructionFlash,
             position: CacheFillPosition::Subsequent,
@@ -74,22 +69,18 @@ pub fn assert_receipt_correlation<B: Backend + Default>() {
         .iter()
         .map(|entry| entry.completion - entry.start)
         .collect();
-    assert_eq!(cycles, [3, 1, 40, 266, 473, 170, 1]);
-    assert_eq!(report.total_cycles, 954);
+    assert_eq!(cycles, [3, 1, 266, 473, 170, 1]);
+    assert_eq!(report.total_cycles, 914);
     assert_eq!(
         report.ledger[0].components[0].receipt,
-        ReceiptId::BeqzAdoption2bf3ffd
+        ReceiptId::OpcodeLadders
     );
     assert_eq!(
         report.ledger[2].components[0].receipt,
-        ReceiptId::MmioWriteAdoptionE8a9f0e
-    );
-    assert_eq!(
-        report.ledger[3].components[0].receipt,
         ReceiptId::CacheBurstAdoptionA91d1d7
     );
     assert_eq!(
-        report.ledger[6].components[0].receipt,
+        report.ledger[5].components[0].receipt,
         ReceiptId::Idf61ToolchainDelta
     );
 }
