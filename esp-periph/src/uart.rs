@@ -9,6 +9,12 @@ pub struct Uart {
     pub int_ena: u32,
     ram: RegRam,
 }
+impl Default for Uart {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Uart {
     pub fn new() -> Self {
         Uart {

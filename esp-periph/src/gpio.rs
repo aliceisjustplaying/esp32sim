@@ -18,12 +18,18 @@ pub struct Gpio {
     pub changes: Vec<(u8, bool)>,
     pub strap: u32,
 }
+impl Default for Gpio {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gpio {
     pub fn new() -> Self {
         Gpio {
             out: 0,
             enable: 0,
-            input: !0u64 & ((1u64 << 49) - 1),
+            input: (1u64 << 49) - 1,
             status: 0,
             pin: [0; 49],
             func_in_sel: [0x3c; 256],
@@ -97,7 +103,7 @@ impl Gpio {
             0x40 => (self.input >> 32) as u32,
             0x44 => self.status as u32,
             0x50 => (self.status >> 32) as u32,
-            0x5c => (self.status as u32),
+            0x5c => self.status as u32,
             0x68 => (self.status >> 32) as u32, // PCPU_INT: interrupt status seen by core 0
             0x74..=0x134 => self.pin[((off - 0x74) / 4) as usize],
             0x154..=0x550 => self.func_in_sel[((off - 0x154) / 4) as usize],

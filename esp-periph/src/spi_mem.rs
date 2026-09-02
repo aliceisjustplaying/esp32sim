@@ -97,7 +97,7 @@ impl SpiMem {
             addr_reg & 0xff_ffff
         };
         let fsize = flash.len();
-        let mut rd = |a: u32, n: usize| -> Vec<u8> {
+        let rd = |a: u32, n: usize| -> Vec<u8> {
             (0..n)
                 .map(|i| {
                     let x = a as usize + i;
@@ -227,24 +227,24 @@ impl SpiMem {
                 }
                 0x20 => {
                     let a = (addr as usize) & !0xfff;
-                    for x in a..(a + 0x1000).min(fsize) {
-                        flash[x] = 0xff;
+                    for byte in flash.iter_mut().take((a + 0x1000).min(fsize)).skip(a) {
+                        *byte = 0xff;
                     }
                     self.dirty.push((DirtyMem::Flash, a, 0x1000));
                     self.status &= !0x02;
                 }
                 0x52 => {
                     let a = (addr as usize) & !0x7fff;
-                    for x in a..(a + 0x8000).min(fsize) {
-                        flash[x] = 0xff;
+                    for byte in flash.iter_mut().take((a + 0x8000).min(fsize)).skip(a) {
+                        *byte = 0xff;
                     }
                     self.dirty.push((DirtyMem::Flash, a, 0x8000));
                     self.status &= !0x02;
                 }
                 0xd8 => {
                     let a = (addr as usize) & !0xffff;
-                    for x in a..(a + 0x10000).min(fsize) {
-                        flash[x] = 0xff;
+                    for byte in flash.iter_mut().take((a + 0x10000).min(fsize)).skip(a) {
+                        *byte = 0xff;
                     }
                     self.dirty.push((DirtyMem::Flash, a, 0x10000));
                     self.status &= !0x02;
@@ -302,16 +302,16 @@ impl SpiMem {
         }
         if cmd & (1 << 24) != 0 {
             let a = (addr as usize) & !0xfff;
-            for x in a..(a + 0x1000).min(fsize) {
-                flash[x] = 0xff;
+            for byte in flash.iter_mut().take((a + 0x1000).min(fsize)).skip(a) {
+                *byte = 0xff;
             }
             self.dirty.push((DirtyMem::Flash, a, 0x1000));
             self.status &= !0x02;
         } // SE
         if cmd & (1 << 23) != 0 {
             let a = (addr as usize) & !0xffff;
-            for x in a..(a + 0x10000).min(fsize) {
-                flash[x] = 0xff;
+            for byte in flash.iter_mut().take((a + 0x10000).min(fsize)).skip(a) {
+                *byte = 0xff;
             }
             self.dirty.push((DirtyMem::Flash, a, 0x10000));
         } // BE

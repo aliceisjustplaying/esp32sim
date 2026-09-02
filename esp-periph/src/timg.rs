@@ -21,6 +21,12 @@ pub struct Timer {
     pub load: u64,
     pub prescale_acc: u64,
 }
+impl Default for TimerGroup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TimerGroup {
     pub fn new() -> Self {
         TimerGroup {

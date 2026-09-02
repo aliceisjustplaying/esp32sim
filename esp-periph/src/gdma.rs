@@ -53,6 +53,12 @@ pub struct Gdma {
     pub misc: u32,
     pub dbg: bool,
 }
+impl Default for Gdma {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gdma {
     pub fn new() -> Self {
         Gdma {

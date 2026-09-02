@@ -37,6 +37,12 @@ pub struct I2c {
     pub transactions: u64,
 }
 
+impl Default for I2c {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl I2c {
     pub fn new() -> Self {
         I2c {

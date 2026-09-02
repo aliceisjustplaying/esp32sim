@@ -22,6 +22,12 @@ pub struct Rsa {
     ram: RegRam,
     pub dbg: bool,
 }
+impl Default for Rsa {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rsa {
     pub fn new() -> Self {
         Rsa {
@@ -81,7 +87,7 @@ impl Rsa {
                 self.finish(z, n);
             }
             0x814 => {
-                let n = (self.length as usize + 1) / 2;
+                let n = (self.length as usize).div_ceil(2);
                 let z = crate::crypto::bn_mul(&self.block(384, n), &self.block(128 + n, n));
                 self.finish(z, 2 * n);
             }

@@ -99,11 +99,7 @@ pub fn read32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32) -> u32 {
         Some(v) => v,
         None => {
             note(p, addr, block, off, false, 0);
-            p.misc_mut()
-                .generic
-                .entry(block)
-                .or_insert_with(RegRam::new)
-                .read(off)
+            p.misc_mut().generic.entry(block).or_default().read(off)
         }
     };
     let m = p.misc_mut();
@@ -145,11 +141,7 @@ pub fn write32<P: DeviceSet + Dispatch>(p: &mut P, addr: u32, v: u32) -> WriteEf
         Some(fx) => fx,
         None => {
             note(p, addr, block, off, true, v);
-            p.misc_mut()
-                .generic
-                .entry(block)
-                .or_insert_with(RegRam::new)
-                .write(off, v);
+            p.misc_mut().generic.entry(block).or_default().write(off, v);
             WriteEffect::NONE
         }
     }

@@ -148,7 +148,7 @@ impl Rmt {
                     c.since_thr = 0;
                     self.int_raw |= 1 << (8 + n);
                 } // TX_THR_EVENT
-                if d1 == 0 && !l1 && c.rd % mem_words == 0 && c.conf0 & (1 << 4) == 0 { /* no wrap: stop at end of memory */
+                if d1 == 0 && !l1 && c.rd.is_multiple_of(mem_words) && c.conf0 & (1 << 4) == 0 { /* no wrap: stop at end of memory */
                 }
             }
         }

@@ -18,6 +18,12 @@ pub struct Systimer {
     pub int_raw: u32,
     ticks_acc: u64,
 }
+impl Default for Systimer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Systimer {
     pub fn new() -> Self {
         Systimer {
@@ -177,11 +183,7 @@ impl Device for Systimer {
                     continue;
                 }
                 let elapsed = now.wrapping_sub(self.period_start[t]);
-                if elapsed >= period {
-                    0
-                } else {
-                    period - elapsed
-                }
+                period.saturating_sub(elapsed)
             } else if self.armed[t] {
                 self.target[t].saturating_sub(now)
             } else {

@@ -41,6 +41,12 @@ pub struct RtcCntl {
     wdt_stage: usize,
     wdt_unlocked: bool,
 }
+impl Default for RtcCntl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RtcCntl {
     pub fn preset_after_bootloader(&mut self) {
         self.ram.write(0xc0, 0xFFD7_0028);

@@ -21,6 +21,12 @@ pub struct Aes {
     pub int_ena: u32,
     ram: RegRam,
 }
+impl Default for Aes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Aes {
     pub fn new() -> Self {
         Aes {

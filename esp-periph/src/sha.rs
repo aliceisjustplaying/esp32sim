@@ -14,6 +14,12 @@ pub struct Sha {
     ram: RegRam,
     pub dbg: bool,
 }
+impl Default for Sha {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sha {
     pub fn new() -> Self {
         Sha {
@@ -93,8 +99,8 @@ impl Sha {
     }
     fn h64(&self) -> [u64; 8] {
         let mut v = [0u64; 8];
-        for i in 0..8 {
-            v[i] = ((self.h[2 * i] as u64) << 32) | self.h[2 * i + 1] as u64;
+        for (i, value) in v.iter_mut().enumerate() {
+            *value = ((self.h[2 * i] as u64) << 32) | self.h[2 * i + 1] as u64;
         }
         v
     }
@@ -102,8 +108,8 @@ impl Sha {
         // message words are written by software as the bytes of the block; interpret big-endian per SHA
         if self.mode >= 3 {
             let mut w = [0u64; 16];
-            for j in 0..16 {
-                w[j] = ((self.m[2 * j].swap_bytes() as u64) << 32)
+            for (j, word) in w.iter_mut().enumerate() {
+                *word = ((self.m[2 * j].swap_bytes() as u64) << 32)
                     | self.m[2 * j + 1].swap_bytes() as u64;
             }
             let mut h = self.h64();
@@ -348,7 +354,7 @@ fn sha1_block(h: &mut [u32; 16], w0: &[u32]) {
         w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
     }
     let (mut a, mut b, mut c, mut d, mut e) = (h[0], h[1], h[2], h[3], h[4]);
-    for i in 0..80 {
+    for (i, word) in w.iter().enumerate() {
         let (f, k) = match i {
             0..=19 => ((b & c) | (!b & d), 0x5A827999),
             20..=39 => (b ^ c ^ d, 0x6ED9EBA1),
@@ -360,7 +366,7 @@ fn sha1_block(h: &mut [u32; 16], w0: &[u32]) {
             .wrapping_add(f)
             .wrapping_add(e)
             .wrapping_add(k)
-            .wrapping_add(w[i]);
+            .wrapping_add(*word);
         e = d;
         d = c;
         c = b.rotate_left(30);
