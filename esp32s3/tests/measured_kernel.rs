@@ -7,6 +7,7 @@ const ELF_SHA256: &str = "7f598fd3580cf52078fb6aa04a5f6fe5179b0de9d89bb6468fdb06
 const SYMBOL: &str = "_ZNK8tinydraw5esp3220Co5300PanelTransport16complete_time_usEm";
 const KERNEL_OFFSET: u32 = 3;
 const KERNEL_INSTRUCTIONS: usize = 7;
+const MEASURED_CORE: CoreId = CoreId::Core0;
 const LEDGER: &str = include_str!("../../tests/correlation/tinydraw-sram-kernel-ledger.json");
 
 fn receipt_config(machine: &mut Machine) {
@@ -19,7 +20,12 @@ fn receipt_config(machine: &mut Machine) {
     machine.bus.periph.spi0.regs.write(0x40, 1 << 21);
     machine.bus.periph.spi0.regs.write(0x50, 0x0001_0001);
     machine.bus.periph.extmem.ram.write(0x0, 2 << 3);
-    machine.bus.periph.extmem.ram.write(0x60, 1 << 3);
+    machine
+        .bus
+        .periph
+        .extmem
+        .ram
+        .write(0x60, (1 << 3) | (1 << 1));
 }
 
 fn run_kernel(elf_bytes: &[u8]) -> Vec<u8> {
@@ -59,14 +65,18 @@ fn run_kernel(elf_bytes: &[u8]) -> Vec<u8> {
     let mut backend = Esp32Backend::default();
     for _ in 0..KERNEL_INSTRUCTIONS {
         assert_eq!(
-            machine.step_measured(&mut backend, CoreId::Core0),
+            machine.step_measured(&mut backend, MEASURED_CORE),
             Ok(MeasuredStep::Instruction)
         );
     }
-    backend
+    let report = backend
         .run_trace(&[])
-        .expect("completed kernel ledger has a scalar total")
-        .canonical_ledger
+        .expect("completed kernel ledger has a scalar total");
+    assert!(report
+        .ledger
+        .iter()
+        .all(|entry| entry.core == MEASURED_CORE));
+    report.canonical_ledger
 }
 
 #[test]
