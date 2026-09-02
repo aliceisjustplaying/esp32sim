@@ -20,5 +20,7 @@ jobs:
           ls -la roms/*.elf
       - name: Build
         run: cargo build --release --workspace
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test (hermetic + golden outputs)
         run: ESP32SIM_ROM_DIR=$PWD/roms cargo test --release --workspace -- --include-ignored --skip external_
