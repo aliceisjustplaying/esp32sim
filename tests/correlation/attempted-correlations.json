@@ -2,5 +2,12 @@
   "passing": [
     "tinydraw_sram_kernel_has_deterministic_receipt_priced_ledger"
   ],
-  "ignored": {}
+  "ignored": {
+    "idf61_callx8_window_overflow_underflow_pair": {
+      "receipt_cycles": 35,
+      "stopped_at": "exception_entry.WindowOverflow8",
+      "missing_costs": ["exception_entry", "rfwo", "rfwu"],
+      "hardware_queue_item": "H1"
+    }
+  }
 }
