@@ -289,19 +289,20 @@ mode (needs GOAL milestone 2).
   total 28 priced cycles against the 35-cycle correlation receipt. The missing
   seven cycles are in the trigger and return path, whose sequence totals R2
   keeps out of the price table.
-- Milestone 2 Task 5 is parked. ESP32-S3 TRM v1.8, section 4.3.3.2, page 405,
-  specifies one dual-core-shared I-cache and one dual-core-shared D-cache.
-  This contradicts GOAL's per-core I-cache topology. The TRM does not specify
-  a replacement policy.
+- ESP32-S3 TRM v1.8, section 4.3.3.2, page 405, specifies one
+  dual-core-shared I-cache and one dual-core-shared D-cache, with each core
+  on its own bus. GOAL now adopts that topology. Task 5 resumes with shared
+  cache state and the brief-directed LRU fallback because the TRM does not
+  specify a replacement policy.
 - Root `LICENSE` file on the fork: waiting on the upstream author; the maintainer owns the contact.
 - `.github/workflows/pages.yml` fetches the mask ROM unpinned from `releases/latest`: dormant because it triggers only on `main`, the upstream mirror; pin or remove it when the workflow is next touched.
 - `periph.rs` and `machine.rs` decomposition: deliberately deferred; extract only what Task 3b forces under the build-exactly-the-thing rule.
 
 ## Proposed next steps
 
-1. Proposal: rule whether GOAL adopts the TRM's shared I-cache topology or
-   names contrary board-specific evidence, then resume Task 5 with that
-   topology and the brief-directed LRU fallback.
+1. Proposal: complete Task 5's receipt-replay gate with shared I-cache and
+   D-cache state, register-derived `ChipConfig`, and the brief-directed LRU
+   fallback.
 2. Proposal: disaggregate the 35-cycle window-pair receipt into priced
    instructions and additive delays, or revise the mandatory correlation
    boundary, then resume Task 2 from `b48075e`.
