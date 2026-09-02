@@ -61,7 +61,7 @@ fn callx8_recursion_machine() -> Machine {
 /// `_WindowUnderflow8` pair. The unknowns are exception-entry delay and the
 /// costs of `rfwo` and `rfwu`.
 #[test]
-#[ignore = "blocked on exception-entry and rfw return receipts; hardware queue item H1"]
+#[ignore = "R8 residual unavailable: l32r blocks exact E/R; handler ledger 18; H1"]
 fn idf61_callx8_window_overflow_underflow_pair() {
     let mut machine = callx8_recursion_machine();
     let mut backend = Esp32Backend::default();
