@@ -44,7 +44,15 @@ pub enum AccessResult {
     Miss {
         position: FillPosition,
         source: CacheSource,
+        eviction: Option<EvictedLine>,
     },
+}
+
+/// Line displaced by a cache miss.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EvictedLine {
+    pub source: CacheSource,
+    pub dirty: bool,
 }
 
 /// Typed refusal for a cache configuration outside the receipt scope.
@@ -59,6 +67,7 @@ struct Line {
     last_use: u64,
     valid: bool,
     dirty: bool,
+    source: Option<CacheSource>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,11 +110,16 @@ impl Cache {
                 .min_by_key(|(way, line)| (line.last_use, *way))
                 .map_or(0, |(way, _line)| way)
         });
+        let eviction = ways[victim].source.map(|victim_source| EvictedLine {
+            source: victim_source,
+            dirty: ways[victim].dirty,
+        });
         ways[victim] = Line {
             tag,
             last_use: self.use_clock,
             valid: true,
             dirty,
+            source: Some(source),
         };
         let position = if self.first_fill {
             self.first_fill = false;
@@ -113,7 +127,11 @@ impl Cache {
         } else {
             FillPosition::Subsequent
         };
-        AccessResult::Miss { position, source }
+        AccessResult::Miss {
+            position,
+            source,
+            eviction,
+        }
     }
 
     fn invalidate(&mut self, addr: u32, len: u32) {
