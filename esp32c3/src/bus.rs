@@ -202,5 +202,5 @@ impl Bus for SocBus {
         1
     }
     #[inline(always)]
-    fn note_pc(&mut self, pc: u32) { self.periph.cur_pc = pc; }
+    fn note_pc(&mut self, pc: u32) { self.periph.misc.cur_pc = pc; }
 }

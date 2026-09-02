@@ -114,7 +114,7 @@ fn main() {
         eprintln!("[emu] flash {:#x}: {} ({} bytes)", off, path, data.len());
     }
     if no_jit { m.cpu.blocks.jit_enabled = false; m.cpu1.blocks.jit_enabled = false; }
-    m.trace = trace; m.trace_from = trace_from; m.breakpoints = breaks; m.bus.periph.log_unknown = log_periph;
+    m.trace = trace; m.trace_from = trace_from; m.breakpoints = breaks; m.bus.periph.misc.log_unknown = log_periph;
     if let Some(r) = &rom { match std::fs::read(r) { Ok(d) => { m.load_rom(&d).expect("rom"); eprintln!("[emu] ROM loaded from {}", r.display()); } Err(e) => eprintln!("[emu] no ROM ({}): {}", r.display(), e) } }
     if let Some(p) = &bootloader { m.write_flash(0x0, &std::fs::read(p).expect("bootloader")).unwrap(); }
     if let Some(p) = &ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }

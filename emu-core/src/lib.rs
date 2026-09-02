@@ -9,5 +9,5 @@ pub mod core;
 pub mod jit_a64;
 
 pub use bus::{Bus, Fault, FlatRam};
-pub use clock::{ClockDomain, ClockTree};
+pub use clock::{ClockDomain, ClockTree, Dividers};
 pub use core::{Core, Trap};

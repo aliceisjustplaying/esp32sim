@@ -72,7 +72,7 @@ fn main() {
         if b.len() == 6 { mac.copy_from_slice(&b); } else { eprintln!("--mac wants xx:xx:xx:xx:xx:xx"); std::process::exit(2); }
     }
     let mut m = Machine::new(mac, flash_mb * 1024 * 1024);
-    m.bus.periph.log_unknown = log_periph;
+    m.bus.periph.misc.log_unknown = log_periph;
     m.bus.periph.spi1.log = std::env::var("ESP_EMU_DEBUG_SPI").is_ok();
     m.trace = trace; m.trace_from = trace_from; m.breakpoints = breaks;
     m.stop_after_exceptions = stop_exc;

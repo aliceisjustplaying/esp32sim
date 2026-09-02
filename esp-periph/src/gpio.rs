@@ -1,0 +1,93 @@
+//! GPIO matrix: output/enable/input words, per-pin config and interrupt types, the function
+//! selection tables, and the edge queues the SoC hands to its board and pulse counters.
+use crate::device::{Device, WriteEffect};
+use crate::regram::RegRam;
+
+// ------------------------------------------------------------------ GPIO
+pub struct Gpio {
+    pub out: u64, pub enable: u64, pub input: u64, pub status: u64, pub pin: [u32; 49],
+    pub func_in_sel: [u32; 256], pub func_out_sel: [u32; 49], ram: RegRam,
+    pub input_changes: Vec<(u8, bool)>,
+    /// (pin, level) changes of enabled outputs since last drain
+    pub changes: Vec<(u8, bool)>,
+    pub strap: u32,
+}
+impl Gpio {
+    pub fn new() -> Self { Gpio { out: 0, enable: 0, input: !0u64 & ((1u64 << 49) - 1), status: 0, pin: [0; 49], func_in_sel: [0x3c; 256], func_out_sel: [0x100; 49], ram: RegRam::new(), changes: Vec::new(), strap: 0x0f, input_changes: Vec::new() } }
+    fn note_out(&mut self, old: u64) {
+        let vis = self.out & self.enable; let oldvis = old & self.enable;
+        let diff = vis ^ oldvis;
+        if diff == 0 { return; }
+        for p in 0..49u8 { if diff & (1u64 << p) != 0 { self.changes.push((p, vis & (1u64 << p) != 0)); } }
+    }
+    pub fn set_input(&mut self, pin: u8, level: bool) -> bool {
+        let old = self.input;
+        if level { self.input |= 1u64 << pin; } else { self.input &= !(1u64 << pin); }
+        if old == self.input { return false; }
+        self.input_changes.push((pin, level));
+        // edge detection per GPIO_PINn INT_TYPE (bits 7..9): 1 rising, 2 falling, 3 any, 4 low level, 5 high level
+        let typ = (self.pin[pin as usize] >> 7) & 7;
+        let rising = level && (typ == 1 || typ == 3);
+        let falling = !level && (typ == 2 || typ == 3);
+        if rising || falling { self.status |= 1u64 << pin; return true; }
+        false
+    }
+    pub fn level(&self, pin: u8) -> bool {
+        if self.enable & (1u64 << pin) != 0 { self.out & (1u64 << pin) != 0 } else { self.input & (1u64 << pin) != 0 }
+    }
+    pub fn irq(&self) -> bool {
+        // level-type interrupts on current input, plus latched edge status, gated by INT_ENA (bits 13..17, bit 13 = core0)
+        (0..49u8).any(|p| { let cfg = self.pin[p as usize]; let ena = (cfg >> 13) & 1 != 0; let typ = (cfg >> 7) & 7;
+            ena && ((self.status & (1u64 << p) != 0) || (typ == 4 && !self.level(p)) || (typ == 5 && self.level(p))) })
+    }
+    pub fn read(&mut self, off: u32) -> u32 {
+        match off {
+            0x4 => self.out as u32, 0x10 => (self.out >> 32) as u32,
+            0x20 => self.enable as u32, 0x2c => (self.enable >> 32) as u32,
+            0x38 => self.strap,
+            0x3c => self.input as u32, 0x40 => (self.input >> 32) as u32,
+            0x44 => self.status as u32, 0x50 => (self.status >> 32) as u32,
+            0x5c => (self.status as u32), 0x68 => (self.status >> 32) as u32,     // PCPU_INT: interrupt status seen by core 0
+            0x74..=0x134 => self.pin[((off - 0x74) / 4) as usize],
+            0x154..=0x550 => self.func_in_sel[((off - 0x154) / 4) as usize],
+            0x554..=0x614 => self.func_out_sel[((off - 0x554) / 4) as usize],
+            0x6fc => 0x2006130,
+            _ => self.ram.read(off),
+        }
+    }
+    pub fn write(&mut self, off: u32, v: u32) {
+        let old = self.out;
+        match off {
+            0x4 => self.out = (self.out & !0xffff_ffff) | v as u64,
+            0x8 => self.out |= v as u64,
+            0xc => self.out &= !(v as u64),
+            0x10 => self.out = (self.out & 0xffff_ffff) | ((v as u64 & 0x1ffff) << 32),
+            0x14 => self.out |= (v as u64) << 32,
+            0x18 => self.out &= !((v as u64) << 32),
+            0x20 => { self.enable = (self.enable & !0xffff_ffff) | v as u64; }
+            0x24 => self.enable |= v as u64,
+            0x28 => self.enable &= !(v as u64),
+            0x2c => self.enable = (self.enable & 0xffff_ffff) | ((v as u64 & 0x1ffff) << 32),
+            0x30 => self.enable |= (v as u64) << 32,
+            0x34 => self.enable &= !((v as u64) << 32),
+            0x44 => self.status = (self.status & !0xffff_ffff) | v as u64,
+            0x48 => self.status |= v as u64,
+            0x4c => self.status &= !(v as u64),
+            0x50 => self.status = (self.status & 0xffff_ffff) | ((v as u64) << 32),
+            0x54 => self.status |= (v as u64) << 32,
+            0x58 => self.status &= !((v as u64) << 32),
+            0x74..=0x134 => self.pin[((off - 0x74) / 4) as usize] = v,
+            0x154..=0x550 => self.func_in_sel[((off - 0x154) / 4) as usize] = v,
+            0x554..=0x614 => self.func_out_sel[((off - 0x554) / 4) as usize] = v,
+            _ => self.ram.write(off, v),
+        }
+        // enable changes also change what's visible on pins
+        if matches!(off, 0x4 | 0x8 | 0xc | 0x10 | 0x14 | 0x18 | 0x20 | 0x24 | 0x28 | 0x2c | 0x30 | 0x34) { self.note_out(old); }
+    }
+}
+
+impl Device for Gpio {
+    fn read(&mut self, off: u32) -> u32 { Gpio::read(self, off) }
+    fn write(&mut self, off: u32, v: u32) -> WriteEffect { Gpio::write(self, off, v); WriteEffect::NONE }
+    fn irq_sources(&self) -> u64 { self.irq() as u64 }
+}

@@ -18,7 +18,9 @@ cli/          esp32sim binary: argument parsing, image loading, run loop, report
 esp32s3/      the SoC and boards
   machine.rs  Machine: two Cpus + SocBus, scheduler, scripts, web push/poll, reboot, WAV/PNG
   bus.rs      SocBus: memory map, cache MMU, peripheral dispatch, DMA pumps (I2S, camera)
-  periph.rs   register models (UART, USB-Serial/JTAG, systimer, TIMG, interrupt matrix, GPIO,
+  periph.rs   the S3's device table (`device_set!`) and its S3-only models (interrupt matrix,
+              WiFi MAC, PCNT, GP-SPI, LCD_CAM, EXTMEM, WDEV, regi2c); the rest come from esp-periph
+              — formerly: register models (UART, USB-Serial/JTAG, systimer, TIMG, interrupt matrix, GPIO,
               RTC_CNTL + WDT, efuse, SPI0/1 flash + PSRAM, SHA, AES, RSA/MPI, RNG, regi2c,
               GDMA, I2S, RMT, LCD_CAM, WiFi MAC)
   i2c.rs      I2C master controller + bus devices (CH32V003, OV5640, ES8311/ES7210)
@@ -29,6 +31,10 @@ esp32s3/      the SoC and boards
   board.rs    BoardModel trait; Atech14, WaveshareCam, NoBoard; ST7735 and WS2812 decoders
   web.rs      dependency-free HTTP + WebSocket server
   elf.rs / image.rs / picture.rs   loaders (ELF symbols/segments, ESP app images, BMP/PPM)
+esp-periph/   the peripheral IP Espressif chips share, one file each (UART, USB-Serial/JTAG,
+              systimer, TIMG, GPIO, RTC_CNTL, efuse, SYSTEM, SPI_MEM, GDMA, SHA/AES/RSA, I2S, RMT,
+              I2C), the `Device` trait they implement, and `device_set!`: the one table per chip
+              that generates dispatch, interrupt sources, clock ticks and timer deadlines
 emu-core/     what every core shares: the Bus contract (with the TLB/page-version hooks a JIT
               needs), the Core trait a machine drives, Trap, ClockTree, and the AArch64 encoder
 xtensa-lx7/   the core
@@ -91,8 +97,13 @@ wasm/         esp32sim-wasm: C ABI over Machine for the browser; the JIT is abse
   per-256-byte-page write version lets the CPU's block and decode caches skip re-fetching
   instruction bytes; MMU remaps bump the flash/PSRAM versions so decodes built through the old
   mapping cannot run.
-- **Peripheral dispatch**: address bits 12–19 select a block; unknown registers land in a
-  generic register RAM and are logged on first touch with `--log-periph`.
+- **Peripheral dispatch**: address bits 12–19 select a block. Each chip lists its devices once in
+  a `device_set!` table (block, name, field, interrupt source numbers, optional offset range);
+  the macro generates the read/write match, the source-status scan, tick delivery per clock
+  domain and the timer-deadline query as static calls, so a device costs what a hand-written
+  arm did. Unknown registers land in a generic register RAM and are logged on first touch with
+  `--log-periph`. The three registers whose value depends on another device (interrupt status,
+  the MAC's TSF timestamp, the FE's IQ-done bit) are handled in `DeviceSet::pre_access`.
 - **Interrupts**: every source has a level computed by its model (`Peripherals::source_status`);
   the per-core interrupt matrix maps sources to the 32 Xtensa interrupt lines. Lines are
   recomputed when a register write flags `irq_dirty` or every 32 cycles, then written into

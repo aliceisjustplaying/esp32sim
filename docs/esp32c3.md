@@ -110,11 +110,10 @@ Console-only, real time, from the same mask ROM and binaries. See [wasm.md](wasm
 | Memory | 400 KB SRAM (SRAM1 dual-mapped IRAM/DRAM), mask ROM, RTC slow RAM, 8 MB flash cache windows through a 128-entry MMU |
 | Peripherals | UART0/1, USB-Serial/JTAG, systimer, TIMG0/1 + WDTs, GPIO, RTC_CNTL, efuse, SPI0/1 flash controller, GDMA, SHA/AES/RSA, cache controller, hardware RNG |
 
-Peripheral models are **shared with the `esp32s3` crate** wherever the IP is identical (which is
-most of it — same UART, same systimer, same timer groups, same USB-Serial/JTAG, same SPI flash
-controller). Only the address map, the cache controller and the interrupt matrix are C3-specific.
-`esp32c3` therefore depends on `esp32s3`; if a third chip ever appears, lift those models into
-their own `esp-periph` crate rather than deepening that dependency.
+Peripheral models are **shared with the S3 through the `esp-periph` crate** wherever the IP is
+identical (which is most of it — same UART, same systimer, same timer groups, same USB-Serial/JTAG,
+same SPI flash controller). Only the address map, the cache controller and the interrupt matrix
+are C3-specific; `esp32c3/src/periph.rs` is its `device_set!` table plus those three.
 
 The RV32IMC decoder is checked against `riscv32-esp-elf-objdump` the same way the Xtensa one is:
 161,388 instructions from the C3 mask ROM and a real app, 0 mismatches.

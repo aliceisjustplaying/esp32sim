@@ -181,7 +181,7 @@ impl Machine {
         let p = &mut self.bus.periph;
         p.efuse = old.efuse;
         p.gpio.strap = old.gpio.strap;
-        p.log_unknown = old.log_unknown; p.spi1.log = old.spi1.log;
+        p.misc.log_unknown = old.misc.log_unknown; p.spi1.log = old.spi1.log;
         p.rtc.ram = old.rtc.ram; p.rtc.slow_ticks = old.rtc.slow_ticks;
         p.rtc.ram.write(0x38, cause | (cause << 6));
         p.rtc.ram.write(0x98, 0);                       // watchdog disarmed by the reset; the ROM re-arms it
@@ -309,7 +309,7 @@ impl Machine {
                 let _ = writeln!(w, " {:08x} {:x}", cpu.ps, cpu.windowbase);
             } }
         }
-        bus.periph.cur_pc = pc;
+        bus.periph.misc.cur_pc = pc;
         if let Some(h) = &mut self.profile { *h.entry(pc).or_insert(0) += 1; }
         match step(cpu, bus) {
             Ok(()) => {}

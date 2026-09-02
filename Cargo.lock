@@ -7,10 +7,18 @@ name = "emu-core"
 version = "0.1.0"
 
 [[package]]
+name = "esp-periph"
+version = "0.1.0"
+dependencies = [
+ "emu-core",
+]
+
+[[package]]
 name = "esp32c3"
 version = "0.1.0"
 dependencies = [
  "emu-core",
+ "esp-periph",
  "esp32s3",
  "riscv-rv32",
 ]
@@ -20,6 +28,7 @@ name = "esp32s3"
 version = "0.1.0"
 dependencies = [
  "emu-core",
+ "esp-periph",
  "xtensa-lx7",
 ]
 

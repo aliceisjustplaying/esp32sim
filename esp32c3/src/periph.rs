@@ -2,13 +2,12 @@
 //!
 //! The C3 and the S3 share most of their peripheral IP — UART, USB-Serial/JTAG, systimer, timer
 //! groups, GPIO, the SPI flash controller, GDMA, SHA/AES/RSA are the same blocks with the same
-//! register layouts — so the models come from the `esp32s3` crate and only the address map and
-//! the interrupt controller are written here. (If a third chip appears, lift those models into
-//! their own `esp-periph` crate; today that would be churn for its own sake.)
+//! register layouts — so the models come from `esp-periph` and only the address map, the cache
+//! controller and the interrupt controller are written here.
 
-use emu_core::ClockDomain;
-use esp32s3::periph::{Aes, Efuse, Gdma, Gpio, RegRam, Rsa, RtcCntl, Sha, SpiMem, SystemRegs, Systimer, TimerGroup, Uart, UsbSerialJtag};
-use std::collections::HashMap;
+use emu_core::{ClockDomain, ClockTree};
+use esp_periph::{device_set, mmio, Device, DeviceSet, Dispatch, Misc, WriteEffect, NO_SOURCE};
+use esp_periph::{Aes, Efuse, Gdma, Gpio, RegRam, Rsa, RtcCntl, Sha, SpiMem, SystemRegs, Systimer, TimerGroup, Uart, UsbSerialJtag};
 
 pub const CPU_HZ: u64 = 160_000_000;
 pub const PERIPH_BASE: u32 = 0x6000_0000;
@@ -88,7 +87,7 @@ impl Intc {
     }
 
     /// Recompute line state from the sources that are currently asserted.
-    pub fn update(&mut self, status: &[u32; 2]) {
+    pub fn update(&mut self, status: &[u32]) {
         let mut lines = 0u32;
         for s in 0..src::COUNT {
             if status[s / 32] & (1 << (s % 32)) == 0 { continue; }
@@ -160,6 +159,26 @@ pub fn efuse_c3(mac: [u8; 6], rev_major: u32, rev_minor: u32, blk_minor: u32) ->
     e.write(0x58, ((rev_minor >> 3) & 1) << 23 | (rev_major & 3) << 24);
     e                                                          // BLK_VERSION_MAJOR = 1 comes from Efuse::new (0x6c)
 }
+impl Device for Intc {
+    fn read(&mut self, off: u32) -> u32 { Intc::read(self, off) }
+    fn write(&mut self, off: u32, v: u32) -> WriteEffect { Intc::write(self, off, v); WriteEffect::NONE }
+}
+impl Device for Extmem {
+    fn read(&mut self, off: u32) -> u32 { Extmem::read(self, off) }
+    fn write(&mut self, off: u32, v: u32) -> WriteEffect { Extmem::write(self, off, v); WriteEffect::NONE }
+}
+
+/// APB_CTRL + 0xB0 is the hardware RNG (`WDEV_RND_REG`); everything else in the block is plain
+/// configuration. Real silicon seeds this from radio noise — xorshift is enough for the
+/// bootloader's stack canary and for `esp_random` to make progress.
+pub struct Rng { state: u32, pub now: u32 }
+impl Device for Rng {
+    fn read(&mut self, _off: u32) -> u32 {
+        self.state ^= self.state << 13; self.state ^= self.state >> 17; self.state ^= self.state << 5;
+        self.state.wrapping_add(self.now)
+    }
+    fn write(&mut self, _off: u32, _v: u32) -> WriteEffect { WriteEffect::NONE }
+}
 
 pub struct Peripherals {
     pub uart: [Uart; 2],
@@ -178,33 +197,63 @@ pub struct Peripherals {
     pub sha: Sha,
     pub aes: Aes,
     pub rsa: Rsa,
-    /// anything we do not model: reads back what was written, per 4 KiB block
-    pub generic: HashMap<u32, RegRam>,
-    pub log_unknown: bool,
-    seen: std::collections::HashSet<(u32, u32, bool)>,
-    pub cur_pc: u32,
+    pub rng: Rng,
+    /// register RAM behind unmodelled blocks, first-touch logging, pc attribution
+    pub misc: Misc,
     pub spi_exec: bool,
-    /// hardware RNG state (APB_CTRL + 0xB0); the bootloader and WiFi both draw from it
-    rng: u32,
-    /// `SYSTEM_CPU_INTR_FROM_CPU_0..3` latches
-    pub sw_int: u32,
-    clock: emu_core::ClockTree,
-    last_status: [u32; 2],
+    clock: ClockTree<4>,
+    last_status: [u32; 4],
+}
+
+// Every peripheral, where it sits, and its interrupt source numbers (`src`).
+device_set! { Peripherals; clock: (clock) CPU_HZ, [(ClockDomain::Systimer, 10), (ClockDomain::Apb, 2), (ClockDomain::RtcSlow, 1067), (ClockDomain::Cpu, 1)];
+    0x00 "UART0" (uart[0]) => [src::UART0];
+    0x10 "UART1" (uart[1]) => [src::UART1];
+    0x02 "SPI1" (spi1) => [];
+    0x03 "SPI0" (spi0) => [];
+    0x04 "GPIO" (gpio) => [src::GPIO];
+    // the efuse controller shares the RTC block on the C3, at +0x800
+    0x08 "EFUSE" (efuse) delta -0x800 @ 0x800..=0xfff => [];
+    0x08 "RTCCNTL" (rtc) => [];
+    0x1f "TIMG0" (timg[0]) => [src::TG0_T0];
+    0x20 "TIMG1" (timg[1]) => [src::TG1_T0];
+    0x23 "SYSTIMER" (systimer) => [src::SYSTIMER_T0, src::SYSTIMER_T1, src::SYSTIMER_T2];
+    0x26 "APB_CTRL" (rng) @ 0xb0..=0xb3 => [];
+    0x3a "AES" (aes) => [src::AES];
+    0x3b "SHA" (sha) => [];
+    0x3c "RSA" (rsa) => [src::RSA];
+    // three channels; out and in interrupts of a channel share one source
+    0x3f "GDMA" (gdma) => [src::DMA_CH0, src::DMA_CH1, src::DMA_CH2, NO_SOURCE, NO_SOURCE, src::DMA_CH0, src::DMA_CH1, src::DMA_CH2, NO_SOURCE, NO_SOURCE];
+    0x43 "USB_SERIAL_JTAG" (usb) => [src::USB_SERIAL_JTAG];
+    0xc0 "SYSTEM" (system) => [src::FROM_CPU0, src::FROM_CPU0 + 1, src::FROM_CPU0 + 2, src::FROM_CPU0 + 3];
+    0xc2 "INTERRUPT" (intc) => [];
+    0xc4 "EXTMEM" (extmem) => [];
+}
+
+impl DeviceSet for Peripherals {
+    const BASE: u32 = PERIPH_BASE;
+    fn block_name(block: u32) -> &'static str { Peripherals::block_name(block) }
+    fn misc(&self) -> &Misc { &self.misc }
+    fn misc_mut(&mut self) -> &mut Misc { &mut self.misc }
+    fn pre_access(&mut self, block: u32, _off: u32, _write: bool) {
+        if block == 0x26 { self.rng.now = self.clock.cycles() as u32; }
+    }
 }
 
 impl Peripherals {
     pub fn new(mac: [u8; 6]) -> Self {
-        Peripherals {
-            uart: [Uart::new(), Uart::new()], usb: UsbSerialJtag::new(), systimer: Systimer::new(),
+        let mut p = Peripherals {
+            uart: [Uart::new(), Uart::new()], usb: UsbSerialJtag::new(CPU_HZ), systimer: Systimer::new(),
             timg: [TimerGroup::new(), TimerGroup::new()], gpio: Gpio::new(), rtc: RtcCntl::new(),
-            efuse: efuse_c3(mac, 0, 4, 3), system: SystemRegs::new(), extmem: Extmem::new(), intc: Intc::new(),
+            efuse: efuse_c3(mac, 0, 4, 3), system: SystemRegs::new(0x28), extmem: Extmem::new(), intc: Intc::new(),
             spi0: { let mut s = SpiMem::new(false); s.has_psram = false; s },
             spi1: { let mut s = SpiMem::new(true); s.has_psram = false; s },   // the C3 has no PSRAM
             gdma: Gdma::new(),
-            sha: Sha::new(), aes: Aes::new(), rsa: Rsa::new(),
-            generic: HashMap::new(), log_unknown: false, seen: Default::default(), cur_pc: 0,
-            spi_exec: false, rng: 0x2545_f491, sw_int: 0, clock: emu_core::ClockTree::new(CPU_HZ, &[(ClockDomain::Systimer, 10), (ClockDomain::Apb, 2), (ClockDomain::RtcSlow, 1067)]), last_status: [0; 2],
-        }
+            sha: Sha::new(), aes: Aes::new(), rsa: Rsa::new(), rng: Rng { state: 0x2545_f491, now: 0 },
+            misc: Misc::new(), spi_exec: false, clock: Self::new_clock(),
+            last_status: [0; 4],
+        };
+        p
     }
 
     pub fn block_name(block: u32) -> &'static str {
@@ -221,110 +270,18 @@ impl Peripherals {
         }
     }
 
-    fn note(&mut self, block: u32, off: u32, write: bool) {
-        if !self.log_unknown { return; }
-        if self.seen.insert((block, off, write)) {
-            eprintln!("[periph] {} {}+0x{:03x} ({:#010x})  pc={:#010x}",
-                      if write { "W" } else { "R" }, Self::block_name(block), off,
-                      PERIPH_BASE + (block << 12) + off, self.cur_pc);
-        }
-    }
-
-    pub fn read32(&mut self, addr: u32) -> u32 {
-        let (block, off) = ((addr >> 12) & 0xff, addr & 0xfff);
-        match block {
-            0x00 => self.uart[0].read(off),
-            0x10 => self.uart[1].read(off),
-            0x02 => self.spi1.read(off),
-            0x03 => self.spi0.read(off),
-            0x04 => self.gpio.read(off),
-            0x08 if off >= 0x800 => self.efuse.read(off - 0x800),
-            0x08 => self.rtc.read(off),
-            0x1f => self.timg[0].read(off),
-            0x20 => self.timg[1].read(off),
-            0x23 => self.systimer.read(off),
-            0x3a => self.aes.read(off),
-            0x3b => self.sha.read(off),
-            0x3c => self.rsa.read(off),
-            0x3f => self.gdma.read(off),
-            0x43 => self.usb.read(off),
-            // APB_CTRL + 0xB0 is the hardware RNG (`WDEV_RND_REG`); everything else in the block
-            // is plain configuration. Real silicon seeds this from radio noise — xorshift is
-            // enough for the bootloader's stack canary and for `esp_random` to make progress.
-            0x26 if off == 0xb0 => {
-                self.rng ^= self.rng << 13; self.rng ^= self.rng >> 17; self.rng ^= self.rng << 5;
-                self.rng.wrapping_add(self.clock.cycles() as u32)
-            }
-            0xc0 => self.system.read(off),
-            0xc2 => self.intc.read(off),
-            0xc4 => self.extmem.read(off),
-            _ => { self.note(block, off, false); self.generic.entry(block).or_insert_with(RegRam::new).read(off) }
-        }
-    }
+    pub fn read32(&mut self, addr: u32) -> u32 { mmio::read32(self, addr) }
 
     pub fn write32(&mut self, addr: u32, v: u32) {
-        let (block, off) = ((addr >> 12) & 0xff, addr & 0xfff);
-        match block {
-            0x00 => self.uart[0].write(off, v),
-            0x10 => self.uart[1].write(off, v),
-            0x02 => { if self.spi1.write(off, v) { self.spi_exec = true; } }
-            0x03 => { self.spi0.write(off, v); }
-            0x04 => self.gpio.write(off, v),
-            0x08 if off >= 0x800 => self.efuse.write(off - 0x800, v),
-            0x08 => self.rtc.write(off, v),
-            0x1f => self.timg[0].write(off, v),
-            0x20 => self.timg[1].write(off, v),
-            0x23 => self.systimer.write(off, v),
-            0x3a => self.aes.write(off, v),
-            0x3b => self.sha.write(off, v),
-            0x3c => self.rsa.write(off, v),
-            0x3f => self.gdma.write(off, v),
-            0x43 => self.usb.write(off, v),
-            0xc0 => {
-                // SYSTEM_CPU_INTR_FROM_CPU_0..3: writing 1 asserts the software interrupt, 0 clears it
-                if (0x28..=0x34).contains(&off) {
-                    let b = (off - 0x28) / 4;
-                    if v & 1 != 0 { self.sw_int |= 1 << b; } else { self.sw_int &= !(1 << b); }
-                }
-                self.system.write(off, v)
-            }
-            0xc2 => self.intc.write(off, v),
-            0xc4 => self.extmem.write(off, v),
-            _ => { self.note(block, off, true); self.generic.entry(block).or_insert_with(RegRam::new).write(off, v) }
-        }
+        if mmio::write32(self, addr, v).contains(WriteEffect::SPI_EXEC) { self.spi_exec = true; }
     }
 
-    /// Advance every derived clock by `cycles` CPU cycles, with delivered-tick accounting so a
-    /// slow clock never loses or gains a tick to rounding.
-    pub fn tick(&mut self, cycles: u64) {
-        let Peripherals { clock, systimer, timg, rtc, .. } = self;
-        clock.advance(cycles, |d, n| match d {           // systimer 16 MHz = CPU/10, APB 80 MHz = CPU/2, RTC slow ~150 kHz
-            ClockDomain::Systimer => systimer.tick(n),
-            ClockDomain::Apb => { timg[0].tick(n); timg[1].tick(n); }
-            ClockDomain::RtcSlow => { rtc.slow_ticks += n; rtc.wdt_tick(n); }
-            _ => {}
-        });
-        // the USB model derives its 1 ms SOF from the S3's 240 MHz, so hand it scaled cycles
-        self.usb.tick(cycles * 3 / 2);
-    }
+    /// Advance every clocked device by `cycles` CPU cycles (16 MHz systimer, 80 MHz APB, ~150 kHz
+    /// RTC slow clock), with delivered-tick accounting so a slow clock never drifts.
+    pub fn tick(&mut self, cycles: u64) { Dispatch::tick(self, cycles); }
 
     /// Which interrupt sources are asserted right now.
-    pub fn source_status(&self) -> [u32; 2] {
-        let mut s = [0u32; 2];
-        let mut set = |n: usize, on: bool| if on { s[n / 32] |= 1 << (n % 32); };
-        set(src::UART0, self.uart[0].irq());
-        set(src::UART1, self.uart[1].irq());
-        set(src::USB_SERIAL_JTAG, self.usb.irq());
-        for t in 0..3 { set(src::SYSTIMER_T0 + t, self.systimer.irq(t)); }
-        for i in 0..4 { set(src::FROM_CPU0 + i, self.sw_int & (1 << i) != 0); }
-        set(src::TG0_T0, self.timg[0].int_raw & self.timg[0].int_ena & 1 != 0);
-        set(src::TG1_T0, self.timg[1].int_raw & self.timg[1].int_ena & 1 != 0);
-        set(src::GPIO, self.gpio.irq());
-        set(src::AES, self.aes.irq());
-        set(src::RSA, self.rsa.irq());
-        for ch in 0..3 { set(src::DMA_CH0 + ch, self.gdma.out[ch].irq() || self.gdma.inp[ch].irq()); }
-        s
-    }
+    pub fn source_status(&self) -> [u32; 4] { Dispatch::source_status(self) }
 
     /// Refresh the interrupt matrix; returns true if any source changed.
     pub fn refresh_lines(&mut self) -> bool {

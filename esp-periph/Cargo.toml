@@ -1,0 +1,9 @@
+[package]
+name = "esp-periph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Register-level models of the peripheral IP Espressif chips share, and the Device/MMIO plumbing that mounts them"
+
+[dependencies]
+emu-core = { path = "../emu-core" }

@@ -220,7 +220,7 @@ impl SocBus {
         if self.periph.spi_exec {
             self.periph.spi_exec = false;
             self.periph.spi1.execute(&mut self.flash, &mut self.psram);
-            for (src, off, len) in std::mem::take(&mut self.periph.spi1.dirty) { self.note_written(src, off, len); }
+            for (m, off, len) in std::mem::take(&mut self.periph.spi1.dirty) { self.note_written(match m { crate::periph::DirtyMem::Flash => SRC_FLASH, crate::periph::DirtyMem::Psram => SRC_PSRAM }, off, len); }
         }
     }
 
@@ -618,7 +618,7 @@ impl Bus for SocBus {
     #[inline(always)]
     fn page_versions(&self) -> &[u32] { &self.page_ver }
     #[inline(always)]
-    fn note_pc(&mut self, pc: u32) { self.periph.cur_pc = pc; }
+    fn note_pc(&mut self, pc: u32) { self.periph.misc.cur_pc = pc; }
     fn fast_mem(&mut self) -> Option<FastMem> { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) }
     #[inline(always)]
     fn block_break(&self) -> bool { self.irq_dirty }

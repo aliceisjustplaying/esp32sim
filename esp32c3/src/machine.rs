@@ -150,7 +150,7 @@ impl Machine {
         let old = std::mem::replace(&mut self.bus.periph, crate::periph::Peripherals::new(self.mac));
         let p = &mut self.bus.periph;
         p.efuse = old.efuse;
-        p.log_unknown = old.log_unknown;
+        p.misc.log_unknown = old.misc.log_unknown;
         p.usb.connected = old.usb.connected;
         p.rtc.reset_cause = cause;
         // The flash chip is on the board, not in the chip: its JEDEC capacity survives a reset.
