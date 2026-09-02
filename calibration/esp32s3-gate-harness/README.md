@@ -27,7 +27,11 @@ python3 calibration/esp32s3-gate-harness/verify_elf.py <out>/tinydraw_esp32.elf 
 calibration/tools/dry-run.sh calibration/esp32s3-gate-harness <out>
 ```
 
-The fast-mode reference records only the console format. It is not a timing
-receipt.
+The emulator dry-run is blocked and exits 2. At 400 million instructions it
+reports both `live_present` and `live_stress` missing. A longer run stopped at
+50 billion instructions, 208.3 emulated seconds, with zero `TINYDRAW_LIVE_*`
+lines. Core 0 remains in `spi_device_polling_end` because the small panel-init
+SPI2 DMA transfer does not complete. No fast-mode reference was committed
+because the emulator produced no counters.
 
 calibration/tools/capture.py --image calibration/esp32s3-gate-harness --build <out> --boots 3 --port <serial> --timeout-s 180
