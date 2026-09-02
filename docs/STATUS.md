@@ -161,6 +161,13 @@ Boot to first output is a non-ledger observation: median 0.472351875 seconds
 under IDF 6.1, recorded in
 `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json`.
 
+Measured boot after the receipt derivations stops deterministically at cycle 0
+on core 0 at `_ResetVector`, with `MaskRomInstructionFetch`. The two committed
+ROM cells did not produce an adoptable cost, so this refusal is neither an
+engine bug nor R8-derivable and the boot loop stops here. The two-run histogram
+and pinned image hashes are in
+[`../tests/correlation/measured-boot-refusal.json`](../tests/correlation/measured-boot-refusal.json).
+
 Toolchain rule: every receipt pins its ESP-IDF version, sdkconfig
 hash, and compiler. The current baseline is ESP-IDF v6.1 with
 xtensa-esp-elf 15.2.0. IDF 6.1 is authoritative: where two toolchains
