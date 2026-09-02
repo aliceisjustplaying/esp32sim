@@ -30,7 +30,11 @@ pub struct ChipConfig {
     pub flash_mhz: u16,
     pub psram_mode: PsramMode,
     pub psram_mhz: u16,
+    pub icache_size_bytes: u32,
+    pub icache_ways: u8,
     pub icache_line_bytes: u8,
+    pub dcache_size_bytes: u32,
+    pub dcache_ways: u8,
     pub dcache_line_bytes: u8,
 }
 
@@ -41,7 +45,11 @@ impl ChipConfig {
         flash_mhz: 80,
         psram_mode: PsramMode::OctalDtr,
         psram_mhz: 80,
+        icache_size_bytes: 16 * 1024,
+        icache_ways: 8,
         icache_line_bytes: 32,
+        dcache_size_bytes: 32 * 1024,
+        dcache_ways: 8,
         dcache_line_bytes: 64,
     };
 }

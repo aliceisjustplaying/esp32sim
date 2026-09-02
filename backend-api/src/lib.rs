@@ -4,12 +4,17 @@
 //! the architectural operation succeeds. Autonomous models expose future
 //! deadlines so the scheduler never reconstructs device activity afterward.
 
+pub mod cache;
 mod fake;
 mod timing;
 mod transaction;
 
 pub mod contract_suite;
 
+pub use cache::{
+    AccessKind as CacheAccessKind, AccessResult as CacheAccessResult, CacheModel, CacheSource,
+    CacheTarget, FillPosition, ReplacementPolicy, UnsupportedChipConfig,
+};
 pub use fake::FakeBackend;
 pub use timing::{
     price_operation, CacheFillPosition, CacheKind, ChipConfig, CostClass, CostComponent,
