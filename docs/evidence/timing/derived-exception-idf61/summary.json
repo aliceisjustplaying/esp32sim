@@ -1,0 +1,100 @@
+{
+  "adoption": {
+    "adopted": false,
+    "hardware_confirmation": "complete hardware queue item H1",
+    "reason": "the real IDF entry and resume ledgers stop at l32r, whose adopted cost is interval 1..2 rather than exact",
+    "tier_candidate": "exact"
+  },
+  "attempts": [
+    {
+      "known_cycles": 17,
+      "ledger_entries": 15,
+      "name": "level1_entry",
+      "start_pc": "0x40374340",
+      "stop": "l32r_interval",
+      "stop_pc": "0x403791a4"
+    },
+    {
+      "known_cycles": 12,
+      "ledger_entries": 12,
+      "name": "level3_entry",
+      "start_pc": "0x403741c0",
+      "stop": "l32r_interval",
+      "stop_pc": "0x403792f0"
+    },
+    {
+      "known_cycles": 5,
+      "ledger_entries": 3,
+      "name": "level1_resume",
+      "start_pc": "0x40379214",
+      "stop": "l32r_interval",
+      "stop_pc": "0x403791c0"
+    },
+    {
+      "known_cycles": 5,
+      "ledger_entries": 3,
+      "name": "level3_resume",
+      "start_pc": "0x40379360",
+      "stop": "l32r_interval",
+      "stop_pc": "0x4037930c"
+    },
+    {
+      "known_cycles": 9,
+      "ledger_entries": 9,
+      "name": "window_overflow8",
+      "start_pc": "0x40374080",
+      "stop": "rfwo_zero_placeholder",
+      "stop_pc": "0x4037409b"
+    },
+    {
+      "known_cycles": 9,
+      "ledger_entries": 9,
+      "name": "window_underflow8",
+      "start_pc": "0x403740c0",
+      "stop": "rfwu_zero_placeholder",
+      "stop_pc": "0x403740db"
+    }
+  ],
+  "equations": {
+    "entry_delay_E": {
+      "known_ledger_prefix_cycles": 17,
+      "receipt_target_cycles": 227,
+      "source": "level1_entry",
+      "stop": "l32r_interval",
+      "value_cycles": null
+    },
+    "return_redirect_R": {
+      "known_ledger_prefix_cycles": 5,
+      "receipt_target_cycles": 143,
+      "source": "level1_resume",
+      "stop": "l32r_interval",
+      "value_cycles": null
+    }
+  },
+  "inputs": {
+    "targets": "docs/evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json",
+    "targets_sha256": "d4a4d3547598ede01573b94b5da3fdd1258d3f4e8161778acb4fd0423ac8a654",
+    "tiny_draw_elf_sha256": "7f598fd3580cf52078fb6aa04a5f6fe5179b0de9d89bb6468fdb06ed5e40e424"
+  },
+  "schema_version": 1,
+  "validations": {
+    "level3_entry": {
+      "known_ledger_prefix_cycles": 12,
+      "receipt_target_cycles": 222,
+      "residual_cycles": null,
+      "status": "not_evaluated"
+    },
+    "level3_resume": {
+      "known_ledger_prefix_cycles": 5,
+      "receipt_target_cycles": 139,
+      "residual_cycles": null,
+      "status": "not_evaluated"
+    },
+    "window_pair": {
+      "known_handler_ledger_cycles": 18,
+      "receipt_target_cycles": 35,
+      "residual_cycles": null,
+      "status": "not_evaluated"
+    }
+  }
+}
