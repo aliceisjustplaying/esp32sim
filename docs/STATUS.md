@@ -280,18 +280,33 @@ mode (needs GOAL milestone 2).
 
 ## Review residuals
 
-- Interpreter-versus-JIT architectural conformance test: required before any costed-JIT work; attach it to the first JIT task.
+- The interpreter-versus-native-JIT architectural conformance gate is merged
+  at `2d42032`. Its committed corpus and 128 deterministic randomized SRAM
+  blocks compare registers, PC, touched memory, and the complete SRAM image.
+- Milestone 2 Task 2 is parked on branch `codex/overnight-task2` at `b48075e`.
+  The SHA-256-pinned TinyDraw SRAM kernel and deterministic ledger pass, but
+  the real IDF `_WindowOverflow12` and `_WindowUnderflow12` handler bodies
+  total 28 priced cycles against the 35-cycle correlation receipt. The missing
+  seven cycles are in the trigger and return path, whose sequence totals R2
+  keeps out of the price table.
+- Milestone 2 Task 5 is parked. ESP32-S3 TRM v1.8, section 4.3.3.2, page 405,
+  specifies one dual-core-shared I-cache and one dual-core-shared D-cache.
+  This contradicts GOAL's per-core I-cache topology. The TRM does not specify
+  a replacement policy.
 - Root `LICENSE` file on the fork: waiting on the upstream author; the maintainer owns the contact.
 - `.github/workflows/pages.yml` fetches the mask ROM unpinned from `releases/latest`: dormant because it triggers only on `main`, the upstream mirror; pin or remove it when the workflow is next touched.
 - `periph.rs` and `machine.rs` decomposition: deliberately deferred; extract only what Task 3b forces under the build-exactly-the-thing rule.
 
-## Next steps
+## Proposed next steps
 
-1. Milestone 2 is next: make `step_measured` run one real SRAM-resident kernel
-   end to end, produce its typed cycle ledger, and pass a committed replay test
-   against that ledger.
-2. Extend measured interpreter coverage only as the end-to-end kernel needs
-   additional receipt-backed cost classes. Unknown classes remain fail-closed.
-3. Attach the architectural interpreter-versus-JIT conformance gate to the
-   first costed-JIT task before product-JIT work begins.
-4. Resume display-path and DMA decomposition after milestone 4 is complete.
+1. Proposal: rule whether GOAL adopts the TRM's shared I-cache topology or
+   names contrary board-specific evidence, then resume Task 5 with that
+   topology and the brief-directed LRU fallback.
+2. Proposal: disaggregate the 35-cycle window-pair receipt into priced
+   instructions and additive delays, or revise the mandatory correlation
+   boundary, then resume Task 2 from `b48075e`.
+3. Proposal: provide a pinned mask ROM ELF and the calibration-only RGB565
+   oracle bytes so the parked ROM, interrupt, and RGB565 correlation attempts
+   can execute real code paths.
+4. Proposal: merge Task 2 only after its mandatory window-pair exit passes;
+   unknown operations and configurations remain fail-closed.
