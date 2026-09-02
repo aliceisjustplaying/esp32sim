@@ -13,6 +13,14 @@ const SPIN: [u8; 3] = [0x06, 0xff, 0xff];                             // j .   (
 fn machine() -> esp32s3::Machine { let mut m = esp32s3::machine([1, 2, 3, 4, 5, 6]); m.console.capture = true; m }
 fn park(m: &mut esp32s3::Machine, core: usize, at: u32, prog: &[u8]) { esp_soc::SocBus::load_bytes(&mut m.bus, at, prog).unwrap(); m.cores[core].pc = at; m.cores[core].ps = 0; }
 
+#[test]
+fn peripheral_block_names_cover_aes_neighbors() {
+    use esp32s3::periph::Peripherals;
+    assert_eq!(Peripherals::block_name_pub(0x39), "USB_WRAP");
+    assert_eq!(Peripherals::block_name_pub(0x3a), "AES");
+    assert_eq!(Peripherals::block_name_pub(0x3b), "SHA");
+}
+
 /// A core in `waiti` with nothing pending costs no instructions: a millisecond of emulated time
 /// passes in a few hundred scheduling steps.
 #[test]
