@@ -11,12 +11,19 @@
 //!   budget is kept in the frame at [sp, #96].
 //! Guest register `n` lives at `ar[(w22 + n) & 63]`. Anything the fast path does not implement
 //! is executed by calling back into `exec_insn` through `Helpers::exec`.
-#![allow(clippy::too_many_arguments)]
+#![allow(
+    clippy::too_many_arguments,
+    reason = "JIT emitters mirror instruction fields and calling-convention registers"
+)]
 
 #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
 pub use emu_core::jit_a64 as a64;
 
 #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
+#[expect(
+    unsafe_code,
+    reason = "the native JIT owns executable memory and calls generated code through raw pointers"
+)]
 mod native {
     use super::a64::{Asm, Cond, Label, Reg, SP, ZR};
     use crate::block::BlockInsn;
@@ -52,23 +59,14 @@ mod native {
         size: usize,
         used: usize,
     }
-    #[expect(
-        unsafe_code,
-        reason = "CodeCache owns a process-local executable mapping"
-    )]
     // SAFETY: Moving a cache transfers its process-local mapping without dereferencing `base`.
     // Mutation of the mapping requires exclusive access to the cache.
     unsafe impl Send for CodeCache {}
-    #[expect(
-        unsafe_code,
-        reason = "CodeCache owns a process-local executable mapping"
-    )]
     // SAFETY: Shared access cannot mutate the mapping, and generated code is published only after
     // an exclusive write completes.
     unsafe impl Sync for CodeCache {}
 
     impl CodeCache {
-        #[expect(unsafe_code, reason = "mmap is an operating-system FFI call")]
         pub fn new(size: usize) -> Option<CodeCache> {
             #[cfg(target_os = "macos")]
             let flags = 0x0002 | 0x1000 | 0x0800; // PRIVATE | ANON | JIT
@@ -96,10 +94,6 @@ mod native {
             self.used = 0;
         }
         /// Append machine code; returns its byte offset in the cache.
-        #[expect(
-            unsafe_code,
-            reason = "publishing native code requires FFI and raw memory writes"
-        )]
         fn write(&mut self, words: &[u32]) -> Option<u32> {
             let bytes = words.len() * 4;
             if self.used + bytes > self.size {
@@ -134,10 +128,6 @@ mod native {
             self.used += bytes;
             Some(off as u32)
         }
-        #[expect(
-            unsafe_code,
-            reason = "compiled entry points are offsets into the executable mapping"
-        )]
         fn ptr(&self, off: u32) -> *const u8 {
             // SAFETY: Callers supply offsets returned by `write`, which lie inside this mapping.
             unsafe { self.base.add(off as usize) }
@@ -171,10 +161,6 @@ mod native {
     /// Loads return the value in the low word, bit 32 = fault, bit 33 = the bus wants the block to end.
     macro_rules! read_helper {
         ($name:ident, $f:ident) => {
-            #[expect(
-                unsafe_code,
-                reason = "generated code passes the bus through the native ABI"
-            )]
             extern "C" fn $name<B: Bus>(bus: *mut B, addr: u32, pc: u32) -> u64 {
                 // SAFETY: Compiled blocks pass the exclusive bus pointer supplied to `run`, and
                 // the helper call ends before generated code resumes.
@@ -193,10 +179,6 @@ mod native {
     /// Stores return bit 0 = fault, bit 1 = block must end.
     macro_rules! write_helper {
         ($name:ident, $f:ident, $t:ty) => {
-            #[expect(
-                unsafe_code,
-                reason = "generated code passes the bus through the native ABI"
-            )]
             extern "C" fn $name<B: Bus>(bus: *mut B, addr: u32, v: u32, pc: u32) -> u32 {
                 // SAFETY: Compiled blocks pass the exclusive bus pointer supplied to `run`, and
                 // the helper call ends before generated code resumes.
@@ -213,10 +195,6 @@ mod native {
     write_helper!(h_write16, write16, u16);
     write_helper!(h_write32, write32, u32);
     /// Run one instruction through the interpreter. Bit 0 = trap (stored in `cpu.jit_trap`), bit 1 = block must end.
-    #[expect(
-        unsafe_code,
-        reason = "generated code passes emulator state through the native ABI"
-    )]
     extern "C" fn h_exec<B: Bus>(
         cpu: *mut Cpu,
         bus: *mut B,
@@ -242,10 +220,6 @@ mod native {
             }
         }
     }
-    #[expect(
-        unsafe_code,
-        reason = "generated code passes emulator state through the native ABI"
-    )]
     extern "C" fn h_raise_mem(cpu: *mut Cpu, cause: u32, addr: u32, pc: u32) {
         // SAFETY: Compiled blocks pass the exclusive CPU pointer supplied to `run`, and this
         // helper returns before generated code resumes.
@@ -254,10 +228,6 @@ mod native {
         let t = cpu.raise_mem(cause, addr);
         cpu.jit_trap = Some(t);
     }
-    #[expect(
-        unsafe_code,
-        reason = "generated code passes emulator state through the native ABI"
-    )]
     extern "C" fn h_overflow(cpu: *mut Cpu, max_ar: u32, pc: u32) -> u32 {
         // SAFETY: Compiled blocks pass the exclusive CPU pointer supplied to `run`, and this
         // helper returns before generated code resumes.
@@ -1102,10 +1072,6 @@ mod native {
     /// # Safety
     /// `code` and `entry` must identify a compiled block in `cc` for the concrete bus type `B`.
     /// The block must obey the helper ABI and may access `cpu`, `bus`, and `fm` only for this call.
-    #[expect(
-        unsafe_code,
-        reason = "calling generated machine code requires a native entry-point conversion"
-    )]
     pub unsafe fn run<B: Bus>(
         cc: &CodeCache,
         code: u32,
@@ -1145,6 +1111,10 @@ mod native {
 }
 
 #[cfg(not(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux"))))]
+#[expect(
+    unsafe_code,
+    reason = "the portable stub preserves the native JIT unsafe public contract"
+)]
 mod native {
     use crate::block::BlockInsn;
     use crate::bus::Bus;
@@ -1178,10 +1148,6 @@ mod native {
     ///
     /// # Safety
     /// This signature matches the native implementation; no additional requirements apply here.
-    #[expect(
-        unsafe_code,
-        reason = "the fallback API must match the native unsafe contract"
-    )]
     pub unsafe fn run<B: Bus>(
         _: &CodeCache,
         _: u32,
