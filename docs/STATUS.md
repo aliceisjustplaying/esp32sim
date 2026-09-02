@@ -307,8 +307,12 @@ lacks a receipt. Display-path and DMA decomposition are parked until milestone
 
 H1. Capture the IDF 6.1 `esp32s3-exception-ladders` image: 100 samples each
 for non-tail `call4`, `call8`, and `call12` recursion past the register-file
-knee, `syscall` with a bare level-1 `rfe` handler, `rfe` alone with EPC1 set to
-the next instruction, and `rfi 3` alone with EPC3 set to the next instruction.
+knee, `syscall` with a level-1 handler that reads EPC1, advances it by the
+three-byte syscall width with wide `addi`, writes EPC1, executes `rsync`, and
+returns with `rfe`; `rfe` alone with EPC1 set to the next instruction; and
+`rfi 3` alone with EPC3 set to the next instruction. The corrected six-cell
+exception image builds, verifies, and completes its emulator dry-run with
+600 of 600 samples and zero refusals.
 Add a straight-line mask-ROM instruction-fetch cell. The two existing ROM
 `memset` paths produce different, noninteger residuals and cannot adopt a ROM
 fetch price under R8; receipt:
@@ -356,16 +360,27 @@ mode (needs GOAL milestone 2).
 - Root `LICENSE` file on the fork: waiting on the upstream author; the maintainer owns the contact.
 - `.github/workflows/pages.yml` fetches the mask ROM unpinned from `releases/latest`: dormant because it triggers only on `main`, the upstream mirror; pin or remove it when the workflow is next touched.
 - `periph.rs` and `machine.rs` decomposition: deliberately deferred; extract only what Task 3b forces under the build-exactly-the-thing rule.
+- The current-main gate-harness image and console contract are pinned under
+  `calibration/esp32s3-gate-harness/`. Its fast-mode dry-run reaches panel
+  creation and then remains in `spi_device_polling_end`: the board path sends
+  the small panel-init SPI2 DMA transfer through the measured 32 KiB-only
+  scheduler, so it never completes. A 50-billion-instruction run produced no
+  `TINYDRAW_LIVE_*` lines. No fast-mode counter reference was committed.
+- The same panel-init stop blocks native boot throughput. Five bounded runs
+  reached up to 16.047 billion retired instructions and 66.667 emulated
+  seconds without `TINYDRAW_VECTOR_V2_READY`. These are pre-READY observations,
+  not completed-boot throughput or JIT claims. Receipt:
+  [`evidence/native-speed-2026-09-02/`](evidence/native-speed-2026-09-02/README.md).
 
 ## Proposed next steps
 
-1. Proposal: amend H1 before capture so the syscall handler advances EPC1 by
-   the three-byte syscall width before `rfe`, matching IDF 6.1. Treat the known
-   handler instructions as terms in the timing equation, rebuild the verifier,
-   and require a passing emulator dry-run after the maintainer approves this
-   change to the capture contract. The requested bare-`rfe` cell is parked on
-   `codex/brief3-task5` because it returns to the same syscall indefinitely.
-2. Proposal: add per-frame firmware counters to the next maintainer capture so
+1. Proposal: add the straight-line mask-ROM fetch cell to the corrected H1
+   image, extend the ELF verifier, and require the combined image to pass its
+   emulator dry-run before the next hardware capture.
+2. Proposal: restore uncosted fast-mode completion for small SPI2 DMA panel-init
+   transfers while measured mode continues to refuse unpriced sizes by name.
+   Then rerun the gate harness and the five-run native-speed baseline.
+3. Proposal: add per-frame firmware counters to the next maintainer capture so
    frame-scale correlation can begin after measured boot reaches READY.
-3. Proposal: begin milestone 5 contention pricing only after the measured boot
+4. Proposal: begin milestone 5 contention pricing only after the measured boot
    findings identify the first shared-cache or MSPI arbitration boundary.
