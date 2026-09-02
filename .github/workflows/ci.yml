@@ -9,6 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Fetch the ESP32-S3 and ESP32-C3 mask ROM ELFs
         run: |
@@ -22,3 +24,7 @@ jobs:
         run: cargo build --release --workspace
       - name: Test (hermetic + golden outputs)
         run: ESP32SIM_ROM_DIR=$PWD/roms cargo test --release --workspace -- --include-ignored --skip external_
+      - name: Build the wasm module
+        run: tools/wasm-build.sh
+      - name: Test the wasm module (the real build, under Node, through the page's manifests)
+        run: ESP32SIM_ROM_DIR=$PWD/roms node tools/wasm-test.mjs hello c3-hello panel
