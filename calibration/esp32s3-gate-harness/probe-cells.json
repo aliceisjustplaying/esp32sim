@@ -1,0 +1,45 @@
+{
+  "protocolVersion": 2,
+  "harnessVersion": "tinydraw-main-7a157d44a9da3312b1ecda2b45b116af2de28e63",
+  "chipModel": "ESP32-S3",
+  "chipRevision": 0,
+  "terminalLine": "TINYDRAW_GATE1_AUTOMATED_DONE",
+  "cells": [
+    {
+      "id": "live_present",
+      "family": "console-line",
+      "samples": 5,
+      "variants": [
+        "normal"
+      ],
+      "consoleLine": "TINYDRAW_LIVE_PRESENT",
+      "microsecondFields": [
+        "compose_us",
+        "scroll_us",
+        "exposed_compose_us",
+        "chrome_us",
+        "chrome_prepare_us",
+        "chrome_stage_us",
+        "read_submit_us",
+        "read_complete_us",
+        "transfer_wait_us",
+        "tear_wait_us",
+        "tear_edge_isr_to_resume_us"
+      ]
+    },
+    {
+      "id": "live_stress",
+      "family": "console-line",
+      "samples": 1,
+      "variants": [
+        "normal"
+      ],
+      "consoleLine": "TINYDRAW_LIVE_STRESS",
+      "microsecondFields": [
+        "total_us",
+        "average_us",
+        "maximum_us"
+      ]
+    }
+  ]
+}
