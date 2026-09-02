@@ -10,7 +10,8 @@
 //! `NoBoard`, a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
 pub use esp_soc::board::{
-    Board, BoardDeadlineError, BoardEdge, BoardModel, NoBoard, VirtualCycle,
+    Board, BoardDeadlineError, BoardEdge, BoardModel, NoBoard, Spi2DmaRequest, Spi2DmaTiming,
+    Spi2DmaTimingRefusal, Spi2Mode, VirtualCycle,
 };
 use esp_soc::picture;
 
@@ -569,6 +570,45 @@ impl BoardModel for WaveshareAmoled18V2 {
 #[cfg(test)]
 mod co5300_tests {
     use super::*;
+
+    #[test]
+    fn priced_spi2_dma_deadline_matches_the_32k_receipt() {
+        const SUBMITTED_AT: VirtualCycle = 17;
+        let mut board = WaveshareAmoled18V2::new();
+        let timing = board
+            .schedule_spi2_dma(Spi2DmaRequest {
+                submitted_at: SUBMITTED_AT,
+                bytes: 32_768,
+                clock_hz: 40_000_000,
+                mode: Spi2Mode::Quad,
+            })
+            .unwrap();
+
+        assert_eq!(timing.submit_cycles, 5_755);
+        assert_eq!(timing.completion_cycle, SUBMITTED_AT + 401_589);
+        assert_eq!(board.next_deadline(), Some(timing.completion_cycle));
+        board.advance_to(timing.completion_cycle - 1).unwrap();
+        assert!(!board.take_spi2_dma_completion());
+        board.advance_to(timing.completion_cycle).unwrap();
+        assert!(board.take_spi2_dma_completion());
+    }
+
+    #[test]
+    fn unadopted_64_byte_spi2_dma_affine_payload_refuses() {
+        let mut board = WaveshareAmoled18V2::new();
+        assert_eq!(
+            board.schedule_spi2_dma(Spi2DmaRequest {
+                submitted_at: 0,
+                bytes: 64,
+                clock_hz: 40_000_000,
+                mode: Spi2Mode::Quad,
+            }),
+            Err(Spi2DmaTimingRefusal::UnpricedPayload {
+                bytes: 64,
+                tier_candidate: backend_api::CostTier::Affine,
+            })
+        );
+    }
     #[test]
     fn qspi_windowed_write_updates_panel_pixels() {
         let mut panel = Co5300::new();
