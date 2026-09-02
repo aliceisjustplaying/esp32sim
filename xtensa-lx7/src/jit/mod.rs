@@ -148,9 +148,9 @@ mod native {
     impl Helpers {
         pub fn new<B: Bus>() -> Helpers {
             Helpers {
-                read8: h_read8::<B> as usize, read16: h_read16::<B> as usize, read32: h_read32::<B> as usize,
-                write8: h_write8::<B> as usize, write16: h_write16::<B> as usize, write32: h_write32::<B> as usize,
-                exec: h_exec::<B> as usize, raise_mem: h_raise_mem as usize, overflow: h_overflow as usize,
+                read8: (h_read8::<B> as *const ()).addr(), read16: (h_read16::<B> as *const ()).addr(), read32: (h_read32::<B> as *const ()).addr(),
+                write8: (h_write8::<B> as *const ()).addr(), write16: (h_write16::<B> as *const ()).addr(), write32: (h_write32::<B> as *const ()).addr(),
+                exec: (h_exec::<B> as *const ()).addr(), raise_mem: (h_raise_mem as *const ()).addr(), overflow: (h_overflow as *const ()).addr(),
             }
         }
     }
