@@ -231,6 +231,39 @@ Things that cost real time to find out, recorded so they do not have to be found
 - **The C3's `Core::run` stops at `block_break`**, like the LX7's block interpreter, so the machine
   re-derives its interrupt line after the same instruction the old per-step loop did. Without it
   the shared run loop would have delayed C3 interrupts by up to a quantum.
+- **A reset takes effect at the instruction that requests it.** The per-core loop checks
+  `sw_reset` after every block, not only at the quantum boundary; the core no longer runs on
+  through the ROM's `ret` after the reset store. Costs a bool per block; the C6 ROM's `Saved PC`
+  is the observable.
+- **The guest's cycle counter restarts at a chip reset; the emulator's instruction count does
+  not.** `mcycle`/`mpccr` read `insn_count - cycle_base`, and a guest write moves the base rather
+  than the count. The bootloader's log timestamps are cycles since reset on silicon (`I (23)`),
+  and the old model printed 44 s after the first `esp_restart()` on both RISC-V chips; the goldens'
+  instruction counts also stopped moving when firmware wrote the counter.
+- **One interrupt controller, two register maps.** ESP-IDF on the C6 drives the PLIC at
+  `0x20001000` while the ROM uses INTPRI at `0x600C5000`; both are views of the same enable/type/
+  priority/threshold state in `esp32c6::periph::Intc`, and the software-interrupt latches live
+  with it. The threshold is PLIC+0x90 — the handler raises it to the taken line's priority + 1
+  before enabling nesting, and with it misplaced the systimer line re-entered until the stack had
+  walked through all of SRAM.
+- **A GP-SPI transfer reaches the board when it happens, after the GPIO edges before it.** The
+  ST7789's D/C line is a GPIO the LCD driver sets right before each SPI transaction; delivering
+  GPIO changes and SPI bytes only at the end of a scheduling round interleaved them wrongly. The
+  C6 bus delivers both at the transfer (GPIO first), and the DMA data phase is fetched from the
+  GDMA out-channel then, so ordering is exact and the display driver's DMA queue depth is moot.
+- **Blob calibration that needs undocumented hardware is a stub, not a guess.** The C6 PHY's
+  `bb_init` spins on handshake bits in a register block no header describes. The energy-scan
+  recipe stubs that one function (`--stub bb_init=0`), keeps every other PHY step, and the MAC
+  model is written not to depend on the PHY at all. The S3 panel's `esp_wifi_start=0` is the same
+  policy. What the blob *polls over regi2c* is modelled (the RF block's SDM status reads 0x5b),
+  because that is a documented bus with an observable value.
+- **The RISC-V core stops at stub and probe addresses.** `Core::set_boundaries` existed for the
+  Xtensa block interpreter; the RISC-V `run` now checks the same bloom per instruction. Before,
+  `--stub` on the C3/C6 only worked when a periph write happened to end a run at the right pc.
+- **Hardware-fixed register fields read their silicon values, not zero.** PCR's HRO clock-tree
+  dividers and frequency query fields are what the clock code derives the CPU frequency from;
+  a register-RAM zero produced a divider the HAL asserts on. The rule generalises: when a
+  firmware *computes* from a field, the model must report the fixed value.
 
 ## WebAssembly build
 - **The SoC crate compiled for `wasm32-unknown-unknown` without a single change** — `std::net`,

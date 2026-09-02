@@ -1,4 +1,4 @@
-//! RV32IMC decoder. Compressed instructions are expanded to their 32-bit equivalent for
+//! RV32IMAC decoder (the C3 is IMC, the C6 adds A). Compressed instructions are expanded to their 32-bit equivalent for
 //! execution, but remember which `c.*` form they came from so the disassembler can be checked
 //! against `riscv32-esp-elf-objdump` (tests/objdump_diff.rs).
 
@@ -17,6 +17,8 @@ pub enum Op {
     Csrrw, Csrrs, Csrrc, Csrrwi, Csrrsi, Csrrci,
     // RV32M
     Mul, Mulh, Mulhsu, Mulhu, Div, Divu, Rem, Remu,
+    // RV32A (the C6); `imm` carries the aq/rl bits for the disassembler
+    LrW, ScW, AmoSwapW, AmoAddW, AmoXorW, AmoAndW, AmoOrW, AmoMinW, AmoMaxW, AmoMinuW, AmoMaxuW,
 }
 
 /// Which compressed form an instruction was written as (`None` = a real 32-bit instruction).
@@ -117,6 +119,14 @@ fn decode32(pc: u32, w: u32) -> Insn {
             mk(op, 0)
         }
         0x0f => match f3 { 0 => mk(Op::Fence, i_imm), 1 => mk(Op::FenceI, 0), _ => mk(Op::Illegal, 0) },
+        0x2f if f3 == 2 => {
+            let op = match w >> 27 {
+                0x02 if rs2 == 0 => Op::LrW, 0x03 => Op::ScW, 0x01 => Op::AmoSwapW, 0x00 => Op::AmoAddW,
+                0x04 => Op::AmoXorW, 0x0c => Op::AmoAndW, 0x08 => Op::AmoOrW, 0x10 => Op::AmoMinW,
+                0x14 => Op::AmoMaxW, 0x18 => Op::AmoMinuW, 0x1c => Op::AmoMaxuW, _ => Op::Illegal,
+            };
+            mk(op, ((w >> 25) & 3) as i32)                 // bit 1 = aq, bit 0 = rl
+        }
         0x73 => match f3 {
             0 => match w >> 20 {
                 0x000 if rd == 0 && rs1 == 0 => mk(Op::Ecall, 0),

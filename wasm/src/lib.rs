@@ -160,6 +160,15 @@ pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_
         m.console.mask = 2;                                  // the ROM mirrors its console to UART0 and USB-Serial/JTAG
         prepare(&mut m);
         Box::new(m)
+    } else if board == "esp32c6" || board == "c6" || board.starts_with("waveshare-c6") || board.ends_with("lcd147") {
+        let mut m = esp32c6::machine([0xdc, 0x1e, 0xd5, 0x6e, 0x8c, 0xdc], flash_mb << 20);
+        let name = if board == "esp32c6" || board == "c6" { "none" } else { board.as_str() };
+        let Some(b) = esp32c6::board::make_board(name) else { log(&format!("[emu] unknown board '{}'", board)); return std::ptr::null_mut() };
+        m.bus.board = b;
+        m.bus.set_flash_size(flash_mb << 20);
+        m.console.mask = 2;
+        prepare(&mut m);
+        Box::new(m)
     } else {
         let mut m = esp32s3::machine([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
         let Some(b) = esp32s3::board::make_board(&board) else { log(&format!("[emu] unknown board '{}'", board)); return std::ptr::null_mut() };

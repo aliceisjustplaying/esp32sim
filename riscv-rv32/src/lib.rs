@@ -1,6 +1,6 @@
-//! RV32IMC: the core in the ESP32-C3 (Espressif calls it a "RISC-V 32-bit single-core").
+//! RV32IMC / RV32IMAC: the core in the ESP32-C3 and, with the A extension, the ESP32-C6.
 //!
-//! Machine mode only, no MMU, no A/F/D extensions — which is exactly what the silicon has.
+//! Machine mode only, no MMU, no F/D extensions — which is exactly what the silicon has.
 //! Interrupts are *not* the standard `mie`/`mip` external-interrupt model: the C3 routes 62
 //! peripheral sources through its own interrupt matrix onto 31 CPU lines and vectors each one
 //! separately (`mtvec` in vectored mode), so the SoC hands us the pending line and we take it.

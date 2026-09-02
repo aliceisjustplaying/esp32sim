@@ -26,9 +26,11 @@ pub struct GdmaInCh {
 }
 impl GdmaInCh { pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 } }
 
-pub struct Gdma { pub out: [GdmaOutCh; GDMA_CHANNELS], pub inp: [GdmaInCh; GDMA_CHANNELS], ram: RegRam, pub misc: u32, pub dbg: bool }
+pub struct Gdma { pub out: [GdmaOutCh; GDMA_CHANNELS], pub inp: [GdmaInCh; GDMA_CHANNELS], ram: RegRam, pub misc: u32, pub dbg: bool,
+                  /// the high bits of a descriptor address: the LINK registers carry 20 (S3 DRAM at 0x3FC0_0000, C6 SRAM at 0x4080_0000)
+                  pub addr_base: u32 }
 impl Gdma {
-    pub fn new() -> Self { Gdma { out: [GdmaOutCh::default(); GDMA_CHANNELS], inp: [GdmaInCh::default(); GDMA_CHANNELS], ram: RegRam::new(), misc: 0, dbg: false } }
+    pub fn new() -> Self { Gdma { out: [GdmaOutCh::default(); GDMA_CHANNELS], inp: [GdmaInCh::default(); GDMA_CHANNELS], ram: RegRam::new(), misc: 0, dbg: false, addr_base: DMA_ADDR_BASE } }
     pub fn read(&self, off: u32) -> u32 {
         if off < GDMA_CH_STRIDE * GDMA_CHANNELS as u32 {
             let ch = (off / GDMA_CH_STRIDE) as usize; let o = off % GDMA_CH_STRIDE; let c = &self.out[ch]; let r = &self.inp[ch];
@@ -58,7 +60,7 @@ impl Gdma {
                     0x04 => r.conf1 = v, 0x10 => r.int_ena = v, 0x14 => r.int_raw &= !v,
                     0x20 => {
                         r.link = v & 0xF_FFFF;
-                        if v & (1 << 22) != 0 || v & (1 << 23) != 0 { r.desc = DMA_ADDR_BASE | (v & 0xF_FFFF); r.running = true; }   // START / RESTART
+                        if v & (1 << 22) != 0 || v & (1 << 23) != 0 { r.desc = self.addr_base | (v & 0xF_FFFF); r.running = true; }   // START / RESTART
                         if v & (1 << 21) != 0 { r.running = false; }                                                                 // STOP
                     }
                     0x44 => r.pri = v, 0x48 => r.peri_sel = v & 0x3f,
@@ -72,7 +74,7 @@ impl Gdma {
                 0x64 => c.conf1 = v, 0x70 => c.int_ena = v, 0x74 => c.int_raw &= !v,
                 0x80 => {
                     c.link = v & 0xF_FFFF;
-                    if v & (1 << 21) != 0 || v & (1 << 22) != 0 { c.desc = DMA_ADDR_BASE | (v & 0xF_FFFF); c.buf_pos = 0; c.running = true; if c.peri_sel == 5 && self.dbg { eprintln!("[lcd] gdma out link {} at {:#010x}", if v & (1 << 22) != 0 { "RESTART" } else { "START" }, c.desc); } }   // START / RESTART
+                    if v & (1 << 21) != 0 || v & (1 << 22) != 0 { c.desc = self.addr_base | (v & 0xF_FFFF); c.buf_pos = 0; c.running = true; if c.peri_sel == 5 && self.dbg { eprintln!("[lcd] gdma out link {} at {:#010x}", if v & (1 << 22) != 0 { "RESTART" } else { "START" }, c.desc); } }   // START / RESTART
                     if v & (1 << 20) != 0 { c.running = false; }                                                                                 // STOP
                 }
                 0xa4 => c.pri = v, 0xa8 => c.peri_sel = v & 0x3f,

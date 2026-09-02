@@ -27,7 +27,7 @@ silently: without a ROM they fail with the path they looked for.
 ```sh
 cargo test --release --workspace -- --include-ignored --skip external_      # ~15 s for the whole set
 UPDATE_GOLDENS=1 cargo test --release --workspace -- --include-ignored --skip external_   # after an intentional change
-tools/wasm-build.sh && node tools/wasm-test.mjs hello c3-hello panel      # the wasm module, as the page runs it
+tools/wasm-build.sh && node tools/wasm-test.mjs hello c3-hello c6-hello panel   # the wasm module, as the page runs it
 ```
 
 Tests named `external_*` need inputs only a developer machine has (full objdump listings via
@@ -45,6 +45,8 @@ output is left next to the golden as `*.actual` for diffing.
 | `panel-sid.*` | Touch-LCD-4B energy panel: PSRAM, LCD_CAM RGB frames, GT911 touch and TCA9554 over I2C, ES8311 on I2S, a demo partition via `--flash-at` |
 | `hello-s3.*` | stock ESP-IDF hello_world on UART0, ROM → bootloader → app_main |
 | `hello-c3.*` | the same on the ESP32-C3 (RISC-V), with the MAC/reset cause/straps of the real module in `hw/c3-hello-world-real.txt`, through `esp32sim-c3` and `esp32sim --chip c3` |
+| `hello-c6.*` | the same on the ESP32-C6 (RISC-V, RV32IMAC), with the identity of the Waveshare ESP32-C6-LCD-1.47 in `hw/c6-hello-world-real.txt`; the reboot variant also pins the ROM's `Saved PC` |
+| `energy-scan-c6.*` (`external_`) | the 802.15.4 energy scanner on the Waveshare board — its owner's firmware, `ENERGY_SCAN_DIR` points at the build: PHY up, no panic, ≥50 scans, the board's report, console and count |
 | `atech-script1` with observers | the same run with `--profile-blocks --coverage --irq-latency --vcd` attached must be byte-identical and produce every report |
 
 CI (`.github/workflows/ci.yml`) downloads the ROM ELFs from espressif/esp-rom-elfs and runs the

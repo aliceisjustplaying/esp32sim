@@ -23,6 +23,7 @@ pub mod rsa;
 pub mod gdma;
 pub mod i2s;
 pub mod rmt;
+pub mod gpspi;
 
 pub use device::{Device, WriteEffect};
 pub use mmio::{DeviceSet, Dispatch, Misc, NO_SOURCE};
@@ -42,6 +43,7 @@ pub use rsa::Rsa;
 pub use gdma::{read_desc, DmaDesc, Gdma, GdmaInCh, GdmaOutCh, DMA_ADDR_BASE, GDMA_CHANNELS, GDMA_CH_STRIDE};
 pub use i2s::I2s;
 pub use rmt::{Rmt, RmtTxCh, RMT_MEM_WORDS};
+pub use gpspi::GpSpi;
 
 /// Clocks the shared IP is specified against; the CPU clock differs per chip and is a parameter.
 pub const APB_HZ: u64 = 80_000_000;

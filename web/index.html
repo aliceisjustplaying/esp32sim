@@ -138,7 +138,7 @@ function send(o) { linkSend(JSON.stringify(o)); }
 function drawFrame(buf) {
   const dv = new DataView(buf); const w = dv.getUint16(1, true), h = dv.getUint16(3, true);
   if (w > 160) {   // a panel, not the Atech TFT
-    const c = $('#lcd'); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const c = $('#lcd'); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; const s = w <= 240 ? 2 : 1; c.style.width = (w * s) + 'px'; c.style.height = (h * s) + 'px'; }
     const ctx = c.getContext('2d'); const im = ctx.createImageData(w, h); const d = im.data;
     for (let i = 0; i < w * h; i++) { const p = dv.getUint16(5 + i * 2, true); d[i*4] = (p >> 11) * 255 / 31; d[i*4+1] = ((p >> 5) & 63) * 255 / 63; d[i*4+2] = (p & 31) * 255 / 31; d[i*4+3] = 255; }
     ctx.putImageData(im, 0, 0); return;
@@ -188,7 +188,7 @@ function handleMessage(data) {
     const m = JSON.parse(data);
     if (m.t === 'serial') addSerial(m.src, m.data);
     else if (m.t === 'emu') addSerial('usb', m.msg + '\n');
-    else if (m.t === 'board') { document.body.classList.toggle('bare', m.name !== 'atech14'); if (m.name === 'atech14') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Atech 14‑port board'; } else if (m.name === 'esp32c3') { document.querySelector('h1').textContent = 'ESP32‑C3 emulator — RISC-V, console only'; } else if (m.name === 'none') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — bare module'; document.querySelector('.tabs button[data-src="uart0"]').click(); } if (m.name === 'waveshare-cam') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑CAM‑OV5640'; $('#campanel').style.display = ''; } if (m.name === 'waveshare-lcd4b') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑Touch‑LCD‑4B'; $('#lcdpanel').style.display = ''; } }
+    else if (m.t === 'board') { document.body.classList.toggle('bare', m.name !== 'atech14'); if (m.name === 'atech14') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Atech 14‑port board'; } else if (m.name === 'esp32c3') { document.querySelector('h1').textContent = 'ESP32‑C3 emulator — RISC-V, console only'; } else if (m.name === 'esp32c6') { document.querySelector('h1').textContent = 'ESP32‑C6 emulator — RISC-V, console only'; } else if (m.name === 'waveshare-c6-lcd147') { document.querySelector('h1').textContent = 'ESP32‑C6 emulator — Waveshare ESP32‑C6‑LCD‑1.47'; $('#lcdpanel').style.display = ''; $('#lcdstat').textContent = 'ST7789 172×320 over SPI2 + GDMA'; } else if (m.name === 'none') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — bare module'; document.querySelector('.tabs button[data-src="uart0"]').click(); } if (m.name === 'waveshare-cam') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑CAM‑OV5640'; $('#campanel').style.display = ''; } if (m.name === 'waveshare-lcd4b') { document.querySelector('h1').textContent = 'ESP32‑S3 emulator — Waveshare ESP32‑S3‑Touch‑LCD‑4B'; $('#lcdpanel').style.display = ''; } }
     else if (m.t === 'ring') { ringLeds = m.leds; drawRing(); }
     else if (m.t === 'stat') { $('#stat').textContent = `t = ${m.time.toFixed(2)} s · ${(m.insns/1e6).toFixed(1)} M insns · ${m.frames} frames` + (m.behind > 0 ? ` · ⚠ ${m.behind.toFixed(2)} s behind real time` : ' · real time') + (m.resyncs ? ` · ${m.resyncs} resync` : '') + (m.cam ? ` · ${m.cam} camera frames` : ''); $('#stat').style.color = m.behind > 0 ? '#f66' : ''; }
 }

@@ -1,27 +1,29 @@
-# esp32sim — an ESP32 emulator in Rust: **Xtensa (S3) and RISC-V (C3)**
+# esp32sim — an ESP32 emulator in Rust: **Xtensa (S3) and RISC-V (C3, C6)**
 
-Instruction-level emulation of two ESP32 SoCs, across **both of Espressif's CPU architectures**.
+Instruction-level emulation of three ESP32 SoCs, across **both of Espressif's CPU architectures**.
 Each boots the **real mask ROM**, the real 2nd-stage bootloader and an unmodified application
 image — no patched firmware, no stubs in the way — with enough of the SoC modelled to run real
 projects end to end. No cloud, no accounts. MIT.
 
-| | **ESP32-S3** | **ESP32-C3** |
-| --- | --- | --- |
-| CPU | 2 × Xtensa LX7 @ 240 MHz | 1 × RISC-V RV32IMC @ 160 MHz |
-| Command | `esp32sim` | `esp32sim-c3` |
-| Core crate | `xtensa-lx7` | `riscv-rv32` |
-| Decoder vs `objdump` | 977 k instructions, 0 mismatches | 161 k instructions, 0 mismatches |
-| Boots | ROM → bootloader → FreeRTOS → app | ROM → bootloader → FreeRTOS → app |
-| Boards / displays | ST7735, ST7701S 480×480 + touch, WS2812, camera, audio | none — console only |
-| WiFi | virtual AP, WPA2, DHCP/DNS/NTP, NAT to the real network, HTTPS | not modelled |
-| Speed | block interpreter + **AArch64 JIT**, ~150–240 Minsn/s | plain interpreter (no block cache or JIT yet) — still well above real time on hello_world |
-| In the browser | yes (WebAssembly) | yes (WebAssembly) |
-| Checked against silicon | JTAG lock-step, 8000 steps, 0 PC divergences | console diff, 205/208 lines identical |
-| Status | mature | draft — see [docs/esp32c3.md](docs/esp32c3.md) |
+| | **ESP32-S3** | **ESP32-C3** | **ESP32-C6** |
+| --- | --- | --- | --- |
+| CPU | 2 × Xtensa LX7 @ 240 MHz | 1 × RISC-V RV32IMC @ 160 MHz | 1 × RISC-V RV32IMAC @ 160 MHz |
+| Command | `esp32sim` | `esp32sim-c3` | `esp32sim-c6` |
+| Core crate | `xtensa-lx7` | `riscv-rv32` | `riscv-rv32` (+ the A extension) |
+| Decoder vs `objdump` | 977 k instructions, 0 mismatches | 161 k instructions, 0 mismatches | 126 k instructions, 0 mismatches |
+| Boots | ROM → bootloader → FreeRTOS → app | ROM → bootloader → FreeRTOS → app | ROM → bootloader → FreeRTOS → app |
+| Boards / displays | ST7735, ST7701S 480×480 + touch, WS2812, camera, audio | none — console only | ST7789 172×320 over SPI+DMA, WS2812, an 802.15.4 energy-detect stand-in |
+| WiFi | virtual AP, WPA2, DHCP/DNS/NTP, NAT to the real network, HTTPS | not modelled | not modelled |
+| Speed | block interpreter + **AArch64 JIT**, ~150–240 Minsn/s | plain interpreter (no block cache or JIT yet) — still well above real time on hello_world | same interpreter |
+| In the browser | yes (WebAssembly) | yes (WebAssembly) | yes (WebAssembly) |
+| Checked against silicon | JTAG lock-step, 8000 steps, 0 PC divergences | console diff, 205/208 lines identical | console diff, 203/204 lines identical |
+| Status | mature | draft — see [docs/esp32c3.md](docs/esp32c3.md) | draft — see [docs/esp32c6.md](docs/esp32c6.md) |
 
 Most of the SoC is shared: the C3 reuses the S3's UART, USB-Serial/JTAG, systimer, timer groups,
 GPIO, SPI flash controller, GDMA and SHA/AES/RSA models unchanged, and adds its own memory map,
-cache controller and interrupt matrix. Only the CPU crates are genuinely separate.
+cache controller and interrupt matrix; the C6 reuses the same models again, with its own memory
+map, PLIC front-end, L1 cache, PCR and always-on LP blocks. Only the CPU crates are genuinely
+separate.
 
 **Try it in a browser, no install:** <https://joakimeriksson.github.io/esp32sim/> — the
 Touch-LCD-4B panel with its SID player, and the C3 booting hello_world.
@@ -41,17 +43,19 @@ esp32sim/
                   systimer, timer groups, interrupt matrix (per core), GPIO, USB-CDC,
                   UARTs, I2C, GDMA + I2S/LCD_CAM, RMT TX, regi2c, RTC WDT, WiFi MAC + virtual
                   AP + NAT; board.rs: atech14 / waveshare-cam / waveshare-lcd4b / none
-  cli/            the `esp32sim` command line, both chips (`--chip`); `esp32sim-c3` is an alias binary
-  ── ESP32-C3 (RISC-V RV32IMC, single core) ──
-  riscv-rv32/     RV32IMC decoder (verified 100% against objdump), interpreter, disassembler
+  cli/            the `esp32sim` command line, every chip (`--chip`); `esp32sim-c3` / `esp32sim-c6` are alias binaries
+  ── ESP32-C3 and ESP32-C6 (RISC-V, single core) ──
+  riscv-rv32/     RV32IMAC decoder (verified 100% against objdump), interpreter, disassembler
   esp32c3/        the C3 SoC: memory map, interrupt matrix, cache controller, RNG;
                   peripheral models shared with esp32s3 where the IP is identical
+  esp32c6/        the C6 SoC: unified memory map and MMU, interrupt matrix + PLIC/INTPRI, L1 cache,
+                  PCR, the LP blocks (reset cause, software reset, RTC timer), ASSIST_DEBUG
   tests/          golden-output regression tests and their fixtures (tests/README.md)
   ── shared ──
   wasm/           C-ABI crate wrapping either Machine for the browser (both chips, one module)
   web/            browser UI (board drawing, console, audio, camera) + emu.js/worker.js for wasm
-  hw/             JTAG differential-test scripts against a real board, captured C3 console
-  examples/       hello_world (IDF, S3 and C3), waveshare-cam (autopling run script + photo)
+  hw/             JTAG differential-test scripts against a real board, captured C3 and C6 consoles
+  examples/       hello_world (IDF, S3, C3 and C6), waveshare-cam (autopling run script + photo)
   boards/atech14/ the Atech Pocket Synth: firmware (PlatformIO: SID chip synth + a cRSID
                   jukebox that plays real .sid tunes), hostsim, Wokwi scenarios, script1.txt and
                   regression.wav — a fixture of that firmware build's audio, bit-exact per run
@@ -124,6 +128,24 @@ three boot cycles — the difference is the ROM's `Saved PC:` line. `--mac`, `--
 WiFi, no boards, `--boot app` unsupported. See [docs/esp32c3.md](docs/esp32c3.md) for what works,
 what does not, and the five emulator bugs the hardware found.
 
+## Run — ESP32-C6
+
+`esp32sim-c6` is the same front end on the ESP32-C6: RV32IMAC, the PLIC, a unified memory map.
+
+```sh
+H=examples/hello_world-c6/build
+./target/release/esp32sim-c6 --boot rom --flash-mb 4 \
+    --bootloader $H/bootloader/bootloader.bin --ptable $H/partition_table/partition-table.bin \
+    --app $H/hello_world.bin --elf $H/hello_world.elf --max-seconds 27
+```
+
+Checked against a Waveshare ESP32-C6-LCD-1.47: **203 of 204 console lines identical** over three
+boot cycles, including the ROM's `Saved PC:` after `esp_restart()`; the one difference is that
+line on the first boot. `--board waveshare-c6-lcd147` adds that board — the ST7789 over SPI2 and
+the GDMA, the WS2812, the BOOT button — and the C6's 802.15.4 MAC answers energy scans, so the
+board's LVGL spectrum-scanner firmware runs end to end (`examples/waveshare-c6-lcd147/`). See
+[docs/esp32c6.md](docs/esp32c6.md).
+
 ## Scripts (host actions at emulated time)
 
 ```
@@ -163,12 +185,12 @@ tools/wasm-build.sh && python3 -m http.server -d web 8790     # then open http:/
 
 The same emulator compiled to WebAssembly, running inside the page in a Web Worker: pick a board,
 load the ROM ELF and firmware from disk (or `?wasm&fw=<name>` for a hosted manifest), press Boot.
-hello_world, the Touch-LCD-4B panel with its SID player, the Atech board and the ESP32-C3 all run
-at real time in Chrome; there is no NAT (the browser has no sockets) and no JIT. See
+hello_world, the Touch-LCD-4B panel with its SID player, the Atech board, the ESP32-C3 and the
+ESP32-C6 all run at real time in Chrome; there is no NAT (the browser has no sockets) and no JIT. See
 [docs/wasm.md](docs/wasm.md).
 **Live: https://joakimeriksson.github.io/esp32sim/** — the Touch-LCD-4B panel with its SID
-player, the Atech board, and the ESP32-C3 booting hello_world; or load your own firmware for
-either chip from disk (pick the board, or `esp32c3`).
+player, the Atech board, and the ESP32-C3 and C6 booting hello_world; or load your own firmware
+for any chip from disk (pick the board, or `esp32c3` / `esp32c6`).
 
 ## Debugging
 
@@ -192,16 +214,18 @@ Env: `ESP_EMU_DEBUG`, `ESP_EMU_DEBUG_SPI`, `ESP_EMU_DEBUG_USB`, `ESP_EMU_DEBUG_W
 ## Provenance
 
 Written from the ESP‑IDF register headers, the Xtensa core config shipped with ESP‑IDF, the
-RISC-V specification and the C3 technical reference manual, and observed firmware behaviour. QEMU was consulted only to confirm instruction semantics
+RISC-V specification and the C3 and C6 technical reference manuals, and observed firmware behaviour. QEMU was consulted only to confirm instruction semantics
 (no code copied). MIT.
 
 ## Differential testing against real silicon (`hw/`)
 
-Both chips are checked against hardware, by different methods: the S3 in **JTAG lock-step**
-(below), the C3 by **diffing a captured console** against the emulator running the same binaries
-(`hw/c3-hello-world-real.txt`, 205/208 lines identical — see [docs/esp32c3.md](docs/esp32c3.md)).
-That comparison found five emulator bugs, including a device-command race that a
-board-free test would never have caught.
+Every chip is checked against hardware, by different methods: the S3 in **JTAG lock-step**
+(below), the C3 and C6 by **diffing a captured console** against the emulator running the same
+binaries (`hw/c3-hello-world-real.txt`, 205/208 lines identical — see
+[docs/esp32c3.md](docs/esp32c3.md); `hw/c6-hello-world-real.txt`, 203/204 — see
+[docs/esp32c6.md](docs/esp32c6.md)). Those comparisons found five emulator bugs each, including
+a device-command race and a cycle counter that did not restart at reset — neither of which a
+board-free test would have caught.
 
 ### ESP32-S3, JTAG lock-step
 

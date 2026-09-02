@@ -12,6 +12,8 @@ fn r(n: u8) -> &'static str { XREG[(n & 31) as usize] }
 /// GNU objdump prints a bare CSR name when it knows one, else the number in hex.
 fn csr_name(n: u32) -> String {
     let s = match n {
+        0x000 => "ustatus", 0x004 => "uie", 0x005 => "utvec", 0x040 => "uscratch", 0x041 => "uepc", 0x042 => "ucause", 0x043 => "utval", 0x044 => "uip",
+        0x302 => "medeleg", 0x303 => "mideleg", 0x306 => "mcounteren", 0x320 => "mcountinhibit",
         0x300 => "mstatus", 0x301 => "misa", 0x304 => "mie", 0x305 => "mtvec",
         0x340 => "mscratch", 0x341 => "mepc", 0x342 => "mcause", 0x343 => "mtval", 0x344 => "mip",
         0x7a0 => "tselect", 0x7a1 => "tdata1", 0x7a2 => "tdata2", 0x7a3 => "tdata3", 0x7a5 => "tcontrol",
@@ -99,6 +101,12 @@ pub fn format(i: &Insn) -> String {
         Divu => format!("divu\t{},{},{}", rd, rs1, rs2),
         Rem => format!("rem\t{},{},{}", rd, rs1, rs2),
         Remu => format!("remu\t{},{},{}", rd, rs1, rs2),
+        LrW | ScW | AmoSwapW | AmoAddW | AmoXorW | AmoAndW | AmoOrW | AmoMinW | AmoMaxW | AmoMinuW | AmoMaxuW => {
+            let n = match i.op { LrW => "lr.w", ScW => "sc.w", AmoSwapW => "amoswap.w", AmoAddW => "amoadd.w", AmoXorW => "amoxor.w", AmoAndW => "amoand.w",
+                                 AmoOrW => "amoor.w", AmoMinW => "amomin.w", AmoMaxW => "amomax.w", AmoMinuW => "amominu.w", _ => "amomaxu.w" };
+            let sfx = match i.imm & 3 { 3 => ".aqrl", 2 => ".aq", 1 => ".rl", _ => "" };
+            if i.op == LrW { format!("{}{}\t{},({})", n, sfx, rd, rs1) } else { format!("{}{}\t{},{},({})", n, sfx, rd, rs2, rs1) }
+        }
         Fence => m("fence"),
         FenceI => m("fence.i"),
         Ecall => m("ecall"),

@@ -154,15 +154,16 @@ impl<S: Soc> Machine<S> {
         // RAM contents we just loaded.
         let find = |name: &str| e.by_name.get(name).copied();
         let start = S::ROM_DATA_TABLE.iter().find_map(|n| find(n));
-        if let (Some(ds), Some(de)) = (start, find("_data_end")) {
+        let end = S::ROM_DATA_TABLE_END.iter().find_map(|n| find(n));
+        if let (Some(ds), Some(de)) = (start, end) {
             let mut t = ds; let mut n = 0;
-            while t + 16 <= de {
+            while t + S::ROM_DATA_TABLE_STRIDE <= de {
                 let (Ok(d0), Ok(d1), Ok(src)) = (self.bus.read32(t), self.bus.read32(t + 4), self.bus.read32(t + 8)) else { break };
                 if d1 > d0 && d1 - d0 < 0x20000 {
                     let bytes: Vec<u8> = (d0..d1).map(|a| self.bus.read8(a).unwrap_or(0)).collect();
                     if self.bus.load_bytes(src, &bytes).is_ok() { n += 1; }
                 }
-                t += 16;
+                t += S::ROM_DATA_TABLE_STRIDE;
             }
             if dbg { eprintln!("[emu] rom: back-filled {} initialiser blocks into ROM from table {:#x}..{:#x}", n, ds, de); }
         }
@@ -191,6 +192,9 @@ impl<S: Soc> Machine<S> {
     /// re-initialised; SRAM, RTC memories, efuses and the RTC-domain registers survive, as on
     /// silicon. Returns the reset cause that the ROM will report.
     pub fn reboot(&mut self) -> u32 {
+        // where core 0 was when the reset took effect (the C6 ROM prints it as `Saved PC`)
+        let pc = self.cores[0].pc();
+        self.bus.note_pc(pc);
         let cause = self.bus.reboot(self.mac);
         for (i, c) in self.cores.iter_mut().enumerate() { S::reset_core(c, i); if i > 0 { self.core_held[i] = true; } }
         self.reboots += 1;
@@ -380,9 +384,19 @@ impl<S: Soc> Machine<S> {
                 if !on[i] { continue; }
                 if idle[i] && !slow_path { self.cores[i].idle_advance(QUANTUM as u32); } else if blocks {
                     let mut left = QUANTUM as u32;
-                    while left > 0 { let (used, stop) = self.step_blocks(i, left); if let Some(stop) = stop { self.drain_console(); return stop; } left -= used.min(left); }
+                    while left > 0 {
+                        let (used, stop) = self.step_blocks(i, left);
+                        if let Some(stop) = stop { self.drain_console(); return stop; }
+                        left -= used.min(left);
+                        // a reset takes effect at the instruction that requested it: the core's
+                        // run already stopped there (the register write broke the block)
+                        if self.bus.sw_reset() { break; }
+                    }
                 } else {
-                    for _ in 0..QUANTUM { if let Some(stop) = self.step_core(i) { self.drain_console(); return stop; } }
+                    for _ in 0..QUANTUM {
+                        if let Some(stop) = self.step_core(i) { self.drain_console(); return stop; }
+                        if self.bus.sw_reset() { break; }
+                    }
                 }
                 if i == 0 { n += QUANTUM; }
             }

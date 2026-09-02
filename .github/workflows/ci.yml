@@ -12,12 +12,12 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - name: Fetch the ESP32-S3 and ESP32-C3 mask ROM ELFs
+      - name: Fetch the ESP32-S3, ESP32-C3 and ESP32-C6 mask ROM ELFs
         run: |
           set -e
           url=$(curl -sL https://api.github.com/repos/espressif/esp-rom-elfs/releases/latest | python3 -c 'import json,sys; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".tar.gz")))')
           curl -sL "$url" -o rom.tar.gz
-          mkdir -p roms && tar -xzf rom.tar.gz -C roms --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf'
+          mkdir -p roms && tar -xzf rom.tar.gz -C roms --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf' '*esp32c6_rev0_rom.elf'
           find roms -mindepth 2 -name '*.elf' -exec mv {} roms/ \;
           ls -la roms/*.elf
       - name: Build
@@ -27,4 +27,4 @@ jobs:
       - name: Build the wasm module
         run: tools/wasm-build.sh
       - name: Test the wasm module (the real build, under Node, through the page's manifests)
-        run: ESP32SIM_ROM_DIR=$PWD/roms node tools/wasm-test.mjs hello c3-hello panel
+        run: ESP32SIM_ROM_DIR=$PWD/roms node tools/wasm-test.mjs hello c3-hello c6-hello panel
