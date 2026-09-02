@@ -589,6 +589,85 @@ mod tests {
         }
     }
 
+    fn assert_step_measured_cache_burst(cache: CacheKind, lines: usize) {
+        let (instruction, base, line_bytes) = match cache {
+            CacheKind::InstructionFlash => (&[0xf0, 0x20, 0x00][..], 0x4200_0000, 32),
+            CacheKind::DataFlash => (&[0x22, 0x23, 0x00][..], 0x3c00_0000, 64),
+            CacheKind::DataPsram => (&[0x22, 0x23, 0x00][..], 0x3d00_0000, 64),
+        };
+        let mut machine = instruction_machine(instruction);
+        match cache {
+            CacheKind::InstructionFlash | CacheKind::DataFlash => machine.bus.mmu[0] = 0,
+            CacheKind::DataPsram => machine.bus.mmu[256] = crate::bus::MMU_SPIRAM,
+        }
+        if cache == CacheKind::InstructionFlash {
+            for line in 0..lines {
+                machine
+                    .bus
+                    .load_bytes(base + line as u32 * line_bytes, instruction)
+                    .expect("flash burst instruction maps");
+            }
+        }
+        let mut backend = Esp32Backend::default();
+        for line in 0..lines {
+            let address = base + line as u32 * line_bytes;
+            if cache == CacheKind::InstructionFlash {
+                machine.cpu.pc = address;
+            } else {
+                machine.cpu.pc = RESET_PC;
+                machine.cpu.set_ar(3, address);
+            }
+            assert_eq!(
+                machine.step_measured(&mut backend, CoreId::Core0),
+                Ok(MeasuredStep::Instruction)
+            );
+        }
+
+        let fills: Vec<_> = backend
+            .engine()
+            .ledger()
+            .iter()
+            .flat_map(|entry| &entry.components)
+            .filter_map(|component| match component.class {
+                CostClass::CacheLineFill {
+                    cache: component_cache,
+                    position,
+                } if component_cache == cache => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(fills.len(), lines);
+        assert_eq!(fills[0], CacheFillPosition::First);
+        assert!(fills[1..]
+            .iter()
+            .all(|position| *position == CacheFillPosition::Subsequent));
+
+        let fills_before_hot_replay = fills.len();
+        for line in 0..lines {
+            let address = base + line as u32 * line_bytes;
+            if cache == CacheKind::InstructionFlash {
+                machine.cpu.pc = address;
+            } else {
+                machine.cpu.pc = RESET_PC;
+                machine.cpu.set_ar(3, address);
+            }
+            assert_eq!(
+                machine.step_measured(&mut backend, CoreId::Core0),
+                Ok(MeasuredStep::Instruction)
+            );
+        }
+        assert_eq!(
+            backend
+                .engine()
+                .ledger()
+                .iter()
+                .flat_map(|entry| &entry.components)
+                .filter(|component| matches!(component.class, CostClass::CacheLineFill { cache: component_cache, .. } if component_cache == cache))
+                .count(),
+            fills_before_hot_replay
+        );
+    }
+
     #[test]
     fn real_backend_passes_the_same_contract_as_fake() {
         assert_backend_contract::<Esp32Backend>();
@@ -633,6 +712,40 @@ mod tests {
             .expect("core 1 fetch commits");
         assert_eq!(backend.engine().ledger()[0].core, CoreId::Core0);
         assert_eq!(backend.engine().ledger()[1].core, CoreId::Core1);
+    }
+
+    #[test]
+    fn receipt_cache_bursts_replay_through_step_measured() {
+        for cache in [
+            CacheKind::InstructionFlash,
+            CacheKind::DataFlash,
+            CacheKind::DataPsram,
+        ] {
+            for lines in [1, 2, 4, 8, 16] {
+                assert_step_measured_cache_burst(cache, lines);
+            }
+        }
+    }
+
+    #[test]
+    fn dirty_psram_eviction_refuses_named_writeback_class() {
+        let mut machine = instruction_machine(&[0x22, 0x63, 0x00]);
+        machine.bus.mmu[256] = crate::bus::MMU_SPIRAM;
+        let mut backend = Esp32Backend::default();
+        for way in 0..8 {
+            machine.cpu.pc = RESET_PC;
+            machine.cpu.set_ar(3, 0x3d00_0000 + way * 4096);
+            assert_eq!(
+                machine.step_measured(&mut backend, CoreId::Core0),
+                Ok(MeasuredStep::Instruction)
+            );
+        }
+        machine.cpu.pc = RESET_PC;
+        machine.cpu.set_ar(3, 0x3d00_8000);
+        assert_eq!(
+            format!("{:?}", machine.step_measured(&mut backend, CoreId::Core0)),
+            "Err(Unpriced(DirtyCacheEvictionWriteback(Psram)))"
+        );
     }
 
     #[test]
