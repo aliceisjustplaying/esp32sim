@@ -241,7 +241,7 @@ fn measured_report(stop: esp32s3::backend::MeasuredBootStop, elf_sha256: &str, r
         MeasuredBootStop::Refusal { boot_cycle, core_cycles, refusal } => {
             let config = refusal.configuration;
             format!(concat!(
-                "{{\n  \"schema\": 1,\n  \"image\": {{\n",
+                "{{\n  \"schema\": 2,\n  \"image\": {{\n",
                 "    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n",
                 "    \"elf_sha256\": \"{}\",\n    \"rom_elf_sha256\": \"{}\"\n  }},\n",
                 "  \"outcome\": \"refusal\",\n  \"boot_cycle\": {},\n  \"core_cycles\": [{}, {}],\n",
@@ -261,11 +261,11 @@ fn measured_report(stop: esp32s3::backend::MeasuredBootStop, elf_sha256: &str, r
                 esp_soc::web::json_escape(&refusal.symbol))
         }
         MeasuredBootStop::Ready { boot_cycle, core_cycles } => format!(
-            "{{\n  \"schema\": 1,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"ready\",\n  \"boot_cycle\": {boot_cycle},\n  \"core_cycles\": [{}, {}],\n  \"ready\": true,\n  \"deterministic_runs\": 2,\n  \"refusals\": []\n}}\n",
+            "{{\n  \"schema\": 2,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"ready\",\n  \"boot_cycle\": {boot_cycle},\n  \"core_cycles\": [{}, {}],\n  \"ready\": true,\n  \"deterministic_runs\": 2,\n  \"refusals\": []\n}}\n",
             core_cycles[0], core_cycles[1]
         ),
         MeasuredBootStop::StepLimit { core_cycles } => format!(
-            "{{\n  \"schema\": 1,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"step_limit\",\n  \"core_cycles\": [{}, {}]\n}}\n",
+            "{{\n  \"schema\": 2,\n  \"image\": {{\n    \"elf_environment\": \"TINYDRAW_VECTOR_V2_BUILD\",\n    \"elf_sha256\": \"{elf_sha256}\",\n    \"rom_elf_sha256\": \"{rom_elf_sha256}\"\n  }},\n  \"outcome\": \"step_limit\",\n  \"core_cycles\": [{}, {}]\n}}\n",
             core_cycles[0], core_cycles[1]
         ),
     }
