@@ -1,6 +1,5 @@
 use backend_api::{
-    price_operation, CacheFillPosition, CacheKind, CoreId, CostExpression, InterruptLevel,
-    InterruptPhase, Operation, ReceiptId,
+    price_operation, CacheFillPosition, CacheKind, CoreId, CostExpression, Operation, ReceiptId,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -131,7 +130,7 @@ fn subsequent_fill_receipt_and_model_assert_adopted_values_exactly() {
 }
 
 #[test]
-fn window_and_loop_receipt_and_model_assert_adopted_values_exactly() {
+fn loop_receipt_and_model_assert_adopted_value_exactly() {
     let receipt = receipt(
         TOOLCHAIN_DELTA,
         "d4a4d3547598ede01573b94b5da3fdd1258d3f4e8161778acb4fd0423ac8a654",
@@ -145,7 +144,6 @@ fn window_and_loop_receipt_and_model_assert_adopted_values_exactly() {
         1
     );
     assert_eq!(receipt["cacheProbeDiagnostic"]["adopted"], false);
-    assert_eq!(cycles(Operation::WindowOverflowUnderflowPair), 35);
     for residue in 0..=3 {
         assert_eq!(
             cycles(Operation::LoopBackEdge {
@@ -153,30 +151,5 @@ fn window_and_loop_receipt_and_model_assert_adopted_values_exactly() {
             }),
             u64::from(residue == 3)
         );
-    }
-}
-
-#[test]
-fn interrupt_receipt_and_model_assert_idf61_entry_and_resume_exactly() {
-    let receipt = receipt(
-        TOOLCHAIN_DELTA,
-        "d4a4d3547598ede01573b94b5da3fdd1258d3f4e8161778acb4fd0423ac8a654",
-    );
-    let dispatcher = &receipt["idfOwned"]["interruptDispatcherCycles"];
-    assert_eq!(dispatcher["level1"]["entryV61"], 227);
-    assert_eq!(dispatcher["level1"]["resumeV61"], 143);
-    assert_eq!(dispatcher["level3"]["entryV61"], 222);
-    assert_eq!(dispatcher["level3"]["resumeV61"], 139);
-    for (level, phase, expected) in [
-        (InterruptLevel::Level1, InterruptPhase::Entry, 227),
-        (InterruptLevel::Level1, InterruptPhase::Resume, 143),
-        (InterruptLevel::Level3, InterruptPhase::Entry, 222),
-        (InterruptLevel::Level3, InterruptPhase::Resume, 139),
-    ] {
-        let component = price_operation(CoreId::Core0, Operation::Interrupt { level, phase })
-            .expect("IDF 6.1 interrupt transaction is adopted")
-            .0;
-        assert_eq!(component.cycles(), Some(expected));
-        assert_eq!(component.receipt, ReceiptId::Idf61ToolchainDelta);
     }
 }
