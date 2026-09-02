@@ -16,7 +16,7 @@ jobs:
           url=$(curl -sL https://api.github.com/repos/espressif/esp-rom-elfs/releases/latest | python3 -c 'import json,sys; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".tar.gz")))')
           curl -sL "$url" -o rom.tar.gz
           mkdir -p roms && tar -xzf rom.tar.gz -C roms --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf'
-          find roms -name '*.elf' -exec mv {} roms/ \;
+          find roms -mindepth 2 -name '*.elf' -exec mv {} roms/ \;
           ls -la roms/*.elf
       - name: Build
         run: cargo build --release --workspace
