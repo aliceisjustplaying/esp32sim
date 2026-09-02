@@ -1,0 +1,14 @@
+{
+ "board": "waveshare-c6-lcd147",
+ "flash_mb": 4,
+ "psram_mb": 0,
+ "stubs": ["bb_init=0"],
+ "files": {
+  "rom": "esp32c6_rev0_rom.elf",
+  "bootloader": "local/energy_scan-bootloader.bin",
+  "ptable": "local/energy_scan-ptable.bin",
+  "app": "local/energy_scan.bin",
+  "elf": ["local/energy_scan.elf"]
+ },
+ "_note": "The IEEE 802.15.4 energy scanner (github.com/joakimeriksson/esp32 energy_scan) on the Waveshare ESP32-C6-LCD-1.47: LVGL on the ST7789 over SPI2+GDMA, WS2812 on RMT, energy detect from the emulated 802.15.4 MAC. bb_init is the PHY blob's baseband calibration, which needs hardware handshakes the model does not have; the MAC model does not depend on it. Copy the build products into local/ (git-ignored)."
+}

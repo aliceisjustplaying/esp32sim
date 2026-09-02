@@ -1,5 +1,5 @@
-//! esp32sim — the command line, one front end for every chip (`--chip s3|c3`; the `esp32sim-c3`
-//! binary is `--chip c3`). Parsing and everything a run does are chip-agnostic over
+//! esp32sim — the command line, one front end for every chip (`--chip s3|c3|c6`; the `esp32sim-c3`
+//! and `esp32sim-c6` binaries are `--chip c3` / `--chip c6`). Parsing and everything a run does are chip-agnostic over
 //! `Machine<S>`; the few flags a chip owns (board, WiFi, camera, PSRAM, register presets) live in
 //! its setup function.
 use esp_soc::observers::{BlockProfile, Breakpoints, Coverage, IrqLatency, MmioHeat, PcHist, RegTrace, Trace, Vcd, Watch};
@@ -8,7 +8,7 @@ use emu_core::{Bus, Core};
 use std::path::PathBuf;
 
 fn usage(chip: &str) -> ! {
-    eprintln!("usage: esp32sim [--chip s3|c3] --boot rom|app --bootloader B.bin --ptable P.bin --app A.bin [--elf X.elf]... [options]");
+    eprintln!("usage: esp32sim [--chip s3|c3|c6] --boot rom|app --bootloader B.bin --ptable P.bin --app A.bin [--elf X.elf]... [options]");
     eprintln!("       see docs/cli.md for every flag (default chip here: {})", chip);
     std::process::exit(2)
 }
@@ -119,7 +119,8 @@ pub fn run_cli(default_chip: &str) {
     match o.chip.as_str() {
         "s3" | "esp32s3" => { let m = setup_s3(&o); run(m, &o) }
         "c3" | "esp32c3" => { let m = setup_c3(&o); run(m, &o) }
-        c => { eprintln!("--chip {}: s3 or c3", c); std::process::exit(2) }
+        "c6" | "esp32c6" => { let m = setup_c6(&o); run(m, &o) }
+        c => { eprintln!("--chip {}: s3, c3 or c6", c); std::process::exit(2) }
     }
 }
 
@@ -185,6 +186,18 @@ fn setup_c3(o: &Opts) -> esp32c3::Machine {
     if !o.debug.is_empty() { let mut f = esp_soc::DebugFlags::from_env(); for d in &o.debug { f.parse(d); } m.set_debug(&f); }
     for (flag, on) in [("--board", o.board != "atech14" && o.board != "none"), ("--wifi", o.wifi.is_some()), ("--cam-image", o.cam_image.is_some()), ("--psram-mb", o.psram_mb.is_some()), ("--efuse-regs", o.efuse_regs.is_some()), ("--regs-init", o.regs_init.is_some()), ("--regstat", o.regstat.is_some())] {
         if on { eprintln!("{} is not available on the C3", flag); std::process::exit(2); }
+    }
+    m
+}
+
+fn setup_c6(o: &Opts) -> esp32c6::Machine {
+    let mut m = esp32c6::machine(o.mac.unwrap_or([0xdc, 0x1e, 0xd5, 0x6e, 0x8c, 0xdc]), o.flash_mb.unwrap_or(4) << 20);
+    m.bus.set_flash_size(o.flash_mb.unwrap_or(4) << 20);   // the JEDEC capacity follows the size
+    if !o.debug.is_empty() { let mut f = esp_soc::DebugFlags::from_env(); for d in &o.debug { f.parse(d); } m.set_debug(&f); }
+    let name = if o.board == "atech14" { "none" } else { o.board.as_str() };   // the S3 default means "bare module" here
+    match esp32c6::board::make_board(name) { Some(b) => m.bus.board = b, None => { eprintln!("--board {}: none or waveshare-c6-lcd147 on the C6", name); std::process::exit(2) } }
+    for (flag, on) in [("--wifi", o.wifi.is_some()), ("--cam-image", o.cam_image.is_some()), ("--psram-mb", o.psram_mb.is_some()), ("--efuse-regs", o.efuse_regs.is_some()), ("--regs-init", o.regs_init.is_some()), ("--regstat", o.regstat.is_some())] {
+        if on { eprintln!("{} is not available on the C6", flag); std::process::exit(2); }
     }
     m
 }

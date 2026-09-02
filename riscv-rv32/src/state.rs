@@ -31,8 +31,11 @@ pub mod mstatus {
     pub const MPP: u32 = 3 << 11;
 }
 
-/// Reset vector: the C3 starts executing in the mask ROM.
+/// Reset vector: the C3 and the C6 start executing in the mask ROM.
 pub const RESET_VECTOR: u32 = 0x4000_0000;
+/// `misa` for the two cores: RV32IMC (bits I|M|C, MXL=1) and RV32IMAC.
+pub const MISA_RV32IMC: u32 = 0x4000_1104;
+pub const MISA_RV32IMAC: u32 = 0x4000_1105;
 
 pub struct Cpu {
     pub pc: u32,
@@ -46,10 +49,19 @@ pub struct Cpu {
     pub mscratch: u32,
     /// retired instructions; also drives `mcycle`/`mpccr` (1 instruction = 1 cycle)
     pub insn_count: u64,
+    /// `insn_count` at the last reset: the guest's cycle counter restarts at zero, as on silicon
+    /// (the bootloader's log timestamps are cycles since reset, not deltas)
+    pub cycle_base: u64,
     /// halted by WFI until the SoC raises a line
     pub waiting: bool,
     /// the line the SoC's interrupt controller wants taken, if any (`Core::set_irq`)
     pub irq: Option<u32>,
+    /// which ISA `misa` reports: IMC on the C3, IMAC on the C6 (execution accepts A on both)
+    pub misa: u32,
+    /// the address an `lr.w` reserved, until the next `sc.w`
+    pub reservation: Option<u32>,
+    /// pcs the machine intercepts (stubs, probes), as a bloom over `emu_core::pc_bit`: `run` stops there
+    pub boundary_bloom: u64,
     /// CSRs we do not model: read back what was written, like the SoC's unknown registers
     pub csr_other: HashMap<u32, u32>,
 }
@@ -64,18 +76,19 @@ impl Cpu {
             pc: RESET_VECTOR, x: [0; 32],
             mstatus: 0x1800,          // MPP = machine
             mtvec: 0, mepc: 0, mcause: 0, mtval: 0, mie: 0, mscratch: 0,
-            insn_count: 0, waiting: false, irq: None, csr_other: HashMap::new(),
+            insn_count: 0, cycle_base: 0, waiting: false, irq: None, misa: MISA_RV32IMC, reservation: None, boundary_bloom: 0, csr_other: HashMap::new(),
         }
     }
+    pub fn new_rv32imac() -> Self { let mut c = Cpu::new(); c.misa = MISA_RV32IMAC; c }
 
     pub fn reset(&mut self) {
         // `insn_count` is the emulator's own monotonic counter — it drives the run statistics and
         // the trace, so a chip reset must not rewind it (a reset that did made the browser UI
         // report a negative instruction rate). It also feeds `mcycle`, which is a free-running
         // counter firmware only ever reads as a delta.
-        let keep = self.insn_count;
+        let (keep, misa, bloom) = (self.insn_count, self.misa, self.boundary_bloom);
         *self = Cpu::new();
-        self.insn_count = keep;
+        self.insn_count = keep; self.cycle_base = keep; self.misa = misa; self.boundary_bloom = bloom;
     }
 
     #[inline(always)]
@@ -90,7 +103,7 @@ impl Cpu {
         use csr::*;
         match n {
             MSTATUS => self.mstatus,
-            MISA => 0x4000_1104,                    // RV32IMC: bits I|M|C, MXL=1
+            MISA => self.misa,
             MIE => self.mie,
             MTVEC => self.mtvec,
             MSCRATCH => self.mscratch,
@@ -98,8 +111,8 @@ impl Cpu {
             MCAUSE => self.mcause,
             MTVAL => self.mtval,
             MIP => 0,                               // the SoC's INTC holds pending state, not `mip`
-            MCYCLE | MINSTRET | MPCCR | PCCR_U => self.insn_count as u32,
-            MCYCLEH | MINSTRETH => (self.insn_count >> 32) as u32,
+            MCYCLE | MINSTRET | MPCCR | PCCR_U => (self.insn_count - self.cycle_base) as u32,
+            MCYCLEH | MINSTRETH => ((self.insn_count - self.cycle_base) >> 32) as u32,
             MVENDORID => 0, MARCHID => 0, MIMPID => 0, MHARTID => 0,
             _ => self.csr_other.get(&n).copied().unwrap_or(0),
         }
@@ -115,8 +128,9 @@ impl Cpu {
             MEPC => self.mepc = v & !1,
             MCAUSE => self.mcause = v,
             MTVAL => self.mtval = v,
-            MCYCLE | MINSTRET | MPCCR | PCCR_U => self.insn_count = (self.insn_count & !0xffff_ffff) | v as u64,
-            MCYCLEH | MINSTRETH => self.insn_count = (self.insn_count & 0xffff_ffff) | ((v as u64) << 32),
+            // a write moves the guest-visible counter; the emulator's own count stays monotonic
+            MCYCLE | MINSTRET | MPCCR | PCCR_U => { let c = (self.insn_count - self.cycle_base) & !0xffff_ffff | v as u64; self.cycle_base = self.insn_count.wrapping_sub(c); }
+            MCYCLEH | MINSTRETH => { let c = (self.insn_count - self.cycle_base) & 0xffff_ffff | ((v as u64) << 32); self.cycle_base = self.insn_count.wrapping_sub(c); }
             MISA | MIP | MVENDORID | MARCHID | MIMPID | MHARTID => {}   // read-only
             _ => { self.csr_other.insert(n, v); }
         }

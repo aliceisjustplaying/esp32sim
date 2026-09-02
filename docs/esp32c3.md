@@ -57,7 +57,9 @@ cold power-on with its own MAC, which is correct behaviour but not the same boot
 after esptool reset it over USB.
 
 `Saved PC` is printed by the ROM for a non-power-on reset, from a PC stashed in RTC memory by the
-previous reset. The emulator does not stash it, so the line is absent. Everything else — the ROM
+previous reset. The emulator does not stash it on the C3 (the C6 does, from ASSIST_DEBUG), so
+the line is absent. The bootloader's timestamps after `esp_restart()` match silicon since the
+C6 bring-up found the cycle counter carrying across resets. Everything else — the ROM
 banner, the bootloader's partition table and segment map, the IDF startup log, the heap regions,
 `Minimum free heap size: 331296 bytes` to the byte, the countdown and the reboot — matches.
 

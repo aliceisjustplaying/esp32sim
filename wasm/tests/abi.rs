@@ -1,5 +1,5 @@
 //! The C ABI the page drives, exercised natively: create, load, boot, run in slices, drain the
-//! outbox — for the S3 with a board and for the C3 — and check the messages of the web protocol
+//! outbox — for the S3 with a board and for the C3 and C6 — and check the messages of the web protocol
 //! (`docs/web-ui.md`) come out: `board`, `serial`, `stat`, a display frame, audio, the LED ring.
 //! Needs the mask ROM ELFs like the goldens.
 #[path = "../../tests/common.rs"]
@@ -96,4 +96,21 @@ fn c3_speaks_the_web_protocol() {
     assert_eq!(unsafe { esp32sim_observer(e.0, b"coverage".as_ptr(), 8, std::ptr::null(), 0) }, 0);
     // SAFETY: `e.0` is live, names are readable, and null is valid with a zero argument length.
     assert_eq!(unsafe { esp32sim_observer(e.0, b"nope".as_ptr(), 4, std::ptr::null(), 0) }, 1);
+}
+
+#[test]
+#[ignore = "needs the ESP32-C6 mask ROM ELF"]
+fn c6_speaks_the_web_protocol() {
+    let mut e = Emu::new("esp32c6", 4, 0);
+    e.load(0, &std::fs::read(common::rom("esp32c6_rev0")).unwrap());
+    e.load_file(1, "web/wasm/fw/public/c6-hello-bootloader.bin"); e.load_file(2, "web/wasm/fw/public/c6-hello-ptable.bin"); e.load_file(3, "web/wasm/fw/public/c6-hello_world.bin");
+    e.boot();
+    let mut all = e.out();
+    for _ in 0..20 { assert_eq!(e.run(16_000_000), 0); all.extend(e.out()); }   // 2 s
+    let ts = texts(&all);
+    assert!(has(&ts, "\"name\":\"none\""), "a bare module: {:?}", &ts[..ts.len().min(3)]);
+    assert!(has(&ts, "\"src\":\"uart0\"") && has(&ts, "Hello world!"), "hello_world on UART0");
+    assert!(has(&ts, "\"t\":\"stat\""));
+    // SAFETY: `e.0` stays live and the query does not overlap mutable access.
+    assert_eq!(unsafe { esp32sim_cpu_hz(e.0) }, 160e6);
 }

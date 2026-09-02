@@ -13,6 +13,7 @@ impl Uart {
             0x8 => self.int_raw & self.int_ena,
             0xc => self.int_ena,
             0x1c => 0xe000_c000,                    // STATUS: fifo counts 0, TXD/RTSN/DSRN idle levels as on silicon
+            0x98 => 0,                              // REG_UPDATE (C6 and later): the driver sets it and spins until hardware clears it
             _ => self.ram.read(off),
         }
     }

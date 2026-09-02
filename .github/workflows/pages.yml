@@ -1,6 +1,6 @@
 name: pages
 # Build the WebAssembly emulator and publish web/ to GitHub Pages: the emulator, the public demo
-# firmware under web/wasm/fw/public, and the ESP32-S3 mask ROM ELF (Apache-2.0, espressif/esp-rom-elfs).
+# firmware under web/wasm/fw/public, and the mask ROM ELFs (Apache-2.0, espressif/esp-rom-elfs).
 on:
   push:
     branches: [main]
@@ -23,15 +23,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build the wasm module
         run: tools/wasm-build.sh
-      - name: Fetch the ESP32-S3 and ESP32-C3 mask ROM ELFs
+      - name: Fetch the ESP32-S3, ESP32-C3 and ESP32-C6 mask ROM ELFs
         run: |
           set -e
           url=$(curl -sL https://api.github.com/repos/espressif/esp-rom-elfs/releases/latest | python3 -c 'import json,sys; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".tar.gz")))')
           curl -sL "$url" -o rom.tar.gz
-          tar -xzf rom.tar.gz --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf'
+          tar -xzf rom.tar.gz --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf' '*esp32c6_rev0_rom.elf'
           find . -name esp32s3_rev0_rom.elf -exec cp {} web/wasm/fw/ \;
           find . -name esp32c3_rev3_rom.elf -exec cp {} web/wasm/fw/ \;
-          ls -la web/wasm/fw/esp32s3_rev0_rom.elf web/wasm/fw/esp32c3_rev3_rom.elf
+          find . -name esp32c6_rev0_rom.elf -exec cp {} web/wasm/fw/ \;
+          ls -la web/wasm/fw/esp32s3_rev0_rom.elf web/wasm/fw/esp32c3_rev3_rom.elf web/wasm/fw/esp32c6_rev0_rom.elf
       - name: Version-stamp the script and module URLs (Pages caches for 10 minutes)
         run: |
           v=${GITHUB_SHA::8}

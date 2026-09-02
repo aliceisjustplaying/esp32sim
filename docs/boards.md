@@ -1,6 +1,7 @@
 # Boards
 
-A board is anything implementing `esp_soc::BoardModel` (re-exported as `esp32s3::board::BoardModel`):
+A board is anything implementing `esp_soc::BoardModel` (re-exported as `esp32s3::board::BoardModel`;
+the C6's boards live in `esp32c6::board`):
 
 ```rust
 pub trait BoardModel {
@@ -56,6 +57,19 @@ Needs `--flash-mb 16 --psram-mb 8`. Example: `examples/waveshare-cam/run-autopli
 | Backlight LEDC on GPIO 4 | LEDC | unmodelled, harmless |
 
 Needs `--flash-mb 16 --psram-mb 8`; `examples/waveshare-lcd4b/run-energy-panel.sh` runs the esp32-screen panel.
+
+## `waveshare-c6-lcd147` — Waveshare ESP32-C6-LCD-1.47 (ESP32-C6)
+
+| Device | Bus | Model |
+| --- | --- | --- |
+| ST7789 172×320 panel | SPI2 (MOSI 6, SCLK 7, CS 14, D/C 15, RST 21) through GDMA | `St7789`: 240×320 GRAM, window/RAMWR/MADCTL/COLMOD/inversion/sleep/on; the glass shows RAM columns 34..206 in the mirrored scan direction, BGR swapped back |
+| WS2812 | GPIO 8 via RMT | one LED decoded from the RMT frame |
+| BOOT button | GPIO 9, active low | `press boot 150` |
+| Backlight | LEDC on GPIO 22 | unmodelled, harmless |
+| TF card | SPI2 (MISO 5, CS 4) | not modelled |
+| 802.15.4 radio | the C6's MAC (`esp32c6::periph::Ieee802154`) | energy detect answered with synthetic per-channel levels |
+
+The energy-scan firmware and the run recipe: `examples/waveshare-c6-lcd147/`, [esp32c6.md](esp32c6.md).
 
 ## `none` — bare module
 
