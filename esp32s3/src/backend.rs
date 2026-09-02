@@ -346,7 +346,7 @@ fn chip_config_from_registers(machine: &crate::Machine) -> ChipConfig {
     let flash1 = clock_mhz(spi1.read(0x14));
     ChipConfig {
         cpu_mhz,
-        flash_mode: if spi0.read(0x8) & (1 << 24) != 0 {
+        flash_mode: if spi0.read(0x8) & spi1.read(0x8) & (1 << 24) != 0 {
             FlashMode::Qio
         } else {
             FlashMode::Other
