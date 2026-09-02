@@ -98,6 +98,7 @@ pub struct SocBus {
     /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
     /// have passed, so guest-visible time is exact while idle rounds cost nothing.
     tick_pending: u32, tick_budget: u32,
+    measured_timing_active: bool,
     pending_spi2_dma: Option<PendingSpi2Dma>,
 }
 
@@ -123,7 +124,7 @@ impl SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, spi2_dma_timing_fault: None, last_spi2_dma_timing: None, board_deadline_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
-            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0, pending_spi2_dma: None,
+            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0, measured_timing_active: false, pending_spi2_dma: None,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -179,6 +180,7 @@ impl SocBus {
         &mut self,
         target: backend_api::VirtualCycle,
     ) -> Result<(), crate::board::BoardDeadlineError> {
+        self.measured_timing_active = true;
         if target < self.cycles {
             return Err(crate::board::BoardDeadlineError::TimeReversed {
                 current: self.cycles,
@@ -347,7 +349,7 @@ impl SocBus {
         match self.spi2_dma_completion() {
             Ok(Some(completion)) => {
                 self.periph.spi2.complete_dma_tx(&completion.payload);
-                if self.board.name() == "waveshare-amoled18-v2" {
+                if self.measured_timing_active && self.board.name() == "waveshare-amoled18-v2" {
                     let request = Spi2DmaRequest {
                         submitted_at: self.cycles,
                         bytes: completion.payload.len(),
@@ -1026,7 +1028,9 @@ impl SocBus {
             }
         }
         self.deliver_board_edges();
-        self.deliver_spi2_dma_completion();
+        if self.measured_timing_active {
+            self.deliver_spi2_dma_completion();
+        }
         self.complete_spi2_dma();
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
@@ -1221,6 +1225,91 @@ mod gp_spi_board_tests {
         assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[11, 22, 33, 44]:0"]);
         assert_eq!(bus.read32(FIRST_DESC).expect("descriptor read failed") >> 31, 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+    }
+
+    #[test]
+    fn waveshare_fast_mode_completes_unpriced_spi2_gdma_immediately() {
+        const DATA: u32 = 0x3fca_0000;
+        const TRANSFER_BYTES: u32 = 64;
+
+        let mut bus = dma_bus();
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.write32(
+            FIRST_DESC,
+            TRANSFER_BYTES | (TRANSFER_BYTES << 12) | (1 << 30) | (1 << 31),
+        )
+        .expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+
+        start_dma(&mut bus, TRANSFER_BYTES * 8);
+
+        assert!(!bus.measured_timing_active);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+        assert_eq!(bus.read32(FIRST_DESC).expect("descriptor read failed") >> 31, 0);
+        assert_eq!(bus.spi2_dma_timing_fault, None);
+        assert_eq!(bus.last_spi2_dma_timing, None);
+        assert!(bus.pending_spi2_dma.is_none());
+    }
+
+    #[test]
+    fn waveshare_spi2_gdma_completion_waits_for_the_receipt_deadline() {
+        const DATA: u32 = 0x3fca_0000;
+        const SUBMITTED_AT: u64 = 17;
+        const TRANSFER_BYTES: usize = 32_768;
+
+        let mut bus = dma_bus();
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.advance_measured_to(SUBMITTED_AT).expect("measured advance failed");
+
+        let mut remaining = TRANSFER_BYTES;
+        let mut descriptor = FIRST_DESC;
+        while remaining != 0 {
+            let length = remaining.min(0xfff);
+            remaining -= length;
+            let eof = u32::from(remaining == 0) << 30;
+            let next = if remaining == 0 { 0 } else { descriptor + 12 };
+            bus.write32(
+                descriptor,
+                length as u32 | ((length as u32) << 12) | eof | (1 << 31),
+            )
+            .expect("descriptor write failed");
+            bus.write32(descriptor + 4, DATA).expect("descriptor buffer write failed");
+            bus.write32(descriptor + 8, next).expect("descriptor link write failed");
+            descriptor = next;
+        }
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+        bus.periph.gdma.out[0].desc = FIRST_DESC;
+        bus.periph.gdma.out[0].running = true;
+
+        bus.write32(SPI2 + 0x0c, 1 << 12).expect("SPI clock setup failed");
+        bus.write32(SPI2 + 0x10, (1 << 27) | (1 << 13)).expect("SPI mode setup failed");
+        bus.write32(SPI2 + 0x1c, (TRANSFER_BYTES as u32 * 8) - 1).expect("SPI data length failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command failed");
+
+        let completion = SUBMITTED_AT + 401_589;
+        assert_eq!(
+            bus.last_spi2_dma_timing,
+            Some(Spi2DmaTiming {
+                submit_cycles: 5_755,
+                completion_cycle: completion,
+            })
+        );
+        assert_eq!(bus.periph.spi2.transfers, 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0);
+
+        bus.advance_measured_to(completion - 1).expect("measured advance failed");
+        assert_eq!(bus.periph.spi2.transfers, 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0);
+
+        bus.advance_measured_to(completion).expect("measured advance failed");
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+        assert_eq!(bus.read32(FIRST_DESC).expect("descriptor read failed") >> 31, 0);
     }
 
     #[test]
