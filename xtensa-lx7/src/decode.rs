@@ -291,6 +291,10 @@ fn sext(v: u32, bits: u32) -> i32 {
 }
 
 impl Insn {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "decoded instruction fields map directly to this constructor"
+    )]
     fn new(op: Op, r: u8, s: u8, t: u8, imm: i32, imm2: i32, len: u8, raw: u32) -> Self {
         Insn {
             op,

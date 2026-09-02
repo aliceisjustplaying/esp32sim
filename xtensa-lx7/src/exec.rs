@@ -87,7 +87,7 @@ impl Cpu {
             let irq = p.trailing_zeros();
             p &= p - 1;
             let level = INT_LEVEL[irq as usize] as u32;
-            if level > mask_level && best.map_or(true, |(l, _)| level > l) {
+            if level > mask_level && best.is_none_or(|(l, _)| level > l) {
                 best = Some((level, irq));
             }
         }
@@ -156,11 +156,10 @@ impl Cpu {
     pub fn advance_ccount(&mut self, cycles: u32) {
         let before = self.ccount;
         self.ccount = self.ccount.wrapping_add(cycles);
-        for i in 0..3 {
-            let c = self.ccompare[i];
+        for (&c, &interrupt) in self.ccompare.iter().zip(&TIMER_INTERRUPT) {
             // matched if c in (before, ccount]
             if c.wrapping_sub(before).wrapping_sub(1) < cycles {
-                self.interrupt |= 1 << TIMER_INTERRUPT[i];
+                self.interrupt |= 1 << interrupt;
             }
         }
     }
@@ -336,20 +335,23 @@ fn f32b(v: u32) -> f32 {
 }
 
 fn sat_i32(v: f32) -> u32 {
+    const LOWER_BOUND: f32 = i32::MIN as f32;
+    const UPPER_BOUND: f32 = -LOWER_BOUND;
+
     if v.is_nan() {
         0x8000_0000
-    } else if v >= 2147483648.0 {
+    } else if v >= UPPER_BOUND {
         0x7fff_ffff
-    } else if v <= -2147483648.0 {
+    } else if v <= LOWER_BOUND {
         0x8000_0000
     } else {
         (v as i32) as u32
     }
 }
 fn sat_u32(v: f32) -> u32 {
-    if v.is_nan() {
-        0xffff_ffff
-    } else if v >= 4294967296.0 {
+    const UPPER_BOUND: f32 = u32::MAX as f32;
+
+    if v.is_nan() || v >= UPPER_BOUND {
         0xffff_ffff
     } else if v <= 0.0 {
         0
@@ -1209,8 +1211,8 @@ fn exec_mac16<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> 
     let (x, y) = match op2 {
         7 => (cpu.get_ar(s), cpu.get_ar(t)),
         3 => (cpu.get_ar(s), cpu.m[2 + ((t >> 2) & 1) as usize]),
-        6 | 4 | 5 => (cpu.m[((r >> 2) & 1) as usize], cpu.get_ar(t)),
-        2 | 0 | 1 => (
+        4..=6 => (cpu.m[((r >> 2) & 1) as usize], cpu.get_ar(t)),
+        0..=2 => (
             cpu.m[((r >> 2) & 1) as usize],
             cpu.m[2 + ((t >> 2) & 1) as usize],
         ),

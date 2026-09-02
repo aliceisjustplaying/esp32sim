@@ -175,7 +175,13 @@ fn must_start_block(i: &Insn) -> bool {
 /// unmapped instruction simply ends the block and faults when it is reached as a block start.
 fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16), Trap> {
     let code_short = cpu.blocks.jit_active()
-        && cpu.blocks.code.as_ref().unwrap().remaining() < crate::jit::MAX_BLOCK_CODE;
+        && cpu
+            .blocks
+            .code
+            .as_ref()
+            .expect("an active JIT has a code cache")
+            .remaining()
+            < crate::jit::MAX_BLOCK_CODE;
     if cpu.blocks.arena.len() + MAX_LEN > ARENA_MAX || code_short {
         cpu.blocks.flush();
     }
@@ -231,9 +237,12 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
     if cpu.blocks.jit_active() {
         let b = &mut cpu.blocks;
         let (s, e) = (start as usize, start as usize + n as usize);
-        if let Some(c) =
-            crate::jit::compile(b.code.as_mut().unwrap(), &mut b.arena[s..e], pc0, fast)
-        {
+        if let Some(c) = crate::jit::compile(
+            b.code.as_mut().expect("an active JIT has a code cache"),
+            &mut b.arena[s..e],
+            pc0,
+            fast,
+        ) {
             code = c;
             b.compiled += 1;
         }
@@ -253,6 +262,10 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
 /// Run one block (or the rest of a cut block) at `cpu.pc`, at most `budget` instructions.
 /// Returns `(iterations, trap)` where iterations is what a loop over `step()` would have
 /// consumed: executed instructions, plus one for a trap taken before an instruction ran.
+#[expect(
+    unsafe_code,
+    reason = "the native runner borrows cache fields separately from CPU state"
+)]
 pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
     if let Some(t) = cpu.check_interrupts() {
         return (1, Some(t));
@@ -304,15 +317,22 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
             cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>());
         }
         let entry = cpu.blocks.arena[k as usize].off;
+        let blocks_ptr = &raw const cpu.blocks;
+        // SAFETY: Generated code does not read or write `cpu.blocks`. The shared cache reference is
+        // used only for code and helper fields while the runner has exclusive access to other CPU state.
+        let b = unsafe { &*blocks_ptr };
+        let fm = bus.fast_mem();
+        // SAFETY: `code` and `entry` came from this cache entry for `B`; `cpu`, `bus`, and the fast
+        // memory pointers remain valid and exclusively used for the duration of the call.
         let r = unsafe {
-            let b = &*(&cpu.blocks as *const BlockCache); // the code reads nothing from the cache itself
-            let fm = bus.fast_mem();
             crate::jit::run(
-                b.code.as_ref().unwrap(),
+                b.code.as_ref().expect("an enabled JIT has a code cache"),
                 code,
                 cpu,
                 bus,
-                b.helpers.as_ref().unwrap(),
+                b.helpers
+                    .as_ref()
+                    .expect("an enabled JIT has helper addresses"),
                 limit,
                 entry,
                 fm,
