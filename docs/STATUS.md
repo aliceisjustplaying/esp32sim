@@ -319,9 +319,12 @@ mode (needs GOAL milestone 2).
 
 ## Proposed next steps
 
-1. Proposal: capture hardware queue item H1 at the maintainer's next board
-   session, then adopt exception-entry and exception-return costs only from its
-   verified IDF 6.1 receipt.
+1. Proposal: amend H1 before capture so the syscall handler advances EPC1 by
+   the three-byte syscall width before `rfe`, matching IDF 6.1. Treat the known
+   handler instructions as terms in the timing equation, rebuild the verifier,
+   and require a passing emulator dry-run after the maintainer approves this
+   change to the capture contract. The requested bare-`rfe` cell is parked on
+   `codex/brief3-task5` because it returns to the same syscall indefinitely.
 2. Proposal: add per-frame firmware counters to the next maintainer capture so
    frame-scale correlation can begin after measured boot reaches READY.
 3. Proposal: begin milestone 5 contention pricing only after the measured boot
