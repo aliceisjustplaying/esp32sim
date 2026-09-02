@@ -1,5 +1,6 @@
 use std::fmt;
 
+use backend_api::ChipConfig;
 use xtensa_lx7::{decode, Insn, Op};
 
 pub const REGISTER_COUNT: usize = 16;
@@ -17,6 +18,7 @@ pub enum CompileError {
     TruncatedInstruction { offset: usize, decoded_len: usize },
     LiteralOutsideBlock { pc: u32, address: u32 },
     IntervalCost { pc: u32, op: Op },
+    UnpricedConfiguration { config: ChipConfig },
     UnsupportedInstruction { pc: u32, op: Op },
 }
 
@@ -35,6 +37,22 @@ impl fmt::Display for CompileError {
             Self::IntervalCost { pc, op } => {
                 write!(f, "{op:?} at {pc:#010x} has no adopted scalar cost")
             }
+            Self::UnpricedConfiguration { config } => write!(
+                f,
+                "no external timing receipt for ChipConfig{{cpu {} MHz, apb {} MHz, flash {:?} {} MHz, psram {:?} {} MHz, icache {}/{}/{}, dcache {}/{}/{}}}",
+                config.cpu_mhz,
+                config.apb_mhz,
+                config.flash_mode,
+                config.flash_mhz,
+                config.psram_mode,
+                config.psram_mhz,
+                config.icache_size_bytes,
+                config.icache_ways,
+                config.icache_line_bytes,
+                config.dcache_size_bytes,
+                config.dcache_ways,
+                config.dcache_line_bytes,
+            ),
             Self::UnsupportedInstruction { pc, op } => {
                 write!(f, "unsupported instruction {op:?} at {pc:#010x}")
             }
