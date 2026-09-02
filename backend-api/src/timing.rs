@@ -10,6 +10,42 @@ pub enum CostTier {
     Unexplained,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FlashMode {
+    Qio,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PsramMode {
+    OctalDtr,
+    Other,
+}
+
+/// Register-derived configuration key for configuration-scoped receipts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ChipConfig {
+    pub cpu_mhz: u16,
+    pub flash_mode: FlashMode,
+    pub flash_mhz: u16,
+    pub psram_mode: PsramMode,
+    pub psram_mhz: u16,
+    pub icache_line_bytes: u8,
+    pub dcache_line_bytes: u8,
+}
+
+impl ChipConfig {
+    pub const RECEIPT_SCOPE: Self = Self {
+        cpu_mhz: 240,
+        flash_mode: FlashMode::Qio,
+        flash_mhz: 80,
+        psram_mode: PsramMode::OctalDtr,
+        psram_mhz: 80,
+        icache_line_bytes: 32,
+        dcache_line_bytes: 64,
+    };
+}
+
 /// Committed receipts that support the adopted cost classes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ReceiptId {
@@ -155,13 +191,23 @@ pub struct TimingRefusal {
     pub class: CostClass,
     pub tier_candidate: CostTier,
     pub reason: RefusalReason,
+    pub configuration: Option<ChipConfig>,
 }
 
 /// Price one operation without changing timing state.
 pub fn price_operation(
+    config: ChipConfig,
     core: CoreId,
     operation: Operation,
 ) -> Result<(CostComponent, Option<TimingMutation>), TimingRefusal> {
+    if config != ChipConfig::RECEIPT_SCOPE {
+        return Err(TimingRefusal {
+            class: operation.cost_class(),
+            tier_candidate: CostTier::Unexplained,
+            reason: RefusalReason::CostNotAdopted,
+            configuration: Some(config),
+        });
+    }
     let exact = |class, cycles, receipt| CostComponent {
         class,
         tier: CostTier::Exact,
@@ -201,6 +247,7 @@ pub fn price_operation(
                     class,
                     tier_candidate: CostTier::Affine,
                     reason: RefusalReason::InvalidAffineDomain,
+                    configuration: None,
                 });
             }
             Ok((
@@ -223,6 +270,7 @@ pub fn price_operation(
             },
             tier_candidate: CostTier::Exact,
             reason: RefusalReason::FirstLinePoolingUnresolved,
+            configuration: None,
         }),
         Operation::CacheLineFill {
             cache,
@@ -258,11 +306,28 @@ pub fn price_operation(
             class: CostClass::InternalInstruction,
             tier_candidate: CostTier::Exact,
             reason: RefusalReason::CostNotAdopted,
+            configuration: None,
         }),
         Operation::UnknownMmio { .. } => Err(TimingRefusal {
             class: CostClass::UnknownMmio,
             tier_candidate: CostTier::Unexplained,
             reason: RefusalReason::UnknownMmioRegister,
+            configuration: None,
         }),
+    }
+}
+
+impl Operation {
+    fn cost_class(self) -> CostClass {
+        match self {
+            Self::BranchZero { taken } => CostClass::BranchZero { taken },
+            Self::SameValueMmioWriteRun { count, .. } => CostClass::SameValueMmioWriteRun { count },
+            Self::CacheLineFill {
+                cache, position, ..
+            } => CostClass::CacheLineFill { cache, position },
+            Self::LoopBackEdge { body_residue } => CostClass::LoopAlignment { body_residue },
+            Self::InternalInstruction => CostClass::InternalInstruction,
+            Self::UnknownMmio { .. } => CostClass::UnknownMmio,
+        }
     }
 }
