@@ -13,6 +13,8 @@ const TOOLCHAIN: &[u8] =
 const CACHE: &[u8] = include_bytes!(
     "../../docs/evidence/timing/esp32s3-rev02-tinydraw-a91d1d7-cache-burst-adoption.json"
 );
+const DMA: &[u8] =
+    include_bytes!("../../docs/evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json");
 
 fn pin(bytes: &[u8], sha256: &str) {
     assert_eq!(format!("{:x}", Sha256::digest(bytes)), sha256);
@@ -55,6 +57,45 @@ fn opcode_rows_match_pinned_receipt() {
         )
         .expect_err("interval row has no scalar total");
         assert_eq!(refusal.tier_candidate, CostTier::Interval);
+    }
+}
+
+#[test]
+fn internal_cpu_and_sram_rows_have_no_configuration_key() {
+    pin(
+        OPCODES,
+        "db29ec42ccccc958c96153340497592ecc76203166a5a98c696bdd81496c6515",
+    );
+    pin(
+        TOOLCHAIN,
+        "d4a4d3547598ede01573b94b5da3fdd1258d3f4e8161778acb4fd0423ac8a654",
+    );
+    let mut reset = ChipConfig::RECEIPT_SCOPE;
+    reset.cpu_mhz = 40;
+    reset.apb_mhz = 40;
+    reset.flash_mode = backend_api::FlashMode::Other;
+    reset.flash_mhz = 160;
+    reset.psram_mode = backend_api::PsramMode::Other;
+    reset.psram_mhz = 160;
+    reset.icache_line_bytes = 16;
+    reset.dcache_line_bytes = 16;
+
+    for (operation, expected) in [
+        (Operation::Instruction(InstructionCost::Issue), 1),
+        (
+            Operation::Instruction(InstructionCost::Branch { taken: true }),
+            3,
+        ),
+        (Operation::LoopBackEdge { body_residue: 3 }, 1),
+        (Operation::IndependentSramAccess, 0),
+    ] {
+        assert_eq!(
+            price_operation(reset, CoreId::Core0, operation)
+                .expect("internal cost has no ChipConfig key")
+                .0
+                .cycles(),
+            Some(expected)
+        );
     }
 }
 
@@ -147,5 +188,17 @@ fn cache_rows_match_pinned_receipts() {
     );
     assert_eq!(price(Operation::HotCacheHit).cycles(), Some(0));
     assert_eq!(price(Operation::IndependentSramAccess).cycles(), Some(0));
-    assert_eq!(price(Operation::DmaAdditiveDelay).cycles(), Some(0));
+
+    pin(
+        DMA,
+        "8bfee3bf19fd157b501eb7904f5ba394801982f9003584635a82a40fb8010025",
+    );
+    let refusal = price_operation(
+        ChipConfig::RECEIPT_SCOPE,
+        CoreId::Core0,
+        Operation::DmaAdditiveDelay,
+    )
+    .expect_err("the DMA copy delta is a sequence correlation, not a price");
+    assert_eq!(refusal.class, backend_api::CostClass::DmaAdditiveDelay);
+    assert_eq!(refusal.tier_candidate, CostTier::Exact);
 }
