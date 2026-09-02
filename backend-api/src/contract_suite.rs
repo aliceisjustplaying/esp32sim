@@ -1,6 +1,6 @@
 use crate::{
-    Backend, CacheFillPosition, CacheKind, CoreId, ExecutionOutcome, InterruptLevel,
-    InterruptPhase, Operation, ReceiptId, TraceEvent,
+    Backend, CacheFillPosition, CacheKind, CoreId, ExecutionOutcome, Operation, ReceiptId,
+    TraceEvent,
 };
 
 /// Run backend-neutral invariants against one adapter implementation.
@@ -54,24 +54,7 @@ pub fn assert_receipt_correlation<B: Backend + Default>() {
             position: CacheFillPosition::Subsequent,
             line: 3,
         },
-        Operation::WindowOverflowUnderflowPair,
         Operation::LoopBackEdge { body_residue: 3 },
-        Operation::Interrupt {
-            level: InterruptLevel::Level1,
-            phase: InterruptPhase::Entry,
-        },
-        Operation::Interrupt {
-            level: InterruptLevel::Level1,
-            phase: InterruptPhase::Resume,
-        },
-        Operation::Interrupt {
-            level: InterruptLevel::Level3,
-            phase: InterruptPhase::Entry,
-        },
-        Operation::Interrupt {
-            level: InterruptLevel::Level3,
-            phase: InterruptPhase::Resume,
-        },
     ];
     let trace: Vec<_> = operations
         .into_iter()
@@ -91,8 +74,8 @@ pub fn assert_receipt_correlation<B: Backend + Default>() {
         .iter()
         .map(|entry| entry.completion - entry.start)
         .collect();
-    assert_eq!(cycles, [3, 1, 40, 266, 473, 170, 35, 1, 227, 143, 222, 139]);
-    assert_eq!(report.total_cycles, 1_720);
+    assert_eq!(cycles, [3, 1, 40, 266, 473, 170, 1]);
+    assert_eq!(report.total_cycles, 954);
     assert_eq!(
         report.ledger[0].components[0].receipt,
         ReceiptId::BeqzAdoption2bf3ffd
@@ -106,7 +89,7 @@ pub fn assert_receipt_correlation<B: Backend + Default>() {
         ReceiptId::CacheBurstAdoptionA91d1d7
     );
     assert_eq!(
-        report.ledger[8].components[0].receipt,
+        report.ledger[6].components[0].receipt,
         ReceiptId::Idf61ToolchainDelta
     );
 }

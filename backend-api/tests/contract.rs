@@ -1,7 +1,7 @@
 use backend_api::contract_suite::{assert_backend_contract, assert_receipt_correlation};
 use backend_api::{
-    Backend, CacheFillPosition, CacheKind, CoreId, CostClass, DeadlineError, DeadlineModel,
-    ExecutionOutcome, FakeBackend, Operation, RefusalReason, TierCandidate, TraceEvent,
+    Backend, CacheFillPosition, CacheKind, CoreId, CostClass, CostTier, DeadlineError,
+    DeadlineModel, ExecutionOutcome, FakeBackend, Operation, RefusalReason, TraceEvent,
     VirtualCycle,
 };
 
@@ -48,7 +48,7 @@ fn first_line_fill_refuses_with_tier_candidate() {
             position: CacheFillPosition::First,
         }
     );
-    assert_eq!(refusal.tier_candidate, TierCandidate::Exact);
+    assert_eq!(refusal.tier_candidate, CostTier::Exact);
     assert_eq!(refusal.reason, RefusalReason::FirstLinePoolingUnresolved);
 }
 
@@ -66,7 +66,7 @@ fn unknown_mmio_blocks_trace_total() {
         .run_trace(&trace)
         .expect_err("unknown MMIO cannot produce a total");
     assert_eq!(refusal.class, CostClass::UnknownMmio);
-    assert_eq!(refusal.tier_candidate, TierCandidate::Unexplained);
+    assert_eq!(refusal.tier_candidate, CostTier::Unexplained);
 }
 
 #[test]
