@@ -64,12 +64,14 @@ milestone, not an afterthought.
 
 ## Architecture stances
 
-- Dual-core native from day one. The scheduler, cache models (I-cache
-  per core, D-cache shared), MSPI arbitration point, and ledger carry
-  two cores structurally. Calibration progresses from quiet-core-1
-  workloads (real firmware idles core 1 at boot) to contended
-  workloads as contended receipts mature. There is no single-core
-  phase to retrofit later.
+- Dual-core native from day one. There is one I-cache and one D-cache,
+  both shared by both cores, with each core on its own bus. Cache
+  configuration (size, ways, line bytes) comes from `ChipConfig`. The
+  scheduler, MSPI arbitration point, and ledger carry two cores
+  structurally. Calibration progresses from quiet-core-1 workloads
+  (real firmware idles core 1 at boot) to contended workloads as
+  contended receipts mature. There is no single-core phase to retrofit
+  later.
 - Fail closed. Unknown costs block totals. Refusals are typed and
   name their tier candidate.
 - Costs come only from committed hardware receipts
