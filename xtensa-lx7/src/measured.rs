@@ -287,6 +287,7 @@ mod tests {
     impl TimingSource for FixedTiming {
         fn price(&self, observation: &InstructionObservation) -> Result<TimingPlan, TimingRefusal> {
             let (component, _) = price_operation(
+                backend_api::ChipConfig::RECEIPT_SCOPE,
                 observation.core,
                 Operation::CacheLineFill {
                     cache: CacheKind::DataFlash,
