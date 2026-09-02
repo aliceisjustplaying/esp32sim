@@ -1,4 +1,6 @@
 //! Tiny image loaders for camera sources: binary PPM (P6) and uncompressed 24/32-bit BMP.
+//! Anything a page uploads comes through here, so a bad header is an error, never a panic.
+pub const MAX_PIXELS: u64 = 64 * 1024 * 1024;
 pub struct Picture { pub w: u32, pub h: u32, pub rgb: Vec<u8> }
 
 pub fn load(path: &str) -> Result<Picture, String> {
@@ -24,18 +26,21 @@ fn ppm(d: &[u8]) -> Result<Picture, String> {
     }
     i += 1;
     let (w, h) = (nums[0], nums[1]);
-    let n = (w * h * 3) as usize;
+    if w == 0 || h == 0 || w as u64 * h as u64 > MAX_PIXELS { return Err(format!("ppm: unreasonable size {}x{}", w, h)); }
+    let n = (w as u64 * h as u64 * 3) as usize;
     if d.len() < i + n { return Err("ppm: truncated".into()); }
     Ok(Picture { w, h, rgb: d[i..i + n].to_vec() })
 }
 
 fn bmp(d: &[u8]) -> Result<Picture, String> {
+    if d.len() < 54 { return Err("bmp: truncated header".into()); }
     let u32le = |o: usize| u32::from_le_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]);
     let off = u32le(10) as usize; let w = u32le(18) as i32; let h = u32le(22) as i32; let bpp = u16::from_le_bytes([d[28], d[29]]) as usize;
     if bpp != 24 && bpp != 32 { return Err(format!("bmp: {} bpp not supported", bpp)); }
     let (wu, hu, flip) = (w.unsigned_abs(), h.unsigned_abs(), h > 0);
+    if wu == 0 || hu == 0 || wu as u64 * hu as u64 > MAX_PIXELS { return Err(format!("bmp: unreasonable size {}x{}", wu, hu)); }
     let stride = ((wu as usize * bpp / 8) + 3) & !3;
-    let mut rgb = vec![0u8; (wu * hu * 3) as usize];
+    let mut rgb = vec![0u8; (wu as u64 * hu as u64 * 3) as usize];
     for y in 0..hu as usize {
         let src_row = if flip { hu as usize - 1 - y } else { y };
         for x in 0..wu as usize {

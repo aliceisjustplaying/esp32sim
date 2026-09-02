@@ -21,4 +21,4 @@ jobs:
       - name: Build
         run: cargo build --release --workspace
       - name: Test (hermetic + golden outputs)
-        run: ESP32SIM_ROM_DIR=$PWD/roms cargo test --release --workspace -- --include-ignored
+        run: ESP32SIM_ROM_DIR=$PWD/roms cargo test --release --workspace -- --include-ignored --skip external_

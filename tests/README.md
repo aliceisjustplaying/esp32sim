@@ -1,7 +1,17 @@
 # Tests
 
-`cargo test --workspace` is hermetic: decoder tests, unit tests, and nothing that needs a
-toolchain, a download or hardware.
+Five layers, base to top. `cargo test --workspace` runs the hermetic ones (no toolchain, no
+download, no hardware); the goldens and the ABI tests need the mask ROM ELFs and run with
+`--include-ignored` (CI fetches the ELFs). Nothing skips silently: a test either has a
+checked-in oracle or is `#[ignore]`d with the reason in its name.
+
+| layer | where | what it pins |
+| --- | --- | --- |
+| decoders and encoder | `xtensa-lx7/tests/objdump_diff.rs`, `riscv-rv32/tests/objdump_diff.rs`, `emu-core/src/jit_a64.rs` | every instruction of 8000 sampled objdump lines per architecture (app + mask ROM, `tests/corpus/`) decodes to objdump's text; every AArch64 encoding matches what clang assembled (`emu-core/tests/fixtures`) |
+| core semantics | `xtensa-lx7/tests/semantics.rs`, `riscv-rv32/tests/semantics.rs` | on a flat RAM: register-window overflow at the instruction that touches the wrapped window, zero-overhead loops, a CCOMPARE interrupt landing on the same instruction through `step`, the block interpreter and the JIT, INTLEVEL masking, `waiti`; RV32 vectored interrupts, `mret`, `ecall`/`ebreak`; and the oracle property — the three execution paths leave identical state |
+| peripherals | `esp-periph/tests/devices.rs` | systimer one-shot and periodic alarms and their deadlines, TIMG prescaler/alarm/autoreload, GPIO edge and level interrupts, USB SOF cadence per chip clock, the I2S rate from the clock registers; the `device_set!` table from outside: ranges, `delta`, `alias`, the generic fallback, source numbering, tick delivery per clock domain, the deadline minimum, `--debug` fan-out |
+| machine | `esp32s3/tests/machine.rs`, `esp-soc/tests/parsers.rs` | idle cores skip time, core 1 runs when SYSTEM releases it, what a chip reset keeps, scripts against the board's pin names and encoder, console backlogs and masks, observers on both paths; the ELF/app-image/picture loaders never panic on random, truncated or hostile input |
+| whole runs | `cli/tests/goldens.rs`, `wasm/tests/abi.rs` | the goldens below; the wasm C ABI driven natively for both chips, checking the web protocol's `board`, `serial`, `stat`, frame, audio and ring messages |
 
 The **golden-output tests** (`cli/tests/goldens.rs`) are the
 regression bar for everything else: they run the committed demo firmware from the mask ROM and
@@ -14,9 +24,14 @@ can be pointed at with `ESP32SIM_ROM_DIR`, so they are `#[ignore]`d by default a
 silently: without a ROM they fail with the path they looked for.
 
 ```sh
-cargo test --release --workspace -- --include-ignored      # ~3 s for the whole set
-UPDATE_GOLDENS=1 cargo test --release --workspace -- --include-ignored   # after an intentional change
+cargo test --release --workspace -- --include-ignored --skip external_      # ~15 s for the whole set
+UPDATE_GOLDENS=1 cargo test --release --workspace -- --include-ignored --skip external_   # after an intentional change
 ```
+
+Tests named `external_*` need inputs only a developer machine has (full objdump listings via
+`XTENSA_DIS_FILES`/`RISCV_DIS_FILES`, Apple's clang for the encoder fixture) and fail loudly
+without them; run them by name. Their hermetic counterparts (`decoder_matches_corpus`,
+`encodings_match_fixture`) run in the default suite against checked-in oracles.
 
 Use `--release`: the debug build runs the same scenarios ~30x slower. On a mismatch the actual
 output is left next to the golden as `*.actual` for diffing.

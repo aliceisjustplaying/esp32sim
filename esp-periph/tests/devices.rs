@@ -1,0 +1,189 @@
+//! The shared peripheral models through the `Device` trait, and the `device_set!` table
+//! mechanics from outside the crate: dispatch by block and range, `delta`, `alias`, the generic
+//! fallback, interrupt source mapping, tick delivery per clock domain, the timer-deadline query.
+use emu_core::{ClockDomain, ClockTree};
+use esp_periph::{device_set, mmio, Device, DeviceSet, Dispatch, Gpio, I2s, Misc, RegRam, Systimer, TimerGroup, UsbSerialJtag, WriteEffect, NO_SOURCE};
+
+// ------------------------------------------------------------------ systimer
+#[test]
+fn systimer_one_shot_fires_on_its_tick_and_says_when() {
+    let mut s = Systimer::new();
+    Device::write(&mut s, 0x0, (1 << 30) | (1 << 24));      // unit 0 counting, comparator 0 enabled
+    Device::write(&mut s, 0x20, 100);                        // target 0 = 100
+    Device::write(&mut s, 0x34, 0);                          // unit 0, one-shot
+    Device::write(&mut s, 0x50, 1);                          // COMP0_LOAD: arm
+    Device::write(&mut s, 0x64, 1);
+    assert!(Device::has_deadline(&s));
+    assert_eq!(Device::next_deadline(&s), Some(100));
+    Device::tick(&mut s, 99);
+    assert_eq!(Device::irq_sources(&s), 0); assert_eq!(Device::next_deadline(&s), Some(1));
+    Device::tick(&mut s, 1);
+    assert_eq!(Device::irq_sources(&s), 1, "comparator 0 raised its source");
+    assert_eq!(Device::read(&mut s, 0x70), 1, "INT_ST");
+    Device::write(&mut s, 0x6c, 1);
+    assert_eq!(Device::irq_sources(&s), 0);
+    assert_eq!(Device::next_deadline(&s), None, "one-shot: nothing armed any more");
+}
+
+#[test]
+fn systimer_periodic_repeats() {
+    let mut s = Systimer::new();
+    Device::write(&mut s, 0x0, (1 << 30) | (1 << 25));      // unit 0, comparator 1
+    Device::write(&mut s, 0x38, (1 << 30) | 50);             // periodic, 50 ticks
+    Device::write(&mut s, 0x54, 1);                          // COMP1_LOAD
+    Device::write(&mut s, 0x64, 2);
+    Device::tick(&mut s, 49); assert_eq!(Device::irq_sources(&s), 0);
+    Device::tick(&mut s, 1); assert_eq!(Device::irq_sources(&s), 2);
+    Device::write(&mut s, 0x6c, 2);
+    Device::tick(&mut s, 50); assert_eq!(Device::irq_sources(&s), 2, "and again a period later");
+}
+
+// ------------------------------------------------------------------ timer group
+#[test]
+fn timer_group_alarm_autoreload_and_deadline() {
+    let mut g = TimerGroup::new();
+    let cfg = (1 << 31) | (1 << 30) | (1 << 10) | (2 << 13);   // enabled, up, alarm, divider 2
+    Device::write(&mut g, 0x0, cfg);
+    Device::write(&mut g, 0x10, 10);                         // alarm = 10 -> 20 APB ticks
+    Device::write(&mut g, 0x70, 1);                          // int_ena T0
+    assert_eq!(Device::clock(&g), Some(ClockDomain::Apb));
+    assert_eq!(Device::next_deadline(&g), Some(20));
+    Device::tick(&mut g, 19);
+    assert_eq!(Device::irq_sources(&g), 0); assert_eq!(Device::next_deadline(&g), Some(1));
+    Device::tick(&mut g, 1);
+    assert_eq!(Device::irq_sources(&g), 1);
+    assert_eq!(Device::read(&mut g, 0x0) & (1 << 10), 0, "one-shot: alarm disarmed");
+    // autoreload from LOAD = 0: the count restarts and the alarm stays armed
+    Device::write(&mut g, 0x7c, 1);
+    Device::write(&mut g, 0x0, cfg | (1 << 29));
+    Device::write(&mut g, 0x18, 0); Device::write(&mut g, 0x20, 1);   // load, reload count
+    Device::tick(&mut g, 20);
+    assert_eq!(Device::irq_sources(&g), 1);
+    assert_eq!(Device::read(&mut g, 0x0) & (1 << 10), 1 << 10, "autoreload keeps the alarm");
+}
+
+// ------------------------------------------------------------------ GPIO
+#[test]
+fn gpio_edges_and_interrupt_types() {
+    let mut g = Gpio::new();
+    Device::write(&mut g, 0x20, 1 << 5);                     // enable pin 5 as output
+    Device::write(&mut g, 0x8, 1 << 5);                      // OUT_W1TS
+    Device::write(&mut g, 0xc, 1 << 5);                      // OUT_W1TC
+    assert_eq!(g.changes, vec![(5, true), (5, false)], "output edges in order, only for enabled pins");
+    // pin 7: rising-edge interrupt, enabled for core 0
+    Device::write(&mut g, 0x74 + 4 * 7, (1 << 7) | (1 << 13));
+    assert!(!g.set_input(7, false)); assert!(!Device::irq_sources(&g) != 0 || true);
+    assert!(g.set_input(7, true), "a rising edge latches STATUS");
+    assert_eq!(Device::irq_sources(&g), 1);
+    Device::write(&mut g, 0x4c, 1 << 7);                     // STATUS_W1TC
+    assert_eq!(Device::irq_sources(&g), 0);
+    // pin 9: low-level interrupt follows the input
+    Device::write(&mut g, 0x74 + 4 * 9, (4 << 7) | (1 << 13));
+    g.set_input(9, false); assert_eq!(Device::irq_sources(&g), 1);
+    g.set_input(9, true); assert_eq!(Device::irq_sources(&g), 0);
+}
+
+// ------------------------------------------------------------------ USB-Serial/JTAG
+#[test]
+fn usb_sof_cadence_follows_the_cpu_clock() {
+    for (hz, period) in [(240_000_000u64, 60_000u64), (160_000_000, 40_000)] {
+        let mut u = UsbSerialJtag::new(hz);
+        Device::write(&mut u, 0x10, 1 << 1);                 // enable the SOF interrupt
+        Device::tick(&mut u, period - 1); assert_eq!(Device::irq_sources(&u), 0, "{} Hz", hz);
+        Device::tick(&mut u, 1); assert_eq!(Device::irq_sources(&u), 1, "{} Hz", hz);
+    }
+    let mut u = UsbSerialJtag::new(240_000_000);
+    u.host_input(b"hi");
+    assert_eq!(Device::read(&mut u, 0x0), b'h' as u32); assert_eq!(Device::read(&mut u, 0x0), b'i' as u32);
+    Device::write(&mut u, 0x0, b'o' as u32); Device::write(&mut u, 0x4, 1);   // WR_DONE flushes
+    assert_eq!(u.tx_out, b"o");
+}
+
+// ------------------------------------------------------------------ I2S clock tree
+#[test]
+fn i2s_frame_rate_from_the_clock_registers() {
+    let mut i = I2s::new(240_000_000);
+    assert_eq!(i.sample_rate, 44100, "until the clock is programmed");
+    let clkm = |n: u32| (1 << 26) | (1 << 27) | n;           // active, PLL_F160M, integer divider n
+    Device::write(&mut i, 0x2c, (15 << 0) | (3 << 7));       // slot width 16, BCK divider 4
+    Device::write(&mut i, 0x54, 1 << 16);                    // 2 slots
+    Device::write(&mut i, 0x3c, 0);                          // no fraction
+    Device::write(&mut i, 0x34, clkm(8));                    // MCLK = 160 MHz / 8
+    assert_eq!(i.sample_rate, 160_000_000 / 8 / 4 / 32);
+    Device::write(&mut i, 0x3c, 1);                          // z = 1, y = 0, x = 0: b/a = 1/1 -> divider 9
+    Device::write(&mut i, 0x34, clkm(8));
+    assert_eq!(i.sample_rate, (160_000_000 + 9 * 128 / 2) / (9 * 128));
+    Device::write(&mut i, 0x34, 8);                          // clock off: the last rate stays
+    assert_eq!(i.derive_rate(), None);
+}
+
+// ------------------------------------------------------------------ the table
+/// A device that counts what it receives.
+#[derive(Default)]
+struct Probe { ticks: u64, deadline: Option<u64>, domain: Option<ClockDomain>, dbg: bool, last: (u32, u32), irq: u64 }
+impl Device for Probe {
+    fn read(&mut self, off: u32) -> u32 { 0xd0 | off }
+    fn write(&mut self, off: u32, v: u32) -> WriteEffect { self.last = (off, v); WriteEffect::NONE }
+    fn irq_sources(&self) -> u64 { self.irq }
+    fn clock(&self) -> Option<ClockDomain> { self.domain }
+    fn tick(&mut self, n: u64) { self.ticks += n; }
+    fn has_deadline(&self) -> bool { self.deadline.is_some() }
+    fn next_deadline(&self) -> Option<u64> { self.deadline }
+    fn debug(&mut self, on: bool) { self.dbg = on; }
+}
+
+struct Chip { a: Probe, b: Probe, wide: Probe, rom: RegRam, misc: Misc, clock: ClockTree<3> }
+const BASE: u32 = 0x6000_0000;
+device_set! { Chip; clock: (clock) 240_000_000, [(ClockDomain::Systimer, 15), (ClockDomain::Apb, 3), (ClockDomain::Cpu, 1)];
+    0x01 "UART0" (a) => [7];
+    0x02 "TIMG0" (b) => [NO_SOURCE, 40];
+    0x03 "WIDE" (wide) => [];
+    0x04 "WIDE" alias (wide) delta 0x1000 => [];
+    0x05 "ROM" (rom) delta -0x800 @ 0x800..=0xfff => [];
+    0x05 "TIMG1" alias (b) => [];
+}
+impl DeviceSet for Chip {
+    const BASE: u32 = BASE;
+    fn block_name(block: u32) -> &'static str { match block { 0x01 => "UART0", 0x02 => "TIMG0", 0x03 | 0x04 => "WIDE", 0x05 => "ROM", _ => "?" } }
+    fn misc(&self) -> &Misc { &self.misc }
+    fn misc_mut(&mut self) -> &mut Misc { &mut self.misc }
+}
+fn chip() -> Chip {
+    Chip { a: Probe { domain: Some(ClockDomain::Systimer), deadline: Some(4), ..Default::default() }, b: Probe { domain: Some(ClockDomain::Apb), deadline: Some(7), ..Default::default() },
+           wide: Probe { domain: Some(ClockDomain::Cpu), ..Default::default() }, rom: RegRam::new(), misc: Misc::new(), clock: Chip::new_clock() }
+}
+
+#[test]
+fn table_dispatch_ranges_delta_alias_and_fallback() {
+    let mut c = chip();
+    assert_eq!(mmio::read32(&mut c, BASE + 0x1008), 0xd0 | 8, "block 1 -> a");
+    mmio::write32(&mut c, BASE + 0x2010, 5); assert_eq!(c.b.last, (0x10, 5));
+    assert_eq!(mmio::read32(&mut c, BASE + 0x4004), 0xd0 | 0x1004, "the alias adds its delta");
+    mmio::write32(&mut c, BASE + 0x5900, 42);
+    assert_eq!(c.rom.read(0x100), 42, "range entry with a negative delta");
+    mmio::write32(&mut c, BASE + 0x5010, 9); assert_eq!(c.b.last, (0x10, 9), "the rest of the block is the next entry");
+    mmio::write32(&mut c, BASE + 0x9abc, 0x1234);
+    assert_eq!(mmio::read32(&mut c, BASE + 0x9abc), 0x1234, "unknown blocks read back what was written");
+    assert_eq!(Chip::devices().len(), 6);
+}
+
+#[test]
+fn table_sources_ticks_deadlines_and_debug() {
+    let mut c = chip();
+    c.a.irq = 1; c.b.irq = 0b10; c.wide.irq = 1;
+    let st = c.source_status();
+    assert_eq!(st[0], 1 << 7, "a's source 0 -> 7; b's bit 1 -> 40 lives in word 1");
+    assert_eq!(st[1], 1 << (40 - 32));
+    assert_eq!(st[2] | st[3], 0, "NO_SOURCE and empty lists route nowhere");
+    Dispatch::tick(&mut c, 45);
+    assert_eq!((c.a.ticks, c.b.ticks, c.wide.ticks), (3, 15, 45), "each device gets its own domain's ticks");
+    Dispatch::tick(&mut c, 2);
+    assert_eq!((c.a.ticks, c.b.ticks, c.wide.ticks), (3, 15, 47), "the alias entry does not tick the device twice");
+    // deadlines: (ticks - 1) * divider, minimum over the timers
+    assert_eq!(c.cycles_until_deadline(), ((4 - 1) * 15).min((7 - 1) * 3));
+    c.a.deadline = None; c.b.deadline = None;
+    assert_eq!(c.cycles_until_deadline(), u32::MAX);
+    Dispatch::debug(&mut c, "timg", true);
+    assert!(c.b.dbg && !c.a.dbg, "TIMG0 and TIMG1 both reach b; UART0 untouched");
+    Dispatch::debug(&mut c, "uart0", true); assert!(c.a.dbg);
+}

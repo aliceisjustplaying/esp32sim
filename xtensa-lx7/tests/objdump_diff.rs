@@ -81,7 +81,7 @@ fn decoder_matches_corpus() {
 /// The full listings of whatever `XTENSA_DIS_FILES` points at (app + ROM: ~1 M instructions).
 #[test]
 #[ignore = "set XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis (xtensa-esp32s3-elf-objdump -d)"]
-fn decoder_matches_objdump() {
+fn external_decoder_matches_objdump() {
     let files = std::env::var("XTENSA_DIS_FILES").expect("XTENSA_DIS_FILES=/path/app.dis:/path/rom.dis is required for this test");
     check(&files);
 }

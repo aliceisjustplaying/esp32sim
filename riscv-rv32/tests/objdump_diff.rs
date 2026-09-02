@@ -93,7 +93,7 @@ fn decoder_matches_corpus() {
 /// The full listings of whatever `RISCV_DIS_FILES` points at.
 #[test]
 #[ignore = "set RISCV_DIS_FILES=/path/rom.dis:/path/app.dis (riscv32-esp-elf-objdump -d)"]
-fn decoder_matches_objdump() {
+fn external_decoder_matches_objdump() {
     let files = std::env::var("RISCV_DIS_FILES").expect("RISCV_DIS_FILES=/path/rom.dis:/path/app.dis is required for this test");
     check(&files);
 }

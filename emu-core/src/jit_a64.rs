@@ -281,7 +281,7 @@ mod tests {
         (text, a.finish())
     }
 
-    /// Hermetic: every word must match `tests/fixtures/a64_expected.hex`, which `encodings_match_clang`
+    /// Hermetic: every word must match `tests/fixtures/a64_expected.hex`, which `external_encodings_match_clang`
     /// produced from clang's assembler (run it with `UPDATE_FIXTURE=1` after adding an instruction).
     #[test]
     fn encodings_match_fixture() {
@@ -294,7 +294,7 @@ mod tests {
     /// Assemble the reference text with clang and compare word for word with our encoder.
     #[test]
     #[ignore = "needs Apple's clang and llvm-objdump; regenerates the fixture with UPDATE_FIXTURE=1"]
-    fn encodings_match_clang() {
+    fn external_encodings_match_clang() {
         let clang = "/Library/Developer/CommandLineTools/usr/bin/clang";
         let objdump = "/Library/Developer/CommandLineTools/usr/bin/llvm-objdump";
         assert!(std::path::Path::new(clang).exists(), "{} not found", clang);
