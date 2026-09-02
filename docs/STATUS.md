@@ -75,26 +75,82 @@ integration trunk milestone resolves that once, on `alice`.
 
 ## Adopted timing numbers
 
-All from ESP32-S3 rev 0.2 silicon on the physical board, via CCOUNT
-probes with hardware cache counters, two-boot cohorts, fail-closed
-parsing. Receipts under [`evidence/timing/`](evidence/timing/); the
-IDF 6.1 rebaseline ledger is
-[`evidence/timing/idf61-rebaseline-3db3985/`](evidence/timing/idf61-rebaseline-3db3985/README.md)
-(802 passing receipts, 210 identities, 204 at the strict
-two-independent-receipt bar).
+All numbers come from ESP32-S3 rev 0.2 silicon on the physical board via
+CCOUNT probes, hardware cache counters where applicable, independent boot
+cohorts, and fail-closed parsing. `C240-Q80-O80-I32-D64` below means CPU at
+240 MHz, QIO flash at 80 MHz, octal DTR PSRAM at 80 MHz, 32-byte I-cache
+lines, and 64-byte D-cache lines. Pricing derives this `ChipConfig` from the
+registers firmware programs. Any mismatch is a typed refusal naming the
+configuration.
 
-| Claim | Value | Receipt |
-| --- | --- | --- |
-| Straight-line SRAM issue | 1.000 cycles per instruction | `evidence/timing/esp32s3-rev02-tinydraw-bf169bc-counters-candidate.json` (candidate status; derivation in `evidence/timing/README.md`) |
-| Window overflow plus underflow pair | 35 cycles | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
-| Loop alignment penalty | +1 cycle per iteration at body residue +3 mod 4 | same delta file |
-| Taken/not-taken `beqz` | 3 / 1 cycles | `evidence/timing/esp32s3-rev02-tinydraw-2bf3ffd-beqz-adoption.json` |
-| MMIO write cost (same-value run of n) | affine, 3n minus 8 cycles | `evidence/timing/esp32s3-rev02-tinydraw-e8a9f0e-mmio-write-adoption.json` |
-| Cache line fill, subsequent lines (I-flash / D-flash / D-PSRAM) | 266 / 473 / 170 cycles | `evidence/timing/esp32s3-rev02-tinydraw-a91d1d7-cache-burst-adoption.json` |
-| Cache line fill, first line (I-flash / D-flash / D-PSRAM) | exact, 203 / 114 / 81 cycles | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` (`cacheProbeDiagnostic`, v61 fields) |
-| Interrupt entry / resume, level 1 | 227 / 143 cycles (IDF 6.1) | same delta file |
-| Interrupt entry / resume, level 3 | 222 / 139 cycles (IDF 6.1) | same delta file |
-| Boot to first output | 0.472 s median (IDF 6.1) | same delta file |
+### Price table
+
+Only per-instruction costs and additive delays belong here. A distribution
+does not provide a scalar total; measured mode records it at its named tier.
+
+| Cost class | Tier | Price | ChipConfig scope | Receipt |
+| --- | --- | --- | --- | --- |
+| Straight-line instruction issue | exact | 1 cycle per instruction | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| `mull`, `mulsh`, `muluh`, `nsa`, `nsau`, `sext`, `memw`, `extw`, `rsr`, `wsr`, `xsr`, `rsync`, `movsp`, `min`, `max`, `minu`, `maxu` | exact | 1 cycle per instruction | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| Conditional branches, wide and narrow | exact | 3 cycles taken, 1 not taken | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `j` | exact | 3 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `jx` | exact | 6 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `loop`, `loopnez`, `loopgtz` setup | exact | 5 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `quos`, `quou` | exact | 4 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `rems`, `remu` | exact | 5 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `l32r` | interval | 1 to 2 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `s32c1i` | exact | 6 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| `isync` | interval | 6 to 7 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| Load-use dependency at distance 1 | exact | +1 additive cycle; distance 2 is +0 | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| Independent aligned SRAM load or store | exact | +0 additive cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz` |
+| Hot I-cache hit from flash | exact | +0 additive cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-rev02-tinydraw-1ddd64b-4a2c659-hot-hit-adoption.json` |
+| Hot D-cache load hit from flash or PSRAM | exact | +0 additive cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-rev02-tinydraw-1ddd64b-4a2c659-hot-hit-adoption.json` |
+| Loop body alignment at residue +3 mod 4 | exact | +1 additive cycle per iteration | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| First cache-line fill, I-flash / D-flash / D-PSRAM | exact | 203 / 114 / 81 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| Subsequent cache-line fill, I-flash / D-flash / D-PSRAM | interval | adopted centers 266 / 473 / 170 cycles, ladder residuals ±1 / ±2 / ±2 | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-rev02-tinydraw-a91d1d7-cache-burst-adoption.json` |
+| MMIO read, SYSTEM / SENSITIVE / EXTMEM / ASSIST_DEBUG | exact | 9 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO read, APB peripheral blocks | exact | 15 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO read, NRX | exact | 18 cycles | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO read, RTC | distribution | 80.203125 to 80.96484375 cycles observed | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO read, eFuse | distribution | 80.34375 to 80.82421875 cycles observed | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO write enqueue while posted buffer has room | exact | 1 cycle per write, depth 8 | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO write steady drain, SYSTEM / SENSITIVE / EXTMEM / ASSIST_DEBUG | exact | 4 cycles per write | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO write steady drain, APB peripheral blocks | exact | 15 cycles per write | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO write steady drain, NRX | interval | 17 to 18 cycles per write | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| MMIO write steady drain, RTC | distribution | 69.7265625 to 70.62890625 cycles observed | `C240-Q80-O80-I32-D64` | `evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json` |
+| Concurrent SPI2 DMA effect on a 32 KiB PSRAM-to-SRAM CPU copy | exact | +0 additive cycles within the observed 0 to 3.5-cycle range | `C240-Q80-O80-I32-D64`; SPI2 quad 40 MHz | `evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json` |
+
+### Correlation targets
+
+These are measured sequence totals. They test the sum of independently priced
+instructions and delays and are never themselves prices.
+
+| Sequence | Tier | Receipt target | Receipt |
+| --- | --- | --- | --- |
+| 256 `call0` or `callx0` plus `ret` pairs | exact | 1,664 cycles | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| 256 `call8` or `callx8` plus `retw` pairs | exact | 1,920 cycles | `evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json` |
+| Window overflow plus underflow pair past depth 6 | exact | 35 cycles | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| Interrupt level 1 entry / resume | exact | 227 / 143 cycles | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| Interrupt level 3 entry / resume | exact | 222 / 139 cycles | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` |
+| ROM `memset`, zero length / 0x52e0 bytes | exact | 31 / 6,659 matched cycles | `evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz` |
+| ROM BBPLL first / steady same-value write | exact | 836 / 835 matched cycles | `evidence/timing/rom-i2c-bbpll-0a41b6f/README.md` |
+| ROM `_xtos_set_intlevel(0x00040c00)` restore | exact | 15 matched cycles | `evidence/timing/esp32s3-rev02-tinydraw-d42615b-xtos-intlevel-adoption.json` |
+| `rgb565_stage_five_scalar_oracle_hot` | exact | 50 cycles | `evidence/timing/idf61-rebaseline-3db3985/receipts/boot-1-recovered.tar.gz` |
+| SPI2 quad 40 MHz 32 KiB submit / submit-to-complete | exact | 5,755 / 401,589 cycles | `evidence/timing/esp32s3-dma-sram-2026-09-02/summary.json` |
+
+The IDF 6.1 rebaseline has 210 identities: 105 single-core identities were
+examined, 103 contended identities were excluded for milestone 5, and the two
+missing identities are contended RTC cells. Its additive and per-instruction
+results are all represented above: issue, independent SRAM access, dependent
+load-use, hot instruction and load hits, branch direction, loop alignment,
+MMIO, and cache fills. The unaligned-access, ROM, RGB565, flash-map, PSRAM,
+reset-reason, and cache-ladder bodies are sequence or workload totals; R2
+prevents treating those totals as prices. RTC and long-window PSRAM remain
+distribution-tier observations.
+
+Boot to first output is a non-ledger observation: median 0.472351875 seconds
+under IDF 6.1, recorded in
+`evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json`.
 
 Toolchain rule: every receipt pins its ESP-IDF version, sdkconfig
 hash, and compiler. The current baseline is ESP-IDF v6.1 with
