@@ -1,25 +1,6 @@
 {
-  "passing": {},
-  "ignored": {
-    "idf61_window_overflow_underflow_pair": {
-      "measured_cycles": 28,
-      "receipt_cycles": 35,
-      "delta_cycles": -7
-    },
-    "level1_interrupt_entry_resume": {
-      "measured_cycles": [0, 0],
-      "receipt_cycles": [227, 143],
-      "delta_cycles": [-227, -143]
-    },
-    "rom_memset_zero_long": {
-      "measured_cycles": [0, 0],
-      "receipt_cycles": [31, 6659],
-      "delta_cycles": [-31, -6659]
-    },
-    "rgb565_scalar_oracle_hot": {
-      "measured_cycles": 0,
-      "receipt_cycles": 50,
-      "delta_cycles": -50
-    }
-  }
+  "passing": [
+    "tinydraw_sram_kernel_has_deterministic_receipt_priced_ledger"
+  ],
+  "ignored": {}
 }
