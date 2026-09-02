@@ -88,7 +88,7 @@ h1_vector_base:
 .type exception_level1_handler, @function
 exception_level1_handler:
   rsr a2, epc1
-  addi a2, a2, 3
+  _addi a2, a2, 3
   wsr a2, epc1
   rsync
   rfe

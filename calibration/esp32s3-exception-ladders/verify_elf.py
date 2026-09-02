@@ -95,7 +95,7 @@ def verify_disassembly(disassembly: str) -> dict[str, object]:
         raise VerificationError("syscall_rfe_pair does not contain syscall")
     handler = _require(functions, "exception_level1_handler")
     known = handler[:5]
-    expected = ("rsr.epc1", "addi.n", "wsr.epc1", "rsync", "rfe")
+    expected = ("rsr.epc1", "addi", "wsr.epc1", "rsync", "rfe")
     actual = tuple(mnemonic for _, _, mnemonic, _ in known)
     if actual != expected or len(handler) != 5:
         raise VerificationError("exception handler is not the exact five-term EPC1 adjustment")
