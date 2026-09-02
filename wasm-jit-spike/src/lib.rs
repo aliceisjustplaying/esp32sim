@@ -2,4 +2,7 @@
 
 pub mod emitter;
 
-pub use emitter::{emit, price_table_cost, CompileError, EmittedModule, REGISTER_COUNT};
+pub use emitter::{
+    emit, emit_with_options, price_table_cost, CompileError, EmitOptions, EmittedModule,
+    REGISTER_COUNT,
+};
