@@ -1,16 +1,14 @@
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use wasm_jit_spike::{
     emit_windowed, WindowFallback, WindowState, FALLBACK_OFFSET, PHYSICAL_AR_OFFSET,
     PHYSICAL_REGISTER_COUNT, PS_OFFSET, WINDOWBASE_OFFSET, WINDOWSTART_OFFSET,
 };
 use xtensa_lx7::state::{ps, vec};
-use xtensa_lx7::{step, Cpu, FlatRam, Trap};
+use xtensa_lx7::{decode, step, Cpu, FlatRam, Op, Trap};
 
 const SRAM_BASE: u32 = 0x3fc8_0000;
-const PC_OFFSET: usize = 64;
-const CYCLE_OFFSET: usize = 72;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Snapshot {
     ar: [u32; PHYSICAL_REGISTER_COUNT],
@@ -26,6 +24,8 @@ struct Snapshot {
 fn one_hundred_windowed_call_return_blocks_match_the_interpreter() {
     require_node();
     let mut rng = Rng::new(0x5749_4e44_4f57_5341);
+    let mut module_bytes = 0;
+    let mut guest_instructions = 0;
     for case in 0..100 {
         let increment = 1 + case % 3;
         let indirect = case & 1 != 0;
@@ -34,14 +34,17 @@ fn one_hundred_windowed_call_return_blocks_match_the_interpreter() {
         let initial = initial_cpu(&mut rng, &block, increment, indirect);
         let mut expected_cpu = initial.clone();
         let expected = interpret_to_exit(&mut expected_cpu, &block);
-        let actual = execute_node(
-            case,
-            &emit_windowed(SRAM_BASE, &block, WindowState::from(&initial))
-                .expect("windowed block emits")
-                .bytes,
-        );
+        let module = emit_windowed(SRAM_BASE, &block, WindowState::from(&initial))
+            .expect("windowed block emits");
+        let actual = execute_node(case, &module.bytes);
         assert_eq!(actual, expected, "case {case}");
+        module_bytes += module.bytes.len();
+        guest_instructions += module.instruction_count;
     }
+    println!(
+        "window_cases=100 module_bytes={module_bytes} guest_instructions={guest_instructions} bytes_per_guest_instruction={:.3}",
+        module_bytes as f64 / guest_instructions as f64
+    );
 }
 
 #[test]
@@ -61,10 +64,14 @@ fn one_hundred_window_overflows_fallback_then_resume_bit_identically() {
         let first = emit_windowed(SRAM_BASE, &block, WindowState::from(&initial))
             .expect("overflowing block still emits");
         let trapped = execute_node(case * 2, &first.bytes);
-        assert!(matches!(
-            trapped.fallback,
-            WindowFallback::Overflow { increment: n } if n == increment as u8
-        ));
+        assert!(
+            matches!(
+                trapped.fallback,
+                WindowFallback::Overflow { increment: n } if n == increment as u8
+            ),
+            "case {case}, increment {increment}, fallback {:?}",
+            trapped.fallback
+        );
         assert_eq!(trapped.pc, SRAM_BASE, "fallback precedes the call");
 
         let mut resumed_cpu = cpu_from_snapshot(trapped);
@@ -90,6 +97,7 @@ fn initial_cpu(rng: &mut Rng, block: &[u8], increment: usize, indirect: bool) ->
         ps: ps::WOE | ps::UM,
         windowbase: rng.range(16),
         windowstart: 0,
+        vecbase: SRAM_BASE + 0x400,
         ..Cpu::default()
     };
     cpu.windowstart = 1 << cpu.windowbase;
@@ -141,8 +149,14 @@ fn interpret_to_exit(cpu: &mut Cpu, block: &[u8]) -> Snapshot {
         if cpu.pc < SRAM_BASE || cpu.pc >= SRAM_BASE + block.len() as u32 {
             return snapshot(cpu, cycles, WindowFallback::None);
         }
+        let pc = cpu.pc;
+        let offset = (pc - SRAM_BASE) as usize;
+        let mut bytes = [0; 4];
+        let available = (block.len() - offset).min(4);
+        bytes[..available].copy_from_slice(&block[offset..offset + available]);
+        let op = decode(pc, bytes).op;
         step(cpu, &mut ram).expect("non-overflowing window block executes");
-        cycles += 1;
+        cycles += if op == Op::J { 3 } else { 1 };
     }
     panic!("window block did not exit");
 }
@@ -153,12 +167,21 @@ fn run_overflow_handler(cpu: &mut Cpu, block: &[u8]) {
         step(cpu, &mut ram),
         Err(Trap::Exception(0x201..=0x203))
     ));
-    let handler = cpu.vecbase
-        + match cpu.exccause - 0x200 {
-            1 => vec::WINDOW_OF4,
-            2 => vec::WINDOW_OF8,
-            _ => vec::WINDOW_OF12,
-        };
+    let handler = cpu.pc;
+    let start = (handler - SRAM_BASE) as usize;
+    assert_eq!(
+        decode(
+            handler,
+            [
+                ram.mem[start],
+                ram.mem[start + 1],
+                ram.mem[start + 2],
+                ram.mem[start + 3],
+            ],
+        )
+        .op,
+        Op::Rfwo
+    );
     assert_eq!(cpu.pc, handler);
     step(cpu, &mut ram).expect("synthetic rfwo handler returns to the call");
     assert_eq!(cpu.pc, SRAM_BASE);
@@ -169,7 +192,7 @@ fn ram_with_program(block: &[u8], vecbase: u32) -> FlatRam {
     ram.mem[..block.len()].copy_from_slice(block);
     for offset in [vec::WINDOW_OF4, vec::WINDOW_OF8, vec::WINDOW_OF12] {
         let start = vecbase.wrapping_add(offset).wrapping_sub(SRAM_BASE) as usize;
-        ram.mem[start..start + 3].copy_from_slice(&[0x40, 0x30, 0x00]);
+        ram.mem[start..start + 3].copy_from_slice(&[0x00, 0x34, 0x00]);
     }
     ram
 }
@@ -181,6 +204,7 @@ fn cpu_from_snapshot(value: Snapshot) -> Cpu {
         windowbase: value.windowbase,
         windowstart: value.windowstart,
         ps: value.ps,
+        vecbase: SRAM_BASE + 0x400,
         ..Cpu::default()
     }
 }
@@ -198,6 +222,7 @@ fn snapshot(cpu: &Cpu, cycles: u64, fallback: WindowFallback) -> Snapshot {
 }
 
 fn execute_node(case: usize, module: &[u8]) -> Snapshot {
+    static SEQUENCE: AtomicUsize = AtomicUsize::new(0);
     const SCRIPT: &str = r#"
 const fs = require('fs');
 WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
@@ -211,8 +236,9 @@ WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
 }).catch(error => { console.error(error); process.exit(1); });
 "#;
     let path = std::path::Path::new("/tmp").join(format!(
-        "esp32sim-wasm-jit-windows-{}-{case}.wasm",
-        std::process::id()
+        "esp32sim-wasm-jit-windows-{}-{case}-{}.wasm",
+        std::process::id(),
+        SEQUENCE.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::write(&path, module).expect("write wasm");
     let output = Command::new("node")
