@@ -37,6 +37,10 @@ fn checksum(data: &[u8], init: u32) -> u16 {
     !(sum as u16)
 }
 
+fn ntp_fraction(nanos: u32) -> u32 {
+    (((nanos as u64) << 32) / 1_000_000_000) as u32
+}
+
 impl VirtualNet {
     pub fn new(log: bool) -> Self {
         VirtualNet { gw_mac: [0x02, 0x53, 0x49, 0x4d, 0x00, 0x02], gw_ip: [10, 0, 2, 2], dns_ip: [10, 0, 2, 3],
@@ -227,7 +231,7 @@ impl VirtualNet {
         if q.len() < 48 { return Vec::new(); }
         let now = std::time::Duration::from_millis(crate::host::unix_time_ms());
         let secs = (now.as_secs() + 2_208_988_800) as u32;               // seconds since 1900
-        let frac = ((now.subsec_nanos() as u64) << 32 / 1) as u32;
+        let frac = ntp_fraction(now.subsec_nanos());
         let mut r = vec![0u8; 48];
         r[0] = (0 << 6) | (4 << 3) | 4;                                  // no warning, version 4, server
         r[1] = 1;                                                        // stratum 1
@@ -273,4 +277,15 @@ fn ip_packet(proto: u8, src: &[u8; 4], dst: &[u8; 4], payload: &[u8]) -> Vec<u8>
     h.extend_from_slice(src); h.extend_from_slice(dst);
     let c = checksum(&h, 0).to_be_bytes(); h[10] = c[0]; h[11] = c[1];
     h.extend_from_slice(payload); h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ntp_fraction;
+
+    #[test]
+    fn ntp_fraction_converts_nanoseconds() {
+        assert_eq!(ntp_fraction(500_000_000), 0x8000_0000);
+        assert_eq!(ntp_fraction(250_000_000), 0x4000_0000);
+    }
 }
