@@ -1,4 +1,6 @@
-use crate::{price_operation, CostComponent, TimingMutation, TimingRefusal, VirtualCycle};
+use crate::{
+    price_operation, ChipConfig, CostComponent, TimingMutation, TimingRefusal, VirtualCycle,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CoreId {
@@ -165,10 +167,21 @@ pub struct TraceReport {
 }
 
 /// Shared transaction engine used by fake and real backends.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TransactionEngine {
     state: SchedulerState,
     ledger: Vec<LedgerEntry>,
+    config: ChipConfig,
+}
+
+impl Default for TransactionEngine {
+    fn default() -> Self {
+        Self {
+            state: SchedulerState::default(),
+            ledger: Vec::new(),
+            config: ChipConfig::RECEIPT_SCOPE,
+        }
+    }
 }
 
 impl TransactionEngine {
@@ -181,7 +194,7 @@ impl TransactionEngine {
     }
 
     pub fn execute(&mut self, event: TraceEvent) -> Result<TransactionReceipt, TimingRefusal> {
-        let (component, mutation) = price_operation(event.core, event.operation)?;
+        let (component, mutation) = price_operation(self.config, event.core, event.operation)?;
         self.execute_priced(
             event.core,
             event.pc,
@@ -213,6 +226,7 @@ impl TransactionEngine {
                 }),
             tier_candidate: crate::CostTier::Unexplained,
             reason: crate::RefusalReason::CycleOverflow,
+            configuration: None,
         })?;
         let completion = start.checked_add(cycles).ok_or(TimingRefusal {
             class: components
@@ -222,6 +236,7 @@ impl TransactionEngine {
                 }),
             tier_candidate: crate::CostTier::Unexplained,
             reason: crate::RefusalReason::CycleOverflow,
+            configuration: None,
         })?;
         if outcome == ExecutionOutcome::Faulted {
             return Ok(TransactionReceipt { entry: None });
@@ -275,6 +290,7 @@ impl TransactionEngine {
                 class: crate::CostClass::InternalInstruction,
                 tier_candidate: crate::CostTier::Unexplained,
                 reason: crate::RefusalReason::CycleOverflow,
+                configuration: None,
             })?;
         Ok(TraceReport {
             total_cycles,

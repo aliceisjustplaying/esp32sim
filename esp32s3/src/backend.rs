@@ -1,8 +1,8 @@
 //! Receipt-backed measured adapter for the ESP32-S3 interpreter.
 
 use backend_api::{
-    price_operation, Backend, CoreId, CostComponent, ExecutionOutcome, Operation, RefusalReason,
-    TimingMutation, TimingRefusal, TransactionEngine,
+    price_operation, Backend, ChipConfig, CoreId, CostComponent, ExecutionOutcome, FlashMode,
+    Operation, PsramMode, RefusalReason, TimingMutation, TimingRefusal, TransactionEngine,
 };
 use xtensa_lx7::measured::{complete_instruction, plan_instruction, CompletionError, PlanError};
 use xtensa_lx7::measured::{InstructionObservation, MemoryClass, TimingPlan, TimingSource};
@@ -11,9 +11,19 @@ use xtensa_lx7::{Op, Trap};
 
 /// Product adapter. Fake and product adapters both delegate scheduling state,
 /// transactional commit, and canonical ledger generation to `TransactionEngine`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Esp32Backend {
     engine: TransactionEngine,
+    config: ChipConfig,
+}
+
+impl Default for Esp32Backend {
+    fn default() -> Self {
+        Self {
+            engine: TransactionEngine::default(),
+            config: ChipConfig::RECEIPT_SCOPE,
+        }
+    }
 }
 
 impl Esp32Backend {
@@ -58,11 +68,12 @@ impl Backend for Esp32Backend {
 impl TimingSource for Esp32Backend {
     fn price(&self, observation: &InstructionObservation) -> Result<TimingPlan, TimingRefusal> {
         let operation = self.operation_for(observation)?;
-        let (component, mutation) = price_operation(observation.core, operation)?;
+        let (component, mutation) = price_operation(self.config, observation.core, operation)?;
         let cycles = component.cycles().ok_or(TimingRefusal {
             class: component.class,
             tier_candidate: backend_api::CostTier::Unexplained,
             reason: RefusalReason::CycleOverflow,
+            configuration: None,
         })?;
         Ok(TimingPlan {
             cycles,
@@ -127,6 +138,7 @@ impl MeasuredMachine for crate::Machine {
         backend: &mut Esp32Backend,
         core: CoreId,
     ) -> Result<MeasuredStep, MeasuredStepError> {
+        backend.config = chip_config_from_registers(self);
         self.advance_measured_devices(self.bus.cycles)?;
         let index = core_index(core);
         let before_cycle = backend.engine().state().cores[index].cycle;
@@ -203,6 +215,54 @@ fn refresh_measured_interrupt_lines(machine: &mut crate::Machine) {
     }
 }
 
+fn chip_config_from_registers(machine: &crate::Machine) -> ChipConfig {
+    let system = &machine.bus.periph.system.ram;
+    let spi0 = &machine.bus.periph.spi0.regs;
+    let spi1 = &machine.bus.periph.spi1.regs;
+    let extmem = &machine.bus.periph.extmem.ram;
+    let cpu_mhz = match ((system.read(0x60) >> 10) & 3, system.read(0x10) & 3) {
+        (1, 0) => 80,
+        (1, 1) => 160,
+        (1, 2) => 240,
+        _ => 0,
+    };
+    let clock_mhz = |register: u32| {
+        if register & (1 << 31) != 0 {
+            160
+        } else {
+            160 / (((register >> 16) & 0xff) as u16 + 1)
+        }
+    };
+    let flash0 = clock_mhz(spi0.read(0x14));
+    let flash1 = clock_mhz(spi1.read(0x14));
+    ChipConfig {
+        cpu_mhz,
+        flash_mode: if spi0.read(0x8) & (1 << 24) != 0 {
+            FlashMode::Qio
+        } else {
+            FlashMode::Other
+        },
+        flash_mhz: if flash0 == flash1 { flash0 } else { 0 },
+        psram_mode: if spi0.read(0x40) & (1 << 21) != 0 {
+            PsramMode::OctalDtr
+        } else {
+            PsramMode::Other
+        },
+        psram_mhz: clock_mhz(spi0.read(0x50)),
+        icache_line_bytes: if extmem.read(0x60) & (1 << 3) != 0 {
+            32
+        } else {
+            16
+        },
+        dcache_line_bytes: match (extmem.read(0x0) >> 3) & 3 {
+            0 => 16,
+            1 => 32,
+            2 => 64,
+            _ => 0,
+        },
+    }
+}
+
 const fn core_index(core: CoreId) -> usize {
     match core {
         CoreId::Core0 => 0,
@@ -223,12 +283,26 @@ mod tests {
 
     fn branch_machine(register: u32) -> crate::Machine {
         let mut machine = crate::machine([0; 6]);
+        set_receipt_config_registers(&mut machine);
         machine
             .bus
             .load_bytes(RESET_PC, &BEQZ_N_A6)
             .expect("test branch maps in mask ROM");
         machine.cores[0].set_ar(6, register);
         machine
+    }
+
+    fn set_receipt_config_registers(machine: &mut crate::Machine) {
+        machine.bus.periph.system.ram.write(0x10, 6);
+        machine.bus.periph.system.ram.write(0x60, 1 << 10);
+        for spi in [&mut machine.bus.periph.spi0, &mut machine.bus.periph.spi1] {
+            spi.regs.write(0x8, 1 << 24);
+            spi.regs.write(0x14, 0x0001_0001);
+        }
+        machine.bus.periph.spi0.regs.write(0x40, 1 << 21);
+        machine.bus.periph.spi0.regs.write(0x50, 0x0001_0001);
+        machine.bus.periph.extmem.ram.write(0x0, 2 << 3);
+        machine.bus.periph.extmem.ram.write(0x60, 1 << 3);
     }
 
     fn measured_branch_ledger(register: u32) -> Vec<u8> {
