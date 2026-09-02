@@ -13,8 +13,8 @@ pub mod contract_suite;
 pub use fake::FakeBackend;
 pub use timing::{
     price_operation, CacheFillPosition, CacheKind, ChipConfig, CostClass, CostComponent,
-    CostExpression, CostTier, FlashMode, Operation, PsramMode, ReceiptId, RefusalReason,
-    TimingMutation, TimingRefusal,
+    CostExpression, CostTier, FlashMode, InstructionCost, MmioTier, Operation, PsramMode,
+    ReceiptId, RefusalReason, TimingMutation, TimingRefusal,
 };
 pub use transaction::{
     Backend, CoreId, CoreState, ExecutionOutcome, LedgerEntry, SchedulerState, TraceEvent,
