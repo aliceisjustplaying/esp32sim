@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 2,
+  "harnessVersion": "1.0.0",
+  "chipModel": "ESP32-S3",
+  "chipRevision": 2,
+  "cells": [
+    {"id": "copy_psram_to_sram_idle", "family": "dma-sram", "samples": 100, "variants": ["normal"]},
+    {"id": "copy_psram_to_sram_dma_active", "family": "dma-sram", "samples": 100, "variants": ["normal"]},
+    {"id": "copy_sram_to_sram_dma_active", "family": "dma-sram", "samples": 100, "variants": ["normal"]},
+    {"id": "spi2_32k_submit_to_complete", "family": "dma-sram", "samples": 100, "variants": ["normal"]},
+    {"id": "spi2_32k_submit_only", "family": "dma-sram", "samples": 100, "variants": ["normal"]}
+  ]
+}
