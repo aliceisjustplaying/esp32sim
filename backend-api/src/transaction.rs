@@ -37,7 +37,7 @@ pub struct CoreState {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SchedulerState {
     pub cores: [CoreState; 2],
-    pub last_mmio_write: Option<(u32, u32, u32)>,
+    pub posted_mmio_writes: u8,
     pub committed_cache_fills: u64,
     pub committed_loop_edges: [u64; 2],
 }
@@ -102,9 +102,10 @@ fn encode_component(component: CostComponent, output: &mut Vec<u8>) {
 
 const fn format_free_class_code(class: crate::CostClass) -> u16 {
     match class {
-        crate::CostClass::BranchZero { taken: false } => 0,
-        crate::CostClass::BranchZero { taken: true } => 1,
-        crate::CostClass::SameValueMmioWriteRun { .. } => 2,
+        crate::CostClass::Instruction(kind) => 20 + instruction_code(kind),
+        crate::CostClass::MmioRead(tier) => 40 + mmio_code(tier),
+        crate::CostClass::MmioWriteEnqueue => 50,
+        crate::CostClass::MmioWriteDrain(tier) => 51 + mmio_code(tier),
         crate::CostClass::CacheLineFill {
             cache: crate::CacheKind::InstructionFlash,
             position: crate::CacheFillPosition::First,
@@ -130,8 +131,38 @@ const fn format_free_class_code(class: crate::CostClass) -> u16 {
             position: crate::CacheFillPosition::Subsequent,
         } => 8,
         crate::CostClass::LoopAlignment { .. } => 10,
-        crate::CostClass::InternalInstruction => 11,
-        crate::CostClass::UnknownMmio => 12,
+        crate::CostClass::IndependentSramAccess => 11,
+        crate::CostClass::HotCacheHit => 12,
+        crate::CostClass::DmaAdditiveDelay => 13,
+        crate::CostClass::UnadoptedInstruction => 14,
+        crate::CostClass::UnknownMmio => 15,
+    }
+}
+
+const fn instruction_code(kind: crate::InstructionCost) -> u16 {
+    match kind {
+        crate::InstructionCost::Issue => 0,
+        crate::InstructionCost::Branch { taken: false } => 1,
+        crate::InstructionCost::Branch { taken: true } => 2,
+        crate::InstructionCost::Jump => 3,
+        crate::InstructionCost::JumpRegister => 4,
+        crate::InstructionCost::LoopSetup => 5,
+        crate::InstructionCost::Quotient => 6,
+        crate::InstructionCost::Remainder => 7,
+        crate::InstructionCost::AtomicStore => 8,
+        crate::InstructionCost::LoadUse => 9,
+        crate::InstructionCost::LiteralLoad => 10,
+        crate::InstructionCost::InstructionSync => 11,
+    }
+}
+
+const fn mmio_code(tier: crate::MmioTier) -> u16 {
+    match tier {
+        crate::MmioTier::Fast => 0,
+        crate::MmioTier::Apb => 1,
+        crate::MmioTier::Nrx => 2,
+        crate::MmioTier::Rtc => 3,
+        crate::MmioTier::Efuse => 4,
     }
 }
 
@@ -147,10 +178,11 @@ const fn tier_code(tier: crate::CostTier) -> u8 {
 
 const fn receipt_code(receipt: crate::ReceiptId) -> u8 {
     match receipt {
-        crate::ReceiptId::BeqzAdoption2bf3ffd => 0,
-        crate::ReceiptId::MmioWriteAdoptionE8a9f0e => 1,
-        crate::ReceiptId::CacheBurstAdoptionA91d1d7 => 2,
-        crate::ReceiptId::Idf61ToolchainDelta => 3,
+        crate::ReceiptId::Idf61ToolchainDelta => 0,
+        crate::ReceiptId::OpcodeLadders => 1,
+        crate::ReceiptId::RegisterBlocks => 2,
+        crate::ReceiptId::HotHitAdoption => 3,
+        crate::ReceiptId::CacheBurstAdoptionA91d1d7 => 4,
     }
 }
 
@@ -221,7 +253,7 @@ impl TransactionEngine {
         let cycles = cycles.ok_or(TimingRefusal {
             class: components
                 .first()
-                .map_or(crate::CostClass::InternalInstruction, |component| {
+                .map_or(crate::CostClass::UnadoptedInstruction, |component| {
                     component.class
                 }),
             tier_candidate: crate::CostTier::Unexplained,
@@ -231,7 +263,7 @@ impl TransactionEngine {
         let completion = start.checked_add(cycles).ok_or(TimingRefusal {
             class: components
                 .first()
-                .map_or(crate::CostClass::InternalInstruction, |component| {
+                .map_or(crate::CostClass::UnadoptedInstruction, |component| {
                     component.class
                 }),
             tier_candidate: crate::CostTier::Unexplained,
@@ -260,11 +292,9 @@ impl TransactionEngine {
 
     fn commit_mutation(&mut self, mutation: Option<TimingMutation>) {
         match mutation {
-            Some(TimingMutation::RecordMmioWrite {
-                address,
-                value,
-                count,
-            }) => self.state.last_mmio_write = Some((address, value, count)),
+            Some(TimingMutation::RecordMmioWrite) => {
+                self.state.posted_mmio_writes = self.state.posted_mmio_writes.saturating_add(1);
+            }
             Some(TimingMutation::RecordCacheFill { .. }) => {
                 self.state.committed_cache_fills =
                     self.state.committed_cache_fills.saturating_add(1);
@@ -287,7 +317,7 @@ impl TransactionEngine {
             .iter()
             .try_fold(0u64, |total, core| total.checked_add(core.cycle))
             .ok_or(TimingRefusal {
-                class: crate::CostClass::InternalInstruction,
+                class: crate::CostClass::UnadoptedInstruction,
                 tier_candidate: crate::CostTier::Unexplained,
                 reason: crate::RefusalReason::CycleOverflow,
                 configuration: None,
