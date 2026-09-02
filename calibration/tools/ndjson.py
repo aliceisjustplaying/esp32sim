@@ -17,6 +17,7 @@ PREFIX = "TINYDRAW_TIER_B_NDJSON "
 CAL_PREFIX = "CAL_RECORD "
 CAL_DONE = "CALIBRATION_DONE"
 CAL_FAILED = "CALIBRATION_FAILED"
+KEY_VALUE = re.compile(r"(?:^|\s)([A-Za-z][A-Za-z0-9_]*)=([^\s]+)")
 CACHE_COUNTER_MISMATCH = re.compile(r"\bcache[- ]counters? mismatch\b", re.IGNORECASE)
 PROTOCOL_VERSION = 2
 REQUIRED_IDF_VERSION = "v6.1"
@@ -170,6 +171,9 @@ class CellContract:
     family: str = ""
     factors: tuple[tuple[str, int], ...] = ()
     clock_domain: str | None = None
+    known_terms: tuple[str, ...] = ()
+    console_line: str | None = None
+    microsecond_fields: tuple[str, ...] = ()
 
     def factor_map(self) -> dict[str, int]:
         return dict(self.factors)
@@ -287,6 +291,7 @@ class ManifestContract:
     cells: tuple[CellContract, ...]
     manifest_sha256: str = ""
     exclusions: tuple[RegisterExclusion, ...] = ()
+    terminal_line: str = CAL_DONE
 
     @classmethod
     def load(cls, path: Path = DEFAULT_MANIFEST) -> "ManifestContract":
@@ -306,7 +311,7 @@ class ManifestContract:
             payload,
             label,
             {"protocolVersion", "harnessVersion", "chipModel", "chipRevision", "cells"},
-            {"exclusions"},
+            {"exclusions", "terminalLine"},
         )
         protocol_version = _integer(payload["protocolVersion"], "manifest.protocolVersion", 1)
         if protocol_version != PROTOCOL_VERSION:
@@ -324,7 +329,14 @@ class ManifestContract:
                 cell,
                 path_name,
                 {"id", "family", "samples", "variants"},
-                {"status", "factors", "clockDomain"},
+                {
+                    "status",
+                    "factors",
+                    "clockDomain",
+                    "knownTerms",
+                    "consoleLine",
+                    "microsecondFields",
+                },
             )
             family = _string(cell["family"], f"{path_name}.family")
             if "status" in cell:
@@ -357,6 +369,34 @@ class ManifestContract:
                     raise ValidationError(
                         f"{path_name}.clockDomain has unsupported value {clock_domain!r}"
                     )
+            known_terms: tuple[str, ...] = ()
+            if "knownTerms" in cell:
+                known_terms = tuple(
+                    _string_list(cell["knownTerms"], f"{path_name}.knownTerms")
+                )
+            console_line = None
+            if "consoleLine" in cell:
+                console_line = _string(cell["consoleLine"], f"{path_name}.consoleLine")
+                if family != "console-line":
+                    raise ValidationError(
+                        f"{path_name}.consoleLine requires family 'console-line'"
+                    )
+                if any(character.isspace() for character in console_line):
+                    raise ValidationError(f"{path_name}.consoleLine must be one token")
+            microsecond_fields: tuple[str, ...] = ()
+            if "microsecondFields" in cell:
+                microsecond_fields = tuple(
+                    _string_list(
+                        cell["microsecondFields"],
+                        f"{path_name}.microsecondFields",
+                    )
+                )
+                if console_line is None:
+                    raise ValidationError(
+                        f"{path_name}.microsecondFields requires consoleLine"
+                    )
+            if family == "console-line" and console_line is None:
+                raise ValidationError(f"{path_name} console-line cell requires consoleLine")
             cells.append(
                 CellContract(
                     id=_string(cell["id"], f"{path_name}.id"),
@@ -366,11 +406,17 @@ class ManifestContract:
                     family=family,
                     factors=factors,
                     clock_domain=clock_domain,
+                    known_terms=known_terms,
+                    console_line=console_line,
+                    microsecond_fields=microsecond_fields,
                 )
             )
         ids = [cell.id for cell in cells]
         if len(ids) != len(set(ids)):
             raise ValidationError("manifest.cells contains duplicate IDs")
+        console_lines = [cell.console_line for cell in cells if cell.console_line]
+        if len(console_lines) != len(set(console_lines)):
+            raise ValidationError("manifest.cells contains duplicate consoleLine values")
         exclusions: list[RegisterExclusion] = []
         raw_exclusions = payload.get("exclusions", [])
         if not isinstance(raw_exclusions, list):
@@ -405,6 +451,7 @@ class ManifestContract:
             chip_revision=_integer(payload["chipRevision"], "manifest.chipRevision"),
             cells=tuple(cells),
             exclusions=tuple(exclusions),
+            terminal_line=_string(payload.get("terminalLine", CAL_DONE), "manifest.terminalLine"),
             manifest_sha256=hashlib.sha256(data).hexdigest(),
         )
         design_ranks(contract.cells)
@@ -1040,10 +1087,11 @@ class CalibrationTally:
     terminal_seen: bool
     console_lines: int
     dry_run: bool
+    console_counters: tuple[dict[str, int | str], ...] = ()
 
-    def as_dict(self) -> dict[str, int | bool]:
+    def as_dict(self) -> dict[str, Any]:
         samples_complete = self.dry_run or self.captured_samples == self.expected_samples
-        return {
+        result: dict[str, Any] = {
             "complete": (
                 self.completed_cells == self.expected_cells
                 and samples_complete
@@ -1059,6 +1107,9 @@ class CalibrationTally:
             "terminalSeen": self.terminal_seen,
             "consoleLines": self.console_lines,
         }
+        if self.console_counters:
+            result["consoleCounters"] = list(self.console_counters)
+        return result
 
 
 class CalibrationValidator:
@@ -1082,12 +1133,19 @@ class CalibrationValidator:
         self.refusals = 0
         self.terminal_seen = False
         self.console_lines = 0
+        self._terminal_line = contract.terminal_line
+        self.console_counters: list[dict[str, int | str]] = []
+        self.console_contracts = {
+            cell.console_line: cell for cell in selected if cell.console_line is not None
+        }
 
     def feed_line(self, line: str, line_number: int) -> None:
         self.console_lines += 1
         if CAL_FAILED in line:
             raise ValidationError(f"line {line_number} reports {CAL_FAILED}")
-        if CAL_DONE in line:
+        if self.console_contracts:
+            self._console_line(line, line_number)
+        if self.terminal_line in line:
             self.terminal_seen = True
         prefix_index = line.find(CAL_PREFIX)
         if prefix_index < 0:
@@ -1143,6 +1201,46 @@ class CalibrationValidator:
                 raise ValidationError(f"line {line_number} has too many samples for {cell!r}")
         self.covered.add(cell)
 
+    @property
+    def terminal_line(self) -> str:
+        return self._terminal_line
+
+    def _console_line(self, line: str, line_number: int) -> None:
+        for line_name, contract in self.console_contracts.items():
+            assert line_name is not None
+            match = re.search(rf"(?:^|\s){re.escape(line_name)}(?:\s|$)", line)
+            if match is None:
+                continue
+            fields: dict[str, str] = {}
+            for field_match in KEY_VALUE.finditer(line[match.end() :]):
+                key, value = field_match.groups()
+                if key in fields:
+                    raise ValidationError(
+                        f"line {line_number} repeats {key!r} on {line_name}"
+                    )
+                fields[key] = value
+            parsed: dict[str, int | str] = {"line": line_name}
+            for key in contract.microsecond_fields:
+                if key not in fields:
+                    raise ValidationError(
+                        f"line {line_number} {line_name} is missing {key}"
+                    )
+                value = fields[key]
+                if re.fullmatch(r"[0-9]+", value) is None:
+                    raise ValidationError(
+                        f"line {line_number} {line_name}.{key} must be microseconds"
+                    )
+                parsed[key] = int(value)
+            cell = contract.id
+            self.samples[cell] += 1
+            if self.samples[cell] > contract.samples:
+                raise ValidationError(
+                    f"line {line_number} has too many {line_name} lines"
+                )
+            self.covered.add(cell)
+            self.console_counters.append(parsed)
+            return
+
     def _cell(self, record: dict[str, Any], line_number: int) -> str:
         name = record.get("name", record.get("cell"))
         cell = _string(name, f"line {line_number}.name")
@@ -1169,10 +1267,13 @@ class CalibrationValidator:
         if missing:
             raise ValidationError(f"capture is missing cells: {', '.join(missing)}")
         if not self.terminal_seen:
-            raise ValidationError(f"capture is missing {CAL_DONE}")
+            raise ValidationError(f"capture is missing {self.terminal_line}")
         expected_samples = sum(cell.samples for cell in self.contracts.values())
         captured_samples = sum(self.samples.values())
-        if not self.dry_run and captured_samples != expected_samples:
+        exact_console_counts = any(
+            cell.console_line is not None for cell in self.contracts.values()
+        )
+        if (not self.dry_run or exact_console_counts) and captured_samples != expected_samples:
             raise ValidationError(
                 f"capture has {captured_samples} samples, expected {expected_samples}"
             )
@@ -1185,6 +1286,7 @@ class CalibrationValidator:
             terminal_seen=self.terminal_seen,
             console_lines=self.console_lines,
             dry_run=self.dry_run,
+            console_counters=tuple(self.console_counters),
         )
 
 
@@ -1211,11 +1313,16 @@ def main() -> int:
     args = parser.parse_args()
     try:
         contract = ManifestContract.load(args.manifest)
+        has_console_cells = any(cell.console_line is not None for cell in contract.cells)
         if args.capture == Path("-"):
             import sys
 
             lines = sys.stdin.read().splitlines()
-            if not args.dry_run and not any(CAL_PREFIX in line for line in lines):
+            if (
+                not args.dry_run
+                and not has_console_cells
+                and not any(CAL_PREFIX in line for line in lines)
+            ):
                 raise ValidationError("strict Tier-B validation requires a capture path")
             tally = validate_calibration_lines(
                 lines, contract, args.variant, args.cells, args.dry_run
@@ -1227,7 +1334,7 @@ def main() -> int:
             )
         else:
             text = args.capture.read_text(encoding="utf-8")
-            if CAL_PREFIX in text:
+            if CAL_PREFIX in text or has_console_cells:
                 tally = validate_calibration_lines(
                     text.splitlines(), contract, args.variant, args.cells, False
                 )

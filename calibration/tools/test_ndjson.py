@@ -76,6 +76,34 @@ def contention_contract() -> ManifestContract:
     )
 
 
+def console_contract() -> ManifestContract:
+    return ManifestContract(
+        protocol_version=2,
+        harness_version="gate-main-7a157d4",
+        chip_model="ESP32-S3",
+        chip_revision=0,
+        terminal_line="TINYDRAW_GATE1_AUTOMATED_DONE",
+        cells=(
+            CellContract(
+                "live_present",
+                2,
+                ("normal",),
+                family="console-line",
+                console_line="TINYDRAW_LIVE_PRESENT",
+                microsecond_fields=("compose_us", "transfer_wait_us"),
+            ),
+            CellContract(
+                "live_stress",
+                1,
+                ("normal",),
+                family="console-line",
+                console_line="TINYDRAW_LIVE_STRESS",
+                microsecond_fields=("total_us", "maximum_us"),
+            ),
+        ),
+    )
+
+
 def line(record: str, **fields: object) -> str:
     return PREFIX + json.dumps({"protocolVersion": 2, "record": record, **fields})
 
@@ -950,6 +978,50 @@ class CaptureValidatorTest(unittest.TestCase):
         validator = CalibrationValidator(contract(), "normal", "store_hit_psram", True)
         with self.assertRaisesRegex(ValidationError, "malformed CAL_RECORD"):
             validator.feed_line("CAL_RECORD {", 1)
+
+    def test_console_line_contract_parses_microsecond_counters(self) -> None:
+        validator = CalibrationValidator(console_contract(), "normal", "all", True)
+        lines = [
+            "[00:00:01] TINYDRAW_LIVE_PRESENT kind=startup compose_us=11 transfer_wait_us=23",
+            "TINYDRAW_LIVE_PRESENT kind=gate compose_us=7 transfer_wait_us=19",
+            "TINYDRAW_LIVE_STRESS total_us=101 maximum_us=13",
+            "TINYDRAW_GATE1_AUTOMATED_DONE pass=1",
+        ]
+        for line_number, value in enumerate(lines, 1):
+            validator.feed_line(value, line_number)
+        tally = validator.finalize()
+        self.assertTrue(tally.as_dict()["complete"])
+        self.assertEqual(
+            tally.as_dict()["consoleCounters"][0],
+            {
+                "line": "TINYDRAW_LIVE_PRESENT",
+                "compose_us": 11,
+                "transfer_wait_us": 23,
+            },
+        )
+
+    def test_console_line_contract_requires_every_counter(self) -> None:
+        validator = CalibrationValidator(console_contract(), "normal", "all", True)
+        with self.assertRaisesRegex(ValidationError, "missing transfer_wait_us"):
+            validator.feed_line("TINYDRAW_LIVE_PRESENT compose_us=11", 1)
+
+    def test_console_line_contract_rejects_wrong_count_in_dry_run(self) -> None:
+        validator = CalibrationValidator(console_contract(), "normal", "all", True)
+        validator.feed_line(
+            "TINYDRAW_LIVE_PRESENT compose_us=11 transfer_wait_us=23", 1
+        )
+        validator.feed_line("TINYDRAW_LIVE_STRESS total_us=101 maximum_us=13", 2)
+        validator.feed_line("TINYDRAW_GATE1_AUTOMATED_DONE", 3)
+        with self.assertRaisesRegex(ValidationError, "2 samples"):
+            validator.finalize()
+
+    def test_manifest_console_line_contract_requires_its_family(self) -> None:
+        payload = manifest_payload()
+        payload["terminalLine"] = "TINYDRAW_GATE1_AUTOMATED_DONE"
+        payload["cells"][0]["consoleLine"] = "TINYDRAW_LIVE_PRESENT"
+        payload["cells"][0]["microsecondFields"] = ["compose_us"]
+        with self.assertRaisesRegex(ValidationError, "requires family 'console-line'"):
+            ManifestContract.from_bytes(json.dumps(payload).encode())
 
 
 if __name__ == "__main__":
