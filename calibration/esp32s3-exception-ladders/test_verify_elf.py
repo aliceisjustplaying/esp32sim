@@ -41,6 +41,19 @@ def manifest(tmp_path: Path, *, samples: int = 100) -> Path:
                         "family": "exception",
                         "samples": samples,
                         "variants": ["normal"],
+                        **(
+                            {
+                                "knownTerms": [
+                                    "rsr.epc1",
+                                    "addi",
+                                    "wsr.epc1",
+                                    "rsync",
+                                    "rfe",
+                                ]
+                            }
+                            if cell == "syscall_rfe_pair"
+                            else {}
+                        ),
                     }
                     for cell in CELL_IDS
                 ],
@@ -68,8 +81,12 @@ def disassembly() -> str:
 40370100: 0036f0 entry a1, 32
 40370103: 005000 syscall
 40370106: 1df0 retw.n
-40370200 <exception_level1_bare_handler>:
-40370200: 003000 rfe
+40370200 <exception_level1_handler>:
+40370200: 03e620 rsr.epc1 a2
+40370203: 223b addi.n a2, a2, 3
+40370205: 13e620 wsr.epc1 a2
+40370208: 002000 rsync
+4037020b: 003000 rfe
 40370300 <rfe_alone>:
 40370300: 001761 wsr.epc1 a7
 40370303: 03ea20 rsr.ccount a2
@@ -109,7 +126,14 @@ def test_verified_encodings_cover_all_six_h1_cells() -> None:
     assert result["cells"]["call4_window_pair"]["callMnemonic"] == "call4"
     assert result["cells"]["call8_window_pair"]["callMnemonic"] == "call8"
     assert result["cells"]["call12_window_pair"]["callMnemonic"] == "call12"
-    assert result["cells"]["syscall_rfe_pair"]["handlerEncoding"] == "003000"
+    assert result["cells"]["syscall_rfe_pair"]["knownTerms"] == [
+        "rsr.epc1",
+        "addi.n",
+        "wsr.epc1",
+        "rsync",
+        "rfe",
+    ]
+    assert result["cells"]["syscall_rfe_pair"]["handlerEncodings"][-1] == "003000"
     assert result["cells"]["rfe_alone"]["returnEncoding"] == "003000"
     assert result["cells"]["rfi3_alone"]["returnEncoding"] == "003310"
 
