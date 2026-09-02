@@ -313,10 +313,149 @@ pub enum MeasuredStepError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnpricedTimingClass {
+    MaskRomInstructionFetch,
     ExceptionEntry(ExceptionEntryClass),
     ExceptionReturn(ExceptionReturnClass),
     InterruptEntry { irq: u32 },
     DirtyCacheEvictionWriteback(CacheSource),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MeasuredBootRefusal {
+    pub error: MeasuredStepError,
+    pub configuration: ChipConfig,
+    pub core: CoreId,
+    pub pc: u32,
+    pub symbol: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MeasuredBootStop {
+    Ready {
+        boot_cycle: u64,
+        core_cycles: [u64; 2],
+    },
+    Refusal {
+        boot_cycle: u64,
+        core_cycles: [u64; 2],
+        refusal: MeasuredBootRefusal,
+    },
+    StepLimit {
+        core_cycles: [u64; 2],
+    },
+}
+
+pub struct MeasuredBootScheduler {
+    pub machine: crate::Machine,
+    pub backend: Esp32Backend,
+    core_cycles: [u64; 2],
+}
+
+impl MeasuredBootScheduler {
+    pub fn new(machine: crate::Machine) -> Self {
+        Self {
+            machine,
+            backend: Esp32Backend::default(),
+            core_cycles: [0; 2],
+        }
+    }
+
+    pub const fn core_cycles(&self) -> [u64; 2] {
+        self.core_cycles
+    }
+
+    pub fn run_until(&mut self, ready_marker: &[u8], max_steps: u64) -> MeasuredBootStop {
+        for _ in 0..max_steps {
+            if self.console_contains(ready_marker) {
+                return MeasuredBootStop::Ready {
+                    boot_cycle: self.core_cycles[0],
+                    core_cycles: self.core_cycles,
+                };
+            }
+            let core = self.next_core();
+            if self.advance_waiting_core(core) {
+                continue;
+            }
+            let core_index = core_index(core);
+            let before = self.backend.engine().state().cores[core_index].cycle;
+            if let Err(error) = self
+                .machine
+                .advance_measured_devices(self.core_cycles[core_index])
+            {
+                return self.refusal(core, error);
+            }
+            match self.machine.step_measured(&mut self.backend, core) {
+                Ok(_) => {
+                    let after = self.backend.engine().state().cores[core_index].cycle;
+                    self.core_cycles[core_index] =
+                        self.core_cycles[core_index].saturating_add(after.saturating_sub(before));
+                }
+                Err(error) => return self.refusal(core, error),
+            }
+        }
+        MeasuredBootStop::StepLimit {
+            core_cycles: self.core_cycles,
+        }
+    }
+
+    fn next_core(&self) -> CoreId {
+        if self.core_cycles[0] <= self.core_cycles[1] {
+            CoreId::Core0
+        } else {
+            CoreId::Core1
+        }
+    }
+
+    fn advance_waiting_core(&mut self, core: CoreId) -> bool {
+        let index = core_index(core);
+        let cpu = &self.machine.cores[index];
+        if !cpu.waiting || cpu.check_interrupts_pending() != 0 {
+            return false;
+        }
+        let current = self.core_cycles[index];
+        let other = self.core_cycles[1 - index];
+        let other_ahead = (other > current).then_some(other);
+        let target = [self.machine.next_measured_deadline(), other_ahead]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(current);
+        let elapsed = target.saturating_sub(current);
+        self.core_cycles[index] = target;
+        advance_measured_clocks(&mut self.machine, core, elapsed);
+        let _deadline_result = self.machine.advance_measured_devices(target);
+        true
+    }
+
+    fn console_contains(&self, marker: &[u8]) -> bool {
+        !marker.is_empty()
+            && [
+                self.machine.console.all.as_slice(),
+                self.machine.console.usb.as_slice(),
+                self.machine.console.uart0.as_slice(),
+                self.machine.bus.periph.usb.tx_out.as_slice(),
+                self.machine.bus.periph.usb.tx_fifo.as_slice(),
+                self.machine.bus.periph.uart[0].tx_out.as_slice(),
+            ]
+            .into_iter()
+            .any(|bytes| bytes.windows(marker.len()).any(|window| window == marker))
+    }
+
+    fn refusal(&self, core: CoreId, error: MeasuredStepError) -> MeasuredBootStop {
+        let index = core_index(core);
+        let pc = self.machine.cores[index].pc;
+        MeasuredBootStop::Refusal {
+            boot_cycle: self.core_cycles[index],
+            core_cycles: self.core_cycles,
+            refusal: MeasuredBootRefusal {
+                error,
+                configuration: chip_config_from_registers(&self.machine),
+                core,
+                pc,
+                symbol: self.machine.sym(pc),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -387,6 +526,11 @@ impl MeasuredMachine for crate::Machine {
             let cpu = &self.cores[index];
             observe_instruction(core, cpu, &self.bus).map_err(MeasuredStepError::Plan)?
         };
+        if observation.fetch_memory == MemoryClass::MaskRom {
+            return Err(MeasuredStepError::Unpriced(
+                UnpricedTimingClass::MaskRomInstructionFetch,
+            ));
+        }
         if let Some(class) = exception_return_class(observation.instruction.op) {
             return Err(MeasuredStepError::Unpriced(
                 UnpricedTimingClass::ExceptionReturn(class),
@@ -581,7 +725,7 @@ mod tests {
     use xtensa_lx7::measured::BlockCostPayload;
     use xtensa_lx7::state::ps;
 
-    const RESET_PC: u32 = 0x4000_0400;
+    const RESET_PC: u32 = 0x4038_9000;
     const BEQZ_N_A6: [u8; 2] = [0x8c, 0x06];
 
     fn instruction_machine(instruction: &[u8]) -> crate::Machine {
@@ -591,6 +735,7 @@ mod tests {
             .bus
             .load_bytes(RESET_PC, instruction)
             .expect("test instruction maps in mask ROM");
+        machine.cores[0].pc = RESET_PC;
         machine
     }
 
