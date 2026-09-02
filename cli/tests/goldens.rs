@@ -11,6 +11,7 @@ use common::*;
 
 const BIN: &str = env!("CARGO_BIN_EXE_esp32sim");
 const BIN_C3: &str = env!("CARGO_BIN_EXE_esp32sim-c3");
+const BIN_C6: &str = env!("CARGO_BIN_EXE_esp32sim-c6");
 const FW: &str = "web/wasm/fw/public";
 
 fn atech(extra: &[&str]) -> (Run, Vec<u8>) {
@@ -157,4 +158,58 @@ fn hello_world_c3_reboot() {
     assert!(r.stdout.matches("Hello world!").count() >= 2, "the app did not come back after the reset:\n{}", r.stdout);
     expect_text("hello-c3-reboot.console.txt", &r.stdout);
     expect_u64("hello-c3-reboot.insns", r.insns);
+}
+
+/// hello_world from the C6 mask ROM, with the MAC / reset cause / straps of the Waveshare
+/// ESP32-C6-LCD-1.47 the boot log was compared against (`hw/c6-hello-world-real.txt`,
+/// `docs/esp32c6.md`).
+#[test] #[ignore = "needs the ESP32-C6 mask ROM ELF"]
+fn hello_world_c6() {
+    let rom = rom("esp32c6_rev0");
+    let r = run(BIN_C6, &["--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
+        "--mac", "dc:1e:d5:6e:8c:dc", "--reset-cause", "0x15", "--strap", "0x6e",
+        "--bootloader", &format!("{FW}/c6-hello-bootloader.bin"), "--ptable", &format!("{FW}/c6-hello-ptable.bin"), "--app", &format!("{FW}/c6-hello_world.bin"), "--max-seconds", "3"]);
+    assert!(r.stdout.contains("Hello world!"), "app_main never printed:\n{}", r.stdout);
+    expect_text("hello-c6.console.txt", &r.stdout);
+    expect_u64("hello-c6.insns", r.insns);
+    // the same run through the one binary
+    let r2 = run(BIN, &["--chip", "c6", "--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
+        "--mac", "dc:1e:d5:6e:8c:dc", "--reset-cause", "0x15", "--strap", "0x6e",
+        "--bootloader", &format!("{FW}/c6-hello-bootloader.bin"), "--ptable", &format!("{FW}/c6-hello-ptable.bin"), "--app", &format!("{FW}/c6-hello_world.bin"), "--max-seconds", "3"]);
+    assert_eq!(r.stdout, r2.stdout); assert_eq!(r.insns, r2.insns);
+}
+
+/// The C6's esp_restart() path: a software CPU reset through LP_AON, back through the ROM with
+/// the right cause and the ROM's `Saved PC` line.
+#[test] #[ignore = "needs the ESP32-C6 mask ROM ELF"]
+fn hello_world_c6_reboot() {
+    let rom = rom("esp32c6_rev0");
+    let r = run(BIN_C6, &["--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4",
+        "--mac", "dc:1e:d5:6e:8c:dc", "--reset-cause", "0x15", "--strap", "0x6e",
+        "--bootloader", &format!("{FW}/c6-hello-bootloader.bin"), "--ptable", &format!("{FW}/c6-hello-ptable.bin"), "--app", &format!("{FW}/c6-hello_world.bin"), "--max-seconds", "12"]);
+    assert!(r.stderr.contains("[emu] chip reset at t="), "no reset seen:\n{}", r.stderr);
+    assert!(r.stdout.matches("Hello world!").count() >= 2, "the app did not come back after the reset:\n{}", r.stdout);
+    assert!(r.stdout.contains("rst:0xc (SW_CPU)") && r.stdout.contains("Saved PC:0x4001975a"), "the second boot banner differs from silicon:\n{}", r.stdout);
+    expect_text("hello-c6-reboot.console.txt", &r.stdout);
+    expect_u64("hello-c6-reboot.insns", r.insns);
+}
+
+/// The IEEE 802.15.4 energy scanner on the Waveshare ESP32-C6-LCD-1.47 (its owner's firmware,
+/// not in this repository): `ENERGY_SCAN_DIR` points at the built project. Pins the console and
+/// the counts of energy scans, display writes and LED updates the board model reports.
+#[test] #[ignore = "set ENERGY_SCAN_DIR=/path/to/energy_scan (built for esp32c6); needs the ESP32-C6 mask ROM ELF"]
+fn external_energy_scan_c6() {
+    let dir = std::env::var("ENERGY_SCAN_DIR").expect("ENERGY_SCAN_DIR=/path/to/energy_scan is required for this test");
+    let b = format!("{}/build", dir); let rom = rom("esp32c6_rev0");
+    let r = run(BIN_C6, &["--rom", rom.to_str().unwrap(), "--boot", "rom", "--flash-mb", "4", "--board", "waveshare-c6-lcd147", "--no-dump",
+        "--bootloader", &format!("{b}/bootloader/bootloader.bin"), "--ptable", &format!("{b}/partition_table/partition-table.bin"),
+        "--app", &format!("{b}/energy_scan.bin"), "--elf", &format!("{b}/energy_scan.elf"), "--stub", "bb_init=0", "--max-seconds", "4"]);
+    assert!(r.stdout.contains("libbtbb version"), "the PHY did not come up:\n{}", r.stdout);
+    assert!(!r.stdout.contains("Guru Meditation"), "the app panicked:\n{}", r.stdout);
+    let scans: u64 = r.stderr.lines().find(|l| l.starts_with("[emu] 802.15.4:")).and_then(|l| l.split_whitespace().nth(2)).and_then(|n| n.parse().ok()).unwrap_or(0);
+    assert!(scans >= 50, "too few energy scans: {}\n{}", scans, r.stderr);
+    let lcd = r.stderr.lines().find(|l| l.starts_with("[emu] lcd147:")).unwrap_or("");
+    assert!(lcd.contains("RAMWR") && lcd.contains("updates"), "no board report:\n{}", r.stderr);
+    expect_text("energy-scan-c6.console.txt", &r.stdout);
+    expect_u64("energy-scan-c6.insns", r.insns);
 }

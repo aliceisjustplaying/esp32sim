@@ -38,6 +38,10 @@ pub trait Soc: 'static {
     const IDLE_CHUNK: u64;
     /// Symbols, in order of preference, that start the ROM's RAM-initialiser table.
     const ROM_DATA_TABLE: &'static [&'static str];
+    /// Symbols, in order of preference, that end it.
+    const ROM_DATA_TABLE_END: &'static [&'static str] = &["_data_end"];
+    /// Bytes per table entry: (dst_start, dst_end, rom_src[, 0]) — 16 on the S3 and C3, 12 on the C6.
+    const ROM_DATA_TABLE_STRIDE: u32 = 16;
     fn new_core(i: usize) -> Self::Core;
     /// Bring core `i` back to its reset state (after a chip reset or a release from reset).
     fn reset_core(core: &mut Self::Core, i: usize);

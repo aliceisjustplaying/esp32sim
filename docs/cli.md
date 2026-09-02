@@ -1,13 +1,14 @@
 # Command line
 
 ```
-esp32sim [--chip s3|c3] --boot rom --bootloader B.bin --ptable P.bin --app A.bin [--elf X.elf ...] [options]
+esp32sim [--chip s3|c3|c6] --boot rom --bootloader B.bin --ptable P.bin --app A.bin [--elf X.elf ...] [options]
 esp32sim --flash-image flash.bin --boot rom ...
 ```
 
-One binary for both chips; `esp32sim-c3` is `esp32sim --chip c3`. The C3 defaults differ where
-the chip does (`--boot rom`, `--console uart0`, `--flash-mb 4`) and refuses the S3-only flags
-(board, WiFi, camera, PSRAM, register presets).
+One binary for every chip; `esp32sim-c3` is `esp32sim --chip c3` and `esp32sim-c6` is
+`esp32sim --chip c6`. The RISC-V chips' defaults differ where the chip does (`--boot rom`,
+`--console uart0`, `--flash-mb 4`) and they refuse the S3-only flags (board, WiFi, camera, PSRAM,
+register presets).
 
 ## Images and boot
 | Flag | Meaning |
@@ -15,13 +16,13 @@ the chip does (`--boot rom`, `--console uart0`, `--flash-mb 4`) and refuses the 
 | `--boot rom\|app` | `rom`: start at the mask ROM reset vector (real boot chain). `app`: load the app image segments and jump to its entry |
 | `--bootloader F`, `--ptable F`, `--app F` | written to flash at 0x0 / 0x8000 / 0x10000 |
 | `--flash-image F` | whole flash dump written at 0 |
-| `--chip s3\|c3` | which chip (default s3) |
+| `--chip s3\|c3\|c6` | which chip (default s3) |
 | `--rom F` | mask ROM ELF (default: the chip's in `~/.espressif/tools/esp-rom-elfs/*/`) |
 | `--mac xx:xx:xx:xx:xx:xx` | the station MAC the efuses report |
 | `--serial TEXT` | bytes into the USB-Serial/JTAG console before the run |
 | `--elf F` (repeatable) | symbols for logs/profiles (app ELF, bootloader ELF) |
 | `--flash-mb N`, `--psram-mb N` | flash size (JEDEC follows it) and octal PSRAM size (default 8 / 2) |
-| `--board atech14\|waveshare-cam\|none` | board model (default atech14) |
+| `--board atech14\|waveshare-cam\|waveshare-lcd4b\|none` | board model (default atech14); on the C6: `waveshare-c6-lcd147` or `none` |
 | `--strap HEX`, `--reset-cause HEX`, `--efuse-regs F`, `--regs-init F` | reproduce a real chip's boot state (used by the differential tests) |
 | `--no-reboot` | stop at the first chip reset instead of rebooting from ROM |
 | `--flash-at OFFSET=FILE` (repeatable) | write a file into flash at a hex offset — a data partition's contents (the panel's `demo` partition takes `energydata.json`) |

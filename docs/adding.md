@@ -118,6 +118,11 @@ firmware polls that nothing answers yet. Add a row to `docs/boards.md` and a run
 3. `pub type Machine = esp_soc::Machine<C6>;` and a `machine()` constructor; a `setup_c6` in
    `cli/src/lib.rs` and a `--chip` arm; the same board name switch in `wasm/src/lib.rs`.
 
+This is exactly the path the ESP32-C6 took (`esp32c6/`, [esp32c6.md](esp32c6.md)): the C3 crate
+copied, the map and the interrupt controller rewritten, then `--log-periph` and the board's
+console until hello_world matched. If the ROM's RAM-initialiser table has a different shape, the
+`Soc` trait's `ROM_DATA_TABLE_END` / `ROM_DATA_TABLE_STRIDE` say so (12-byte entries on the C6).
+
 Everything else — scheduler, device time, console, scripts, stubs, observers, the web UI,
 reboot, image loading — is `esp_soc::Machine` and needs no change.
 

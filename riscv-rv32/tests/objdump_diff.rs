@@ -1,5 +1,5 @@
-//! Differential decoder test: every instruction in objdump's disassembly of the C3 mask ROM and
-//! of real firmware must decode to the same mnemonic and operands.
+//! Differential decoder test: every instruction in objdump's disassembly of the C3 and C6 mask
+//! ROMs and of real firmware for each must decode to the same mnemonic and operands.
 //! The checked-in corpus (`tests/corpus/*.dis`, sampled from a real app and the mask ROM) runs
 //! every time; `RISCV_DIS_FILES=/path/rom.dis:/path/app.dis` runs the ignored full-size test.
 use std::collections::BTreeMap;
@@ -86,8 +86,8 @@ fn check(files: &str) -> usize {
 #[test]
 fn decoder_matches_corpus() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/corpus");
-    let n = check(&format!("{0}/rom.dis:{0}/hello_world.dis", dir));
-    assert!(n >= 6000, "only {} corpus cases — the corpus files are incomplete", n);
+    let n = check(&format!("{0}/rom.dis:{0}/hello_world.dis:{0}/c6-rom.dis:{0}/c6-hello_world.dis", dir));
+    assert!(n >= 14000, "only {} corpus cases — the corpus files are incomplete", n);
 }
 
 /// The full listings of whatever `RISCV_DIS_FILES` points at.

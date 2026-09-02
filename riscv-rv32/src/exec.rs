@@ -118,6 +118,24 @@ pub fn exec_insn<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn, pc: u32) -> Resul
 
         Fence | FenceI => {}
 
+        // RV32A. One core, so a reservation is only ever lost to our own SC or a trap in between.
+        LrW => { let v = ld!(cpu, bus, read32, a, pc); cpu.reservation = Some(a); cpu.set(i.rd, v); }
+        ScW => {
+            if cpu.reservation == Some(a) { st!(cpu, bus, write32, a, b, pc); cpu.set(i.rd, 0); } else { cpu.set(i.rd, 1); }
+            cpu.reservation = None;
+        }
+        AmoSwapW | AmoAddW | AmoXorW | AmoAndW | AmoOrW | AmoMinW | AmoMaxW | AmoMinuW | AmoMaxuW => {
+            let old = ld!(cpu, bus, read32, a, pc);
+            let new = match i.op {
+                AmoSwapW => b, AmoAddW => old.wrapping_add(b), AmoXorW => old ^ b, AmoAndW => old & b, AmoOrW => old | b,
+                AmoMinW => if (old as i32) < (b as i32) { old } else { b },
+                AmoMaxW => if (old as i32) > (b as i32) { old } else { b },
+                AmoMinuW => old.min(b), _ => old.max(b),
+            };
+            st!(cpu, bus, write32, a, new, pc);
+            cpu.set(i.rd, old);
+        }
+
         Ecall => { cpu.trap(exc::ECALL_M, 0, pc); return Err(Trap::Exception(exc::ECALL_M)); }
         Ebreak => { cpu.trap(exc::BREAKPOINT, pc, pc); return Err(Trap::Ebreak(pc)); }
         Mret => { cpu.mret(); return Ok(()); }

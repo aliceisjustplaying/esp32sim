@@ -20,12 +20,14 @@ impl emu_core::Core for Cpu {
     fn irq_bits(irq: &Option<u32>) -> u32 { irq.map_or(0, |l| 1 << (l & 31)) }
     fn idle_advance(&mut self, cycles: u32) { self.insn_count += cycles as u64; }
     fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> { crate::exec::step(self, bus) }
+    fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
     /// One instruction at a time, but like a block: stop when the bus reports that an interrupt
-    /// line may have moved, so the machine re-derives the core's input before the next instruction.
+    /// line may have moved, so the machine re-derives the core's input before the next instruction,
+    /// and at a pc the machine wants to see first (a stub or a probe), so it is exact there too.
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
         for i in 0..budget {
             if let Err(t) = crate::exec::step(self, bus) { return (i + 1, Some(t)); }
-            if bus.block_break() { return (i + 1, None); }
+            if bus.block_break() || (self.boundary_bloom != 0 && self.boundary_bloom & emu_core::core::pc_bit(self.pc) != 0) { return (i + 1, None); }
         }
         (budget, None)
     }
