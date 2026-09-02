@@ -321,7 +321,9 @@ fn setup_s3(o: &Opts) -> esp32s3::Machine {
     }
     if let Some(mb) = o.psram_mb {
         if mb != 2 {
-            m.bus.set_psram_size(mb << 20).unwrap();
+            m.bus
+                .set_psram_size(mb << 20)
+                .expect("requested PSRAM size is supported");
         }
     }
     if let Some(p) = &o.efuse_regs {
@@ -455,19 +457,19 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     }
     if let Some(p) = &o.flash_image {
         m.write_flash(0, &std::fs::read(p).expect("flash image"))
-            .unwrap();
+            .expect("flash image fits in configured flash");
     }
     if let Some(p) = &o.bootloader {
         m.write_flash(0x0, &std::fs::read(p).expect("bootloader"))
-            .unwrap();
+            .expect("bootloader fits in configured flash");
     }
     if let Some(p) = &o.ptable {
         m.write_flash(0x8000, &std::fs::read(p).expect("ptable"))
-            .unwrap();
+            .expect("partition table fits in configured flash");
     }
     if let Some(p) = &o.app {
         m.write_flash(0x10000, &std::fs::read(p).expect("app"))
-            .unwrap();
+            .expect("application fits in configured flash");
     }
     for spec in &o.flash_at {
         let (off, path) = spec.split_once('=').unwrap_or_else(|| {
@@ -582,13 +584,19 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     }
     if let Some(port) = o.web_port {
         let dir = o.web_dir.clone().unwrap_or_else(|| {
-            let exe = std::env::current_exe().unwrap();
-            let mut d = exe.parent().unwrap().to_path_buf();
+            let exe = std::env::current_exe().expect("current executable path is available");
+            let mut d = exe
+                .parent()
+                .expect("current executable path has a parent")
+                .to_path_buf();
             for _ in 0..3 {
                 if d.join("web").exists() {
                     break;
                 }
-                d = d.parent().unwrap().to_path_buf();
+                d = d
+                    .parent()
+                    .expect("web directory search path has a parent")
+                    .to_path_buf();
             }
             d.join("web").to_string_lossy().to_string()
         });

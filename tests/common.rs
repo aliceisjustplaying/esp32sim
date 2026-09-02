@@ -8,7 +8,7 @@ use std::process::Command;
 pub fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .unwrap()
+        .expect("the crate manifest directory has a workspace parent")
         .to_path_buf()
 }
 pub fn golden(name: &str) -> PathBuf {
@@ -40,7 +40,11 @@ pub fn rom(name: &str) -> PathBuf {
             }
         }
     }
-    best.unwrap_or_else(|| panic!("{} not found: set ESP32SIM_ROM_DIR or install ESP-IDF (~/.espressif/tools/esp-rom-elfs)", file))
+    assert!(
+        best.is_some(),
+        "{file} not found: set ESP32SIM_ROM_DIR or install ESP-IDF (~/.espressif/tools/esp-rom-elfs)"
+    );
+    best.expect("the ROM path search result was checked")
 }
 
 pub struct Run {
@@ -55,7 +59,8 @@ pub fn run(bin: &str, args: &[&str]) -> Run {
         .args(args)
         .current_dir(root())
         .output()
-        .unwrap_or_else(|e| panic!("{}: {}", bin, e));
+        .map_err(|e| format!("{bin}: {e}"))
+        .expect("the emulator process starts");
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
     assert!(
         out.status.success(),
@@ -65,8 +70,13 @@ pub fn run(bin: &str, args: &[&str]) -> Run {
         out.status,
         tail(&stderr)
     );
-    let insns = insn_count(&stderr)
-        .unwrap_or_else(|| panic!("no `[emu] stop:` line in stderr:\n{}", tail(&stderr)));
+    let insns = insn_count(&stderr);
+    assert!(
+        insns.is_some(),
+        "no `[emu] stop:` line in stderr:\n{}",
+        tail(&stderr)
+    );
+    let insns = insns.expect("the instruction count was checked");
     Run {
         stdout: String::from_utf8_lossy(&out.stdout).to_string(),
         stderr,
@@ -100,34 +110,39 @@ fn tail(s: &str) -> String {
 pub fn expect_text(name: &str, actual: &str) {
     let p = golden(name);
     if std::env::var("UPDATE_GOLDENS").is_ok() {
-        std::fs::write(&p, actual).unwrap();
+        std::fs::write(&p, actual).expect("updated text golden can be written");
         return;
     }
-    let want = std::fs::read_to_string(&p).unwrap_or_else(|e| {
-        panic!(
-            "{}: {} (run with UPDATE_GOLDENS=1 to create it)",
-            p.display(),
-            e
-        )
-    });
+    let want = std::fs::read_to_string(&p)
+        .map_err(|e| {
+            format!(
+                "{}: {} (run with UPDATE_GOLDENS=1 to create it)",
+                p.display(),
+                e
+            )
+        })
+        .expect("the text golden can be read");
     if want != actual {
         let got = p.with_extension("actual");
-        std::fs::write(&got, actual).unwrap();
+        std::fs::write(&got, actual).expect("actual text output can be written");
         let (mut ln, mut wl, mut al) = (0, want.lines(), actual.lines());
-        loop {
+        let (expected_line, actual_line) = loop {
             ln += 1;
             match (wl.next(), al.next()) {
                 (Some(w), Some(a)) if w == a => continue,
-                (w, a) => panic!(
-                    "{} differs at line {}:\n  want: {:?}\n  got:  {:?}\n(full output in {})",
-                    name,
-                    ln,
-                    w,
-                    a,
-                    got.display()
-                ),
+                mismatch => break mismatch,
             }
-        }
+        };
+        assert_eq!(
+            want,
+            actual,
+            "{} differs at line {}:\n  want: {:?}\n  got:  {:?}\n(full output in {})",
+            name,
+            ln,
+            expected_line,
+            actual_line,
+            got.display()
+        );
     }
 }
 
@@ -135,16 +150,18 @@ pub fn expect_sha(name: &str, data: &[u8]) {
     let p = golden(name);
     let hex = sha256_hex(data);
     if std::env::var("UPDATE_GOLDENS").is_ok() {
-        std::fs::write(&p, format!("{}\n", hex)).unwrap();
+        std::fs::write(&p, format!("{}\n", hex)).expect("updated hash golden can be written");
         return;
     }
-    let want = std::fs::read_to_string(&p).unwrap_or_else(|e| {
-        panic!(
-            "{}: {} (run with UPDATE_GOLDENS=1 to create it)",
-            p.display(),
-            e
-        )
-    });
+    let want = std::fs::read_to_string(&p)
+        .map_err(|e| {
+            format!(
+                "{}: {} (run with UPDATE_GOLDENS=1 to create it)",
+                p.display(),
+                e
+            )
+        })
+        .expect("the hash golden can be read");
     assert_eq!(
         want.trim(),
         hex,
@@ -157,21 +174,22 @@ pub fn expect_sha(name: &str, data: &[u8]) {
 pub fn expect_u64(name: &str, v: u64) {
     let p = golden(name);
     if std::env::var("UPDATE_GOLDENS").is_ok() {
-        std::fs::write(&p, format!("{}\n", v)).unwrap();
+        std::fs::write(&p, format!("{}\n", v)).expect("updated integer golden can be written");
         return;
     }
     let want: u64 = std::fs::read_to_string(&p)
-        .unwrap_or_else(|e| panic!("{}: {}", p.display(), e))
+        .map_err(|e| format!("{}: {}", p.display(), e))
+        .expect("the integer golden can be read")
         .trim()
         .parse()
-        .unwrap();
+        .expect("the integer golden contains a u64");
     assert_eq!(want, v, "{}", name);
 }
 
 /// Where a test may write its outputs.
 pub fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("esp32sim-test-{}", std::process::id()));
-    std::fs::create_dir_all(&d).unwrap();
+    std::fs::create_dir_all(&d).expect("the test output directory can be created");
     d.join(name)
 }
 
@@ -205,7 +223,11 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     for chunk in m.chunks(64) {
         let mut w = [0u32; 64];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes(chunk[i * 4..i * 4 + 4].try_into().unwrap());
+            w[i] = u32::from_be_bytes(
+                chunk[i * 4..i * 4 + 4]
+                    .try_into()
+                    .expect("each SHA-256 word has four bytes"),
+            );
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);

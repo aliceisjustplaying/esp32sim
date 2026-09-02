@@ -18,7 +18,7 @@ fn atech(extra: &[&str]) -> (Run, Vec<u8>) {
     let rom = rom("esp32s3_rev0");
     let mut args: Vec<String> = [
         "--rom",
-        rom.to_str().unwrap(),
+        rom.to_str().expect("the ROM path is valid UTF-8"),
         "--board",
         "atech14",
         "--boot",
@@ -33,7 +33,7 @@ fn atech(extra: &[&str]) -> (Run, Vec<u8>) {
         "--script",
         &format!("{FW}/atech-script1.txt"),
         "--wav",
-        wav.to_str().unwrap(),
+        wav.to_str().expect("the audio output path is valid UTF-8"),
         "--max-seconds",
         "5",
     ]
