@@ -145,7 +145,7 @@ WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
   process.stdout.write(values.join(','));
 }).catch(error => { console.error(error); process.exit(1); });
 "#;
-    let path = std::env::temp_dir().join(format!(
+    let path = std::path::Path::new("/tmp").join(format!(
         "esp32sim-wasm-jit-spike-{}-{case}.wasm",
         std::process::id()
     ));
