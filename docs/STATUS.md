@@ -91,16 +91,16 @@ two-independent-receipt bar).
 | Taken/not-taken `beqz` | 3 / 1 cycles | `evidence/timing/esp32s3-rev02-tinydraw-2bf3ffd-beqz-adoption.json` |
 | MMIO write cost (same-value run of n) | affine, 3n minus 8 cycles | `evidence/timing/esp32s3-rev02-tinydraw-e8a9f0e-mmio-write-adoption.json` |
 | Cache line fill, subsequent lines (I-flash / D-flash / D-PSRAM) | 266 / 473 / 170 cycles | `evidence/timing/esp32s3-rev02-tinydraw-a91d1d7-cache-burst-adoption.json` |
-| Cache line fill, first line | blocked, not adopted | one-cycle probe shift between IDF 6.0.2 and 6.1 is undiagnosed; `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` (`adopted: false`) |
+| Cache line fill, first line (I-flash / D-flash / D-PSRAM) | exact, 203 / 114 / 81 cycles | `evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json` (`cacheProbeDiagnostic`, v61 fields) |
 | Interrupt entry / resume, level 1 | 227 / 143 cycles (IDF 6.1) | same delta file |
 | Interrupt entry / resume, level 3 | 222 / 139 cycles (IDF 6.1) | same delta file |
 | Boot to first output | 0.472 s median (IDF 6.1) | same delta file |
 
 Toolchain rule: every receipt pins its ESP-IDF version, sdkconfig
 hash, and compiler. The current baseline is ESP-IDF v6.1 with
-xtensa-esp-elf 15.2.0. Silicon-architectural numbers must not move
-across toolchains; anything IDF-owned (interrupt paths, boot) must be
-re-measured on a bump. No mixing versions within a cohort.
+xtensa-esp-elf 15.2.0. IDF 6.1 is authoritative: where two toolchains
+disagree at probe level, the IDF 6.1 value is adopted. No receipt mixes
+toolchain versions within a cohort.
 
 ## Fixtures
 
