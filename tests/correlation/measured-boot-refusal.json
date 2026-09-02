@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "image": {
+    "elf_environment": "TINYDRAW_VECTOR_V2_BUILD",
+    "elf_sha256": "7f598fd3580cf52078fb6aa04a5f6fe5179b0de9d89bb6468fdb06ed5e40e424",
+    "rom_elf_sha256": "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd"
+  },
+  "outcome": "refusal",
+  "boot_cycle": 0,
+  "core_cycles": [0, 0],
+  "ready": false,
+  "deterministic_runs": 2,
+  "refusals": [
+    {
+      "class": "MaskRomInstructionFetch",
+      "chip_config": {
+        "cpu_mhz": 0,
+        "flash_mode": "Other",
+        "flash_mhz": 160,
+        "psram_mode": "Other",
+        "psram_mhz": 160,
+        "icache_size_bytes": 16384,
+        "icache_ways": 4,
+        "icache_line_bytes": 16,
+        "dcache_size_bytes": 32768,
+        "dcache_ways": 8,
+        "dcache_line_bytes": 16
+      },
+      "count": 1,
+      "first_core": "Core0",
+      "first_pc": "0x40000400",
+      "first_symbol": "_ResetVector"
+    }
+  ]
+}
