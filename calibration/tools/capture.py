@@ -383,7 +383,9 @@ def _one_artifact(build: Path, suffix: str) -> Path:
     return matches[0]
 
 
-def _capture_boot(port: str, output: Path, timeout_s: float) -> list[str]:
+def _capture_boot(
+    port: str, output: Path, timeout_s: float, terminal_line: str
+) -> list[str]:
     import serial
 
     device = serial.Serial(port, 115200, timeout=0.25)
@@ -409,7 +411,7 @@ def _capture_boot(port: str, output: Path, timeout_s: float) -> list[str]:
                 lines.append(line)
                 if failure_marker(raw) is not None:
                     raise ValidationError(f"hardware failure marker: {line}")
-                if "CALIBRATION_DONE" in line:
+                if terminal_line in line:
                     done_at = time.monotonic()
         if buffer.strip():
             lines.append(buffer.decode(errors="strict").rstrip("\r"))
@@ -469,15 +471,19 @@ def session_main() -> int:
         subprocess.run(["eim", "run", verify_command, "v6.1"], check=True)
         for path in (manifest, bootloader, partition_table, app_bin, app_elf):
             shutil.copy2(path, archive / path.name)
+        external_build = any(cell.console_line is not None for cell in contract.cells)
+        project_option = "" if external_build else f"-C {shlex.quote(str(image))} "
         flash_command = (
-            f"idf.py -C {shlex.quote(str(image))} -B {shlex.quote(str(build))} "
+            f"idf.py {project_option}-B {shlex.quote(str(build))} "
             f"-p {shlex.quote(args.port)} flash"
         )
         subprocess.run(["eim", "run", flash_command, "v6.1"], check=True)
         boots = []
         for number in range(1, args.boots + 1):
             capture = archive / f"boot-{number}.log"
-            lines = _capture_boot(args.port, capture, args.timeout_s)
+            lines = _capture_boot(
+                args.port, capture, args.timeout_s, contract.terminal_line
+            )
             tally = validate_calibration_lines(lines, contract, "normal", "all", False)
             boots.append(
                 {
