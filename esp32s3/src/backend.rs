@@ -726,7 +726,7 @@ mod tests {
     use xtensa_lx7::measured::BlockCostPayload;
     use xtensa_lx7::state::ps;
 
-    const RESET_PC: u32 = 0x4000_0400;
+    const RESET_PC: u32 = 0x4038_0000;
     const BEQZ_N_A6: [u8; 2] = [0x8c, 0x06];
 
     fn instruction_machine(instruction: &[u8]) -> crate::Machine {
@@ -735,7 +735,8 @@ mod tests {
         machine
             .bus
             .load_bytes(RESET_PC, instruction)
-            .expect("test instruction maps in mask ROM");
+            .expect("test instruction maps in IRAM");
+        machine.cpu.pc = RESET_PC;
         machine
     }
 
