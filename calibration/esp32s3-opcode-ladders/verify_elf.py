@@ -20,6 +20,9 @@ class VerificationError(ValueError):
 
 FUNCTION_HEADER_RE = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
 DROM_REFERENCE_RE = re.compile(r"\((3[cd][0-9a-f]{6})(?:\s|<)")
+INSTRUCTION_RE = re.compile(
+    r"^([0-9a-f]+):\s+[0-9a-f]+\s+([a-zA-Z0-9_.]+)(?:\s+(.*))?$"
+)
 
 
 EXPECTED_BODIES: dict[str, tuple[int, str]] = {
@@ -76,7 +79,7 @@ EXPECTED_BODIES: dict[str, tuple[int, str]] = {
     "opcode_bnez_n_taken": (1024, "e022b8fdb808bce1238792a120e766431ce4efc5c761f30c9299560c469c408f"),
     "opcode_bnez_n_not_taken": (512, "2dd9beef827ec31550b72e8255f47253fd5cf58244194537e809fce63c7ce13d"),
     "opcode_j": (1024, "fd51a5a37005c2b6b381d853c972c56fc8f4faf0cfd84b442cf3223ccb67c70f"),
-    "opcode_jx": (2048, "c731ad421d1f592f870905451ff524d66f05e2940b1c86451d8a45e31363d7e8"),
+    "opcode_jx": (2048, "8d87f8c892e28dbc3b98e8e8f9f52d46d32ba1a67d4cf8e57dd6049721449bbb"),
     "opcode_call0_ret": (768, "0b8afdbfb563c628540bac4135e845cccf9af11d3548c56837be1d19b9efdfb1"),
     "opcode_callx0_ret": (768, "71d4adc47420d201834fa01558405726a8c1f7e4b78f2efe34f85bc4cb89df6c"),
     "opcode_call8_retw": (768, "b6acffb473d589557a2c292374e78688ce66e4dbc6592af17dfa5feddd4bb911"),
@@ -95,7 +98,7 @@ EXPECTED_BODIES: dict[str, tuple[int, str]] = {
     "opcode_nsa": (768, "d4a5fade7c66b501e0815a9315142b0d275581bb72ab92ab23728cdcc6155f29"),
     "opcode_nsau": (768, "72ae3d81b79817a7839c9ca2ed5b9a85b96da7446f16f1cf245cccd8f7b2d5b9"),
     "opcode_sext": (768, "0e78d8cdbbaaee0120d382d1bceb57e2781ba8a339907c4978caf42472710a13"),
-    "opcode_l32r": (768, "0d1e0fb648a96ce5c6fcdd77767f036412fb49f34bd2739d107e05731c55a322"),
+    "opcode_l32r": (768, "7cbdcde9cff761f67a648ebb7c07149de0b0fcd0fbdc74816b9930fff5c09730"),
     "opcode_s32c1i": (768, "14a22b2b1bcd8b96116544d514b73f2215e7841e3e626f9d92625209fecf51c7"),
     "opcode_memw": (768, "f2a8417650cabf0b312eda34b48970d9f882d075807ae8a9d07bd30d8d752060"),
     "opcode_extw": (768, "dec41899a803f0330d7686d6c5e45eff13813d8951ffa4dfc1d4feb96d5d9c84"),
@@ -166,11 +169,127 @@ def verify_measurement_window(disassembly: str) -> dict[str, object]:
         raise VerificationError("measurement window has no indirect probe call")
     if sum("rsr.ccount" in line for line in instructions) < 2:
         raise VerificationError("measurement window has fewer than two CCOUNT reads")
+    parsed = []
+    for line in instructions:
+        match = INSTRUCTION_RE.match(line)
+        if match is None:
+            raise VerificationError("cannot parse measurement-window instruction")
+        parsed.append(
+            (int(match.group(1), 16), match.group(2), match.group(3) or "")
+        )
+
+    max_attempts = [
+        index
+        for index, (_, mnemonic, operands) in enumerate(parsed)
+        if mnemonic.startswith("movi") and operands.endswith(", -200")
+    ]
+    sample_quotas = [
+        index
+        for index, (_, mnemonic, operands) in enumerate(parsed)
+        if mnemonic == "addi" and operands.endswith(", -100")
+    ]
+    if len(max_attempts) != 1 or len(sample_quotas) != 1:
+        raise VerificationError("measurement window lacks the 100-of-200 retry bounds")
+    max_index = max_attempts[0]
+    max_register = parsed[max_index][2].split(",", 1)[0]
+    if max_index + 1 >= len(parsed):
+        raise VerificationError("200-attempt bound does not control the retry loop")
+    _, max_add_mnemonic, max_add_operands = parsed[max_index + 1]
+    max_add_registers = [item.strip() for item in max_add_operands.split(",")]
+    if (
+        not max_add_mnemonic.startswith("add")
+        or len(max_add_registers) != 3
+        or max_add_registers[0] != max_register
+        or max_add_registers[2] != max_register
+    ):
+        raise VerificationError("200-attempt bound does not control the retry loop")
+
+    accepted_path = None
+    for index in range(len(parsed) - 1):
+        _, mismatch_mnemonic, mismatch_operands = parsed[index]
+        _, zero_mnemonic, zero_operands = parsed[index + 1]
+        if not mismatch_mnemonic.startswith("bnez") or not zero_mnemonic.startswith(
+            "beqz"
+        ):
+            continue
+        mismatch_target = re.search(r",\s*([0-9a-f]+)\b", mismatch_operands)
+        zero_target = re.search(r",\s*([0-9a-f]+)\b", zero_operands)
+        if (
+            mismatch_target is not None
+            and zero_target is not None
+            and mismatch_target.group(1) == zero_target.group(1)
+        ):
+            accepted_path = (index, int(mismatch_target.group(1), 16))
+            break
+    if accepted_path is None:
+        raise VerificationError("dirty and zero-cycle samples do not share a skip path")
+
+    rejection_index, rejection_target = accepted_path
+    mismatch_register = parsed[rejection_index][2].split(",", 1)[0]
+    zero_register = parsed[rejection_index + 1][2].split(",", 1)[0]
+    if not any(
+        mnemonic == "or" and operands.startswith(f"{mismatch_register},")
+        for _, mnemonic, operands in parsed[:rejection_index]
+    ):
+        raise VerificationError("cache-counter result does not gate sample acceptance")
+    if not any(
+        mnemonic == "sub" and operands.startswith(f"{zero_register},")
+        for _, mnemonic, operands in parsed[:rejection_index]
+    ):
+        raise VerificationError("elapsed cycle count does not gate sample acceptance")
+    target_index = next(
+        (
+            index
+            for index, (address, _, _) in enumerate(parsed)
+            if address == rejection_target
+        ),
+        None,
+    )
+    if target_index is None or target_index <= rejection_index + 1:
+        raise VerificationError("sample rejection does not skip the accepted-sample path")
+    acceptance = parsed[rejection_index + 2 : target_index]
+    if not any(mnemonic.startswith("s32i") for _, mnemonic, _ in acceptance):
+        raise VerificationError("accepted-sample path does not store a sample")
+    if not any(
+        mnemonic.startswith("addi") and operands.endswith(", 1")
+        for _, mnemonic, operands in acceptance
+    ):
+        raise VerificationError("accepted-sample path does not advance the clean quota")
+
+    quota_index = sample_quotas[0]
+    quota_register = parsed[quota_index][2].split(",", 1)[0]
+    max_exit = any(
+        mnemonic.startswith("beqz") and operands.startswith(f"{max_register},")
+        for _, mnemonic, operands in parsed[quota_index + 1 :]
+    )
+    quota_loop = any(
+        mnemonic.startswith("bnez")
+        and operands.startswith(f"{quota_register},")
+        and int(re.search(r",\s*([0-9a-f]+)\b", operands).group(1), 16) < inst_address
+        for inst_address, mnemonic, operands in parsed[quota_index + 1 :]
+        if re.search(r",\s*([0-9a-f]+)\b", operands) is not None
+    )
+    if quota_index != target_index or not max_exit or not quota_loop:
+        raise VerificationError("100-of-200 bounds do not control the retry loop")
+
+    ccount_reads = [
+        index
+        for index, (_, mnemonic, _) in enumerate(parsed[:rejection_index])
+        if mnemonic == "rsr.ccount"
+    ]
+    counter_window = parsed[ccount_reads[-1] + 1 : rejection_index]
+    if sum(mnemonic.startswith("l32i") for _, mnemonic, _ in counter_window) < 5:
+        raise VerificationError("cache counters are not all read before sample acceptance")
+    if sum(mnemonic == "or" for _, mnemonic, _ in counter_window) < 4:
+        raise VerificationError("cache counters are not folded before sample acceptance")
     return {
         "symbol": "measure_probe_samples",
         "address": address,
         "instructions": len(instructions),
         "dromDescriptorLoads": 0,
+        "acceptedSamplesRequired": 100,
+        "maxAttempts": 200,
+        "dirtySamplesDiscarded": True,
     }
 
 
