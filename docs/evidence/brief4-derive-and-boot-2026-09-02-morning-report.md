@@ -39,9 +39,9 @@
 PASS locally. Formatting, strict clippy, debug and release workspace tests,
 native JIT conformance, release-profile checks, documentation, the complete
 wasm JIT spike suite, 67 calibration validator tests, and both reproducible
-derivation analyzers pass with the pinned TinyDraw and ROM fixtures. Remote
-publication is blocked on explicit approval to export the remaining local
-commits to `fork`.
+derivation analyzers pass with the pinned TinyDraw and ROM fixtures. The
+maintainer explicitly authorized publication of the remaining local commits
+to `fork`.
 
 ## Task exits
 
