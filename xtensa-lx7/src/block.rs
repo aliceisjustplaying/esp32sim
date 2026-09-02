@@ -179,6 +179,8 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
     if code != crate::jit::NONE && cpu.blocks.jit_enabled {
         if cpu.blocks.helpers.is_none() { cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>()); }
         let entry = cpu.blocks.arena[k as usize].off;
+        // SAFETY: `code` and `entry` came from this live cache entry, the helpers were created for
+        // `B`, and `fast_mem` below describes this exclusively borrowed bus for the duration.
         let r = unsafe {
             let b = &*(&cpu.blocks as *const BlockCache);          // the code reads nothing from the cache itself
             let fm = bus.fast_mem();

@@ -38,14 +38,19 @@ mod native {
     }
 
     pub struct CodeCache { base: *mut u8, size: usize, used: usize }
-    // The mapping is owned by this process and only ever reached through the cache.
+    // SAFETY: Moving the cache transfers ownership of its process-local mapping. Access to the
+    // mapping remains synchronized through the cache.
     unsafe impl Send for CodeCache {}
+    // SAFETY: Shared access cannot mutate the mapping, and generated code is published only while
+    // the cache is exclusively borrowed.
     unsafe impl Sync for CodeCache {}
 
     impl CodeCache {
         pub fn new(size: usize) -> Option<CodeCache> {
             #[cfg(target_os = "macos")] let flags = 0x0002 | 0x1000 | 0x0800;   // PRIVATE | ANON | JIT
             #[cfg(target_os = "linux")] let flags = 0x0002 | 0x0020;            // PRIVATE | ANONYMOUS
+            // SAFETY: A null address lets the operating system select the mapping. The length and
+            // integer flags borrow no memory, and failure is checked before the pointer is stored.
             let p = unsafe { mmap(std::ptr::null_mut(), size, 7, flags, -1, 0) };
             if p as isize == -1 || p.is_null() { return None; }
             Some(CodeCache { base: p as *mut u8, size, used: 0 })
@@ -58,6 +63,9 @@ mod native {
             let bytes = words.len() * 4;
             if self.used + bytes > self.size { return None; }
             let off = self.used;
+            // SAFETY: The bounds check keeps the destination range inside the owned mapping. The
+            // source slice is distinct, and the exclusive cache borrow prevents concurrent writes.
+            // The cache-maintenance calls receive exactly the initialized code range.
             unsafe {
                 #[cfg(target_os = "macos")] pthread_jit_write_protect_np(0);
                 std::ptr::copy_nonoverlapping(words.as_ptr() as *const u8, self.base.add(off), bytes);
@@ -68,7 +76,10 @@ mod native {
             self.used += bytes;
             Some(off as u32)
         }
-        fn ptr(&self, off: u32) -> *const u8 { unsafe { self.base.add(off as usize) } }
+        fn ptr(&self, off: u32) -> *const u8 {
+            // SAFETY: Callers supply offsets returned by `write`, which lie inside this mapping.
+            unsafe { self.base.add(off as usize) }
+        }
     }
 
     // ------------------------------------------------------------------ helpers called from generated code
@@ -83,6 +94,8 @@ mod native {
     macro_rules! read_helper {
         ($name:ident, $f:ident) => {
             extern "C" fn $name<B: Bus>(bus: *mut B, addr: u32, pc: u32) -> u64 {
+                // SAFETY: Compiled blocks pass the exclusive bus pointer supplied to `run`, and
+                // the helper returns before generated code resumes.
                 let bus = unsafe { &mut *bus };
                 bus.note_pc(pc);
                 match bus.$f(addr) { Ok(v) => v as u64 | (bus.block_break() as u64) << 33, Err(_) => 1 << 32 }
@@ -96,6 +109,8 @@ mod native {
     macro_rules! write_helper {
         ($name:ident, $f:ident, $t:ty) => {
             extern "C" fn $name<B: Bus>(bus: *mut B, addr: u32, v: u32, pc: u32) -> u32 {
+                // SAFETY: Compiled blocks pass the exclusive bus pointer supplied to `run`, and
+                // the helper returns before generated code resumes.
                 let bus = unsafe { &mut *bus };
                 bus.note_pc(pc);
                 match bus.$f(addr, v as $t) { Ok(()) => (bus.block_break() as u32) << 1, Err(_) => 1 }
@@ -107,18 +122,24 @@ mod native {
     write_helper!(h_write32, write32, u32);
     /// Run one instruction through the interpreter. Bit 0 = trap (stored in `cpu.jit_trap`), bit 1 = block must end.
     extern "C" fn h_exec<B: Bus>(cpu: *mut Cpu, bus: *mut B, insn: *const BlockInsn, pc: u32) -> u32 {
+        // SAFETY: The CPU and bus pointers are the exclusive pointers supplied to `run`, and the
+        // instruction points into the stable block arena for the duration of that call.
         let (cpu, bus, i) = unsafe { (&mut *cpu, &mut *bus, &*insn) };
         cpu.pc = pc;
         bus.note_pc(pc);
         match exec_insn(cpu, bus, &i.insn) { Ok(()) => (bus.block_break() as u32) << 1, Err(t) => { cpu.jit_trap = Some(t); 1 } }
     }
     extern "C" fn h_raise_mem(cpu: *mut Cpu, cause: u32, addr: u32, pc: u32) {
+        // SAFETY: Compiled blocks pass the exclusive CPU pointer supplied to `run`, and the helper
+        // returns before generated code resumes.
         let cpu = unsafe { &mut *cpu };
         cpu.pc = pc;
         let t = cpu.raise_mem(cause, addr);
         cpu.jit_trap = Some(t);
     }
     extern "C" fn h_overflow(cpu: *mut Cpu, max_ar: u32, pc: u32) -> u32 {
+        // SAFETY: Compiled blocks pass the exclusive CPU pointer supplied to `run`, and the helper
+        // returns before generated code resumes.
         let cpu = unsafe { &mut *cpu };
         cpu.pc = pc;
         match cpu.check_overflow(max_ar as u8) { Some(t) => { cpu.jit_trap = Some(t); 1 } None => 0 }
@@ -127,9 +148,9 @@ mod native {
     impl Helpers {
         pub fn new<B: Bus>() -> Helpers {
             Helpers {
-                read8: h_read8::<B> as usize, read16: h_read16::<B> as usize, read32: h_read32::<B> as usize,
-                write8: h_write8::<B> as usize, write16: h_write16::<B> as usize, write32: h_write32::<B> as usize,
-                exec: h_exec::<B> as usize, raise_mem: h_raise_mem as usize, overflow: h_overflow as usize,
+                read8: (h_read8::<B> as *const ()).addr(), read16: (h_read16::<B> as *const ()).addr(), read32: (h_read32::<B> as *const ()).addr(),
+                write8: (h_write8::<B> as *const ()).addr(), write16: (h_write16::<B> as *const ()).addr(), write32: (h_write32::<B> as *const ()).addr(),
+                exec: (h_exec::<B> as *const ()).addr(), raise_mem: (h_raise_mem as *const ()).addr(), overflow: (h_overflow as *const ()).addr(),
             }
         }
     }
@@ -153,13 +174,15 @@ mod native {
     /// Most code one block can need, with slack; the cache is flushed when less than this is free.
     pub const MAX_BLOCK_CODE: usize = 24 * 1024;
 
+    type Stub<'a> = Box<dyn FnOnce(&mut Asm) + 'a>;
+
     struct Gen<'a> {
         a: Asm,
-        exit: Label, exit_trap: Label, exit_trap_pre: Label, exit_left: Label,
+        exit_trap: Label, exit_trap_pre: Label, exit_left: Label,
         /// shared tails: `w9` holds the pc to store, then leave with EXIT_CUT / EXIT_LEFT
         cut_w9: Label, left_w9: Label, loop_shared: Label,
         pc0: u32,
-        stubs: Vec<Box<dyn FnOnce(&mut Asm) + 'a>>,
+        stubs: Vec<Stub<'a>>,
     }
 
     impl<'a> Gen<'a> {
@@ -217,17 +240,16 @@ mod native {
         a.bind(body);
         let body_at = a.here();
         let (cut_w9, left_w9, loop_shared) = (a.label(), a.label(), a.label());
-        let mut g = Gen { a, exit, exit_trap, exit_trap_pre, exit_left, cut_w9, left_w9, loop_shared, pc0, stubs: Vec::new() };
+        let mut g = Gen { a, exit_trap, exit_trap_pre, exit_left, cut_w9, left_w9, loop_shared, pc0, stubs: Vec::new() };
         // windows already verified free within this block (reset when a helper may have rotated them)
         let mut checked_w: u32 = 0;
 
-        let n = insns.len();
         let mut pc = pc0;
-        for k in 0..n {
-            let i = insns[k].insn;
-            let max_ar = insns[k].max_ar;
+        for block_insn in insns.iter_mut() {
+            let i = block_insn.insn;
+            let max_ar = block_insn.max_ar;
             let next = pc.wrapping_add(i.len as u32);
-            insns[k].off = ((g.a.here() - body_at) * 4) as u32;
+            block_insn.off = ((g.a.here() - body_at) * 4) as u32;
             // budget: cut before this instruction if none left
             let cut = g.cut_stub(pc);
             g.a.cbz(LEFT, cut);
@@ -415,7 +437,7 @@ mod native {
                 // ---- everything else: the interpreter
                 _ => {
                     g.a.mov_x(0, CPU); g.a.mov_x(1, BUS);
-                    g.a.mov64(2, &insns[k] as *const BlockInsn as u64);
+                    g.a.mov64(2, (&raw const *block_insn) as u64);
                     g.a.mov32(3, pc);
                     g.call(H_EXEC);
                     let tr = g.exit_trap;
@@ -465,8 +487,18 @@ mod native {
     }
 
     /// Run compiled code. Returns `done | code << 16`; see the EXIT_* codes.
+    ///
+    /// # Safety
+    /// `code` must identify live code produced by `compile` in `cc`, and `entry` must be an
+    /// instruction offset recorded by that compilation. `h` must have been created by
+    /// `Helpers::new::<B>()`. The backing `BlockInsn` slice passed to `compile` must remain alive
+    /// and unmoved until `code` can no longer run because fallback paths embed pointers into it.
+    /// Code compiled with `fast = true` requires `Some(fm)`; it must describe `bus`, including
+    /// valid unmoved backing buffers for its TLB entries, and remain valid for this call.
     pub unsafe fn run<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: &mut B, h: &Helpers, budget: u32, entry: u32, fm: Option<FastMem>) -> u32 {
-        let f: extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32, *const crate::bus::TlbEntry, *mut u32) -> u32 = std::mem::transmute(cc.ptr(code));
+        // SAFETY: The caller guarantees that `code` names a live compiled entry point in this
+        // cache with the declared ABI and concrete bus type.
+        let f: extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32, *const crate::bus::TlbEntry, *mut u32) -> u32 = unsafe { std::mem::transmute(cc.ptr(code)) };
         let (tlb, pv) = match fm { Some(m) => (m.tlb, m.page_ver), None => (std::ptr::null(), std::ptr::null_mut()) };
         f(cpu, bus, h, budget, entry, tlb, pv)
     }
@@ -488,6 +520,10 @@ mod native {
     pub struct Helpers;
     impl Helpers { pub fn new<B: Bus>() -> Helpers { Helpers } }
     pub fn compile(_: &mut CodeCache, _: &mut [BlockInsn], _: u32, _: bool) -> Option<u32> { None }
+    /// The non-native implementation does not execute code.
+    ///
+    /// # Safety
+    /// This signature matches the native implementation; no additional requirements apply here.
     pub unsafe fn run<B: Bus>(_: &CodeCache, _: u32, _: &mut Cpu, _: &mut B, _: &Helpers, _: u32, _: u32, _: Option<crate::bus::FastMem>) -> u32 { 0 }
     pub const CODE_END: u32 = 0; pub const CODE_LEFT: u32 = 1; pub const CODE_TRAP: u32 = 2; pub const CODE_CUT: u32 = 3; pub const CODE_TRAP_PRE: u32 = 4;
 }

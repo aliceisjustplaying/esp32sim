@@ -20,17 +20,23 @@ pub const VPAGE_SHIFT: u32 = 8;
 pub fn tlb_index(addr: u32) -> usize { (((addr >> 16) ^ (addr >> 24)) as usize) & (TLB_ENTRIES - 1) }
 
 /// One software-TLB entry: guest `[lo, hi)` is host memory starting at `base`; `vbase` is the
-/// write-version index of `lo`. Layout is fixed (32 bytes) because the JIT reads it.
+/// write-version index of `lo`. Layout is fixed (32 bytes) because the JIT reads it. Copying or
+/// sharing an entry never dereferences `base`; a JIT owner must separately keep its backing buffer
+/// alive and unmoved, and serialize generated access to it.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TlbEntry { pub lo: u32, pub hi: u32, pub base: *mut u8, pub vbase: u32, pub writable: u32, pub off: u32, pub src: u32 }
 impl TlbEntry { pub const EMPTY: TlbEntry = TlbEntry { lo: 1, hi: 0, base: std::ptr::null_mut(), vbase: 0, writable: 0, off: 0, src: 0 }; }
-// Entries only ever point into the owning bus's buffers, which live as long as the bus.
+// SAFETY: Sending this Copy value transfers only address bits. TlbEntry has no safe operation that
+// dereferences `base`; generated access must separately uphold the documented owner invariants.
 unsafe impl Send for TlbEntry {}
+// SAFETY: Sharing this value exposes address bits but performs no dereference. Generated access
+// through `base` must separately uphold the documented lifetime and synchronization invariants.
 unsafe impl Sync for TlbEntry {}
 
 /// What generated code needs to access memory without calling back: the TLB and the
-/// write-version counters. Both pointers must stay valid while the bus exists.
+/// write-version counters. Both pointers, and every backing buffer named by a TLB entry, must stay
+/// valid and unmoved while generated code can access them.
 #[derive(Clone, Copy)]
 pub struct FastMem { pub tlb: *const TlbEntry, pub page_ver: *mut u32 }
 
