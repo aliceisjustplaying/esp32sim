@@ -92,9 +92,16 @@ impl<S: Soc> MachineApi for Machine<S> {
 #[link(wasm_import_module = "env")]
 extern "C" { fn host_log(ptr: *const u8, len: usize); }
 #[cfg(not(target_arch = "wasm32"))]
-unsafe fn host_log(ptr: *const u8, len: usize) { eprintln!("{}", String::from_utf8_lossy(std::slice::from_raw_parts(ptr, len))); }
+unsafe fn host_log(ptr: *const u8, len: usize) {
+    // SAFETY: The caller provides a readable string pointer for exactly `len` bytes.
+    let message = unsafe { std::slice::from_raw_parts(ptr, len) };
+    eprintln!("{}", String::from_utf8_lossy(message));
+}
 
-fn log(s: &str) { unsafe { host_log(s.as_ptr(), s.len()); } }
+fn log(s: &str) {
+    // SAFETY: `s` is readable for its length and the host does not retain the pointer.
+    unsafe { host_log(s.as_ptr(), s.len()); }
+}
 
 pub struct Emu {
     m: Box<dyn MachineApi>,
@@ -103,19 +110,49 @@ pub struct Emu {
     booted: bool,
 }
 
-unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] { if len == 0 { &[] } else { std::slice::from_raw_parts(ptr, len) } }
-unsafe fn text<'a>(ptr: *const u8, len: usize) -> &'a str { std::str::from_utf8(bytes(ptr, len)).unwrap_or("") }
+/// Borrow an ABI buffer.
+///
+/// # Safety
+/// For nonzero `len`, `ptr` must be non-null and readable for `len` bytes. The memory must remain
+/// unchanged and valid for the returned lifetime. A null pointer is accepted only when `len` is 0.
+unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
+    if len == 0 { &[] } else {
+        // SAFETY: The caller supplies the validity, immutability, and lifetime guarantees above.
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+    }
+}
+
+/// Borrow a UTF-8 ABI buffer, treating invalid UTF-8 as an empty string.
+///
+/// # Safety
+/// The pointer and length must satisfy `bytes`'s contract.
+unsafe fn text<'a>(ptr: *const u8, len: usize) -> &'a str {
+    // SAFETY: The caller satisfies `bytes`'s pointer and lifetime contract.
+    std::str::from_utf8(unsafe { bytes(ptr, len) }).unwrap_or("")
+}
 
 /// Buffers the page fills before handing them to `esp32sim_load` / `esp32sim_in_*`.
 #[no_mangle] pub extern "C" fn esp32sim_alloc(len: usize) -> *mut u8 { let mut v = vec![0u8; len.max(1)]; let p = v.as_mut_ptr(); std::mem::forget(v); p }
-#[no_mangle] pub unsafe extern "C" fn esp32sim_free(ptr: *mut u8, len: usize) { drop(Vec::from_raw_parts(ptr, len.max(1), len.max(1))); }
+/// Release a buffer returned by `esp32sim_alloc`.
+///
+/// # Safety
+/// `ptr` must be the live pointer returned by `esp32sim_alloc(len)`. It must not be used again.
+#[no_mangle] pub unsafe extern "C" fn esp32sim_free(ptr: *mut u8, len: usize) {
+    // SAFETY: The caller returns the allocation with the same length and unique ownership.
+    drop(unsafe { Vec::from_raw_parts(ptr, len.max(1), len.max(1)) });
+}
 
 /// `board` is a CLI board name (atech14, waveshare-cam, waveshare-lcd4b, none) for the ESP32-S3,
 /// or `esp32c3` for the RISC-V chip, which is console-only and takes no board. Null on failure.
+///
+/// # Safety
+/// For nonzero `board_len`, `board` must be non-null and readable for `board_len` bytes throughout
+/// this call. A null pointer is accepted only when `board_len` is 0.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_mb: u32, psram_mb: u32) -> *mut Emu {
     std::panic::set_hook(Box::new(|info| log(&format!("[emu] panic: {}", info))));
-    let board = text(board, board_len).to_string();
+    // SAFETY: The caller provides a readable board-name buffer for this call.
+    let board = unsafe { text(board, board_len) }.to_string();
     let (flash_mb, psram_mb) = (flash_mb.max(1) as usize, psram_mb as usize);
     let m: Box<dyn MachineApi> = if board == "esp32c3" || board == "c3" {
         let mut m = esp32c3::machine([0x3c, 0x84, 0x27, 0xb6, 0xa7, 0x1c], flash_mb << 20);
@@ -144,33 +181,64 @@ fn prepare<S: Soc>(m: &mut Machine<S>) {
     m.console.capture = true;
 }
 
+/// Destroy an emulator returned by `esp32sim_new`. A null pointer is ignored.
+///
+/// # Safety
+/// A non-null `e` must be the live pointer returned by `esp32sim_new`. The caller must have
+/// exclusive access, and the pointer must not be used again.
 #[no_mangle]
-pub unsafe extern "C" fn esp32sim_delete(e: *mut Emu) { if !e.is_null() { drop(Box::from_raw(e)); } }
+pub unsafe extern "C" fn esp32sim_delete(e: *mut Emu) {
+    if !e.is_null() {
+        // SAFETY: The caller returns the live allocation with unique ownership.
+        drop(unsafe { Box::from_raw(e) });
+    }
+}
 
 /// kind: 0 mask-ROM ELF, 1 bootloader (flash 0x0), 2 partition table (0x8000), 3 app (0x10000),
 /// 4 ELF for symbols, 5 whole flash image (0x0), 6 script text, 7 camera picture (BMP/PPM).
 /// Returns 0, or 1 with the reason logged.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access. For nonzero `len`,
+/// `ptr` must be non-null and readable for `len` bytes throughout this call.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_load(e: *mut Emu, kind: u32, ptr: *const u8, len: usize) -> u32 {
-    let e = &mut *e;
-    match e.m.load(kind, bytes(ptr, len), text(ptr, len)) { Ok(()) => 0, Err(msg) => { log(&format!("[emu] load kind {}: {}", kind, msg)); 1 } }
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller provides a readable input buffer for this call.
+    let data = unsafe { bytes(ptr, len) };
+    let input_text = std::str::from_utf8(data).unwrap_or("");
+    match e.m.load(kind, data, input_text) { Ok(()) => 0, Err(msg) => { log(&format!("[emu] load kind {}: {}", kind, msg)); 1 } }
 }
 
 /// Write bytes into flash at an arbitrary offset (a data partition's contents).
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access. For nonzero `len`,
+/// `ptr` must be non-null and readable for `len` bytes throughout this call.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_load_at(e: *mut Emu, offset: u32, ptr: *const u8, len: usize) -> u32 {
-    let e = &mut *e;
-    match e.m.write_flash(offset as usize, bytes(ptr, len)) { Ok(()) => 0, Err(msg) => { log(&format!("[emu] flash {:#x}: {}", offset, msg)); 1 } }
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller provides a readable input buffer for this call.
+    let data = unsafe { bytes(ptr, len) };
+    match e.m.write_flash(offset as usize, data) { Ok(()) => 0, Err(msg) => { log(&format!("[emu] flash {:#x}: {}", offset, msg)); 1 } }
 }
 
 /// Attach the virtual access point and subnet: `ssid=NAME,psk=PASS,chan=N`. No NAT — the browser
 /// has no sockets — so DHCP, DNS, SNTP and ICMP answer, and connections past the gateway are refused.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access. For nonzero `len`,
+/// `spec` must be non-null and readable for `len` bytes throughout this call.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize) {
-    let e = &mut *e;
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
     let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { log("[emu] wifi: the C3 radio is not modelled"); return };
     let mut cfg = esp32s3::wifi::ApConfig { ssid: "esp32sim".into(), bssid: [0x02, 0x53, 0x49, 0x4d, 0x00, 0x01], channel: 6, psk: None };
-    for kv in text(spec, len).split(',') {
+    // SAFETY: The caller provides a readable setup string for this call.
+    for kv in unsafe { text(spec, len) }.split(',') {
         match kv.split_once('=') {
             Some(("ssid", v)) => cfg.ssid = v.to_string(),
             Some(("chan", v)) | Some(("channel", v)) => cfg.channel = v.parse().unwrap_or(6),
@@ -185,26 +253,53 @@ pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize)
 
 /// `--stub NAME[=value]`: return `value` immediately when execution reaches the function's entry.
 /// NAME is a symbol (needs the ELF loaded) or a hex address. Returns 1 if it cannot be resolved.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access. For nonzero `len`,
+/// `name` must be non-null and readable for `len` bytes throughout this call.
 #[no_mangle]
-pub unsafe extern "C" fn esp32sim_stub(e: *mut Emu, name: *const u8, len: usize, value: u32) -> u32 { (&mut *e).m.stub(text(name, len), value) }
+pub unsafe extern "C" fn esp32sim_stub(e: *mut Emu, name: *const u8, len: usize, value: u32) -> u32 {
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller provides a readable symbol name for this call.
+    e.m.stub(unsafe { text(name, len) }, value)
+}
 
 /// Attach an analysis: `profile-blocks`, `coverage`, `irq-latency` (no argument), `trace-fn`
 /// (arg = symbol prefix as text). Returns 1 for an unknown name.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access. For each nonzero
+/// length, its corresponding `name` or `arg` pointer must be non-null and readable throughout this
+/// call.
 #[no_mangle]
-pub unsafe extern "C" fn esp32sim_observer(e: *mut Emu, name: *const u8, len: usize, arg: *const u8, arg_len: usize) -> u32 { (&mut *e).m.observer(text(name, len), text(arg, arg_len)) }
+pub unsafe extern "C" fn esp32sim_observer(e: *mut Emu, name: *const u8, len: usize, arg: *const u8, arg_len: usize) -> u32 {
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller provides readable name and argument buffers for this call.
+    e.m.observer(unsafe { text(name, len) }, unsafe { text(arg, arg_len) })
+}
 
 /// Every observer's report so far, as `emu` messages in the outbox.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_reports(e: *mut Emu) {
-    let e = &mut *e;
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
     let r = e.m.reports();
     if let Some(w) = e.m.web() { for line in r.lines() { w.send_text(&format!("{{\"t\":\"emu\",\"msg\":\"{}\"}}", json_escape(line))); } }
 }
 
 /// Start from the mask ROM (the normal path) or, with `app_direct` set, straight into the app image.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_boot(e: *mut Emu, app_direct: u32) -> u32 {
-    let e = &mut *e;
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
     if let Err(msg) = e.m.boot(app_direct != 0) { log(&format!("[emu] boot: {}", msg)); return 1; }
     // the WebSocket server announces the board in its per-client hello; here there is one client
     let name = e.m.board_name();
@@ -215,9 +310,13 @@ pub unsafe extern "C" fn esp32sim_boot(e: *mut Emu, app_direct: u32) -> u32 {
 /// Run for `cycles` more emulated cycles. Returns 0 while the machine can go on; otherwise a stop
 /// code: 2 unimplemented instruction, 3 breakpoint/ebreak, 4 exception limit, 5 semihosting call.
 /// A chip reset (esp_restart, watchdog) reboots through the ROM and keeps going, like the CLI.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_run(e: *mut Emu, cycles: u32, unix_ms: f64) -> u32 {
-    let e = &mut *e;
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
     if !e.booted { return 9; }
     #[cfg(target_arch = "wasm32")] esp_soc::host::set_unix_time_ms(unix_ms as u64);
     let _ = unix_ms;
@@ -225,23 +324,90 @@ pub unsafe extern "C" fn esp32sim_run(e: *mut Emu, cycles: u32, unix_ms: f64) ->
 }
 
 /// The emulated CPU clock, so the driver paces the right chip: 240 MHz on the S3, 160 on the C3.
-#[no_mangle] pub unsafe extern "C" fn esp32sim_cpu_hz(e: *mut Emu) -> f64 { (&*e).m.cpu_hz() }
-#[no_mangle] pub unsafe extern "C" fn esp32sim_cycles(e: *mut Emu) -> f64 { (&*e).m.cycles() }
-#[no_mangle] pub unsafe extern "C" fn esp32sim_insns(e: *mut Emu) -> f64 { (&*e).m.insns() }
+///
+/// # Safety
+/// `e` must point to a live emulator, and no mutable access may overlap this call.
+#[no_mangle] pub unsafe extern "C" fn esp32sim_cpu_hz(e: *mut Emu) -> f64 {
+    // SAFETY: The caller provides shared access to a live emulator without overlapping mutation.
+    unsafe { &*e }.m.cpu_hz()
+}
+/// Return the current emulated cycle count.
+///
+/// # Safety
+/// `e` must point to a live emulator, and no mutable access may overlap this call.
+#[no_mangle] pub unsafe extern "C" fn esp32sim_cycles(e: *mut Emu) -> f64 {
+    // SAFETY: The caller provides shared access to a live emulator without overlapping mutation.
+    unsafe { &*e }.m.cycles()
+}
+/// Return the current emulated instruction count.
+///
+/// # Safety
+/// `e` must point to a live emulator, and no mutable access may overlap this call.
+#[no_mangle] pub unsafe extern "C" fn esp32sim_insns(e: *mut Emu) -> f64 {
+    // SAFETY: The caller provides shared access to a live emulator without overlapping mutation.
+    unsafe { &*e }.m.insns()
+}
 
 /// Drain what the machine sent since the last call; then index it with the accessors below.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_out_take(e: *mut Emu) -> u32 {
-    let e = &mut *e;
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
     e.out = e.m.web().map(|w| w.take_outbox()).unwrap_or_default();
     e.out.len() as u32
 }
-#[no_mangle] pub unsafe extern "C" fn esp32sim_out_kind(e: *mut Emu, i: u32) -> u32 { (&*e).out.get(i as usize).map(|m| m.0 as u32).unwrap_or(0) }
-#[no_mangle] pub unsafe extern "C" fn esp32sim_out_ptr(e: *mut Emu, i: u32) -> *const u8 { (&*e).out.get(i as usize).map(|m| m.1.as_ptr()).unwrap_or(std::ptr::null()) }
-#[no_mangle] pub unsafe extern "C" fn esp32sim_out_len(e: *mut Emu, i: u32) -> usize { (&*e).out.get(i as usize).map(|m| m.1.len()).unwrap_or(0) }
+/// Return the kind of one message from the last output drain, or 0 for an invalid index.
+///
+/// # Safety
+/// `e` must point to a live emulator, and no mutable access may overlap this call.
+#[no_mangle] pub unsafe extern "C" fn esp32sim_out_kind(e: *mut Emu, i: u32) -> u32 {
+    // SAFETY: The caller provides shared access to a live emulator without overlapping mutation.
+    unsafe { &*e }.out.get(i as usize).map(|m| m.0 as u32).unwrap_or(0)
+}
+/// Return a message's data pointer, or null for an invalid index.
+///
+/// # Safety
+/// `e` must point to a live emulator, and no mutable access may overlap this call. A non-null
+/// result remains valid until the next `esp32sim_out_take` or `esp32sim_delete` call for `e`.
+#[no_mangle] pub unsafe extern "C" fn esp32sim_out_ptr(e: *mut Emu, i: u32) -> *const u8 {
+    // SAFETY: The caller provides shared access to a live emulator without overlapping mutation.
+    unsafe { &*e }.out.get(i as usize).map(|m| m.1.as_ptr()).unwrap_or(std::ptr::null())
+}
+/// Return a message's data length, or 0 for an invalid index.
+///
+/// # Safety
+/// `e` must point to a live emulator, and no mutable access may overlap this call.
+#[no_mangle] pub unsafe extern "C" fn esp32sim_out_len(e: *mut Emu, i: u32) -> usize {
+    // SAFETY: The caller provides shared access to a live emulator without overlapping mutation.
+    unsafe { &*e }.out.get(i as usize).map(|m| m.1.len()).unwrap_or(0)
+}
 
-/// Page inputs, in the WebSocket protocol: JSON text (buttons, knob, touch, serial) or binary (camera).
+/// Page input in the WebSocket JSON protocol.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access. For nonzero `len`,
+/// `ptr` must be non-null and readable for `len` bytes throughout this call.
 #[no_mangle]
-pub unsafe extern "C" fn esp32sim_in_text(e: *mut Emu, ptr: *const u8, len: usize) { let e = &mut *e; if let Some(w) = e.m.web() { w.push_incoming(text(ptr, len).to_string()); } }
+pub unsafe extern "C" fn esp32sim_in_text(e: *mut Emu, ptr: *const u8, len: usize) {
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller provides a readable input buffer for this call.
+    let input = unsafe { text(ptr, len) };
+    if let Some(w) = e.m.web() { w.push_incoming(input.to_string()); }
+}
+/// Page input in the WebSocket binary protocol.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access. For nonzero `len`,
+/// `ptr` must be non-null and readable for `len` bytes throughout this call.
 #[no_mangle]
-pub unsafe extern "C" fn esp32sim_in_bin(e: *mut Emu, ptr: *const u8, len: usize) { let e = &mut *e; if let Some(w) = e.m.web() { w.push_incoming_bin(bytes(ptr, len).to_vec()); } }
+pub unsafe extern "C" fn esp32sim_in_bin(e: *mut Emu, ptr: *const u8, len: usize) {
+    // SAFETY: The caller provides exclusive access to a live emulator.
+    let e = unsafe { &mut *e };
+    // SAFETY: The caller provides a readable input buffer for this call.
+    let input = unsafe { bytes(ptr, len) };
+    if let Some(w) = e.m.web() { w.push_incoming_bin(input.to_vec()); }
+}
