@@ -6,13 +6,15 @@ use backend_api::{
 };
 
 #[test]
-fn configuration_outside_receipt_scope_is_named_in_refusal() {
+fn external_configuration_outside_receipt_scope_is_named_in_refusal() {
     let mut config = backend_api::ChipConfig::RECEIPT_SCOPE;
     config.flash_mhz = 40;
     let refusal = backend_api::price_operation(
         config,
         CoreId::Core0,
-        Operation::Instruction(InstructionCost::Branch { taken: false }),
+        Operation::MmioRead {
+            tier: backend_api::MmioTier::Fast,
+        },
     )
     .expect_err("unreceipted configuration must fail closed");
     assert_eq!(refusal.configuration, Some(config));
