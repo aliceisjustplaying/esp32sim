@@ -1,0 +1,20 @@
+{
+  "protocolVersion": 2,
+  "harnessVersion": "1.1.0",
+  "chipModel": "ESP32-S3",
+  "chipRevision": 2,
+  "cells": [
+    {"id": "call4_window_pair", "family": "exception", "samples": 100, "variants": ["normal"]},
+    {"id": "call8_window_pair", "family": "exception", "samples": 100, "variants": ["normal"]},
+    {"id": "call12_window_pair", "family": "exception", "samples": 100, "variants": ["normal"]},
+    {
+      "id": "syscall_rfe_pair",
+      "family": "exception",
+      "samples": 100,
+      "variants": ["normal"],
+      "knownTerms": ["rsr.epc1", "addi", "wsr.epc1", "rsync", "rfe"]
+    },
+    {"id": "rfe_alone", "family": "exception", "samples": 100, "variants": ["normal"]},
+    {"id": "rfi3_alone", "family": "exception", "samples": 100, "variants": ["normal"]}
+  ]
+}
