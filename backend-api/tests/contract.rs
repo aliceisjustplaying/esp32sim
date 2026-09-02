@@ -5,6 +5,19 @@ use backend_api::{
     VirtualCycle,
 };
 
+#[test]
+fn configuration_outside_receipt_scope_is_named_in_refusal() {
+    let mut config = backend_api::ChipConfig::RECEIPT_SCOPE;
+    config.flash_mhz = 40;
+    let refusal = backend_api::price_operation(
+        config,
+        CoreId::Core0,
+        Operation::BranchZero { taken: false },
+    )
+    .expect_err("unreceipted configuration must fail closed");
+    assert_eq!(refusal.configuration, Some(config));
+}
+
 fn event(core: CoreId, pc: u32, operation: Operation) -> TraceEvent {
     TraceEvent {
         core,
