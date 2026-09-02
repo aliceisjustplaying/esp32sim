@@ -8,6 +8,12 @@ pub struct Ch32v003 {
     first: bool,
     pub writes: u64,
 }
+impl Default for Ch32v003 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Ch32v003 {
     pub fn new() -> Self {
         let mut r = [0u8; 8];
@@ -79,7 +85,10 @@ impl Ov5640 {
         *self.regs.get(&r).unwrap_or(&0)
     }
     fn sync_state(&self) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self
+            .state
+            .lock()
+            .expect("the camera sensor mutex is not poisoned");
         st.width = ((self.get(0x3808) as u32 & 0xf) << 8) | self.get(0x3809) as u32; // DVP output width
         st.height = ((self.get(0x380a) as u32 & 0x7) << 8) | self.get(0x380b) as u32; // DVP output height
         st.format = self.get(0x4300);
@@ -174,7 +183,10 @@ impl Tca9554 {
                 let b = self.shift as u8;
                 self.nbits = 0;
                 self.shift = 0;
-                let mut st = self.panel.lock().unwrap();
+                let mut st = self
+                    .panel
+                    .lock()
+                    .expect("the display panel mutex is not poisoned");
                 st.words += 1;
                 if !dc {
                     st.last_cmd = b;
@@ -248,7 +260,10 @@ impl Gt911 {
         }
     }
     fn reg(&self, a: u16) -> u8 {
-        let mut tl = self.touch.lock().unwrap();
+        let mut tl = self
+            .touch
+            .lock()
+            .expect("the touch state mutex is not poisoned");
         if a == 0x814e {
             // like the real controller's buffer: a touch stays readable until the host has seen it once
             if tl.release_pending && tl.seen {

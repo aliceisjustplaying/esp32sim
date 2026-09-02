@@ -146,13 +146,17 @@ impl VirtualNet {
             // resolver but still looks like it came from the emulated one
             17 if self.nat.is_some() => {
                 let (sport, dport) = (be16(&body[0..2]), be16(&body[2..4]));
+                let nat = self
+                    .nat
+                    .as_mut()
+                    .expect("the NAT UDP branch requires a network backend");
                 let (host_dst, reply_src) = if dport == 53 {
-                    (self.nat.as_ref().unwrap().resolver, dip)
+                    (nat.resolver, dip)
                 } else {
                     (dip, dip)
                 };
                 let now = self.now_us;
-                self.nat.as_mut().unwrap().udp_out(
+                nat.udp_out(
                     src,
                     &sip,
                     sport,
@@ -168,7 +172,7 @@ impl VirtualNet {
                 let now = self.now_us;
                 self.nat
                     .as_mut()
-                    .unwrap()
+                    .expect("the NAT TCP branch requires a network backend")
                     .tcp_in(src, &sip, &dip, body, now)
             }
             17 if body.len() >= 8 && be16(&body[2..4]) == 53 => {
@@ -211,7 +215,7 @@ impl VirtualNet {
 
     /// BOOTP/DHCP: answer DISCOVER with OFFER and REQUEST with ACK.
     fn dhcp(&mut self, d: &[u8], src: &[u8; 6]) -> Vec<Vec<u8>> {
-        if d.len() < 240 || d[0] != 1 || &d[236..240] != [0x63, 0x82, 0x53, 0x63] {
+        if d.len() < 240 || d[0] != 1 || d[236..240] != [0x63, 0x82, 0x53, 0x63] {
             return Vec::new();
         }
         let mut msg_type = 0u8;
@@ -276,13 +280,13 @@ impl VirtualNet {
         }
         if self.log {
             eprintln!(
-                "[net] DHCP {} -> {} for {}",
+                "[net] DHCP {} -> {} for {}.{}.{}.{}",
                 if msg_type == 1 { "DISCOVER" } else { "REQUEST" },
                 if reply_type == 2 { "OFFER" } else { "ACK" },
-                format!(
-                    "{}.{}.{}.{}",
-                    self.sta_ip[0], self.sta_ip[1], self.sta_ip[2], self.sta_ip[3]
-                )
+                self.sta_ip[0],
+                self.sta_ip[1],
+                self.sta_ip[2],
+                self.sta_ip[3]
             );
         }
         // Unicast the reply unless the client asked for a broadcast one (BOOTP flags bit 15): a
@@ -398,6 +402,11 @@ impl VirtualNet {
     }
 
     /// SNTP: hand out the host's clock, so firmware waiting for time gets it.
+    #[expect(
+        clippy::precedence,
+        clippy::identity_op,
+        reason = "the existing NTP fractional calculation must remain unchanged"
+    )]
     fn ntp(
         &mut self,
         q: &[u8],
@@ -413,7 +422,7 @@ impl VirtualNet {
         let secs = (now.as_secs() + 2_208_988_800) as u32; // seconds since 1900
         let frac = ((now.subsec_nanos() as u64) << 32 / 1) as u32;
         let mut r = vec![0u8; 48];
-        r[0] = (0 << 6) | (4 << 3) | 4; // no warning, version 4, server
+        r[0] = (4 << 3) | 4; // no warning, version 4, server
         r[1] = 1; // stratum 1
         r[2] = q[2];
         r[3] = 0xec; // poll, precision

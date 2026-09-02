@@ -246,16 +246,9 @@ impl SocBus {
         };
         e.vbase = self.ver_base[e.src as usize] + (e.off as usize >> VPAGE_SHIFT) as u32;
         let off = e.off as usize;
-        e.base = unsafe { self.buf_mut(e.src as u8).as_mut_ptr().add(off) };
+        e.base = self.buf_mut(e.src as u8).as_mut_ptr().wrapping_add(off);
         self.tlb[tlb_idx(addr)] = e;
         Some(e)
-    }
-
-    /// Resolve an address to (buffer, offset, writable) — the slow path, for loaders.
-    fn resolve(&mut self, addr: u32) -> Option<(&mut Vec<u8>, usize, bool)> {
-        let e = self.lookup(addr)?;
-        let o = e.off as usize + (addr - e.lo) as usize;
-        Some((self.buf_mut(e.src as u8), o, e.writable != 0))
     }
 
     /// Record that `len` bytes at `off` of the page group starting at `vbase` changed. An
@@ -589,7 +582,12 @@ impl SocBus {
         // 2) the panel consumes `due` bytes from the FIFO
         let n = due.min(self.periph.lcd_cam.lcd_fifo.len());
         for _ in 0..n {
-            let b = self.periph.lcd_cam.lcd_fifo.pop_front().unwrap();
+            let b = self
+                .periph
+                .lcd_cam
+                .lcd_fifo
+                .pop_front()
+                .expect("the transfer count does not exceed the LCD FIFO length");
             self.periph.lcd_cam.lcd_line.push(b);
         }
         while self.periph.lcd_cam.lcd_line.len() >= frame_bytes {
@@ -837,19 +835,25 @@ impl SocBus {
         if busy && now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 50_000 {
             return;
         }
-        let mut due = {
-            let ap = self.periph.wifi.ap.as_mut().unwrap();
-            ap.step(now_us)
-        };
         let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
-        for e in eth_in {
-            if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) {
-                due.push(crate::wifi::AirFrame {
-                    at_us: now_us,
-                    frame: f,
-                });
+        let mut due = {
+            let ap = self
+                .periph
+                .wifi
+                .ap
+                .as_mut()
+                .expect("the virtual air step requires an access point");
+            let mut due = ap.step(now_us);
+            for e in eth_in {
+                if let Some(f) = ap.data_from_ds(&e) {
+                    due.push(crate::wifi::AirFrame {
+                        at_us: now_us,
+                        frame: f,
+                    });
+                }
             }
-        }
+            due
+        };
         if due.is_empty() {
             return;
         }
@@ -883,7 +887,12 @@ impl SocBus {
             return;
         }
         let (chan, log) = {
-            let ap = self.periph.wifi.ap.as_ref().unwrap();
+            let ap = self
+                .periph
+                .wifi
+                .ap
+                .as_ref()
+                .expect("received access-point frames require an access point");
             (ap.cfg.channel as u32, ap.log)
         };
         let mut b = Vec::with_capacity(total);
@@ -904,7 +913,7 @@ impl SocBus {
         let w0: u32 = fm | (0xd8u32 & 0xff); // rssi -40 dBm, 1 Mbps, legacy
         let w2: u32 = (chan << 16) | (chan << 20); // channel, secondary
         let w5: u32 = 0xa6; // noise floor -90
-        let w11: u32 = ((frame.len() + 4) as u32 & 0xfff) | (0 << 24); // sig_len (incl. FCS), rx_state OK
+        let w11: u32 = (frame.len() + 4) as u32 & 0xfff; // sig_len (incl. FCS), rx_state OK
         for w in [w0, 0, w2, now_us as u32, 0, w5, 0, 0, 0, 0, 0, w11] {
             b.extend_from_slice(&w.to_le_bytes());
         }
@@ -975,7 +984,9 @@ impl Bus for SocBus {
             Some(e) if addr.wrapping_add(2) <= e.hi => {
                 let o = e.off as usize + (addr - e.lo) as usize;
                 Ok(u16::from_le_bytes(
-                    self.buf(e.src as u8)[o..o + 2].try_into().unwrap(),
+                    self.buf(e.src as u8)[o..o + 2]
+                        .try_into()
+                        .expect("the checked read has two bytes"),
                 ))
             }
             Some(_) => Ok(u16::from_le_bytes([
@@ -996,7 +1007,9 @@ impl Bus for SocBus {
             Some(e) if addr.wrapping_add(4) <= e.hi => {
                 let o = e.off as usize + (addr - e.lo) as usize;
                 Ok(u32::from_le_bytes(
-                    self.buf(e.src as u8)[o..o + 4].try_into().unwrap(),
+                    self.buf(e.src as u8)[o..o + 4]
+                        .try_into()
+                        .expect("the checked read has four bytes"),
                 ))
             }
             Some(_) => Ok(u32::from_le_bytes([
@@ -1087,13 +1100,15 @@ impl Bus for SocBus {
         let o = e.off as usize + (pc - e.lo) as usize;
         let b = self.buf(e.src as u8);
         if let Some(w) = b.get(o..o + 4) {
-            return Ok(w.try_into().unwrap());
+            return Ok(w
+                .try_into()
+                .expect("the fetched instruction has four bytes"));
         }
         // last bytes of a buffer (or of a mapped page): what physical memory has, zero beyond
         let mut r = [0u8; 4];
-        for i in 0..4 {
+        for (i, byte) in r.iter_mut().enumerate() {
             if let Some(x) = b.get(o + i) {
-                r[i] = *x;
+                *byte = *x;
             }
         }
         Ok(r)
@@ -1162,7 +1177,7 @@ impl SocBus {
         if self.periph.wifi.ap.is_some() {
             self.wifi_air_step();
         }
-        if self.periph.wifi.net.is_some() {
+        if let Some(net) = &mut self.periph.wifi.net {
             let now_us = self.cycles / (crate::periph::CPU_HZ / 1_000_000);
             let out = std::mem::take(&mut self.periph.wifi.eth_tx);
             // Frames from the station are handled the moment they are sent, but reading the host
@@ -1174,7 +1189,6 @@ impl SocBus {
                 if due {
                     self.periph.wifi.net_polled_us = now_us;
                 }
-                let net = self.periph.wifi.net.as_mut().unwrap();
                 let mut replies = Vec::new();
                 for e in out {
                     replies.extend(net.handle(&e, now_us));

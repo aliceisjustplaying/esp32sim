@@ -88,6 +88,10 @@ impl Nat {
     // -------------------------------------------------------------- UDP
 
     /// Forward a UDP datagram and remember the flow so replies find their way back.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the UDP flow fields map directly to packet and reply addresses"
+    )]
     pub fn udp_out(
         &mut self,
         gmac: &[u8; 6],

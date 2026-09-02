@@ -6,6 +6,7 @@
 //!   - WS2812 12-LED ring on GPIO 8 (via RMT)
 //!   - rotary encoder CLK 5 / DT 4 / SW 9, buttons GPIO 17 / 16 (active low)
 //!   - MAX98357A I2S amp: BCLK 12, LRCLK 13, DIN 10
+//!
 //! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
 pub use esp_soc::board::{Board, BoardModel, NoBoard};
@@ -60,6 +61,12 @@ pub struct St7735 {
     pixel_hi: Option<u8>,
     pub frames: u64, // RAMWR commands seen
     pub pixels_written: u64,
+}
+
+impl Default for St7735 {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl St7735 {
@@ -272,7 +279,7 @@ impl St7735 {
             }
         }
         let mut v: Vec<(u16, usize)> = m.into_iter().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
         v.truncate(top);
         v
     }
@@ -312,6 +319,12 @@ pub struct Atech14 {
     pub tft: St7735,
     pub ring: Ring,
     pub gpio_events: u64,
+}
+
+impl Default for Atech14 {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Atech14 {
@@ -394,6 +407,12 @@ pub struct WaveshareCam {
     frame: Option<(u32, u32, std::sync::Arc<Vec<u8>>)>,
     pub frames: u64,
 }
+impl Default for WaveshareCam {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WaveshareCam {
     pub fn new() -> Self {
         WaveshareCam {
@@ -436,7 +455,10 @@ impl BoardModel for WaveshareCam {
     }
     fn camera_frame(&mut self) -> Option<(u32, u32, std::sync::Arc<Vec<u8>>)> {
         let (w, h) = {
-            let s = self.sensor.lock().unwrap();
+            let s = self
+                .sensor
+                .lock()
+                .expect("the camera sensor mutex is not poisoned");
             (s.width, s.height)
         };
         if w == 0 || h == 0 {
@@ -484,6 +506,12 @@ pub struct WaveshareLcd4b {
     pub panel: std::sync::Arc<std::sync::Mutex<crate::i2c::St7701State>>,
     pub touch_state: std::sync::Arc<std::sync::Mutex<crate::i2c::TouchState>>,
 }
+impl Default for WaveshareLcd4b {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WaveshareLcd4b {
     pub fn new() -> Self {
         WaveshareLcd4b {
@@ -534,8 +562,9 @@ impl BoardModel for WaveshareLcd4b {
             self.h = h;
             self.frame = vec![0; (w * h) as usize];
         }
-        for (i, px) in rgb565.chunks_exact(2).enumerate().take(self.frame.len()) {
-            self.frame[i] = u16::from_le_bytes([px[0], px[1]]);
+        let (pixels, _) = rgb565.as_chunks::<2>();
+        for (i, px) in pixels.iter().enumerate().take(self.frame.len()) {
+            self.frame[i] = u16::from_le_bytes(*px);
         }
         self.frames += 1;
     }
@@ -549,7 +578,10 @@ impl BoardModel for WaveshareLcd4b {
         self.frames
     }
     fn touch(&mut self, x: u16, y: u16, down: bool) {
-        let mut t = self.touch_state.lock().unwrap();
+        let mut t = self
+            .touch_state
+            .lock()
+            .expect("the touch state mutex is not poisoned");
         t.x = x;
         t.y = y;
         if down {

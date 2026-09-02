@@ -50,6 +50,12 @@ pub struct IntMatrix {
     ram: RegRam,
     pub status: [u32; 4],
 }
+impl Default for IntMatrix {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IntMatrix {
     pub fn new() -> Self {
         IntMatrix {
@@ -133,6 +139,12 @@ pub struct WifiMac {
     pub last_rx_desc: u32,
     pub net: Option<crate::net::VirtualNet>,
 }
+impl Default for WifiMac {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WifiMac {
     pub fn new() -> Self {
         WifiMac {
@@ -167,7 +179,7 @@ impl WifiMac {
     }
     /// TX queue n has its PLCP0 register at 0xd08 - 8n (hal_mac_txq_enable: (0x0c0067a1 - n) << 3).
     fn txq_of(off: u32) -> Option<u8> {
-        if off <= 0xd08 && (0xd08 - off) % 8 == 0 && (0xd08 - off) / 8 < 16 {
+        if off <= 0xd08 && (0xd08 - off).is_multiple_of(8) && (0xd08 - off) / 8 < 16 {
             Some(((0xd08 - off) / 8) as u8)
         } else {
             None
@@ -180,8 +192,8 @@ impl WifiMac {
             (0x33, 0x088) => self.rx_base & 0xf_ffff,
             (0x33, 0x08c) => self.rx_next & 0xf_ffff,
             (0x33, 0x090) => self.rx_last,
-            (0x33, 0xca8) => (self.txq_error & 0x7ff), // txq state types 0/1 (errors/collisions)
-            (0x33, 0xcb0) => self.txq_complete & 0xf,  // txq state type 2: completed queues
+            (0x33, 0xca8) => self.txq_error & 0x7ff, // txq state types 0/1 (errors/collisions)
+            (0x33, 0xcb0) => self.txq_complete & 0xf, // txq state type 2: completed queues
             (0x35, 0x118) => self.pwr_events,
             (0x35, 0x18) => self.tsf_latched as u32,
             (0x35, 0x1c) => (self.tsf_latched >> 32) as u32,
@@ -247,7 +259,7 @@ impl WifiMac {
                 // MAC_TX_PLCP0[queue]
                 self.ram.write(off, v);
                 if v & (1 << 31) != 0 {
-                    let q = Self::txq_of(o).unwrap();
+                    let q = Self::txq_of(o).expect("the guarded register belongs to a TX queue");
                     self.tx_pending.push((q, DMA_ADDR_BASE | (v & 0xf_ffff)));
                 }
             }
@@ -285,6 +297,12 @@ pub struct Pcnt {
     ram: RegRam,
     pub events: u64,
 }
+impl Default for Pcnt {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Pcnt {
     pub fn new() -> Self {
         Pcnt {
@@ -362,7 +380,7 @@ impl Pcnt {
                     _ => 0,
                 };
                 if delta != 0 {
-                    let ctrl_level = sig(35 + 4 * u as u32 + ch).map_or(true, |(_, l)| l);
+                    let ctrl_level = sig(35 + 4 * u as u32 + ch).is_none_or(|(_, l)| l);
                     let cm = if ctrl_level {
                         (conf0 >> (sh + 4)) & 3
                     } else {
@@ -427,6 +445,12 @@ pub struct GpSpi {
     pub transfers: u64,
     pub log: bool,
 }
+impl Default for GpSpi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GpSpi {
     pub fn new() -> Self {
         GpSpi {
@@ -474,7 +498,7 @@ impl GpSpi {
         let start = self.tx.len();
         if user & (1 << 31) != 0 {
             // command phase, LSB byte first
-            let n = (((user2 >> 28) & 0xf) + 1 + 7) / 8;
+            let n = (((user2 >> 28) & 0xf) + 1).div_ceil(8);
             let c = user2 & 0xffff;
             for i in 0..n {
                 self.tx.push((c >> (8 * i)) as u8);
@@ -483,7 +507,7 @@ impl GpSpi {
         if user & (1 << 30) != 0 {
             // address phase, MSB first from the top of ADDR
             let bits = (user1 >> 27) + 1;
-            let n = (bits + 7) / 8;
+            let n = bits.div_ceil(8);
             let a = self.regs.read(0x04);
             for i in 0..n {
                 self.tx.push((a >> (24 - 8 * i)) as u8);
@@ -492,7 +516,7 @@ impl GpSpi {
         if user & (1 << 27) != 0 {
             // MOSI data phase from W0.. (or W8.. with HIGHPART)
             let bits = (self.regs.read(0x1c) & 0x3ffff) + 1;
-            let n = ((bits + 7) / 8) as usize;
+            let n = bits.div_ceil(8) as usize;
             let base = if user & (1 << 25) != 0 { 8 } else { 0 };
             for i in 0..n.min((16 - base) * 4) {
                 self.tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8);
@@ -542,6 +566,12 @@ pub struct LcdCam {
     pub lcd_fifo: std::collections::VecDeque<u8>,
     pub lcd_log: bool,
 }
+impl Default for LcdCam {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LcdCam {
     pub fn new() -> Self {
         LcdCam {
@@ -685,6 +715,12 @@ impl LcdCam {
 pub struct Extmem {
     pub ram: RegRam,
 }
+impl Default for Extmem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Extmem {
     pub fn new() -> Self {
         Extmem { ram: RegRam::new() }
@@ -720,6 +756,12 @@ pub struct Wdev {
     state: u64,
     ram: RegRam,
 }
+impl Default for Wdev {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Wdev {
     pub fn new() -> Self {
         Wdev {
@@ -750,6 +792,12 @@ pub struct I2cMst {
     pub ram: RegRam,
     pub ana: std::collections::HashMap<u32, u8>,
 }
+impl Default for I2cMst {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl I2cMst {
     pub fn new() -> Self {
         I2cMst {
@@ -1002,7 +1050,7 @@ impl DeviceSet for Peripherals {
 
 impl Peripherals {
     pub fn new(mac: [u8; 6]) -> Self {
-        let mut p = Peripherals {
+        Peripherals {
             usb: UsbSerialJtag::new(CPU_HZ),
             uart: [Uart::new(), Uart::new(), Uart::new()],
             systimer: Systimer::new(),
@@ -1062,8 +1110,7 @@ impl Peripherals {
             spi_exec: false,
             last_status: [0; 4],
             intmatrix_dirty: false,
-        };
-        p
+        }
     }
 
     pub fn block_name_pub(block: u32) -> String {
@@ -1109,7 +1156,6 @@ impl Peripherals {
             0x2c => "PWM1",
             0x2d => "I2S1",
             0x2e => "UART2",
-            0x3a => "AES",
             0x33 => "WIFI_MAC",
             0x34 => "WIFI_MAC2",
             0x35 => "WDEV",
@@ -1166,7 +1212,7 @@ impl Peripherals {
         match block {
             0x08 => self.rtc.ram.write(off, v),
             0xc0 => {
-                if off >= 0x30 && off <= 0x3c {
+                if (0x30..=0x3c).contains(&off) {
                     return false;
                 }
                 self.system.ram.write(off, v)
@@ -1186,12 +1232,7 @@ impl Peripherals {
                 self.spi0.regs.write(off, v)
             }
             0x0e => self.i2c_mst.ram.write(off, v),
-            0x26 | 0xc1 => self
-                .misc
-                .generic
-                .entry(block)
-                .or_insert_with(RegRam::new)
-                .write(off, v),
+            0x26 | 0xc1 => self.misc.generic.entry(block).or_default().write(off, v),
             _ => return false,
         }
         true
@@ -1254,8 +1295,8 @@ impl Peripherals {
     pub fn cpu_lines_both(&self) -> (u32, u32) {
         let st = self.last_status;
         let (mut l0, mut l1) = (0u32, 0u32);
-        for w in 0..4 {
-            let mut bits = st[w];
+        for (w, &status) in st.iter().enumerate() {
+            let mut bits = status;
             while bits != 0 {
                 let b = bits.trailing_zeros();
                 bits &= bits - 1;
