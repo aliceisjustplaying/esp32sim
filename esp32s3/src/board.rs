@@ -19,6 +19,44 @@ pub struct BoardEdge {
     pub level: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Spi2Mode {
+    Single,
+    Dual,
+    Quad,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Spi2DmaRequest {
+    pub submitted_at: VirtualCycle,
+    pub bytes: usize,
+    pub clock_hz: u32,
+    pub mode: Spi2Mode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Spi2DmaTiming {
+    pub submit_cycles: VirtualCycle,
+    pub completion_cycle: VirtualCycle,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Spi2DmaTimingRefusal {
+    UnsupportedBoard,
+    UnsupportedMode {
+        mode: Spi2Mode,
+    },
+    UnsupportedClock {
+        clock_hz: u32,
+    },
+    UnpricedPayload {
+        bytes: usize,
+        tier_candidate: backend_api::CostTier,
+    },
+    CompletionOverflow,
+    TransferAlreadyPending,
+}
+
 /// What a board does with the SoC's pin-level activity.
 pub trait BoardModel: DeadlineModel {
     fn name(&self) -> &'static str;
@@ -33,6 +71,17 @@ pub trait BoardModel: DeadlineModel {
     fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
         self.spi_tx(host, tx);
         vec![0xff; rx_len]
+    }
+    /// Schedule the completion edge for a receipt-scoped SPI2 DMA transfer.
+    fn schedule_spi2_dma(
+        &mut self,
+        _request: Spi2DmaRequest,
+    ) -> Result<Spi2DmaTiming, Spi2DmaTimingRefusal> {
+        Err(Spi2DmaTimingRefusal::UnsupportedBoard)
+    }
+    /// Consume one SPI2 DMA completion delivered by the last deadline advance.
+    fn take_spi2_dma_completion(&mut self) -> bool {
+        false
     }
     fn tft(&self) -> Option<&St7735> {
         None
@@ -938,6 +987,45 @@ mod co5300_tests {
         assert_eq!(panel.frame[3 * Co5300::WIDTH + 1], 0xf800);
         assert_eq!(panel.frame[3 * Co5300::WIDTH + 2], 0x07e0);
         assert_eq!(panel.pixels_written, 2);
+    }
+
+    #[test]
+    fn priced_spi2_dma_deadline_matches_the_32k_receipt() {
+        const SUBMITTED_AT: VirtualCycle = 17;
+        let mut board = WaveshareAmoled18V2::new();
+        let timing = board
+            .schedule_spi2_dma(Spi2DmaRequest {
+                submitted_at: SUBMITTED_AT,
+                bytes: 32_768,
+                clock_hz: 40_000_000,
+                mode: Spi2Mode::Quad,
+            })
+            .unwrap();
+
+        assert_eq!(timing.submit_cycles, 5_755);
+        assert_eq!(timing.completion_cycle, SUBMITTED_AT + 401_589);
+        assert_eq!(board.next_deadline(), Some(timing.completion_cycle));
+        board.advance_to(timing.completion_cycle - 1).unwrap();
+        assert!(!board.take_spi2_dma_completion());
+        board.advance_to(timing.completion_cycle).unwrap();
+        assert!(board.take_spi2_dma_completion());
+    }
+
+    #[test]
+    fn unadopted_64_byte_spi2_dma_affine_payload_refuses() {
+        let mut board = WaveshareAmoled18V2::new();
+        assert_eq!(
+            board.schedule_spi2_dma(Spi2DmaRequest {
+                submitted_at: 0,
+                bytes: 64,
+                clock_hz: 40_000_000,
+                mode: Spi2Mode::Quad,
+            }),
+            Err(Spi2DmaTimingRefusal::UnpricedPayload {
+                bytes: 64,
+                tier_candidate: backend_api::CostTier::Affine,
+            })
+        );
     }
     #[test]
     fn amoled_board_deadlines_generate_exactly_timestamped_edges() {
