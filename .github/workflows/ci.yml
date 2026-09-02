@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+    branches: ['**']
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch the ESP32-S3 and ESP32-C3 mask ROM ELFs
+        run: |
+          set -e
+          url=$(curl -sL https://api.github.com/repos/espressif/esp-rom-elfs/releases/latest | python3 -c 'import json,sys; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".tar.gz")))')
+          curl -sL "$url" -o rom.tar.gz
+          mkdir -p roms && tar -xzf rom.tar.gz -C roms --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf'
+          find roms -name '*.elf' -exec mv {} roms/ \;
+          ls -la roms/*.elf
+      - name: Build
+        run: cargo build --release --workspace
+      - name: Test (hermetic + golden outputs)
+        run: ESP32SIM_ROM_DIR=$PWD/roms cargo test --release --workspace -- --include-ignored

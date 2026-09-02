@@ -42,6 +42,7 @@ esp32sim/
   esp32c3/        the C3 SoC: memory map, interrupt matrix, cache controller, RNG;
                   peripheral models shared with esp32s3 where the IP is identical
   cli-c3/         the `esp32sim-c3` command line
+  tests/          golden-output regression tests and their fixtures (tests/README.md)
   ── shared ──
   wasm/           C-ABI crate wrapping either Machine for the browser (both chips, one module)
   web/            browser UI (board drawing, console, audio, camera) + emu.js/worker.js for wasm

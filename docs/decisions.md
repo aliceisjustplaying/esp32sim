@@ -250,6 +250,15 @@ Things that cost real time to find out, recorded so they do not have to be found
   `I (nnn)` prefix, after which the comparison is exact and the residue is real.
 
 ## Process
+- **Golden outputs are the regression bar, and they run in CI.** `cargo test --release --workspace
+  -- --include-ignored` runs the committed demo firmware (Atech script1 with and without the JIT,
+  the SID jukebox, the Touch-LCD-4B panel, hello_world on the S3 and the C3) and compares the
+  console text, the audio's SHA-256 and the instruction count with `tests/golden/`. ~3 s for all
+  of it. The tests are `#[ignore]`d only because they need the mask ROM ELFs; they never skip
+  silently. Baseline on an Apple M5 Max (`tools/bench-goldens.sh`, best of 5, release, JIT):
+  Atech script1 5 s → 1.45 s wall (214 Minsn/s), SID jukebox 6 s → 1.33 s (245), panel 7 s →
+  2.30 s (172). A refactor phase is accepted when the goldens are unchanged and these are within
+  the 10 % drift band; a speed change is accepted when the goldens are unchanged, full stop.
 - Bring-up loop: run → first unknown register / unimplemented instruction (`--log-periph`,
   `Unimplemented(pc, raw)`) → model it → rerun. Keep the objdump test and the hardware
   differential test green after every core change.
