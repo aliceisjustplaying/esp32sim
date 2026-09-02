@@ -275,6 +275,14 @@ active work. Hardware resumes only when a milestone 2 through 4 cost class
 lacks a receipt. Display-path and DMA decomposition are parked until milestone
 4 is complete.
 
+H1. Capture the IDF 6.1 `esp32s3-exception-ladders` image: 100 samples each
+for non-tail `call4`, `call8`, and `call12` recursion past the register-file
+knee, `syscall` with a bare level-1 `rfe` handler, `rfe` alone with EPC1 set to
+the next instruction, and `rfi 3` alone with EPC3 set to the next instruction.
+Require zero cache-counter deltas, verified encodings, and a passing emulator
+dry-run. The estimated board time is about two seconds. Nothing is flashed
+until the maintainer starts the next capture session.
+
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
 capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
 SDA/SCL, GPIO 21 touch interrupt) resolving the 40 MHz bus, cold
@@ -291,13 +299,15 @@ mode (needs GOAL milestone 2).
 - The interpreter-versus-native-JIT architectural conformance gate is merged
   at `2d42032`. Its committed corpus and 128 deterministic randomized SRAM
   blocks compare registers, PC, touched memory, and the complete SRAM image.
-- Milestone 2 Task 2 is parked on branch `codex/overnight-task2` at `17047d4`.
-  The SHA-256-pinned TinyDraw SRAM kernel and deterministic ledger pass on
-  explicitly pinned core 0. Shared cache state is transactional across both
-  live cores. The real IDF `_WindowOverflow12` and `_WindowUnderflow12`
-  handler bodies total 28 priced cycles against the 35-cycle correlation
-  receipt. The missing seven cycles are in the trigger and return path, whose
-  sequence totals R2 keeps out of the price table.
+- Milestone 2's committed TinyDraw SRAM kernel fixture and deterministic ledger
+  pass on explicitly pinned core 0. Shared cache state is transactional across
+  both live cores. The previous window attempt walked `_WindowOverflow12` and
+  `_WindowUnderflow12` by assigning PC every three bytes, so it neither matched
+  the receipt's `callx8` `_WindowOverflow8` and `_WindowUnderflow8` pair nor
+  executed a real exception. The corrected recursion reaches the first real
+  `_WindowOverflow8` entry and refuses. Two receipt classes are missing:
+  exception-entry delay and the `rfwo` and `rfwu` instruction costs. The
+  correlation stays ignored pending hardware queue item H1.
 - ESP32-S3 TRM v1.8, section 4.3.3.2, page 405, specifies one
   dual-core-shared I-cache and one dual-core-shared D-cache, with each core
   on its own bus. GOAL and the merged Task 5 cache model adopt that topology.
@@ -309,11 +319,10 @@ mode (needs GOAL milestone 2).
 
 ## Proposed next steps
 
-1. Proposal: disaggregate the 35-cycle window-pair receipt into priced
-   instructions and additive delays, or revise the mandatory correlation
-   boundary, then resume Task 2 from `17047d4`.
-2. Proposal: provide a pinned mask ROM ELF and the calibration-only RGB565
-   oracle bytes so the parked ROM, interrupt, and RGB565 correlation attempts
-   can execute real code paths.
-3. Proposal: merge Task 2 only after its mandatory window-pair exit passes;
-   unknown operations and configurations remain fail-closed.
+1. Proposal: capture hardware queue item H1 at the maintainer's next board
+   session, then adopt exception-entry and exception-return costs only from its
+   verified IDF 6.1 receipt.
+2. Proposal: add per-frame firmware counters to the next maintainer capture so
+   frame-scale correlation can begin after measured boot reaches READY.
+3. Proposal: begin milestone 5 contention pricing only after the measured boot
+   findings identify the first shared-cache or MSPI arbitration boundary.
