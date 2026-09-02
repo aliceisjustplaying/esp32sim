@@ -31,33 +31,12 @@ pub enum MemoryClass {
     Unknown,
 }
 
-/// Compact dynamic operation retained for later lowering into generated code.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BlockTimingOp {
-    BranchZero {
-        instruction_index: u8,
-    },
-    MemoryAccess {
-        instruction_index: u8,
-        access: AccessShape,
-    },
-    WindowPair {
-        instruction_index: u8,
-    },
-    LoopAlignment {
-        instruction_index: u8,
-        body_residue: u8,
-    },
-}
-
 /// Cost payload shared by an interpreted block and its future JIT lowering.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockCostPayload {
     pub start_pc: u32,
-    pub instruction_count: u8,
     pub static_cycles: u64,
     pub components: Vec<CostComponent>,
-    pub dynamic_ops: Vec<BlockTimingOp>,
 }
 
 #[derive(Clone, Debug)]
@@ -160,10 +139,8 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
             .then(|| cpu.get_ar(instruction.s) == 0),
         block_cost: BlockCostPayload {
             start_pc: pc,
-            instruction_count: 1,
             static_cycles: 0,
             components: Vec::new(),
-            dynamic_ops: dynamic_ops(cpu, instruction, access),
         },
     };
     let plan = timing.price(&observation).map_err(PlanError::Timing)?;
@@ -190,28 +167,6 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         components: plan.components,
         mutations: plan.mutations,
     })
-}
-
-fn dynamic_ops(cpu: &Cpu, instruction: Insn, access: Option<AccessShape>) -> Vec<BlockTimingOp> {
-    let mut operations = Vec::new();
-    if matches!(instruction.op, crate::Op::Beqz | crate::Op::BeqzN) {
-        operations.push(BlockTimingOp::BranchZero {
-            instruction_index: 0,
-        });
-    }
-    if let Some(access) = access {
-        operations.push(BlockTimingOp::MemoryAccess {
-            instruction_index: 0,
-            access,
-        });
-    }
-    if cpu.lcount != 0 && cpu.pc.wrapping_add(instruction.len as u32) == cpu.lend {
-        operations.push(BlockTimingOp::LoopAlignment {
-            instruction_index: 0,
-            body_residue: (cpu.lbeg & 3) as u8,
-        });
-    }
-    operations
 }
 
 fn access_shape(cpu: &Cpu, instruction: Insn) -> Option<AccessShape> {
@@ -386,7 +341,6 @@ mod tests {
             plan_instruction(CoreId::Core0, &cpu, &ram, &timing, 7).expect("instruction plans");
         assert_eq!(pending.start, 7);
         assert_eq!(pending.completion, 480);
-        assert_eq!(pending.observation.block_cost.instruction_count, 1);
         assert_eq!(pending.observation.block_cost.start_pc, 0x4000_0400);
         assert_eq!(pending.observation.block_cost.static_cycles, 473);
         assert_eq!(
