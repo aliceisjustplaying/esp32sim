@@ -1,11 +1,11 @@
 //! Receipt-backed measured adapter for the ESP32-S3 interpreter.
 
 use backend_api::{
-    price_operation, Backend, CacheFillPosition, CacheKind, ChipConfig, CoreId, CostComponent,
-    ExecutionOutcome, FlashMode, InstructionCost, MmioTier, Operation, PsramMode, RefusalReason,
-    TimingMutation, TimingRefusal, TransactionEngine,
+    price_operation, Backend, CacheAccessKind, CacheAccessResult, CacheFillPosition, CacheKind,
+    CacheModel, CacheSource, ChipConfig, CoreId, CostComponent, ExecutionOutcome, FillPosition,
+    FlashMode, InstructionCost, MmioTier, Operation, PsramMode, RefusalReason, TimingMutation,
+    TimingRefusal, TransactionEngine,
 };
-use std::collections::BTreeSet;
 use xtensa_lx7::measured::{complete_instruction, plan_instruction, CompletionError, PlanError};
 use xtensa_lx7::measured::{
     AccessKind, InstructionObservation, MemoryClass, TimingPlan, TimingSource,
@@ -20,7 +20,7 @@ pub struct Esp32Backend {
     engine: TransactionEngine,
     config: ChipConfig,
     previous_load: [Option<u8>; 2],
-    seen_cache_lines: BTreeSet<(CoreId, CacheKind, u32)>,
+    cache: Option<CacheModel>,
 }
 
 impl Default for Esp32Backend {
@@ -29,7 +29,7 @@ impl Default for Esp32Backend {
             engine: TransactionEngine::default(),
             config: ChipConfig::RECEIPT_SCOPE,
             previous_load: [None; 2],
-            seen_cache_lines: BTreeSet::new(),
+            cache: CacheModel::new(ChipConfig::RECEIPT_SCOPE).ok(),
         }
     }
 }
@@ -62,46 +62,85 @@ impl Esp32Backend {
         Operation::Instruction(kind)
     }
 
-    fn cache_fill(&self, observation: &InstructionObservation) -> Option<Operation> {
-        let (cache, address, line_bytes) = match observation.fetch_memory {
-            MemoryClass::Flash => (
-                CacheKind::InstructionFlash,
+    fn update_config(&mut self, config: ChipConfig) {
+        if self.config != config {
+            self.config = config;
+            self.cache = CacheModel::new(config).ok();
+        }
+    }
+
+    fn cache_operations(&self, observation: &InstructionObservation) -> Vec<Operation> {
+        let Some(mut cache) = self.cache.clone() else {
+            return Vec::new();
+        };
+        let mut operations = Vec::new();
+        match observation.fetch_memory {
+            MemoryClass::Flash => operations.push(cache_operation(
+                cache.access(CacheAccessKind::Fetch, observation.pc),
+                true,
                 observation.pc,
                 self.config.icache_line_bytes,
-            ),
-            _ => match (observation.access_memory, observation.access) {
-                (Some(MemoryClass::Flash), Some(access)) => (
-                    CacheKind::DataFlash,
-                    access.address,
-                    self.config.dcache_line_bytes,
-                ),
-                (Some(MemoryClass::Psram), Some(access)) => (
-                    CacheKind::DataPsram,
-                    access.address,
-                    self.config.dcache_line_bytes,
-                ),
-                _ => return None,
-            },
-        };
-        let line = address / u32::from(line_bytes);
-        let key = (observation.core, cache, line);
-        if self.seen_cache_lines.contains(&key) {
-            return Some(Operation::HotCacheHit);
+            )),
+            MemoryClass::Psram => operations.push(Operation::UnadoptedInstruction),
+            _ => {}
         }
-        let position = if self
-            .seen_cache_lines
-            .iter()
-            .any(|(core, kind, _)| *core == observation.core && *kind == cache)
-        {
-            CacheFillPosition::Subsequent
-        } else {
-            CacheFillPosition::First
+        if let (Some(memory), Some(access)) = (observation.access_memory, observation.access) {
+            if matches!(memory, MemoryClass::Flash | MemoryClass::Psram) {
+                let kind = match access.kind {
+                    AccessKind::Load => CacheAccessKind::Load,
+                    AccessKind::Store | AccessKind::Atomic => CacheAccessKind::Store,
+                };
+                operations.push(cache_operation(
+                    cache.access(kind, access.address),
+                    false,
+                    access.address,
+                    self.config.dcache_line_bytes,
+                ));
+            }
+        }
+        operations
+    }
+
+    fn commit_cache_accesses(&mut self, observation: &InstructionObservation) {
+        let Some(cache) = &mut self.cache else {
+            return;
         };
-        Some(Operation::CacheLineFill {
-            cache,
-            position,
-            line,
-        })
+        if observation.fetch_memory == MemoryClass::Flash {
+            let _result = cache.access(CacheAccessKind::Fetch, observation.pc);
+        }
+        if let (Some(memory), Some(access)) = (observation.access_memory, observation.access) {
+            if matches!(memory, MemoryClass::Flash | MemoryClass::Psram) {
+                let kind = match access.kind {
+                    AccessKind::Load => CacheAccessKind::Load,
+                    AccessKind::Store | AccessKind::Atomic => CacheAccessKind::Store,
+                };
+                let _result = cache.access(kind, access.address);
+            }
+        }
+    }
+}
+
+fn cache_operation(
+    result: CacheAccessResult,
+    instruction: bool,
+    address: u32,
+    line_bytes: u8,
+) -> Operation {
+    match result {
+        CacheAccessResult::Hit => Operation::HotCacheHit,
+        CacheAccessResult::Miss { position, source } => Operation::CacheLineFill {
+            cache: match (instruction, source) {
+                (true, CacheSource::Flash) => CacheKind::InstructionFlash,
+                (false, CacheSource::Flash) => CacheKind::DataFlash,
+                (false, CacheSource::Psram) => CacheKind::DataPsram,
+                (true, CacheSource::Psram) => return Operation::UnadoptedInstruction,
+            },
+            position: match position {
+                FillPosition::First => CacheFillPosition::First,
+                FillPosition::Subsequent => CacheFillPosition::Subsequent,
+            },
+            line: address / u32::from(line_bytes),
+        },
     }
 }
 
@@ -140,9 +179,7 @@ impl TimingSource for Esp32Backend {
         if access.is_some_and(|_| observation.access_memory == Some(MemoryClass::InternalSram)) {
             operations.push(Operation::IndependentSramAccess);
         }
-        if let Some(cache) = self.cache_fill(observation) {
-            operations.push(cache);
-        }
+        operations.extend(self.cache_operations(observation));
         if self.previous_load[core_index(observation.core)]
             .is_some_and(|register| observation.read_registers & (1 << register) != 0)
         {
@@ -188,11 +225,7 @@ impl TimingSource for Esp32Backend {
             mutations.to_vec(),
         )?;
         self.previous_load[core_index(observation.core)] = observation.load_destination;
-        for mutation in mutations {
-            if let TimingMutation::RecordCacheFill { core, cache, line } = *mutation {
-                self.seen_cache_lines.insert((core, cache, line));
-            }
-        }
+        self.commit_cache_accesses(observation);
         Ok(())
     }
 }
@@ -247,7 +280,7 @@ impl MeasuredMachine for crate::Machine {
         backend: &mut Esp32Backend,
         core: CoreId,
     ) -> Result<MeasuredStep, MeasuredStepError> {
-        backend.config = chip_config_from_registers(self);
+        backend.update_config(chip_config_from_registers(self));
         self.advance_measured_devices(self.bus.cycles)?;
         let index = core_index(core);
         let before_cycle = backend.engine().state().cores[index].cycle;
@@ -344,6 +377,8 @@ fn chip_config_from_registers(machine: &crate::Machine) -> ChipConfig {
     };
     let flash0 = clock_mhz(spi0.read(0x14));
     let flash1 = clock_mhz(spi1.read(0x14));
+    let icache_control = extmem.read(0x60);
+    let dcache_control = extmem.read(0x0);
     ChipConfig {
         cpu_mhz,
         flash_mode: if spi0.read(0x8) & spi1.read(0x8) & (1 << 24) != 0 {
@@ -358,12 +393,24 @@ fn chip_config_from_registers(machine: &crate::Machine) -> ChipConfig {
             PsramMode::Other
         },
         psram_mhz: clock_mhz(spi0.read(0x50)),
-        icache_line_bytes: if extmem.read(0x60) & (1 << 3) != 0 {
+        icache_size_bytes: if icache_control & (1 << 2) != 0 {
+            32 * 1024
+        } else {
+            16 * 1024
+        },
+        icache_ways: if icache_control & (1 << 1) != 0 { 8 } else { 4 },
+        icache_line_bytes: if icache_control & (1 << 3) != 0 {
             32
         } else {
             16
         },
-        dcache_line_bytes: match (extmem.read(0x0) >> 3) & 3 {
+        dcache_size_bytes: if dcache_control & (1 << 2) != 0 {
+            64 * 1024
+        } else {
+            32 * 1024
+        },
+        dcache_ways: 8,
+        dcache_line_bytes: match (dcache_control >> 3) & 3 {
             0 => 16,
             1 => 32,
             2 => 64,
@@ -384,7 +431,8 @@ mod tests {
     use super::*;
     use crate::board::WaveshareAmoled18V2;
     use backend_api::contract_suite::{assert_backend_contract, assert_receipt_correlation};
-    use backend_api::{CacheFillPosition, CacheKind, ReceiptId};
+    use backend_api::{CacheFillPosition, CacheKind, CostClass, ReceiptId};
+    use xtensa_lx7::measured::BlockCostPayload;
     use xtensa_lx7::state::ps;
 
     const RESET_PC: u32 = 0x4000_0400;
@@ -411,7 +459,12 @@ mod tests {
         machine.bus.periph.spi0.regs.write(0x40, 1 << 21);
         machine.bus.periph.spi0.regs.write(0x50, 0x0001_0001);
         machine.bus.periph.extmem.ram.write(0x0, 2 << 3);
-        machine.bus.periph.extmem.ram.write(0x60, 1 << 3);
+        machine
+            .bus
+            .periph
+            .extmem
+            .ram
+            .write(0x60, (1 << 3) | (1 << 1));
     }
 
     fn measured_branch_ledger(register: u32) -> Vec<u8> {
@@ -427,10 +480,71 @@ mod tests {
             .canonical_ledger
     }
 
+    fn flash_observation(core: CoreId) -> InstructionObservation {
+        InstructionObservation {
+            core,
+            pc: 0x4200_0000,
+            bytes: [BEQZ_N_A6[0], BEQZ_N_A6[1], 0, 0],
+            instruction: xtensa_lx7::decode(0x4200_0000, [BEQZ_N_A6[0], BEQZ_N_A6[1], 0, 0]),
+            fetch_memory: MemoryClass::Flash,
+            access: None,
+            access_memory: None,
+            branch_taken: Some(true),
+            load_destination: None,
+            read_registers: 1 << 6,
+            loop_back_edge_residue: None,
+            block_cost: BlockCostPayload {
+                start_pc: 0x4200_0000,
+                static_cycles: 0,
+                components: Vec::new(),
+            },
+        }
+    }
+
     #[test]
     fn real_backend_passes_the_same_contract_as_fake() {
         assert_backend_contract::<Esp32Backend>();
         assert_receipt_correlation::<Esp32Backend>();
+    }
+
+    #[test]
+    fn register_derived_configuration_includes_shared_cache_geometry() {
+        let machine = branch_machine(0);
+        assert_eq!(
+            chip_config_from_registers(&machine),
+            ChipConfig::RECEIPT_SCOPE
+        );
+    }
+
+    #[test]
+    fn cache_pricing_is_transactional_and_shared_between_live_cores() {
+        let mut backend = Esp32Backend::default();
+        let core0 = flash_observation(CoreId::Core0);
+        let first = backend.price(&core0).expect("first fetch prices");
+        let repeated_plan = backend.price(&core0).expect("planning stays immutable");
+        assert!(first.components.iter().any(|component| {
+            component.class
+                == CostClass::CacheLineFill {
+                    cache: CacheKind::InstructionFlash,
+                    position: CacheFillPosition::First,
+                }
+        }));
+        assert_eq!(first, repeated_plan);
+        backend
+            .commit(&core0, &first.components, &first.mutations)
+            .expect("core 0 fetch commits");
+
+        let core1 = flash_observation(CoreId::Core1);
+        let shared_hit = backend.price(&core1).expect("core 1 fetch prices");
+        assert!(shared_hit
+            .components
+            .iter()
+            .any(|component| component.class == CostClass::HotCacheHit));
+        backend
+            .commit(&core1, &shared_hit.components, &shared_hit.mutations)
+            .expect("core 1 fetch commits");
+        assert_eq!(backend.engine().ledger()[0].core, CoreId::Core0);
+        assert_eq!(backend.engine().ledger()[1].core, CoreId::Core1);
     }
 
     #[test]

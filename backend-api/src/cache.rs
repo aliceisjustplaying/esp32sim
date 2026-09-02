@@ -1,27 +1,6 @@
 //! Shared ESP32-S3 external-memory cache state.
 
-/// Cache geometry derived from the chip's programmed cache registers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ChipConfig {
-    pub icache_size_bytes: u32,
-    pub icache_ways: u8,
-    pub icache_line_bytes: u8,
-    pub dcache_size_bytes: u32,
-    pub dcache_ways: u8,
-    pub dcache_line_bytes: u8,
-}
-
-impl ChipConfig {
-    /// Configuration used by the committed IDF 6.1 cache receipts.
-    pub const RECEIPT_SCOPE: Self = Self {
-        icache_size_bytes: 16 * 1024,
-        icache_ways: 8,
-        icache_line_bytes: 32,
-        dcache_size_bytes: 32 * 1024,
-        dcache_ways: 8,
-        dcache_line_bytes: 64,
-    };
-}
+use crate::ChipConfig;
 
 /// Replacement policy used when all ways in a set are valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

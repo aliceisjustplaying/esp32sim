@@ -1,11 +1,8 @@
-#[path = "../src/cache.rs"]
-mod cache;
-
 use std::{path::PathBuf, process::Command};
 
-use cache::{
-    AccessKind, AccessResult, CacheModel, CacheSource, CacheTarget, ChipConfig, FillPosition,
-    ReplacementPolicy, UnsupportedChipConfig,
+use backend_api::{
+    CacheAccessKind as AccessKind, CacheAccessResult as AccessResult, CacheModel, CacheSource,
+    CacheTarget, ChipConfig, FillPosition, ReplacementPolicy, UnsupportedChipConfig,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
