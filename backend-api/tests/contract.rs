@@ -1,7 +1,7 @@
 use backend_api::contract_suite::{assert_backend_contract, assert_receipt_correlation};
 use backend_api::{
     Backend, CacheFillPosition, CacheKind, CoreId, CostClass, CostTier, DeadlineError,
-    DeadlineModel, ExecutionOutcome, FakeBackend, Operation, RefusalReason, TraceEvent,
+    DeadlineModel, ExecutionOutcome, FakeBackend, InstructionCost, Operation, TraceEvent,
     VirtualCycle,
 };
 
@@ -12,7 +12,7 @@ fn configuration_outside_receipt_scope_is_named_in_refusal() {
     let refusal = backend_api::price_operation(
         config,
         CoreId::Core0,
-        Operation::BranchZero { taken: false },
+        Operation::Instruction(InstructionCost::Branch { taken: false }),
     )
     .expect_err("unreceipted configuration must fail closed");
     assert_eq!(refusal.configuration, Some(config));
@@ -41,9 +41,9 @@ fn scheduler_carries_both_cores() {
 }
 
 #[test]
-fn first_line_fill_refuses_with_tier_candidate() {
+fn first_line_fill_uses_idf61_probe_value() {
     let mut backend = FakeBackend::default();
-    let refusal = backend
+    let receipt = backend
         .execute(event(
             CoreId::Core0,
             0x4200_0000,
@@ -53,16 +53,17 @@ fn first_line_fill_refuses_with_tier_candidate() {
                 line: 0x4200_0000,
             },
         ))
-        .expect_err("first-line cost is not adopted");
+        .expect("first-line IDF 6.1 cost is adopted")
+        .entry
+        .expect("committed fill has a ledger entry");
     assert_eq!(
-        refusal.class,
+        receipt.components[0].class,
         CostClass::CacheLineFill {
             cache: CacheKind::InstructionFlash,
             position: CacheFillPosition::First,
         }
     );
-    assert_eq!(refusal.tier_candidate, CostTier::Exact);
-    assert_eq!(refusal.reason, RefusalReason::FirstLinePoolingUnresolved);
+    assert_eq!(receipt.completion, 203);
 }
 
 #[test]
@@ -109,7 +110,7 @@ fn identical_trace_has_byte_identical_ledger_twice() {
         event(
             CoreId::Core0,
             0x4200_0000,
-            Operation::BranchZero { taken: true },
+            Operation::Instruction(InstructionCost::Branch { taken: true }),
         ),
         event(
             CoreId::Core1,

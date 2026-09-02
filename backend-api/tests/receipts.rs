@@ -1,165 +1,151 @@
 use backend_api::{
-    price_operation, CacheFillPosition, CacheKind, ChipConfig, CoreId, CostExpression, Operation,
-    ReceiptId,
+    price_operation, CacheFillPosition, CacheKind, ChipConfig, CoreId, CostTier, InstructionCost,
+    MmioTier, Operation,
 };
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-const BEQZ_RECEIPT: &[u8] =
-    include_bytes!("../../docs/evidence/timing/esp32s3-rev02-tinydraw-2bf3ffd-beqz-adoption.json");
-const MMIO_RECEIPT: &[u8] = include_bytes!(
-    "../../docs/evidence/timing/esp32s3-rev02-tinydraw-e8a9f0e-mmio-write-adoption.json"
-);
-const CACHE_RECEIPT: &[u8] = include_bytes!(
+const OPCODES: &[u8] =
+    include_bytes!("../../docs/evidence/timing/esp32s3-opcode-ladders-2026-09-02/summary.json");
+const REGISTERS: &[u8] =
+    include_bytes!("../../docs/evidence/timing/esp32s3-register-blocks-2026-09-02/summary.json");
+const TOOLCHAIN: &[u8] =
+    include_bytes!("../../docs/evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json");
+const CACHE: &[u8] = include_bytes!(
     "../../docs/evidence/timing/esp32s3-rev02-tinydraw-a91d1d7-cache-burst-adoption.json"
 );
-const TOOLCHAIN_DELTA: &[u8] =
-    include_bytes!("../../docs/evidence/timing/idf61-rebaseline-3db3985/toolchain-delta.json");
 
-fn receipt(bytes: &[u8], expected_sha256: &str) -> Value {
-    assert_eq!(format!("{:x}", Sha256::digest(bytes)), expected_sha256);
-    serde_json::from_slice(bytes).expect("committed receipt must be valid JSON")
+fn pin(bytes: &[u8], sha256: &str) {
+    assert_eq!(format!("{:x}", Sha256::digest(bytes)), sha256);
 }
 
-fn cycles(operation: Operation) -> u64 {
+fn price(operation: Operation) -> backend_api::CostComponent {
     price_operation(ChipConfig::RECEIPT_SCOPE, CoreId::Core0, operation)
-        .expect("receipt-backed operation prices")
+        .expect("adopted operation prices")
         .0
-        .cycles()
-        .expect("adopted expression is nonnegative")
 }
 
 #[test]
-fn branch_receipt_and_model_assert_three_and_one_exactly() {
-    let receipt = receipt(
-        BEQZ_RECEIPT,
-        "335326d061acb0fe7465cfaa596bd77eb064ebd8b08643e2339a7749af781095",
+fn opcode_rows_match_pinned_receipt() {
+    pin(
+        OPCODES,
+        "db29ec42ccccc958c96153340497592ecc76203166a5a98c696bdd81496c6515",
     );
-    assert_eq!(receipt["status"], "adopted-exact-beqz-path-cycles");
-    assert_eq!(
-        receipt["matchedResults"]["adoptedBeqzCpuCycles"]["notTaken"],
-        1
-    );
-    assert_eq!(
-        receipt["matchedResults"]["adoptedBeqzCpuCycles"]["taken"],
-        3
-    );
-    let taken = price_operation(
-        ChipConfig::RECEIPT_SCOPE,
-        CoreId::Core0,
-        Operation::BranchZero { taken: true },
-    )
-    .expect("taken branch is adopted")
-    .0;
-    let not_taken = price_operation(
-        ChipConfig::RECEIPT_SCOPE,
-        CoreId::Core0,
-        Operation::BranchZero { taken: false },
-    )
-    .expect("not-taken branch is adopted")
-    .0;
-    assert_eq!(taken.receipt, ReceiptId::BeqzAdoption2bf3ffd);
-    assert_eq!(taken.cycles(), Some(3));
-    assert_eq!(not_taken.cycles(), Some(1));
-}
-
-#[test]
-fn mmio_receipt_and_model_assert_three_n_minus_eight_exactly() {
-    let receipt = receipt(
-        MMIO_RECEIPT,
-        "ac04584f3a05931795d65dc7246ae556202dd98bb7304cce06f50b5a29b0dc8a",
-    );
-    assert_eq!(receipt["matchedResults"]["affineSlopeCyclesPerAccess"], 3);
-    assert_eq!(receipt["matchedResults"]["affineInterceptCycles"], -8);
-    assert_eq!(
-        receipt["matchedResults"]["additiveDeltaCycles"]["2048"],
-        6136
-    );
-    assert_eq!(
-        receipt["matchedResults"]["additiveDeltaCycles"]["4096"],
-        12280
-    );
-    for count in [3, 4, 16, 4096] {
-        let component = price_operation(
+    for (kind, expected) in [
+        (InstructionCost::Issue, 1),
+        (InstructionCost::Branch { taken: false }, 1),
+        (InstructionCost::Branch { taken: true }, 3),
+        (InstructionCost::Jump, 3),
+        (InstructionCost::JumpRegister, 6),
+        (InstructionCost::LoopSetup, 5),
+        (InstructionCost::Quotient, 4),
+        (InstructionCost::Remainder, 5),
+        (InstructionCost::AtomicStore, 6),
+        (InstructionCost::LoadUse, 1),
+    ] {
+        assert_eq!(price(Operation::Instruction(kind)).cycles(), Some(expected));
+    }
+    for kind in [
+        InstructionCost::LiteralLoad,
+        InstructionCost::InstructionSync,
+    ] {
+        let refusal = price_operation(
             ChipConfig::RECEIPT_SCOPE,
             CoreId::Core0,
-            Operation::SameValueMmioWriteRun {
-                address: 0x600c_001c,
-                value: 1,
-                count,
+            Operation::Instruction(kind),
+        )
+        .expect_err("interval row has no scalar total");
+        assert_eq!(refusal.tier_candidate, CostTier::Interval);
+    }
+}
+
+#[test]
+fn mmio_rows_match_pinned_receipt() {
+    pin(
+        REGISTERS,
+        "67d213b0f823452582115e74d18f48f0e4142bfa8851f181388fac83c9245dd6",
+    );
+    for (tier, read, drain) in [
+        (MmioTier::Fast, 9, 4),
+        (MmioTier::Apb, 15, 15),
+        (MmioTier::Nrx, 18, 0),
+    ] {
+        assert_eq!(price(Operation::MmioRead { tier }).cycles(), Some(read));
+        if tier != MmioTier::Nrx {
+            assert_eq!(
+                price(Operation::MmioWrite {
+                    tier,
+                    buffer_has_room: false
+                })
+                .cycles(),
+                Some(drain)
+            );
+        }
+    }
+    assert_eq!(
+        price(Operation::MmioWrite {
+            tier: MmioTier::Fast,
+            buffer_has_room: true
+        })
+        .cycles(),
+        Some(1)
+    );
+    for (tier, expected) in [
+        (MmioTier::Nrx, CostTier::Interval),
+        (MmioTier::Rtc, CostTier::Distribution),
+        (MmioTier::Efuse, CostTier::Distribution),
+    ] {
+        let refusal = price_operation(
+            ChipConfig::RECEIPT_SCOPE,
+            CoreId::Core0,
+            Operation::MmioWrite {
+                tier,
+                buffer_has_room: false,
             },
         )
-        .expect("receipt domain prices")
-        .0;
-        assert_eq!(component.receipt, ReceiptId::MmioWriteAdoptionE8a9f0e);
-        assert_eq!(
-            component.expression,
-            CostExpression::Affine {
-                slope: 3,
-                intercept: -8,
-                count,
-            }
-        );
-        assert_eq!(component.cycles(), Some(u64::from(3 * count - 8)));
+        .expect_err("nonscalar write tier fails closed");
+        assert_eq!(refusal.tier_candidate, expected);
     }
 }
 
 #[test]
-fn subsequent_fill_receipt_and_model_assert_adopted_values_exactly() {
-    let receipt = receipt(
-        CACHE_RECEIPT,
-        "c181adf14f60401efa974d3807aa1c5954294745455cb8520d205d269cfd487b",
-    );
-    assert_eq!(receipt["status"], "adopted-cache-line-fill-costs");
-    assert_eq!(
-        receipt["costs"]["instruction"]["flash"]["subsequentLineCycles"],
-        266
-    );
-    assert_eq!(
-        receipt["costs"]["data"]["flash"]["subsequentLineCycles"],
-        473
-    );
-    assert_eq!(
-        receipt["costs"]["data"]["psram"]["subsequentLineCycles"],
-        170
-    );
-    for (cache, expected) in [
-        (CacheKind::InstructionFlash, 266),
-        (CacheKind::DataFlash, 473),
-        (CacheKind::DataPsram, 170),
-    ] {
-        assert_eq!(
-            cycles(Operation::CacheLineFill {
-                cache,
-                position: CacheFillPosition::Subsequent,
-                line: 1,
-            }),
-            expected
-        );
-    }
-}
-
-#[test]
-fn loop_receipt_and_model_assert_adopted_value_exactly() {
-    let receipt = receipt(
-        TOOLCHAIN_DELTA,
+fn cache_rows_match_pinned_receipts() {
+    pin(
+        TOOLCHAIN,
         "d4a4d3547598ede01573b94b5da3fdd1258d3f4e8161778acb4fd0423ac8a654",
     );
-    assert_eq!(
-        receipt["siliconArchitectural"]["windowOverflowUnderflowPairCyclesPastDepth6"],
-        35
+    pin(
+        CACHE,
+        "c181adf14f60401efa974d3807aa1c5954294745455cb8520d205d269cfd487b",
     );
-    assert_eq!(
-        receipt["siliconArchitectural"]["loopResiduePlus3AdditionalCyclesPerIteration"],
-        1
-    );
-    assert_eq!(receipt["cacheProbeDiagnostic"]["adopted"], false);
-    for residue in 0..=3 {
+    for (cache, first, subsequent) in [
+        (CacheKind::InstructionFlash, 203, 266),
+        (CacheKind::DataFlash, 114, 473),
+        (CacheKind::DataPsram, 81, 170),
+    ] {
         assert_eq!(
-            cycles(Operation::LoopBackEdge {
-                body_residue: residue,
-            }),
-            u64::from(residue == 3)
+            price(Operation::CacheLineFill {
+                cache,
+                position: CacheFillPosition::First,
+                line: 1
+            })
+            .cycles(),
+            Some(first)
+        );
+        assert_eq!(
+            price(Operation::CacheLineFill {
+                cache,
+                position: CacheFillPosition::Subsequent,
+                line: 2
+            })
+            .cycles(),
+            Some(subsequent)
         );
     }
+    assert_eq!(
+        price(Operation::LoopBackEdge { body_residue: 3 }).cycles(),
+        Some(1)
+    );
+    assert_eq!(price(Operation::HotCacheHit).cycles(), Some(0));
+    assert_eq!(price(Operation::IndependentSramAccess).cycles(), Some(0));
+    assert_eq!(price(Operation::DmaAdditiveDelay).cycles(), Some(0));
 }
