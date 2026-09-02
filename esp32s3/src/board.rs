@@ -8,37 +8,10 @@
 //!   - MAX98357A I2S amp: BCLK 12, LRCLK 13, DIN 10
 //! `NoBoard` — a bare module: nothing on the pins (any ESP32-S3 firmware, console only).
 
-/// What a board does with the SoC's pin-level activity.
-pub trait BoardModel {
-    fn name(&self) -> &'static str;
-    /// GPIO output level changes, in order.
-    fn gpio_changes(&mut self, _changes: &[(u8, bool)]) {}
-    /// A completed RMT transmission on channel `ch`, decoded to bits by the peripheral model.
-    fn rmt_frame(&mut self, _ch: usize, _bits: &[bool]) {}
-    /// Bytes a GP-SPI master (`host` = 2 or 3) shifted out on MOSI.
-    fn spi_tx(&mut self, _host: u8, _data: &[u8]) {}
-    fn tft(&self) -> Option<&St7735> { None }
-    fn ring(&self) -> Option<&Ring> { None }
-    fn gpio_events(&self) -> u64 { 0 }
-    /// Devices on the I2C0 bus: (7-bit address, device).
-    fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn crate::i2c::I2cDevice>)> { Vec::new() }
-    /// Give the board's camera a picture to look at (RGB888).
-    fn set_camera_picture(&mut self, _p: crate::picture::Picture) {}
-    /// Next camera frame as the sensor would put it on the DVP bus (YUYV), with its size. None = no camera / nothing to show.
-    fn camera_frame(&mut self) -> Option<(u32, u32, std::sync::Arc<Vec<u8>>)> { None }
-    /// Small RGB preview of what the camera is looking at (for the UI), if a picture is loaded.
-    fn camera_preview(&self, _w: u32, _h: u32) -> Option<Vec<u8>> { None }
-    /// A complete frame from the LCD_CAM RGB interface (RGB565 little-endian, `w`x`h`).
-    fn lcd_frame(&mut self, _w: u32, _h: u32, _rgb565: &[u8]) {}
-    /// The board's display for the UI/PNG: (width, height, RGB565 pixels, change counter).
-    fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> { self.tft().map(|t| (160, 80, t.frame_160x80(), t.pixels_written)) }
-    /// Touch input from the UI (panel coordinates).
-    fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
-}
+pub use esp_soc::board::{Board, BoardModel, NoBoard};
+use esp_soc::picture;
 
-pub type Board = Box<dyn BoardModel>;
-
-/// Board by name: `atech14` (default), `none`.
+/// Board by name: `atech14` (default), `none`, `waveshare-cam`, `waveshare-lcd4b`.
 pub fn make_board(name: &str) -> Option<Board> {
     match name {
         "atech14" | "atech" => Some(Box::new(Atech14::new())),
@@ -48,9 +21,6 @@ pub fn make_board(name: &str) -> Option<Board> {
         _ => None,
     }
 }
-
-pub struct NoBoard;
-impl BoardModel for NoBoard { fn name(&self) -> &'static str { "none" } }
 
 pub const PIN_TFT_SCLK: u8 = 2;
 pub const PIN_TFT_CS: u8 = 41;
@@ -225,21 +195,32 @@ impl BoardModel for Atech14 {
     }
     fn rmt_frame(&mut self, _ch: usize, bits: &[bool]) { self.ring.from_bits(bits); }
     fn spi_tx(&mut self, host: u8, data: &[u8]) { if host == 2 { for &b in data { self.tft.spi_byte(b); } } }
-    fn tft(&self) -> Option<&St7735> { Some(&self.tft) }
-    fn ring(&self) -> Option<&Ring> { Some(&self.ring) }
     fn gpio_events(&self) -> u64 { self.gpio_events }
+    fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> { Some((160, 80, self.tft.frame_160x80(), self.tft.pixels_written)) }
+    fn display_version(&self) -> u64 { self.tft.pixels_written }
+    fn display_quiet_push(&self) -> bool { true }
+    fn display_frames(&self) -> u64 { self.tft.frames }
+    fn gram(&self) -> Option<(Vec<u16>, usize, usize)> { Some((self.tft.gram.clone(), St7735::COLS, St7735::ROWS)) }
+    fn leds(&self) -> Option<(&[[u8; 3]], u64)> { Some((&self.ring.leds, self.ring.updates)) }
+    fn named_pin(&self, name: &str) -> Option<u8> { match name { "btn1" => Some(PIN_BTN1), "btn2" => Some(PIN_BTN2), "sw" | "knob" => Some(PIN_ENC_SW), _ => None } }
+    fn encoder(&self) -> Option<(u8, u8)> { Some((PIN_ENC_CLK, PIN_ENC_DT)) }
+    fn report(&self) -> String {
+        let t = &self.tft;
+        format!("[emu] tft: {} RAMWR, {} pixels, madctl={:#x} inverted={} on={} bbox={:?} top colours {:x?}; gpio events {}\n[emu] ring: {} updates, leds {:?}",
+                t.frames, t.pixels_written, t.madctl, t.inverted, t.on, t.bbox(), t.histogram(5), self.gpio_events, self.ring.updates, &self.ring.leds[..4])
+    }
 }
 
 /// Waveshare ESP32-S3-CAM-OV5640: OV5640 on the LCD_CAM DVP port (SCCB on I2C0 GPIO 7/8),
 /// CH32V003 IO expander, ES8311 speaker codec + ES7210 mic ADC on I2C0, audio on I2S0
 /// (MCLK 10, BCLK 11, LRCLK 12, DIN 13, DOUT 14), buttons GPIO 0 / 15.
-pub struct WaveshareCam { pub gpio_events: u64, pub preview_dirty: bool, sensor: std::sync::Arc<std::sync::Mutex<crate::i2c::SensorState>>, picture: Option<crate::picture::Picture>, frame: Option<(u32, u32, std::sync::Arc<Vec<u8>>)>, pub frames: u64 }
+pub struct WaveshareCam { pub gpio_events: u64, pub preview_dirty: bool, sensor: std::sync::Arc<std::sync::Mutex<crate::i2c::SensorState>>, picture: Option<picture::Picture>, frame: Option<(u32, u32, std::sync::Arc<Vec<u8>>)>, pub frames: u64 }
 impl WaveshareCam { pub fn new() -> Self { WaveshareCam { gpio_events: 0, preview_dirty: false, sensor: Default::default(), picture: None, frame: None, frames: 0 } } }
 impl BoardModel for WaveshareCam {
     fn name(&self) -> &'static str { "waveshare-cam" }
     fn gpio_changes(&mut self, changes: &[(u8, bool)]) { self.gpio_events += changes.len() as u64; }
     fn gpio_events(&self) -> u64 { self.gpio_events }
-    fn set_camera_picture(&mut self, p: crate::picture::Picture) { self.picture = Some(p); self.frame = None; self.preview_dirty = true; }
+    fn set_camera_picture(&mut self, p: picture::Picture) { self.picture = Some(p); self.frame = None; self.preview_dirty = true; }
     fn camera_preview(&self, w: u32, h: u32) -> Option<Vec<u8>> {
         let p = self.picture.as_ref()?;
         let mut out = Vec::with_capacity((w * h * 3) as usize);
@@ -252,18 +233,18 @@ impl BoardModel for WaveshareCam {
         let stale = match &self.frame { Some((fw, fh, _)) => *fw != w || *fh != h, None => true };
         if stale {
             let p = self.picture.as_ref()?;
-            self.frame = Some((w, h, std::sync::Arc::new(crate::picture::to_yuyv(p, w, h))));
+            self.frame = Some((w, h, std::sync::Arc::new(picture::to_yuyv(p, w, h))));
         }
         self.frames += 1;
         self.frame.clone()
     }
-    fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn crate::i2c::I2cDevice>)> {
+    fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn crate::i2c::I2cDevice>)> {
         use crate::i2c::*;
         vec![
-            (0x24, Box::new(Ch32v003::new())),
-            (0x3c, Box::new(Ov5640::new(self.sensor.clone()))),
-            (0x18, Box::new(Reg8Device::new("es8311", &[(0xfd, 0x83), (0xfe, 0x11)]))),
-            (0x40, Box::new(Reg8Device::new("es7210", &[(0x3d, 0x72), (0x3e, 0x10)]))),
+            (0, 0x24, Box::new(Ch32v003::new())),
+            (0, 0x3c, Box::new(Ov5640::new(self.sensor.clone()))),
+            (0, 0x18, Box::new(Reg8Device::new("es8311", &[(0xfd, 0x83), (0xfe, 0x11)]))),
+            (0, 0x40, Box::new(Reg8Device::new("es7210", &[(0x3d, 0x72), (0x3e, 0x10)]))),
         ]
     }
 }
@@ -283,13 +264,13 @@ impl BoardModel for WaveshareLcd4b {
     fn name(&self) -> &'static str { "waveshare-lcd4b" }
     fn gpio_changes(&mut self, changes: &[(u8, bool)]) { self.gpio_events += changes.len() as u64; }
     fn gpio_events(&self) -> u64 { self.gpio_events }
-    fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn crate::i2c::I2cDevice>)> {
+    fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn crate::i2c::I2cDevice>)> {
         use crate::i2c::*;
         vec![
-            (0x20, Box::new(Tca9554::new(self.panel.clone()))),
-            (0x14, Box::new(Gt911::new(self.touch_state.clone(), 480, 480))),
-            (0x18, Box::new(Reg8Device::new("es8311", &[(0xfd, 0x83), (0xfe, 0x11)]))),
-            (0x40, Box::new(Reg8Device::new("es7210", &[(0x3d, 0x72), (0x3e, 0x10)]))),
+            (0, 0x20, Box::new(Tca9554::new(self.panel.clone()))),
+            (0, 0x14, Box::new(Gt911::new(self.touch_state.clone(), 480, 480))),
+            (0, 0x18, Box::new(Reg8Device::new("es8311", &[(0xfd, 0x83), (0xfe, 0x11)]))),
+            (0, 0x40, Box::new(Reg8Device::new("es7210", &[(0x3d, 0x72), (0x3e, 0x10)]))),
         ]
     }
     fn lcd_frame(&mut self, w: u32, h: u32, rgb565: &[u8]) {
@@ -298,6 +279,8 @@ impl BoardModel for WaveshareLcd4b {
         self.frames += 1;
     }
     fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> { Some((self.w, self.h, self.frame.clone(), self.frames)) }
+    fn display_version(&self) -> u64 { self.frames }
+    fn display_frames(&self) -> u64 { self.frames }
     fn touch(&mut self, x: u16, y: u16, down: bool) {
         let mut t = self.touch_state.lock().unwrap(); t.x = x; t.y = y;
         if down { t.down = true; t.seen = false; t.release_pending = false; } else if t.seen { t.down = false; } else { t.release_pending = true; }

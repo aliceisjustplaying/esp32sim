@@ -1,0 +1,79 @@
+//! What a chip provides to `Machine`: its cores, and a bus that also answers the machine's
+//! questions about console output, reset, boot, the board, audio and interrupt routing.
+use crate::board::BoardModel;
+use emu_core::{Bus, Core};
+use esp_periph::Misc;
+
+/// Why `Machine::run` returned.
+#[derive(Debug)]
+pub enum Stop {
+    MaxInsns,
+    Halted,
+    Breakpoint(u32),
+    Unimplemented(u32, u32),
+    /// a chip reset was requested (software, watchdog): `reboot()` and run again
+    SwReset,
+    /// `simcall` — Xtensa semihosting
+    Simcall(u32),
+    /// `ebreak` with no handler installed — a panic or an assert in a RISC-V guest
+    Ebreak(u32),
+    /// `--watch`: a word changed value (addr, old, new)
+    Watch(u32, u32, u32),
+    Exceptions(u64),
+}
+
+/// A secondary core's state as its SoC registers say.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CoreState { Running, Held, Reset }
+
+pub trait Soc: 'static {
+    type Core: Core;
+    type Bus: SocBus;
+    const NAME: &'static str;
+    const CPU_HZ: u64;
+    const CORES: usize;
+    /// How far time jumps when every core sleeps (a multiple of the 64-instruction quantum).
+    const IDLE_CHUNK: u64;
+    /// Symbols, in order of preference, that start the ROM's RAM-initialiser table.
+    const ROM_DATA_TABLE: &'static [&'static str];
+    fn new_core(i: usize) -> Self::Core;
+    /// Bring core `i` back to its reset state (after a chip reset or a release from reset).
+    fn reset_core(core: &mut Self::Core, i: usize);
+    /// Set a core up to start the app image at `entry` as the 2nd-stage bootloader would have.
+    fn boot_core(core: &mut Self::Core, entry: u32);
+    /// The interrupt input of every core, from the bus's current source state.
+    fn irqs(bus: &Self::Bus, out: &mut [<Self::Core as Core>::Irq]);
+    fn core_state(_bus: &Self::Bus, _core: usize) -> CoreState { CoreState::Running }
+}
+
+pub trait SocBus: Bus {
+    fn cycles(&self) -> u64;
+    fn irq_dirty(&mut self) -> &mut bool;
+    /// Re-derive the interrupt lines after a device change; true if a core's input may differ.
+    fn refresh_irq(&mut self) -> bool;
+    /// Deliver deferred device time now (a bus that defers it).
+    fn flush_ticks(&mut self) {}
+    fn misc(&mut self) -> &mut Misc;
+    fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String>;
+    fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String>;
+    /// Map and copy the app image at flash `app_off` as the bootloader would; returns the entry point.
+    fn boot_app(&mut self, app_off: usize) -> Result<u32, String>;
+    /// Chip reset: re-create the digital peripherals, keep what survives on silicon. Returns the cause.
+    fn reboot(&mut self, mac: [u8; 6]) -> u32;
+    fn sw_reset(&self) -> bool;
+    fn reset_cause(&self) -> u32;
+    fn last_fault(&self) -> Option<(u32, bool)>;
+    /// Console bytes since the last call: USB-Serial/JTAG, UART0, UART1, UART2.
+    fn console_take(&mut self) -> [Vec<u8>; 4];
+    /// Bytes from the host into the USB-Serial/JTAG console.
+    fn serial_input(&mut self, data: &[u8]);
+    fn gpio_set_input(&mut self, pin: u8, level: bool);
+    fn gpio_input(&self) -> u64;
+    fn board(&mut self) -> &mut dyn BoardModel;
+    fn board_ref(&self) -> &dyn BoardModel;
+    /// Captured audio so far (left channel) and its sample rate.
+    fn audio(&self) -> (&[i16], u32);
+    fn camera_frames(&self) -> u64 { 0 }
+    /// Peripheral source numbers routed to CPU interrupt `line` of `core` (for the end-of-run report).
+    fn irq_sources_of(&self, core: usize, line: u32) -> Vec<usize>;
+}

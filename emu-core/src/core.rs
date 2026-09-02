@@ -60,6 +60,23 @@ pub trait Core {
     fn return_from_stub(&mut self, v: u32);
     /// Disassemble the instruction bytes at `pc` for a trace line.
     fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String;
+    /// Length in bytes of the instruction these bytes start (for walking a listing).
+    fn insn_len(bytes: [u8; 4]) -> u32;
+    /// Column width of the disassembly in a trace line.
+    const TRACE_WIDTH: usize;
+    /// The registers a trace line shows after the disassembly, e.g. `a0=... ps=... wb=...`.
+    fn trace_regs(&self) -> String;
+    /// A trace line for a trap just taken, if the core annotates them.
+    fn trace_trap(&self, _core: usize, _pc: u32, _trap: &Trap) -> Option<String> { None }
+    /// One line of the compact register trace used for hardware comparison (`--regtrace`).
+    fn regtrace_line(&self, pc: u32) -> String;
+    /// The full register dump for the end-of-run report; `sym` names an address.
+    fn dump(&self, core: usize, sym: &dyn Fn(u32) -> String) -> String;
+    /// Whether the guest has installed a trap handler (an `ebreak` without one is a stop).
+    fn has_trap_handler(&self) -> bool { true }
+    /// The function-probe argument summary, e.g. `a2=.. a3=.. a4=..`, and the return address.
+    fn probe_args(&self) -> String;
+    fn return_address(&self) -> u32;
 }
 
 /// Bloom bit for a pc; the machine's stub/probe tables and the cores' block boundaries agree on it.

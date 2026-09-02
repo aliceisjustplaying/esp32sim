@@ -29,6 +29,8 @@ Touch-LCD-4B panel with its SID player, and the C3 booting hello_world.
 ```
 esp32sim/
   emu-core/       the Bus and Core traits, Trap, ClockTree, AArch64 encoder — shared by both cores
+  esp-soc/        Machine<S: Soc>: scheduler, device time, console, scripts, web UI, loaders, boards —
+                  one machine for every chip; a chip plugs in its cores, bus and interrupt routing
   esp-periph/     the peripheral IP both chips share (UART, systimer, TIMG, GPIO, SPI_MEM, GDMA, crypto,
                   I2S, RMT, I2C, …), the Device trait, and the device_set! table that mounts them
   ── ESP32-S3 (Xtensa LX7, dual core) ──
@@ -61,7 +63,7 @@ esp32sim/
 ## Boards (ESP32-S3)
 
 The SoC model emits pin-level events (GPIO edges, RMT symbol streams, I2S samples); a
-`BoardModel` (`esp32s3/src/board.rs`) interprets them. `--board atech14` (default) is the Atech
+`BoardModel` (`esp-soc/src/board.rs`) interprets them. `--board atech14` (default) is the Atech
 14‑port board with its ST7735, WS2812 ring, encoder and buttons; `--board none` is a bare
 module — any ESP32‑S3 firmware, console only; `--board waveshare-lcd4b` is the Waveshare
 ESP32‑S3‑Touch‑LCD‑4B (ST7701S 480×480 over the LCD_CAM RGB bus, GT911 touch, TCA9554, codecs)

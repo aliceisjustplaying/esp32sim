@@ -1,0 +1,118 @@
+//! The ESP32-S3 as a `Soc`: two LX7 cores on `bus::SocBus`, and the questions the machine asks
+//! its bus (console, reset, app boot, board, audio, interrupt routing).
+use crate::bus::{SocBus, DBUS_HIGH, DBUS_LOW, IBUS_HIGH, IBUS_LOW, MMU_ENTRIES, MMU_INVALID, SRC_FLASH};
+use crate::periph::{self, NUM_SOURCES};
+use esp_periph::Misc;
+use esp_soc::{BoardModel, CoreState, Soc};
+use xtensa_lx7::state::ps;
+use xtensa_lx7::Cpu;
+
+pub struct S3;
+pub type Machine = esp_soc::Machine<S3>;
+
+/// A machine with the default 8 MB flash / 2 MB PSRAM and no board (`bus.board` selects one).
+pub fn machine(mac: [u8; 6]) -> Machine { Machine::new(mac, SocBus::new(8 << 20, 2 << 20, mac)) }
+
+impl Soc for S3 {
+    type Core = Cpu;
+    type Bus = SocBus;
+    const NAME: &'static str = "esp32s3";
+    const CPU_HZ: u64 = periph::CPU_HZ;
+    const CORES: usize = 2;
+    const IDLE_CHUNK: u64 = 64 * 8;
+    const ROM_DATA_TABLE: &'static [&'static str] = &["_data_start"];
+    fn new_core(i: usize) -> Cpu { Cpu::new(if i == 0 { 0xCDCD } else { 0xABAB }) }
+    fn reset_core(c: &mut Cpu, i: usize) { Cpu::reset(c); if i == 1 { c.prid = 0xABAB; } }
+    fn boot_core(c: &mut Cpu, entry: u32) {
+        Cpu::reset(c);
+        c.pc = entry;
+        c.ps = ps::WOE | ps::UM;      // windows enabled, user vector; INTLEVEL 0
+        c.vecbase = 0x4000_0000;
+        c.set_ar(1, 0x3FCE_B000);     // bootloader stack (in DRAM, app treats as free)
+        c.set_ar(0, 0);
+    }
+    fn irqs(bus: &SocBus, out: &mut [u32]) { let (l0, l1) = bus.periph.cpu_lines_both(); out[0] = l0; out[1] = l1; }
+    /// SYSTEM_CORE_1_CONTROL_0: clock gate, reset, run-stall.
+    fn core_state(bus: &SocBus, _core: usize) -> CoreState {
+        let (clk, reset, stall) = bus.periph.core1_control();
+        if reset { CoreState::Reset } else if clk && !stall { CoreState::Running } else { CoreState::Held }
+    }
+}
+
+impl esp_soc::SocBus for SocBus {
+    fn cycles(&self) -> u64 { self.cycles }
+    fn irq_dirty(&mut self) -> &mut bool { &mut self.irq_dirty }
+    fn refresh_irq(&mut self) -> bool {
+        let dirty = self.periph.lines_dirty() || self.periph.intmatrix_dirty;
+        self.periph.intmatrix_dirty = false;
+        dirty
+    }
+    fn flush_ticks(&mut self) { SocBus::flush_ticks(self) }
+    fn misc(&mut self) -> &mut Misc { &mut self.periph.misc }
+    fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> { SocBus::load_bytes(self, addr, data) }
+    fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String> {
+        if offset + data.len() > self.flash.len() { return Err("flash image too large".into()); }
+        self.flash[offset..offset + data.len()].copy_from_slice(data);
+        self.note_written(SRC_FLASH, offset, data.len());
+        Ok(())
+    }
+    /// Copy IRAM/DRAM segments, map IROM/DROM through the MMU, as the 2nd-stage bootloader would.
+    fn boot_app(&mut self, app_off: usize) -> Result<u32, String> {
+        self.periph.system.preset_after_bootloader();
+        self.periph.rtc.preset_after_bootloader();
+        let img = esp_soc::image::parse(&self.flash[app_off..])?;
+        for s in &img.segments {
+            let start = app_off + s.file_off as usize;
+            let end = start + s.len as usize;
+            if end > self.flash.len() { return Err("segment beyond flash".into()); }
+            let flash_mapped = (DBUS_LOW..DBUS_HIGH).contains(&s.load_addr) || (IBUS_LOW..IBUS_HIGH).contains(&s.load_addr);
+            if flash_mapped {
+                // esptool aligns segments so vaddr and flash offset agree modulo 64 KiB
+                if (s.load_addr & 0xffff) != (start as u32 & 0xffff) { return Err(format!("segment {:#x} not page-aligned with flash offset {:#x}", s.load_addr, start)); }
+                let first_page = (start as u32) >> 16;
+                let npages = ((s.load_addr & 0xffff) + s.len + 0xffff) >> 16;
+                for i in 0..npages {
+                    let vpage = (((s.load_addr & 0x1FF_FFFF) >> 16) + i) as usize;
+                    self.mmu[vpage] = first_page + i;
+                }
+                self.invalidate_tlb();
+            } else {
+                let data = self.flash[start..end].to_vec();
+                SocBus::load_bytes(self, s.load_addr, &data)?;
+            }
+        }
+        Ok(img.entry)
+    }
+    /// Digital peripherals re-initialised, cache MMU invalid; SRAM, RTC memories, efuses and the
+    /// RTC-domain registers survive, as on silicon. Returns the cause the ROM will report.
+    fn reboot(&mut self, mac: [u8; 6]) -> u32 {
+        let cause = self.periph.rtc.reset_cause;
+        let old = std::mem::replace(&mut self.periph, periph::Peripherals::new(mac));
+        let p = &mut self.periph;
+        p.efuse = old.efuse;
+        p.gpio.strap = old.gpio.strap;
+        p.misc.log_unknown = old.misc.log_unknown; p.spi1.log = old.spi1.log;
+        p.rtc.ram = old.rtc.ram; p.rtc.slow_ticks = old.rtc.slow_ticks;
+        p.rtc.ram.write(0x38, cause | (cause << 6));
+        p.rtc.ram.write(0x98, 0);                       // watchdog disarmed by the reset; the ROM re-arms it
+        p.i2s0.pcm = old.i2s0.pcm; p.i2s0.frames_out = old.i2s0.frames_out; p.i2s1.pcm = old.i2s1.pcm; p.i2s1.frames_out = old.i2s1.frames_out;   // keep the captured audio continuous
+        self.mmu = [MMU_INVALID; MMU_ENTRIES];
+        self.invalidate_tlb();
+        self.irq_dirty = true;
+        cause
+    }
+    fn sw_reset(&self) -> bool { self.periph.rtc.sw_reset }
+    fn reset_cause(&self) -> u32 { self.periph.rtc.reset_cause }
+    fn last_fault(&self) -> Option<(u32, bool)> { self.last_fault }
+    fn console_take(&mut self) -> [Vec<u8>; 4] {
+        [std::mem::take(&mut self.periph.usb.tx_out), std::mem::take(&mut self.periph.uart[0].tx_out), std::mem::take(&mut self.periph.uart[1].tx_out), std::mem::take(&mut self.periph.uart[2].tx_out)]
+    }
+    fn serial_input(&mut self, data: &[u8]) { self.periph.usb.host_input(data); }
+    fn gpio_set_input(&mut self, pin: u8, level: bool) { self.periph.gpio.set_input(pin, level); }
+    fn gpio_input(&self) -> u64 { self.periph.gpio.input }
+    fn board(&mut self) -> &mut dyn BoardModel { &mut *self.board }
+    fn board_ref(&self) -> &dyn BoardModel { &*self.board }
+    fn audio(&self) -> (&[i16], u32) { let a = self.periph.audio(); (&a.pcm, a.sample_rate) }
+    fn camera_frames(&self) -> u64 { self.periph.lcd_cam.frames }
+    fn irq_sources_of(&self, core: usize, line: u32) -> Vec<usize> { (0..NUM_SOURCES).filter(|&s| self.periph.intmatrix.map[core][s] == line).collect() }
+}

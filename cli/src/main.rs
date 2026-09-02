@@ -2,7 +2,7 @@
 //!
 //!   esp32sim --rom ROM.elf --bootloader b.bin --ptable p.bin --app firmware.bin [--elf firmware.elf]
 //!               [--boot app|rom] [--max-insns N] [--trace] [--trace-from N] [--break ADDR] [--log-periph]
-use esp32s3::{Machine, Stop};
+use esp32s3::Stop;
 use std::path::PathBuf;
 
 fn find_rom() -> Option<PathBuf> {
@@ -74,9 +74,9 @@ fn main() {
         }
         i += 1;
     }
-    let mut m = Machine::new([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
+    let mut m = esp32s3::machine([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
     m.bus.board = esp32s3::board::make_board(&board).unwrap_or_else(|| { eprintln!("unknown board '{}' (atech14, waveshare-cam, waveshare-lcd4b, none)", board); std::process::exit(2) });
-    for (addr, dev) in m.bus.board.i2c_devices() { m.bus.periph.i2c[0].attach(addr, dev); }
+    for (bus, addr, dev) in m.bus.board.i2c_devices() { m.bus.periph.i2c[bus as usize].attach(addr, dev); }
     if regstat.is_some() { m.bus.periph.regstat = Some(Default::default()); }
     if let Some(spec) = &wifi {
         let mut cfg = esp32s3::wifi::ApConfig { ssid: "esp32sim".into(), bssid: [0x02, 0x53, 0x49, 0x4d, 0x00, 0x01], channel: 6, psk: None };
@@ -113,8 +113,8 @@ fn main() {
         m.write_flash(off, &data).unwrap_or_else(|e| { eprintln!("--flash-at: {}", e); std::process::exit(2) });
         eprintln!("[emu] flash {:#x}: {} ({} bytes)", off, path, data.len());
     }
-    if no_jit { m.cpu.blocks.jit_enabled = false; m.cpu1.blocks.jit_enabled = false; }
-    m.trace = trace; m.trace_from = trace_from; m.breakpoints = breaks; m.bus.periph.misc.log_unknown = log_periph;
+    if no_jit { for c in &mut m.cores { c.blocks.jit_enabled = false; } }
+    m.dbg.trace = trace; m.dbg.trace_from = trace_from; m.dbg.breakpoints = breaks; m.bus.periph.misc.log_unknown = log_periph;
     if let Some(r) = &rom { match std::fs::read(r) { Ok(d) => { m.load_rom(&d).expect("rom"); eprintln!("[emu] ROM loaded from {}", r.display()); } Err(e) => eprintln!("[emu] no ROM ({}): {}", r.display(), e) } }
     if let Some(p) = &bootloader { m.write_flash(0x0, &std::fs::read(p).expect("bootloader")).unwrap(); }
     if let Some(p) = &ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }
@@ -133,15 +133,15 @@ fn main() {
     }
     match boot.as_str() {
         "app" => { let entry = m.boot_app(0x10000).expect("boot app"); eprintln!("[emu] app boot: entry {:#010x} {}", entry, m.sym(entry)); }
-        "rom" => { m.boot_rom(); eprintln!("[emu] ROM boot from reset vector {:#010x}", m.cpu.pc); }
+        "rom" => { m.boot_rom(); eprintln!("[emu] ROM boot from reset vector {:#010x}", m.cores[0].pc); }
         _ => { eprintln!("--boot app|rom"); std::process::exit(2); }
     }
     for &(a, n) in &peeks { eprintln!("[peek before run]\n{}", m.peek(a, n)); }
-    if let Some(wa) = watch { let v = xtensa_lx7::bus::Bus::read32(&mut m.bus, wa).unwrap_or(0); m.watch = Some((wa, v)); }
-    m.stop_after_exceptions = stop_exc;
-    m.console_mask = match console.as_str() { "usb" => 1, "uart0" => 2, "uart" => 2, "both" => 3, "all" => 7, "none" => 0, _ => 3 };
-    m.console_prefix = console_prefix;
-    if let Some(p) = &regtrace { m.regtrace = Some(std::io::BufWriter::new(std::fs::File::create(p).expect("regtrace file"))); m.regtrace_max = regtrace_max; if let Some(a) = regtrace_from_pc { m.regtrace_from_pc = Some(a); m.regtrace_armed = false; } }
+    if let Some(wa) = watch { let v = xtensa_lx7::bus::Bus::read32(&mut m.bus, wa).unwrap_or(0); m.dbg.watch = Some((wa, v)); }
+    m.dbg.stop_after_exceptions = stop_exc;
+    m.console.mask = match console.as_str() { "usb" => 1, "uart0" => 2, "uart" => 2, "both" => 3, "all" => 7, "none" => 0, _ => 3 };
+    m.console.prefix = console_prefix;
+    if let Some(p) = &regtrace { m.dbg.regtrace = Some(esp_soc::RegTrace::new(std::fs::File::create(p).expect("regtrace file"), regtrace_max, regtrace_from_pc)); }
     if let Some(p) = &efuse_file {
         let txt = std::fs::read_to_string(p).expect("efuse file");
         let mut n = 0;
@@ -167,12 +167,12 @@ fn main() {
         let dir = web_dir.clone().unwrap_or_else(|| { let exe = std::env::current_exe().unwrap(); let mut d = exe.parent().unwrap().to_path_buf(); for _ in 0..3 { if d.join("web").exists() { break; } d = d.parent().unwrap().to_path_buf(); } d.join("web").to_string_lossy().to_string() });
         let w = esp32s3::web::WebServer::start(port, dir.clone()).expect("web server");
         eprintln!("[emu] board UI: http://127.0.0.1:{}/  (serving {})", port, dir);
-        m.web = Some(w); m.realtime = true;
+        m.web = Some(w); m.rt.enabled = true;
     }
-    if realtime { m.realtime = true; }
+    if realtime { m.rt.enabled = true; }
     if let Some(v) = strap { m.bus.periph.gpio.strap = v; }
     if let Some(c) = reset_cause { m.bus.periph.rtc.ram.write(0x38, c | (c << 6)); }
-    if profile { m.profile = Some(Default::default()); }
+    if profile { m.dbg.profile = Some(Default::default()); }
     if let Some(p) = &script { m.load_script(&std::fs::read_to_string(p).expect("script")).expect("script"); }
     if let Some(sec) = max_seconds { m.max_cycles = (sec * esp32s3::periph::CPU_HZ as f64) as u64; }
     m.bus.periph.spi1.log = std::env::var("ESP_EMU_DEBUG_SPI").is_ok();
@@ -189,9 +189,9 @@ fn main() {
         break stop;
     };
     let dt = t0.elapsed().as_secs_f64();
-    let total = m.cpu.insn_count + m.cpu1.insn_count;
+    let total = m.insns();
     eprintln!("\n[emu] stop: {:?} — core0 {} + core1 {} insns in {:.1}s wall = {:.1} Minsn/s; emulated {:.3}s ({} cycles); {} exceptions, {} interrupts",
-              stop, m.cpu.insn_count, m.cpu1.insn_count, dt, total as f64 / dt / 1e6, m.bus.cycles as f64 / esp32s3::periph::CPU_HZ as f64, m.bus.cycles, m.exceptions, m.interrupts);
+              stop, m.cores[0].insn_count, m.cores[1].insn_count, dt, total as f64 / dt / 1e6, m.bus.cycles as f64 / esp32s3::periph::CPU_HZ as f64, m.bus.cycles, m.exceptions, m.interrupts);
     if let Stop::Unimplemented(pc, raw) = stop {
         if let Ok(b) = xtensa_lx7::bus::Bus::fetch(&mut m.bus, pc) { let ins = xtensa_lx7::decode(pc, b); eprintln!("[emu] unimplemented at {:08x} {}: {} (raw {:#x})", pc, m.sym(pc), xtensa_lx7::disasm::format(&ins), raw); }
     }
@@ -202,7 +202,7 @@ fn main() {
     eprintln!("{}", m.irq_report());
     if let Some(w) = &wav { match m.write_wav(w) { Ok(n) => eprintln!("[emu] wrote {} samples ({:.2} s) to {}", n, n as f64 / m.bus.periph.audio().sample_rate as f64, w), Err(e) => eprintln!("[emu] wav: {}", e) } }
     eprintln!("[emu] i2s frames out: {} (i2s0 @ {} Hz) {} (i2s1 @ {} Hz)", m.bus.periph.i2s0.frames_out, m.bus.periph.i2s0.sample_rate, m.bus.periph.i2s1.frames_out, m.bus.periph.i2s1.sample_rate);
-    if let Some(t) = m.bus.board.tft() { eprintln!("[emu] tft: {} RAMWR, {} pixels, madctl={:#x} inverted={} on={} bbox={:?} top colours {:x?}; gpio events {}", t.frames, t.pixels_written, t.madctl, t.inverted, t.on, t.bbox(), t.histogram(5), m.bus.board.gpio_events()); }
+    { let r = m.bus.board.report(); if !r.is_empty() { eprintln!("{}", r); } }
     if let (Some(path), Some(st)) = (&regstat, &m.bus.periph.regstat) {
         use std::io::Write;
         let mut rows: Vec<_> = st.iter().collect(); rows.sort_by(|a, b| b.1.0.cmp(&a.1.0));
@@ -220,12 +220,12 @@ fn main() {
         if let Some(t) = &n.nat { eprintln!("[emu] nat: {} TCP connections ({} failed), {} UDP flows, {} bytes out, {} bytes in", t.tcp_opened, t.tcp_refused, t.udp_flows, t.bytes_to_host, t.bytes_to_guest); } } }
     { let (a, sh, r) = (&m.bus.periph.aes, &m.bus.periph.sha, &m.bus.periph.rsa);
       if a.blocks + sh.blocks + r.ops > 0 { eprintln!("[emu] crypto: {} AES blocks, {} SHA blocks, {} RSA/MPI operations", a.blocks, sh.blocks, r.ops); } }
-    { let (b0, b1) = (&m.cpu.blocks, &m.cpu1.blocks);
+    { let (b0, b1) = (&m.cores[0].blocks, &m.cores[1].blocks);
       if b0.builds + b1.builds > 0 { eprintln!("[emu] blocks: {} built ({} cache flushes) core0, {} ({}) core1; jit: {} compiled, {} KB code", b0.builds, b0.flushes, b1.builds, b1.flushes, b0.compiled + b1.compiled, (b0.code_bytes() + b1.code_bytes()) / 1024); } }
     if m.stub_hits > 0 { eprintln!("[emu] stubs hit {} times", m.stub_hits); }
     if m.bus.periph.lcd_cam.lcd_frames > 0 { eprintln!("[emu] lcd: {} RGB frames", m.bus.periph.lcd_cam.lcd_frames); }
     if m.bus.periph.lcd_cam.frames + m.bus.periph.lcd_cam.dropped > 0 { eprintln!("[emu] camera: {} frames delivered, {} dropped (no DMA/no picture)", m.bus.periph.lcd_cam.frames, m.bus.periph.lcd_cam.dropped); }
-    if let Some(r) = m.bus.board.ring() { eprintln!("[emu] ring: {} updates, leds {:?}; rmt tx {}", r.updates, &r.leds[..4], m.bus.periph.rmt.tx_count); }
+    if m.bus.periph.rmt.tx_count > 0 { eprintln!("[emu] rmt tx {}", m.bus.periph.rmt.tx_count); }
     if let Some(p) = &tft_png { match m.write_tft_png(p, 3) { Ok(()) => eprintln!("[emu] wrote {}", p), Err(e) => eprintln!("[emu] png: {}", e) } }
     if let Some(p) = &gram_png { match m.write_gram_png(p) { Ok(()) => eprintln!("[emu] wrote {}", p), Err(e) => eprintln!("[emu] png: {}", e) } }
     if dump_at_end { eprintln!("{}", m.dump_regs()); }

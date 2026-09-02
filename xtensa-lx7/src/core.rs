@@ -37,6 +37,32 @@ impl emu_core::Core for Cpu {
         self.insn_count += 1; self.advance_ccount(1);
     }
     fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String { crate::disasm::format(&crate::decode::decode(pc, bytes)) }
+    fn insn_len(bytes: [u8; 4]) -> u32 { crate::decode::decode(0, bytes).len as u32 }
+    const TRACE_WIDTH: usize = 32;
+    fn trace_regs(&self) -> String { format!("a0={:08x} a1={:08x} a2={:08x} a3={:08x} ps={:06x} wb={}", self.get_ar(0), self.get_ar(1), self.get_ar(2), self.get_ar(3), self.ps, self.windowbase) }
+    fn trace_trap(&self, core: usize, pc: u32, trap: &Trap) -> Option<String> {
+        match trap {
+            Trap::Exception(c) => Some(format!("          ** core{} exception cause {} at {:08x} -> {:08x} (excvaddr {:08x})", core, c, pc, self.pc, self.excvaddr)),
+            Trap::Interrupt(irq) => Some(format!("          ** core{} interrupt {} at {:08x} -> {:08x}", core, irq, pc, self.pc)),
+            _ => None,
+        }
+    }
+    fn regtrace_line(&self, pc: u32) -> String {
+        let mut s = format!("{:08x}", pc);
+        for i in 0..16u8 { s += &format!(" {:08x}", self.get_ar(i)); }
+        s += &format!(" {:08x} {:x}", self.ps, self.windowbase);
+        s
+    }
+    fn dump(&self, core: usize, sym: &dyn Fn(u32) -> String) -> String {
+        let c = self;
+        let mut s = format!("core{}: ", core);
+        s += &format!("pc={:08x} {}  ps={:08x} wb={} ws={:04x} sar={} lcount={} exccause={} excvaddr={:08x} epc1={:08x} intenable={:08x} interrupt={:08x} ccount={} insns={}\n",
+            c.pc, sym(c.pc), c.ps, c.windowbase, c.windowstart, c.sar, c.lcount, c.exccause, c.excvaddr, c.epc[1], c.intenable, c.interrupt, c.ccount, c.insn_count);
+        for i in 0..16 { s += &format!("a{:<2}={:08x} ", i, c.get_ar(i)); if i % 8 == 7 { s += "\n"; } }
+        s
+    }
+    fn probe_args(&self) -> String { format!("a2={:#x} a3={:#x} a4={:#x}", self.get_ar(2), self.get_ar(3), self.get_ar(4)) }
+    fn return_address(&self) -> u32 { self.get_ar(0) & 0x3fff_ffff | 0x4000_0000 }
 }
 
 #[cfg(test)]

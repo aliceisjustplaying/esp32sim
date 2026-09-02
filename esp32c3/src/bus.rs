@@ -38,6 +38,8 @@ pub struct SocBus {
     pub flash: Vec<u8>,
     pub mmu: [u32; MMU_ENTRIES],
     pub periph: Peripherals,
+    /// a bare module: nothing on the pins
+    pub board: esp_soc::Board,
     pub cycles: u64,
     pub last_fault: Option<(u32, bool)>,
     /// a peripheral write may have moved an interrupt line: re-derive before the next instruction
@@ -53,7 +55,7 @@ impl SocBus {
             rtc_slow: vec![0; (RTC_SLOW_HIGH - RTC_SLOW_LOW) as usize],
             flash: vec![0xff; flash_size],
             mmu: [MMU_INVALID; MMU_ENTRIES],
-            periph: Peripherals::new(mac),
+            periph: Peripherals::new(mac), board: Box::new(esp_soc::NoBoard),
             cycles: 0, last_fault: None, irq_dirty: true,
         }
     }
@@ -203,4 +205,7 @@ impl Bus for SocBus {
     }
     #[inline(always)]
     fn note_pc(&mut self, pc: u32) { self.periph.misc.cur_pc = pc; }
+    /// a peripheral write may have moved a line: the core's run stops so the machine re-derives it
+    #[inline(always)]
+    fn block_break(&self) -> bool { self.irq_dirty }
 }

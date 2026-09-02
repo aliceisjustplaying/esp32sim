@@ -19,10 +19,34 @@ impl emu_core::Core for Cpu {
     fn irq_pending(&self) -> bool { self.irq.is_some() }
     fn idle_advance(&mut self, cycles: u32) { self.insn_count += cycles as u64; }
     fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> { crate::exec::step(self, bus) }
+    /// One instruction at a time, but like a block: stop when the bus reports that an interrupt
+    /// line may have moved, so the machine re-derives the core's input before the next instruction.
+    fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
+        for i in 0..budget {
+            if let Err(t) = crate::exec::step(self, bus) { return (i + 1, Some(t)); }
+            if bus.block_break() { return (i + 1, None); }
+        }
+        (budget, None)
+    }
     fn regs(&self, out: &mut Vec<(&'static str, u32)>) { for i in 1..32 { out.push((X[i], self.x[i])); } out.push(("mstatus", self.mstatus)); }
     fn arg(&self, n: usize) -> u32 { self.x[10 + n] }
     fn return_from_stub(&mut self, v: u32) { self.x[10] = v; self.pc = self.x[1]; self.insn_count += 1; }
     fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String { crate::disasm::format(&crate::decode::decode(pc, bytes)).replace('\t', " ") }
+    fn insn_len(bytes: [u8; 4]) -> u32 { crate::decode::decode(0, bytes).len as u32 }
+    const TRACE_WIDTH: usize = 28;
+    fn trace_regs(&self) -> String { format!("ra={:08x} sp={:08x} a0={:08x} a1={:08x}", self.x[1], self.x[2], self.x[10], self.x[11]) }
+    fn regtrace_line(&self, pc: u32) -> String {
+        let mut s = format!("{:08x}", pc);
+        for i in 1..32 { s += &format!(" {:08x}", self.x[i]); }
+        s += &format!(" {:08x}", self.mstatus);
+        s
+    }
+    fn dump(&self, core: usize, sym: &dyn Fn(u32) -> String) -> String {
+        format!("core{}: pc={:#010x} {}  mtvec={:#010x} mcause={:#010x} mepc={:#010x} mstatus={:#010x} insns={}\n", core, self.pc, sym(self.pc), self.mtvec, self.mcause, self.mepc, self.mstatus, self.insn_count)
+    }
+    fn has_trap_handler(&self) -> bool { self.mtvec != 0 }
+    fn probe_args(&self) -> String { format!("a0={:#x} a1={:#x} a2={:#x}", self.x[10], self.x[11], self.x[12]) }
+    fn return_address(&self) -> u32 { self.x[1] }
 }
 
 #[cfg(test)]

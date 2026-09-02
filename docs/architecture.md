@@ -15,8 +15,14 @@ licensed, and contains no third-party emulator code (QEMU was consulted for inst
 
 ```
 cli/          esp32sim binary: argument parsing, image loading, run loop, reports
+esp-soc/      Machine<S: Soc>, written once for every chip: the scheduler (64-instruction quanta,
+              idle skipping, per-core reset state), lazy device time, console capture, action
+              scripts, function stubs/probes, tracing and watchpoints, the web UI protocol,
+              real-time pacing, ROM/app image loading, reboot; the Soc/SocBus traits a chip
+              implements; the BoardModel trait; elf/image/picture loaders; the web server
 esp32s3/      the SoC and boards
-  machine.rs  Machine: two Cpus + SocBus, scheduler, scripts, web push/poll, reboot, WAV/PNG
+  soc.rs      the S3 as a Soc: two LX7 cores, core-1 reset/stall state, interrupt lines per core,
+              app boot, reboot (what survives), console streams, audio, board
   bus.rs      SocBus: memory map, cache MMU, peripheral dispatch, DMA pumps (I2S, camera)
   periph.rs   the S3's device table (`device_set!`) and its S3-only models (interrupt matrix,
               WiFi MAC, PCNT, GP-SPI, LCD_CAM, EXTMEM, WDEV, regi2c); the rest come from esp-periph
@@ -28,7 +34,7 @@ esp32s3/      the SoC and boards
   net.rs      the emulated subnet 10.0.2.0/24: ARP, DHCP, ICMP, DNS, SNTP
   nat.rs      user-mode NAT: guest TCP/UDP relayed over ordinary host sockets
   crypto.rs   SHA-1/2, HMAC, PBKDF2, the 802.11 PRF, AES, AES key wrap, bignum arithmetic
-  board.rs    BoardModel trait; Atech14, WaveshareCam, NoBoard; ST7735 and WS2812 decoders
+  board.rs    Atech14, WaveshareCam, WaveshareLcd4b (BoardModel from esp-soc); ST7735 and WS2812 decoders
   web.rs      dependency-free HTTP + WebSocket server
   elf.rs / image.rs / picture.rs   loaders (ELF symbols/segments, ESP app images, BMP/PPM)
 esp-periph/   the peripheral IP Espressif chips share, one file each (UART, USB-Serial/JTAG,
@@ -161,7 +167,7 @@ esp_wifi + libpp/libnet80211        unmodified blob, drives the MAC registers
 
 ## Boards
 
-`BoardModel` (board.rs) receives GPIO output edges, decoded RMT frames, owns the I2C devices
+`BoardModel` (esp-soc/src/board.rs) receives GPIO output edges, decoded RMT frames, owns the I2C devices
 and the camera source, and exposes optional display/ring/camera state for the UI. The SoC
 never knows what board it is on; `--board` selects the implementation. See boards.md.
 

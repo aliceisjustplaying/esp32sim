@@ -132,7 +132,9 @@ RISCV_DIS_FILES=/tmp/rom.dis:/tmp/app.dis cargo test -p riscv-rv32 --release
   needs the bootloader's split, which is not modelled. The flag fails with that message.
 - **WiFi/BLE** — nothing of the C3 radio is modelled. (The S3's blob-level WiFi work does not
   carry over: different MAC, and the C3's is not the one that was reverse-engineered.)
-- **No board model.** The C3 target is a bare module: console only. `BoardModel` is an S3 concept
+- **No board yet.** The C3 target is a bare module (`NoBoard`): console only. `BoardModel` lives
+  in `esp-soc` now, so a C3 board is an `impl BoardModel` plus its devices; nothing else changes.
+- (superseded) `BoardModel` is an S3 concept
   today; a C3 board would need it lifted out.
 - **Peripherals on demand**: I2C, SPI2 master, LEDC, RMT, ADC, TWAI. Each shows up as an unknown
   register with `--log-periph` the moment a firmware wants it.

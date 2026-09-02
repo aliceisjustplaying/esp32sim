@@ -1,18 +1,21 @@
 # Boards
 
-A board is anything implementing `esp32s3::board::BoardModel`:
+A board is anything implementing `esp_soc::BoardModel` (re-exported as `esp32s3::board::BoardModel`):
 
 ```rust
 pub trait BoardModel {
     fn name(&self) -> &'static str;
     fn gpio_changes(&mut self, changes: &[(u8, bool)]) {}      // output edges, in order
     fn rmt_frame(&mut self, ch: usize, bits: &[bool]) {}       // a decoded RMT transmission
-    fn i2c_devices(&mut self) -> Vec<(u8, Box<dyn I2cDevice>)> // devices on I2C0
+    fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn I2cDevice>)> // (bus, address, device)
+    fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)>    // for the UI/PNG: w, h, RGB565, change counter
+    fn leds(&self) -> Option<(&[[u8; 3]], u64)>               // LED ring/strip colours, change counter
+    fn named_pin(&self, name: &str) -> Option<u8>           // `btn1`, `sw`... for scripts and the UI
+    fn encoder(&self) -> Option<(u8, u8)>                    // rotary encoder CLK/DT, for `knob`
+    fn report(&self) -> String                               // end-of-run statistics
     fn set_camera_picture(&mut self, p: Picture) {}
     fn camera_frame(&mut self) -> Option<(u32, u32, Arc<Vec<u8>>)>   // YUYV at sensor size
     fn camera_preview(&self, w: u32, h: u32) -> Option<Vec<u8>>       // RGB for the UI
-    fn tft(&self) -> Option<&St7735> { None }
-    fn ring(&self) -> Option<&Ring> { None }
 }
 ```
 
