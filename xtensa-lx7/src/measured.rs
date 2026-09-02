@@ -49,6 +49,9 @@ pub struct InstructionObservation {
     pub access: Option<AccessShape>,
     pub access_memory: Option<MemoryClass>,
     pub branch_taken: Option<bool>,
+    pub load_destination: Option<u8>,
+    pub read_registers: u16,
+    pub loop_back_edge_residue: Option<u8>,
     pub block_cost: BlockCostPayload,
 }
 
@@ -135,8 +138,12 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         fetch_memory: bus.measured_memory_class(pc),
         access_memory: access.map(|shape| bus.measured_memory_class(shape.address)),
         access,
-        branch_taken: matches!(instruction.op, crate::Op::Beqz | crate::Op::BeqzN)
-            .then(|| cpu.get_ar(instruction.s) == 0),
+        branch_taken: branch_outcome(cpu, instruction),
+        load_destination: load_destination(instruction),
+        read_registers: read_registers(instruction),
+        loop_back_edge_residue: (cpu.lcount != 0
+            && pc.wrapping_add(u32::from(instruction.len)) == cpu.lend)
+            .then_some((cpu.lbeg & 3) as u8),
         block_cost: BlockCostPayload {
             start_pc: pc,
             static_cycles: 0,
@@ -167,6 +174,63 @@ pub fn plan_instruction<B: MeasuredBus, T: TimingSource>(
         components: plan.components,
         mutations: plan.mutations,
     })
+}
+
+fn branch_outcome(cpu: &Cpu, i: Insn) -> Option<bool> {
+    use crate::Op::*;
+    let s = cpu.get_ar(i.s);
+    let t = cpu.get_ar(i.t);
+    Some(match i.op {
+        Beqz | BeqzN => s == 0,
+        Bnez | BnezN => s != 0,
+        Bltz => (s as i32) < 0,
+        Bgez => (s as i32) >= 0,
+        Beqi => s == i.imm2 as u32,
+        Bnei => s != i.imm2 as u32,
+        Blti => (s as i32) < i.imm2,
+        Bgei => (s as i32) >= i.imm2,
+        Bltui => s < i.imm2 as u32,
+        Bgeui => s >= i.imm2 as u32,
+        Bnone => s & t == 0,
+        Bany => s & t != 0,
+        Ball => !s & t == 0,
+        Bnall => !s & t != 0,
+        Beq => s == t,
+        Bne => s != t,
+        Blt => (s as i32) < (t as i32),
+        Bge => (s as i32) >= (t as i32),
+        Bltu => s < t,
+        Bgeu => s >= t,
+        Bbc => s & (1 << (t & 31)) == 0,
+        Bbs => s & (1 << (t & 31)) != 0,
+        Bbci => s & (1 << i.imm2) == 0,
+        Bbsi => s & (1 << i.imm2) != 0,
+        Bf => cpu.br & (1 << i.s) == 0,
+        Bt => cpu.br & (1 << i.s) != 0,
+        _ => return None,
+    })
+}
+
+fn load_destination(i: Insn) -> Option<u8> {
+    use crate::Op::*;
+    matches!(
+        i.op,
+        L8ui | L16ui | L16si | L32i | L32iN | L32r | L32ai | L32e | Lsi | Lsip | Lsx | Lsxp
+    )
+    .then_some(i.t)
+}
+
+fn read_registers(i: Insn) -> u16 {
+    use crate::Op::*;
+    let bit = |register: u8| 1u16 << register;
+    match i.op {
+        L32r | Movi | MoviN | J | Call0 | Call4 | Call8 | Call12 => 0,
+        L8ui | L16ui | L16si | L32i | L32iN | L32ai | L32e | Lsi | Lsip => bit(i.s),
+        S8i | S16i | S32i | S32iN | S32ri | S32e | S32nb | Ssi | Ssip | S32c1i => {
+            bit(i.s) | bit(i.t)
+        }
+        _ => bit(i.s) | bit(i.t),
+    }
 }
 
 fn access_shape(cpu: &Cpu, instruction: Insn) -> Option<AccessShape> {
