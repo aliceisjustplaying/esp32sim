@@ -13,26 +13,26 @@ impl Emu {
         let e = unsafe { esp32sim_new(board.as_ptr(), board.len(), flash_mb, psram_mb) };
         assert!(!e.is_null(), "board {}", board); Emu(e)
     }
-    fn load(&self, kind: u32, d: &[u8]) {
-        // SAFETY: `self.0` stays live until Drop and `d` is readable for the call.
+    fn load(&mut self, kind: u32, d: &[u8]) {
+        // SAFETY: `&mut self` provides exclusive access and `d` is readable for the call.
         assert_eq!(unsafe { esp32sim_load(self.0, kind, d.as_ptr(), d.len()) }, 0, "load kind {}", kind);
     }
-    fn load_file(&self, kind: u32, path: &str) { self.load(kind, &std::fs::read(common::root().join(path)).unwrap_or_else(|e| panic!("{}: {}", path, e))); }
-    fn boot(&self) {
-        // SAFETY: `self.0` is a live emulator uniquely accessed by this non-Sync wrapper.
+    fn load_file(&mut self, kind: u32, path: &str) { self.load(kind, &std::fs::read(common::root().join(path)).unwrap_or_else(|e| panic!("{}: {}", path, e))); }
+    fn boot(&mut self) {
+        // SAFETY: `&mut self` provides exclusive access to the live emulator.
         assert_eq!(unsafe { esp32sim_boot(self.0, 0) }, 0);
     }
-    fn run(&self, cycles: u32) -> u32 {
-        // SAFETY: `self.0` is a live emulator uniquely accessed by this non-Sync wrapper.
+    fn run(&mut self, cycles: u32) -> u32 {
+        // SAFETY: `&mut self` provides exclusive access to the live emulator.
         unsafe { esp32sim_run(self.0, cycles, 0.0) }
     }
-    fn text_in(&self, s: &str) {
-        // SAFETY: `self.0` stays live until Drop and `s` is readable for the call.
+    fn text_in(&mut self, s: &str) {
+        // SAFETY: `&mut self` provides exclusive access and `s` is readable for the call.
         unsafe { esp32sim_in_text(self.0, s.as_ptr(), s.len()) }
     }
     /// (kind, payload) since the last call: 1 = text, 2 = binary
-    fn out(&self) -> Vec<(u32, Vec<u8>)> {
-        // SAFETY: `self.0` is a live emulator uniquely accessed by this non-Sync wrapper.
+    fn out(&mut self) -> Vec<(u32, Vec<u8>)> {
+        // SAFETY: `&mut self` provides exclusive access to the live emulator.
         let n = unsafe { esp32sim_out_take(self.0) };
         (0..n).map(|i| {
             // SAFETY: `i` came from this drain, the emulator stays live, and no output mutation
@@ -54,11 +54,11 @@ fn has(ts: &[String], needle: &str) -> bool { ts.iter().any(|t| t.contains(needl
 #[test]
 #[ignore = "needs the ESP32-S3 mask ROM ELF"]
 fn s3_atech_speaks_the_web_protocol() {
-    let e = Emu::new("atech14", 8, 2);
+    let mut e = Emu::new("atech14", 8, 2);
     e.load(0, &std::fs::read(common::rom("esp32s3_rev0")).unwrap());
     e.load_file(1, "web/wasm/fw/public/atech-bootloader.bin"); e.load_file(2, "web/wasm/fw/public/atech-ptable.bin"); e.load_file(3, "web/wasm/fw/public/atech-firmware.bin");
     e.load_file(6, "web/wasm/fw/public/atech-script1.txt");
-    // SAFETY: `e.0` is live and uniquely accessed through this non-Sync wrapper.
+    // SAFETY: `e.0` is live and this test retains exclusive access to its wrapper.
     assert_eq!(unsafe { esp32sim_run(e.0, 1000, 0.0) }, 9, "running before boot is refused");
     e.boot();
     let mut all = e.out();
@@ -80,7 +80,7 @@ fn s3_atech_speaks_the_web_protocol() {
 #[test]
 #[ignore = "needs the ESP32-C3 mask ROM ELF"]
 fn c3_speaks_the_web_protocol() {
-    let e = Emu::new("esp32c3", 4, 0);
+    let mut e = Emu::new("esp32c3", 4, 0);
     e.load(0, &std::fs::read(common::rom("esp32c3_rev3")).unwrap());
     e.load_file(1, "web/wasm/fw/public/c3-hello-bootloader.bin"); e.load_file(2, "web/wasm/fw/public/c3-hello-ptable.bin"); e.load_file(3, "web/wasm/fw/public/c3-hello_world.bin");
     e.boot();
