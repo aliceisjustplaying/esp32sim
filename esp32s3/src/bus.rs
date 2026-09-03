@@ -69,6 +69,7 @@ pub struct SocBus {
     pub cycles: u64,
     pub last_fault: Option<(u32, bool)>,
     pub spi2_dma_fault: Option<DmaDescriptorFault>,
+    pub board_deadline_fault: Option<crate::board::BoardDeadlineError>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
     /// GPIO edges for observers, while one wants them: (cycle, pin, level)
@@ -112,7 +113,7 @@ impl SocBus {
         let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
-            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
+            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, board_deadline_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
         let mut b = bus_uninit;
@@ -223,7 +224,7 @@ impl SocBus {
     }
     fn periph_write(&mut self, addr: u32, v: u32, size: u32) {
         self.periph_write_inner(addr, v, size);
-        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);   // the write may have armed something
+        self.refresh_tick_budget();   // the write may have armed something
     }
     fn periph_write_inner(&mut self, addr: u32, v: u32, size: u32) {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
@@ -840,16 +841,33 @@ impl Bus for SocBus {
 }
 
 impl SocBus {
+    fn refresh_tick_budget(&mut self) {
+        let mut budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        if let Some(deadline) = self.board.next_deadline() {
+            let until_deadline = deadline.saturating_sub(self.cycles).clamp(1, u64::from(MAX_TICK_DEFER));
+            budget = budget.min(until_deadline as u32);
+        }
+        self.tick_budget = budget;
+    }
+
     /// Deliver the deferred cycles to the device models now.
     pub fn flush_ticks(&mut self) {
         let c = std::mem::take(&mut self.tick_pending);
         if c == 0 { return; }
         self.tick_impl(c);
-        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        self.refresh_tick_budget();
     }
 
     fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.periph.tick(cycles as u64);
+        if let Err(fault) = self.board.advance_to(self.cycles) {
+            self.board_deadline_fault = Some(fault);
+            return 0;
+        }
+        for edge in self.board.take_edges() {
+            if let Some(events) = &mut self.gpio_events { events.push((edge.cycle, edge.pin, edge.level)); }
+            if self.periph.gpio.set_input(edge.pin, edge.level) { self.irq_dirty = true; }
+        }
         self.complete_spi2_dma();
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
@@ -1187,5 +1205,21 @@ mod gp_spi_board_tests {
         assert_eq!(bus.periph.gdma.out[0].eof_desc, FIRST_DESC);
         assert!(!bus.periph.gdma.out[0].running);
         assert_eq!(bus.periph.spi2.transfers, 1);
+    }
+
+    #[test]
+    fn amoled_touch_edge_reaches_gpio21_interrupt_logic() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.gpio_events = Some(Vec::new());
+        bus.periph.gpio.pin[crate::board::PIN_AMOLED_TOUCH_INT as usize] = (2 << 7) | (1 << 13);
+
+        bus.board.touch(100, 200, true);
+        Bus::tick(&mut bus, 1);
+
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TOUCH_INT));
+        assert!(bus.periph.gpio.irq());
+        assert!(bus.irq_dirty);
+        assert_eq!(bus.gpio_events.as_deref(), Some(&[(1, crate::board::PIN_AMOLED_TOUCH_INT, false)][..]));
     }
 }
