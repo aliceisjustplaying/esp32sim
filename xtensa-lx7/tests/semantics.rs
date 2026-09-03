@@ -16,7 +16,7 @@ const VECBASE: u32 = 0x4037_8000;
 /// objdump prints each Xtensa instruction as one big-endian hex group; memory is little-endian.
 fn asm(listing: &str) -> Vec<u8> {
     let mut out = Vec::new();
-    for g in listing.split_whitespace() { let mut b: Vec<u8> = (0..g.len() / 2).map(|i| u8::from_str_radix(&g[2 * i..2 * i + 2], 16).unwrap()).collect(); b.reverse(); out.extend(b); }
+    for g in listing.split_whitespace() { let mut b: Vec<u8> = (0..g.len() / 2).map(|i| u8::from_str_radix(&g[2 * i..2 * i + 2], 16).expect("semantic test bytes must be hexadecimal")).collect(); b.reverse(); out.extend(b); }
     out
 }
 

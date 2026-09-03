@@ -17,7 +17,7 @@ impl Emu {
         // SAFETY: `&mut self` provides exclusive access and `d` is readable for the call.
         assert_eq!(unsafe { esp32sim_load(self.0, kind, d.as_ptr(), d.len()) }, 0, "load kind {}", kind);
     }
-    fn load_file(&mut self, kind: u32, path: &str) { self.load(kind, &std::fs::read(common::root().join(path)).unwrap_or_else(|e| panic!("{}: {}", path, e))); }
+    fn load_file(&mut self, kind: u32, path: &str) { self.load(kind, &std::fs::read(common::root().join(path)).expect("firmware fixture must be readable")); }
     fn boot(&mut self) {
         // SAFETY: `&mut self` provides exclusive access to the live emulator.
         assert_eq!(unsafe { esp32sim_boot(self.0, 0) }, 0);
@@ -37,7 +37,13 @@ impl Emu {
         (0..n).map(|i| {
             // SAFETY: `i` came from this drain, the emulator stays live, and no output mutation
             // occurs until the payload is copied.
-            unsafe { let (k, p, l) = (esp32sim_out_kind(self.0, i), esp32sim_out_ptr(self.0, i), esp32sim_out_len(self.0, i)); (k, std::slice::from_raw_parts(p, l).to_vec()) }
+            let k = unsafe { esp32sim_out_kind(self.0, i) };
+            // SAFETY: The same live emulator and valid drained index are used here.
+            let p = unsafe { esp32sim_out_ptr(self.0, i) };
+            // SAFETY: The same live emulator and valid drained index are used here.
+            let l = unsafe { esp32sim_out_len(self.0, i) };
+            // SAFETY: The ABI returns a readable `l`-byte span valid until output mutation.
+            (k, unsafe { std::slice::from_raw_parts(p, l) }.to_vec())
         }).collect()
     }
 }
@@ -55,7 +61,7 @@ fn has(ts: &[String], needle: &str) -> bool { ts.iter().any(|t| t.contains(needl
 #[ignore = "needs the ESP32-S3 mask ROM ELF"]
 fn s3_atech_speaks_the_web_protocol() {
     let mut e = Emu::new("atech14", 8, 2);
-    e.load(0, &std::fs::read(common::rom("esp32s3_rev0")).unwrap());
+    e.load(0, &std::fs::read(common::rom("esp32s3_rev0")).expect("S3 ROM must be readable"));
     e.load_file(1, "web/wasm/fw/public/atech-bootloader.bin"); e.load_file(2, "web/wasm/fw/public/atech-ptable.bin"); e.load_file(3, "web/wasm/fw/public/atech-firmware.bin");
     e.load_file(6, "web/wasm/fw/public/atech-script1.txt");
     // SAFETY: `e.0` is live and this test retains exclusive access to its wrapper.
@@ -71,7 +77,7 @@ fn s3_atech_speaks_the_web_protocol() {
     assert!(has(&ts, "\"t\":\"ring\",\"leds\":[["), "the WS2812 ring was pushed");
     let bins: Vec<u8> = all.iter().filter(|m| m.0 == 2).map(|m| m.1[0]).collect();
     assert!(bins.contains(&1) && bins.contains(&2), "a display frame (1) and audio (2) went out: kinds seen {:?}", bins);
-    let frame = all.iter().find(|m| m.0 == 2 && m.1[0] == 1).unwrap();
+    let frame = all.iter().find(|m| m.0 == 2 && m.1[0] == 1).expect("display frame must be present");
     assert_eq!(&frame.1[1..5], &[160, 0, 80, 0], "the ST7735 frame is 160x80");
     // SAFETY: `e.0` stays live and neither query overlaps mutable access.
     assert!(unsafe { esp32sim_insns(e.0) } > 1e8 && unsafe { esp32sim_cpu_hz(e.0) } == 240e6);
@@ -81,7 +87,7 @@ fn s3_atech_speaks_the_web_protocol() {
 #[ignore = "needs the ESP32-C3 mask ROM ELF"]
 fn c3_speaks_the_web_protocol() {
     let mut e = Emu::new("esp32c3", 4, 0);
-    e.load(0, &std::fs::read(common::rom("esp32c3_rev3")).unwrap());
+    e.load(0, &std::fs::read(common::rom("esp32c3_rev3")).expect("C3 ROM must be readable"));
     e.load_file(1, "web/wasm/fw/public/c3-hello-bootloader.bin"); e.load_file(2, "web/wasm/fw/public/c3-hello-ptable.bin"); e.load_file(3, "web/wasm/fw/public/c3-hello_world.bin");
     e.boot();
     let mut all = e.out();
@@ -102,7 +108,7 @@ fn c3_speaks_the_web_protocol() {
 #[ignore = "needs the ESP32-C6 mask ROM ELF"]
 fn c6_speaks_the_web_protocol() {
     let mut e = Emu::new("esp32c6", 4, 0);
-    e.load(0, &std::fs::read(common::rom("esp32c6_rev0")).unwrap());
+    e.load(0, &std::fs::read(common::rom("esp32c6_rev0")).expect("C6 ROM must be readable"));
     e.load_file(1, "web/wasm/fw/public/c6-hello-bootloader.bin"); e.load_file(2, "web/wasm/fw/public/c6-hello-ptable.bin"); e.load_file(3, "web/wasm/fw/public/c6-hello_world.bin");
     e.boot();
     let mut all = e.out();

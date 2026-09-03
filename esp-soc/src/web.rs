@@ -95,21 +95,21 @@ impl WebServer {
     pub fn send_text(&self, s: &str) { self.emit(1, s.as_bytes()); }
     pub fn send_binary(&self, d: &[u8]) { self.emit(2, d); }
     fn emit(&self, kind: u8, d: &[u8]) {
-        let queue = self.shared.lock().unwrap().queue;
-        if queue { self.shared.lock().unwrap().outbox.push_back((kind, d.to_vec())); } else { self.broadcast(frame(kind, d)); }
+        let queue = self.shared.lock().expect("web server shared state mutex poisoned").queue;
+        if queue { self.shared.lock().expect("web server shared state mutex poisoned").outbox.push_back((kind, d.to_vec())); } else { self.broadcast(frame(kind, d)); }
     }
     fn broadcast(&self, f: Vec<u8>) {
-        let mut sh = self.shared.lock().unwrap();
+        let mut sh = self.shared.lock().expect("web server shared state mutex poisoned");
         sh.clients.retain(|c| c.send(f.clone()));
     }
     /// Queue mode: take everything sent since the last call, as (1 = text, 2 = binary) messages.
-    pub fn take_outbox(&self) -> Vec<(u8, Vec<u8>)> { self.shared.lock().unwrap().outbox.drain(..).collect() }
-    pub fn push_incoming(&self, s: String) { self.shared.lock().unwrap().incoming.push_back(s); }
-    pub fn push_incoming_bin(&self, d: Vec<u8>) { self.shared.lock().unwrap().incoming_bin.push_back(d); }
-    pub fn set_hello(&self, frames: Vec<Vec<u8>>) { self.shared.lock().unwrap().hello = frames; }
-    pub fn poll_incoming(&self) -> Vec<String> { let mut sh = self.shared.lock().unwrap(); sh.incoming.drain(..).collect() }
-    pub fn poll_incoming_bin(&self) -> Vec<Vec<u8>> { let mut sh = self.shared.lock().unwrap(); sh.incoming_bin.drain(..).collect() }
-    pub fn clients(&self) -> usize { self.shared.lock().unwrap().clients.len() }
+    pub fn take_outbox(&self) -> Vec<(u8, Vec<u8>)> { self.shared.lock().expect("web server shared state mutex poisoned").outbox.drain(..).collect() }
+    pub fn push_incoming(&self, s: String) { self.shared.lock().expect("web server shared state mutex poisoned").incoming.push_back(s); }
+    pub fn push_incoming_bin(&self, d: Vec<u8>) { self.shared.lock().expect("web server shared state mutex poisoned").incoming_bin.push_back(d); }
+    pub fn set_hello(&self, frames: Vec<Vec<u8>>) { self.shared.lock().expect("web server shared state mutex poisoned").hello = frames; }
+    pub fn poll_incoming(&self) -> Vec<String> { let mut sh = self.shared.lock().expect("web server shared state mutex poisoned"); sh.incoming.drain(..).collect() }
+    pub fn poll_incoming_bin(&self) -> Vec<Vec<u8>> { let mut sh = self.shared.lock().expect("web server shared state mutex poisoned"); sh.incoming_bin.drain(..).collect() }
+    pub fn clients(&self) -> usize { self.shared.lock().expect("web server shared state mutex poisoned").clients.len() }
 }
 
 fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
@@ -125,7 +125,7 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
         // plain HTTP: serve a file
         let path = text.split_whitespace().nth(1).unwrap_or("/");
         let path = if path == "/" { "/index.html" } else { path };
-        let web_dir = shared.lock().unwrap().web_dir.clone();
+        let web_dir = shared.lock().expect("web server shared state mutex poisoned").web_dir.clone();
         let safe = !path.contains("..");
         let body = if safe { std::fs::read(format!("{}{}", web_dir, path)).ok() } else { None };
         let (status, body, ctype) = match body { Some(b) => ("200 OK", b, if path.ends_with(".js") { "application/javascript" } else { "text/html; charset=utf-8" }), None => ("404 Not Found", b"not found".to_vec(), "text/plain") };
@@ -137,11 +137,11 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
     let _ = stream.write_all(format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n", accept).as_bytes());
     let _ = stream.set_nodelay(true);
     {
-        let mut sh = shared.lock().unwrap();
+        let mut sh = shared.lock().expect("web server shared state mutex poisoned");
         let hello = sh.hello.clone();
         for f in hello { let _ = stream.write_all(&f); }
         let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(256);
-        let mut out = stream.try_clone().unwrap();
+        let mut out = stream.try_clone().expect("connected client stream should be clonable");
         std::thread::spawn(move || { while let Ok(f) = rx.recv() { if out.write_all(&f).is_err() { break; } } });
         sh.clients.push(Client { tx, peer: stream.peer_addr().ok() });
     }
@@ -150,7 +150,7 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
     while let Some(h) = read_exact(2) {
         let op = h[0] & 0xf; let masked = h[1] & 0x80 != 0; let mut len = (h[1] & 0x7f) as u64;
         if len == 126 { let Some(e) = read_exact(2) else { break }; len = u16::from_be_bytes([e[0], e[1]]) as u64; }
-        else if len == 127 { let Some(e) = read_exact(8) else { break }; len = u64::from_be_bytes(e.try_into().unwrap()); }
+        else if len == 127 { let Some(e) = read_exact(8) else { break }; len = u64::from_be_bytes(e.try_into().expect("eight-byte WebSocket length should convert to an array")); }
         let mask = if masked { let Some(m) = read_exact(4) else { break }; m } else { vec![0; 4] };
         if len > 8 << 20 { break; }
         let Some(mut data) = read_exact(len as usize) else { break };
@@ -158,12 +158,12 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
         match op {
             8 => break,
             9 => {}
-            1 => { shared.lock().unwrap().incoming.push_back(String::from_utf8_lossy(&data).to_string()); }
-            2 => { let mut sh = shared.lock().unwrap(); if sh.incoming_bin.len() < 4 { sh.incoming_bin.push_back(data); } }
+            1 => { shared.lock().expect("web server shared state mutex poisoned").incoming.push_back(String::from_utf8_lossy(&data).to_string()); }
+            2 => { let mut sh = shared.lock().expect("web server shared state mutex poisoned"); if sh.incoming_bin.len() < 4 { sh.incoming_bin.push_back(data); } }
             _ => {}
         }
     }
-    let mut sh = shared.lock().unwrap();
+    let mut sh = shared.lock().expect("web server shared state mutex poisoned");
     let me = stream.peer_addr().ok();
     sh.clients.retain(|c| c.peer != me);
 }

@@ -271,6 +271,7 @@ impl SocBus {
         };
         e.vbase = self.ver_base[e.src as usize] + (e.off as usize >> VPAGE_SHIFT) as u32;
         let off = e.off as usize;
+        // SAFETY: tlb_fill verified above that the mapped page lies within the selected buffer.
         e.base = unsafe { self.buf_mut(e.src as u8).as_mut_ptr().add(off) };
         self.tlb[tlb_idx(addr)] = e;
         Some(e)
@@ -706,7 +707,7 @@ impl SocBus {
         }
         // 2) the panel consumes `due` bytes from the FIFO
         let n = due.min(self.periph.lcd_cam.lcd_fifo.len());
-        for _ in 0..n { let b = self.periph.lcd_cam.lcd_fifo.pop_front().unwrap(); self.periph.lcd_cam.lcd_line.push(b); }
+        for _ in 0..n { let b = self.periph.lcd_cam.lcd_fifo.pop_front().expect("FIFO length was checked"); self.periph.lcd_cam.lcd_line.push(b); }
         while self.periph.lcd_cam.lcd_line.len() >= frame_bytes {
             let frame = std::mem::take(&mut self.periph.lcd_cam.lcd_line);
             self.board.lcd_frame(ha, va, &frame[..frame_bytes]);
@@ -860,9 +861,9 @@ impl SocBus {
         // the frame is dropped, exactly as a real ring would overflow.
         let busy = { let d = self.periph.wifi.last_rx_desc; d != 0 && self.read32(d).unwrap_or(0) & (1 << 30) != 0 };
         if busy && now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 50_000 { return; }
-        let mut due = { let ap = self.periph.wifi.ap.as_mut().unwrap(); ap.step(now_us) };
+        let mut due = { let ap = self.periph.wifi.ap.as_mut().expect("wifi air step requires an access point"); ap.step(now_us) };
         let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
-        for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
+        for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().expect("wifi air step requires an access point").data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
         if due.is_empty() { return; }
         // management responses (auth, assoc, probe) go before beacons: a connect exchange must not be
         // crowded out by beacon traffic
@@ -882,7 +883,7 @@ impl SocBus {
         let size = (dw0 & 0xfff) as usize;
         let total = 48 + frame.len() + 4;
         if dw0 & (1 << 31) == 0 || buf == 0 || size < total { self.periph.wifi.rx_dropped += 1; return; }
-        let (chan, log) = { let ap = self.periph.wifi.ap.as_ref().unwrap(); (ap.cfg.channel as u32, ap.log) };
+        let (chan, log) = { let ap = self.periph.wifi.ap.as_ref().expect("wifi receive requires an access point"); (ap.cfg.channel as u32, ap.log) };
         let mut b = Vec::with_capacity(total);
         // rx_ctrl word 0 (silicon: a real broadcast beacon reads 0x111b20ad, bit 28 set, signed rssi in the low
         // byte). The MAC has already address-filtered, so every delivered frame is "for us"; use the same flags
@@ -932,7 +933,7 @@ impl Bus for SocBus {
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 2) as u16); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; let b = self.buf(e.src as u8); Ok(u16::from_le_bytes([b[o], b[o + 1]])) }
             Some(_) => Ok(u16::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?])),       // straddles a page
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -940,7 +941,7 @@ impl Bus for SocBus {
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 4)); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; let b = self.buf(e.src as u8); Ok(u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])) }
             Some(_) => Ok(u32::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?, self.read8(addr + 2)?, self.read8(addr + 3)?])),
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -972,7 +973,7 @@ impl Bus for SocBus {
         let Some(e) = self.lookup(pc) else { self.last_fault = Some((pc, false)); return Err(Fault::Unmapped) };
         let o = e.off as usize + (pc - e.lo) as usize;
         let b = self.buf(e.src as u8);
-        if let Some(w) = b.get(o..o + 4) { return Ok(w.try_into().unwrap()); }
+        if let Some(w) = b.get(o..o + 4) { let mut r = [0u8; 4]; r.copy_from_slice(w); return Ok(r); }
         // last bytes of a buffer (or of a mapped page): what physical memory has, zero beyond
         let mut r = [0u8; 4];
         for (i, byte) in r.iter_mut().enumerate() { if let Some(x) = b.get(o + i) { *byte = *x; } }

@@ -24,7 +24,7 @@ pub struct Elf {
 }
 
 fn u16le(d: &[u8], o: usize) -> u16 { u16::from_le_bytes([d[o], d[o + 1]]) }
-fn u32le(d: &[u8], o: usize) -> u32 { u32::from_le_bytes(d[o..o + 4].try_into().unwrap()) }
+fn u32le(d: &[u8], o: usize) -> u32 { u32::from_le_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]) }
 
 pub fn parse(d: &[u8]) -> Result<Elf, String> {
     if d.len() < 52 || &d[0..4] != b"\x7fELF" { return Err("not an ELF file".into()); }

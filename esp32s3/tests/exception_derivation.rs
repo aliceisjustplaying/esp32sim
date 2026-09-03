@@ -1,6 +1,6 @@
 use backend_api::{Backend, CoreId, CostClass, InstructionCost};
 use esp32s3::backend::{ExceptionReturnClass, UnpricedTimingClass};
-use esp32s3::{Esp32Backend, Machine, MeasuredStep, MeasuredStepError};
+use esp32s3::{Esp32Backend, Machine, MeasuredMachine, MeasuredStep, MeasuredStepError};
 use std::path::PathBuf;
 use xtensa_lx7::measured::PlanError;
 
@@ -26,7 +26,7 @@ fn required_elf() -> Result<PathBuf, String> {
 fn idf61_machine() -> Result<Machine, String> {
     let bytes = std::fs::read(required_elf()?).map_err(|error| error.to_string())?;
     let elf = esp32s3::elf::parse(&bytes)?;
-    let mut machine = Machine::new([0; 6]);
+    let mut machine = esp32s3::machine([0; 6]);
     for section in elf
         .sections
         .iter()
@@ -35,7 +35,7 @@ fn idf61_machine() -> Result<Machine, String> {
         machine.bus.load_bytes(section.addr, &section.data)?;
     }
     machine.symbols.extend(elf.symbols);
-    machine.cpu.set_ar(1, 0x3fca_b000);
+    machine.cores[0].set_ar(1, 0x3fca_b000);
     Ok(machine)
 }
 
@@ -64,7 +64,7 @@ fn run_attempt(
     setup: impl FnOnce(&mut Machine),
 ) -> Result<Attempt, String> {
     let mut machine = idf61_machine()?;
-    machine.cpu.pc = start_pc;
+    machine.cores[0].pc = start_pc;
     setup(&mut machine);
     let mut backend = Esp32Backend::default();
     for _ in 0..128 {
@@ -75,7 +75,7 @@ fn run_attempt(
                 return Ok(Attempt {
                     name,
                     start_pc,
-                    stop_pc: machine.cpu.pc,
+                    stop_pc: machine.cores[0].pc,
                     known_cycles: backend.engine().state().cores[0].cycle,
                     ledger_entries: backend.engine().ledger().len(),
                     stop: classify(name, error)?,
@@ -113,25 +113,25 @@ fn print_attempts(attempts: &[Attempt]) {
 fn real_idf61_exception_paths_expose_the_incomplete_known_ledgers() -> Result<(), String> {
     let attempts = [
         run_attempt("level1_entry", 0x4037_4340, |machine| {
-            machine.cpu.exccause = xtensa_lx7::state::exc::LEVEL1_INTERRUPT;
+            machine.cores[0].exccause = xtensa_lx7::state::exc::LEVEL1_INTERRUPT;
         })?,
         run_attempt("level3_entry", 0x4037_41c0, |machine| {
-            machine.cpu.eps[3] = machine.cpu.ps;
-            machine.cpu.epc[3] = 0x4038_0000;
+            machine.cores[0].eps[3] = machine.cores[0].ps;
+            machine.cores[0].epc[3] = 0x4038_0000;
         })?,
         run_attempt("level1_resume", 0x4037_9214, |_| {})?,
         run_attempt("level3_resume", 0x4037_9360, |_| {})?,
         run_attempt("window_overflow8", 0x4037_4080, |machine| {
-            machine.cpu.set_ar(1, 0x3fca_af00);
-            machine.cpu.set_ar(9, 0x3fca_b000);
+            machine.cores[0].set_ar(1, 0x3fca_af00);
+            machine.cores[0].set_ar(9, 0x3fca_b000);
             machine
                 .bus
                 .load_bytes(0x3fca_aef4, &0x3fca_b100_u32.to_le_bytes())
                 .expect("seed overflow handler spill base");
         })?,
         run_attempt("window_underflow8", 0x4037_40c0, |machine| {
-            machine.cpu.set_ar(1, 0x3fca_af00);
-            machine.cpu.set_ar(9, 0x3fca_b000);
+            machine.cores[0].set_ar(1, 0x3fca_af00);
+            machine.cores[0].set_ar(9, 0x3fca_b000);
             machine
                 .bus
                 .load_bytes(0x3fca_aff4, &0x3fca_b100_u32.to_le_bytes())
