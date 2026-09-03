@@ -569,7 +569,7 @@ impl<S: Soc> Machine<S> {
 
     // ------------------------------------------------------------------ scripts
     /// Parse a script: one action per line, `<seconds> <cmd> [args]`.
-    ///   press <pin> [ms]   release <pin>   gpio <pin> <0|1>   serial <text...>   knob <cw|ccw> [detents]   touch <x> <y> <0|1>   poke <addr> <value>   stop
+    /// `press <pin> [ms] release <pin> gpio <pin> <0|1> serial <text...> knob <cw|ccw> [detents] touch <x> <y> <0|1> poke <addr> <value> stop`
     /// Pins are numbers or the board's names (`btn1`, `sw`, ...); buttons/encoder are active-low with pull-ups (release = 1).
     pub fn load_script(&mut self, text: &str) -> Result<(), String> {
         let hz = S::CPU_HZ as f64;

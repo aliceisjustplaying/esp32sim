@@ -2,7 +2,7 @@
 //! registers, the 40-bit ACCX and the 2x160-bit QACC accumulators. Encodings come from the TRM's
 //! per-instruction "Instruction Word" layouts (`pie_table.rs`, generated), semantics from the
 //! "Operation" pseudo-code of the same chapter. 24-bit forms live in op0 = 4, 32-bit forms in op0 = 0xe/0xf.
-//! PIE is coprocessor 3: executing any of these with CPENABLE[3] clear raises the CP3-disabled exception,
+//! PIE is coprocessor 3: executing any of these with `CPENABLE[3]` clear raises the CP3-disabled exception,
 //! which is how FreeRTOS lazily saves/restores the state per task.
 use crate::bus::Bus;
 use crate::decode::Insn;
