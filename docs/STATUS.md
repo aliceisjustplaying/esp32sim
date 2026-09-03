@@ -364,6 +364,8 @@ mode (needs GOAL milestone 2).
   R. The window-handler ledger contributes 18 known cycles, but its residual
   cannot be evaluated without E and R. Receipt:
   [`evidence/timing/derived-exception-idf61/`](evidence/timing/derived-exception-idf61/README.md).
+  This historical replay uses `TINYDRAW_IDF61_RECEIPT_BUILD`; current product
+  runs use `TINYDRAW_VECTOR_V2_BUILD`.
 - ESP32-S3 TRM v1.8, section 4.3.3.2, page 405, specifies one
   dual-core-shared I-cache and one dual-core-shared D-cache, with each core
   on its own bus. GOAL and the merged Task 5 cache model adopt that topology.
