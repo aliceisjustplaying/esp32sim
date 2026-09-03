@@ -1,16 +1,16 @@
 # Status
 
-Last updated 2026-09-02. This file is the current truth: what exists,
+Last updated 2026-09-03. This file is the current truth: what exists,
 what is adopted, and what the hardware queue holds. The goal is
 [`GOAL.md`](GOAL.md); the working rules are [`../AGENTS.md`](../AGENTS.md).
 
 ## What exists
 
-- Branch `alice` (this branch): upstream esp32sim pinned at `2114ffc`
+- Branch `alice` (this branch): upstream esp32sim pinned at `c6164f8`
   plus provenance, strict Rust safeguards, and this documentation and
   evidence set. The safeguards pin Rust 1.98.0, apply workspace-wide
   deny-level lints, preserve release overflow checks and debug
-  assertions, and split the fast commit gate from the full push battery.
+  assertions, and split strict Clippy at commit time from the full push battery.
   The Xtensa and RISC-V objdump-differential corpora are committed in-tree;
   either test fails if its corpus is absent. Upstream provides the dual-core
   Xtensa LX7 interpreter and native JIT, the ESP32-S3 SoC and
@@ -48,8 +48,12 @@ what is adopted, and what the hardware queue holds. The goal is
   percent). This is a ceiling measurement, not product-JIT throughput.
 - Branch `main`: clean upstream mirror.
 - Branches `salvage/*`: frozen earlier work, inventoried below.
-- The TinyDraw repository holds probe and reference firmware and the
-  capture tooling; it stays live and separate.
+- The TinyDraw checkout is read-only from this repository. Current product
+  runs use the immutable IDF 6.1 build at
+  `~/Archives/esp32s3/pinned-builds/tinydraw-vector-v2-9cb651e0`, whose four
+  boot artifacts are checked before use against
+  [`evidence/tinydraw-vector-v2-build-2026-09-03.json`](evidence/tinydraw-vector-v2-build-2026-09-03.json).
+  Any future TinyDraw source work uses its own branch and isolated worktree.
 - An adversarial review of all salvage material exists in the archived
   predecessor repository (its final state, `reviews/` directory).
   Harvesting from salvage should consult it.
@@ -208,11 +212,12 @@ machine-local to the maintainer (not committed); hashes pin them:
 - Gate-harness ELF SHA-256
   `4e121a3642a6f18766cfe96c2be6adc8a0017fba4afa82105d642168ea40e2c8`
 
-The fixture source is published on TinyDraw branch
+The historical fixture source was published on TinyDraw branch
 `codex/lane-0-idf61-probes` at `632c966`. TinyDraw pull request 4
 (branch `maintenance/idf61-probes` at `0835e5b`) carries the IDF 6.1
-probe and receipt commits plus review fixes and is pending maintainer
-test and merge; normal-product validation used TinyDraw `2643aa7`.
+probe and receipt commits plus review fixes. It was closed after review;
+the committed receipts remain historical evidence. Normal-product validation
+used TinyDraw `2643aa7`.
 
 ## Hardware queue
 
@@ -334,7 +339,10 @@ mode (needs GOAL milestone 2).
 
 ## Review residuals
 
-- Fast-mode TinyDraw boot regressed at `da5e01b` because Waveshare SPI2 GDMA timing also ran in fast mode; `2f498dc` limits it to measured timing, and `esp32s3/tests/fast_boot_smoke.rs` now guards READY.
+- Fast-mode TinyDraw boot regressed at the pre-rebase `da5e01b` because
+  Waveshare SPI2 GDMA timing also ran in fast mode. `d4c15d9` restores the
+  eager fast DMA path and limits deferred completion to measured timing;
+  `esp32s3/tests/fast_boot_smoke.rs` guards READY.
 - The interpreter-versus-native-JIT architectural conformance gate is merged
   at `2d42032`. Its committed corpus and 128 deterministic randomized SRAM
   blocks compare registers, PC, touched memory, and the complete SRAM image.
