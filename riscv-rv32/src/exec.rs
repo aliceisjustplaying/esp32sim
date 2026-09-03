@@ -3,6 +3,7 @@
 use crate::bus::{Bus, Fault};
 use crate::decode::{decode, Insn, Op};
 use crate::state::{exc, Cpu};
+use emu_core::{CacheOperation, ControlEvent, ControlEventKind, StepKind, StepOutcome};
 
 pub use emu_core::Trap;
 
@@ -24,31 +25,48 @@ macro_rules! st {
 }
 
 /// Execute one instruction.
-pub fn step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(), Trap> {
+pub fn step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(), Trap> { step_outcome(cpu, bus).result() }
+
+/// Execute one slow-path event and retain its exact fetch window and trap timing.
+pub fn step_outcome<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> StepOutcome {
+    let pc = cpu.pc;
     // The SoC's INTC decides enable/priority and hands us the line (`Core::set_irq`); the CPU
     // only gates on mstatus.MIE.
     if cpu.waiting || cpu.mie_enabled() {
         if let Some(line) = cpu.irq {
             cpu.waiting = false;
             if cpu.mie_enabled() {
-                let pc = cpu.pc;
-                cpu.insn_count += 1;
+                cpu.insn_count += 1; cpu.cycle_count += 1;
                 cpu.trap(0x8000_0000 | line, 0, pc);
-                return Err(Trap::Interrupt(line));
+                return StepOutcome { pc, next_pc: cpu.pc, bytes: None, length: 0, kind: StepKind::TrapBefore(Trap::Interrupt(line)), control: None };
             }
         }
     }
-    if cpu.waiting { cpu.insn_count += 1; return Ok(()); }
+    if cpu.waiting {
+        cpu.insn_count += 1; cpu.cycle_count += 1;
+        return StepOutcome { pc, next_pc: pc, bytes: None, length: 0, kind: StepKind::Idle, control: None };
+    }
 
-    let pc = cpu.pc;
     bus.note_pc(pc);
     let bytes = match bus.fetch(pc) {
         Ok(b) => b,
-        Err(_) => { cpu.insn_count += 1; cpu.trap(exc::INSN_ACCESS_FAULT, pc, pc); return Err(Trap::Exception(exc::INSN_ACCESS_FAULT)); }
+        Err(_) => {
+            cpu.insn_count += 1; cpu.cycle_count += 1;
+            cpu.trap(exc::INSN_ACCESS_FAULT, pc, pc);
+            return StepOutcome { pc, next_pc: cpu.pc, bytes: None, length: 0, kind: StepKind::TrapBefore(Trap::Exception(exc::INSN_ACCESS_FAULT)), control: None };
+        }
     };
     let i = decode(pc, bytes);
-    cpu.insn_count += 1;
-    exec_insn(cpu, bus, &i, pc)
+    cpu.insn_count += 1; cpu.cycle_count += 1;
+    let control = if i.op == Op::FenceI {
+        Some(ControlEvent { kind: ControlEventKind::Cache(CacheOperation::FenceInstruction), address: 0 })
+    } else { None };
+    let result = exec_insn(cpu, bus, &i, pc);
+    let kind = match result {
+        Ok(()) => { cpu.retired_count += 1; StepKind::Retired }
+        Err(trap) => StepKind::TrapDuring(trap),
+    };
+    StepOutcome { pc, next_pc: cpu.pc, bytes: Some(bytes), length: i.len, kind, control }
 }
 
 #[inline]

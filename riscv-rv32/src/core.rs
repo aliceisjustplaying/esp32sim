@@ -4,6 +4,7 @@
 use crate::bus::Bus;
 use crate::exec::Trap;
 use crate::state::Cpu;
+use emu_core::StepOutcome;
 
 const X: [&str; 32] = ["zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
                        "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"];
@@ -18,8 +19,8 @@ impl emu_core::Core for Cpu {
     fn set_irq(&mut self, line: Option<u32>) { self.irq = line; }
     fn irq_pending(&self) -> bool { self.irq.is_some() }
     fn irq_bits(irq: &Option<u32>) -> u32 { irq.map_or(0, |l| 1 << (l & 31)) }
-    fn idle_advance(&mut self, cycles: u32) { self.insn_count += cycles as u64; }
-    fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> { crate::exec::step(self, bus) }
+    fn advance_cycles(&mut self, cycles: u32) { self.insn_count += cycles as u64; self.cycle_count += cycles as u64; }
+    fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome { crate::exec::step_outcome(self, bus) }
     fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
     /// One instruction at a time, but like a block: stop when the bus reports that an interrupt
     /// line may have moved, so the machine re-derives the core's input before the next instruction,
@@ -33,7 +34,7 @@ impl emu_core::Core for Cpu {
     }
     fn regs(&self, out: &mut Vec<(&'static str, u32)>) { for (&name, &value) in X[1..].iter().zip(&self.x[1..]) { out.push((name, value)); } out.push(("mstatus", self.mstatus)); }
     fn arg(&self, n: usize) -> u32 { self.x[10 + n] }
-    fn return_from_stub(&mut self, v: u32) { self.x[10] = v; self.pc = self.x[1]; self.insn_count += 1; }
+    fn return_from_stub(&mut self, v: u32) { self.x[10] = v; self.pc = self.x[1]; self.insn_count += 1; self.cycle_count += 1; }
     fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String { crate::disasm::format(&crate::decode::decode(pc, bytes)).replace('\t', " ") }
     fn insn_len(bytes: [u8; 4]) -> u32 { crate::decode::decode(0, bytes).len as u32 }
     const TRACE_WIDTH: usize = 28;
@@ -54,7 +55,8 @@ impl emu_core::Core for Cpu {
 
 #[cfg(test)]
 mod tests {
-    use emu_core::{Core, FlatRam};
+    use emu_core::{CacheOperation, ControlEventKind, Core, FlatRam, StepKind, Trap};
+    use crate::state::{csr, mstatus};
     /// `addi x1, x0, 5; j .` through the trait.
     #[test]
     fn core_runs_steps() {
@@ -64,5 +66,69 @@ mod tests {
         let (used, trap) = cpu.run(&mut ram, 4);
         assert_eq!((used, trap), (4, None)); assert_eq!(cpu.x[1], 5); assert_eq!(Core::pc(&cpu), 0x4038_0004);
         let mut r = Vec::new(); cpu.regs(&mut r); assert_eq!(r[0], ("ra", 5));
+    }
+
+    #[test]
+    fn step_facts_keep_compressed_and_full_fetch_windows() {
+        let base = 0x4038_0000;
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0x21, 0x43, 0xaa, 0xbb]); // c.li t1, 8
+        let mut cpu = crate::Cpu::new(); cpu.pc = base;
+        let compressed = cpu.step(&mut ram);
+        assert_eq!((compressed.pc, compressed.next_pc, compressed.bytes, compressed.length, compressed.kind),
+            (base, base + 2, Some([0x21, 0x43, 0xaa, 0xbb]), 2, StepKind::Retired));
+
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0xb7, 0x02, 0x38, 0x40]); // lui t0, 0x40380
+        let mut cpu = crate::Cpu::new(); cpu.pc = base;
+        let full = cpu.step(&mut ram);
+        assert_eq!((full.bytes, full.length, full.kind), (Some([0xb7, 0x02, 0x38, 0x40]), 4, StepKind::Retired));
+    }
+
+    #[test]
+    fn step_facts_distinguish_interrupts_and_trapping_instructions() {
+        let base = 0x4038_0000;
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0x73, 0, 0, 0]); // ecall
+        let mut cpu = crate::Cpu::new(); cpu.pc = base; cpu.mtvec = base + 0x20;
+        cpu.mstatus |= mstatus::MIE; cpu.irq = Some(3);
+        let interrupt = cpu.step(&mut ram);
+        assert_eq!(interrupt.bytes, None);
+        assert_eq!(interrupt.kind, StepKind::TrapBefore(Trap::Interrupt(3)));
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (1, 0, 1));
+
+        cpu.pc = base; cpu.irq = None;
+        let ecall = cpu.step(&mut ram);
+        assert_eq!((ecall.bytes, ecall.length), (Some([0x73, 0, 0, 0]), 4));
+        assert_eq!(ecall.kind, StepKind::TrapDuring(Trap::Exception(11)));
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (2, 0, 2));
+    }
+
+    #[test]
+    fn timing_only_advance_separates_cycles_from_retirement() {
+        let base = 0x4038_0000;
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..8].copy_from_slice(&[0x93, 0x00, 0x50, 0x00, 0x73, 0, 0, 0]); // addi ra,zero,5; ecall
+        let mut cpu = crate::Cpu::new(); cpu.pc = base; cpu.mtvec = base + 0x20;
+        assert_eq!(cpu.step(&mut ram).kind, StepKind::Retired);
+        cpu.advance_cycles(9);
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (10, 1, 10));
+        let instret = cpu.read_csr(csr::MINSTRET); let cycles = cpu.read_csr(csr::MCYCLE);
+        assert_eq!((instret, cycles), (1, 10));
+        assert!(matches!(cpu.step(&mut ram).kind, StepKind::TrapDuring(Trap::Exception(11))));
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (11, 1, 11));
+        let instret = cpu.read_csr(csr::MINSTRET); let cycles = cpu.read_csr(csr::MCYCLE);
+        assert_eq!((instret, cycles), (1, 11));
+    }
+
+    #[test]
+    fn fence_i_is_an_explicit_cache_control_event() {
+        let base = 0x4038_0000;
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0x0f, 0x10, 0, 0]);
+        let mut cpu = crate::Cpu::new(); cpu.pc = base;
+        let event = cpu.step(&mut ram).control.unwrap();
+        assert_eq!(event.kind, ControlEventKind::Cache(CacheOperation::FenceInstruction));
+        assert_eq!(event.address, 0);
     }
 }

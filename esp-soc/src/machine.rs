@@ -275,7 +275,7 @@ impl<S: Soc> Machine<S> {
             if let Some(&ret) = self.stubs.get(&pc) { cpu.return_from_stub(ret); self.stub_hits += 1; return (1, None); }
         }
         let (used, trap) = cpu.run(&mut self.bus, budget);
-        if let Some(m) = &self.cost { let c = m.cycles(pc, used); if c > used { self.cores[core].idle_advance(c - used); } }
+        if let Some(m) = &self.cost { let c = m.cycles(pc, used); if c > used { self.cores[core].advance_cycles(c - used); } }
         if self.probes.contains(Wants::BLOCK | Wants::TRAP) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
             let cpu = &self.cores[core];
@@ -317,8 +317,9 @@ impl<S: Soc> Machine<S> {
         }
         let cpu = &mut self.cores[core];
         self.bus.note_pc(pc);
-        let r = cpu.step(&mut self.bus);
-        if let Some(m) = &self.cost { let c = m.cycles(pc, 1); if c > 1 { cpu.idle_advance(c - 1); } }
+        let outcome = cpu.step(&mut self.bus);
+        let r = outcome.result();
+        if let Some(m) = &self.cost { let c = m.cycles(pc, 1); if c > 1 { cpu.advance_cycles(c - 1); } }
         if let (true, Err(t)) = (self.probes.contains(Wants::TRAP), &r) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
             let cpu = &self.cores[core];
@@ -372,7 +373,7 @@ impl<S: Soc> Machine<S> {
             if idle[..S::CORES].iter().all(|&x| x) && !slow_path {
                 // every core asleep: let time pass in larger steps until a device raises a line
                 let chunk = S::IDLE_CHUNK;
-                for (i, &enabled) in on.iter().enumerate().take(S::CORES) { if enabled { self.cores[i].idle_advance(chunk as u32); } }
+                for (i, &enabled) in on.iter().enumerate().take(S::CORES) { if enabled { self.cores[i].advance_cycles(chunk as u32); } }
                 n += chunk;
                 self.after_round(chunk);
                 if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
@@ -382,7 +383,7 @@ impl<S: Soc> Machine<S> {
             }
             for i in 0..S::CORES {
                 if !on[i] { continue; }
-                if idle[i] && !slow_path { self.cores[i].idle_advance(QUANTUM as u32); } else if blocks {
+                if idle[i] && !slow_path { self.cores[i].advance_cycles(QUANTUM as u32); } else if blocks {
                     let mut left = QUANTUM as u32;
                     while left > 0 {
                         let (used, stop) = self.step_blocks(i, left);

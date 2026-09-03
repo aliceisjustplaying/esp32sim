@@ -3,7 +3,8 @@
 //! write itself.
 use crate::bus::Bus;
 use crate::exec::Trap;
-use crate::state::{Cpu, INTTYPE_LEVEL};
+use crate::state::{Cpu, EXCM_LEVEL, INT_ABOVE, INTTYPE_LEVEL, TIMER_INTERRUPT};
+use emu_core::StepOutcome;
 
 const AR: [&str; 16] = ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15"];
 
@@ -19,8 +20,18 @@ impl emu_core::Core for Cpu {
     fn set_irq(&mut self, lines: u32) { self.interrupt = (self.interrupt & !INTTYPE_LEVEL) | (lines & INTTYPE_LEVEL); }
     fn irq_pending(&self) -> bool { self.check_interrupts_pending() != 0 }
     fn irq_bits(irq: &u32) -> u32 { *irq }
-    fn idle_advance(&mut self, cycles: u32) { self.advance_ccount(cycles) }
-    fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap> { crate::exec::step(self, bus) }
+    fn advance_cycles(&mut self, cycles: u32) { self.advance_ccount(cycles) }
+    fn cycles_until_wake(&self) -> Option<u64> {
+        if !self.waiting { return None; }
+        let mask_level = if self.excm() { self.intlevel().max(EXCM_LEVEL) } else { self.intlevel() };
+        self.ccompare.iter().zip(TIMER_INTERRUPT).filter_map(|(&compare, irq)| {
+            let bit = 1 << irq;
+            if self.intenable & INT_ABOVE[mask_level as usize] & bit == 0 || self.interrupt & bit != 0 { return None; }
+            let delta = compare.wrapping_sub(self.ccount);
+            Some(if delta == 0 { 1u64 << 32 } else { delta as u64 })
+        }).min()
+    }
+    fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome { crate::exec::step_outcome(self, bus) }
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }
     fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
     fn flush_caches(&mut self) { self.blocks.flush(); }
@@ -70,7 +81,8 @@ impl emu_core::Core for Cpu {
 
 #[cfg(test)]
 mod tests {
-    use emu_core::{Core, FlatRam};
+    use emu_core::{Bus, CacheOperation, ControlEventKind, Core, Fault, FlatRam, StepKind, TlbOperation, Trap};
+    use crate::state::{exc, TIMER_INTERRUPT};
     /// `movi a2, 5; j .` through the trait, on the block path and the step path.
     #[test]
     fn core_runs_a_block() {
@@ -82,7 +94,118 @@ mod tests {
         assert_eq!(trap, None); assert!(used >= 2, "{}", used);
         assert_eq!(cpu.get_ar(2), 5); assert_eq!(Core::pc(&cpu), 0x4037_0003);
         let mut cpu2 = crate::Cpu::new(0); cpu2.pc = 0x4037_0000; cpu2.ps = 0;
-        assert_eq!(cpu2.step(&mut ram), Ok(())); assert_eq!(cpu2.get_ar(2), 5);
+        assert_eq!(cpu2.step(&mut ram).result(), Ok(())); assert_eq!(cpu2.get_ar(2), 5);
         let mut r = Vec::new(); cpu2.regs(&mut r); assert_eq!(r[2], ("a2", 5));
+    }
+
+    #[test]
+    fn step_facts_keep_the_full_fetch_window_on_cache_hits() {
+        let base = 0x4037_0000;
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0x0c, 0x03, 0xaa, 0xbb]);
+        let mut cpu = crate::Cpu::new(0); cpu.pc = base; cpu.ps = 0;
+        let first = cpu.step(&mut ram);
+        assert_eq!((first.pc, first.next_pc, first.bytes, first.length, first.kind),
+            (base, base + 2, Some([0x0c, 0x03, 0xaa, 0xbb]), 2, StepKind::Retired));
+
+        cpu.pc = base;
+        ram.mem[3] = 0xcc; // bypass Bus writes, so the decode-cache version stays valid
+        let hit = cpu.step(&mut ram);
+        assert_eq!(hit.bytes, Some([0x0c, 0x03, 0xaa, 0xbb]));
+
+        cpu.pc = base;
+        ram.write8(base + 3, 0xdd).unwrap();
+        let invalidated = cpu.step(&mut ram);
+        assert_eq!(invalidated.bytes, Some([0x0c, 0x03, 0xaa, 0xdd]));
+
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0x22, 0xa0, 0x05, 0x7e]);
+        let mut cpu = crate::Cpu::new(0); cpu.pc = base; cpu.ps = 0;
+        let full = cpu.step(&mut ram);
+        assert_eq!((full.bytes, full.length, full.kind), (Some([0x22, 0xa0, 0x05, 0x7e]), 3, StepKind::Retired));
+    }
+
+    struct PagedRam { base: u32, mem: [u8; 512], versions: [u32; 2] }
+    impl PagedRam {
+        fn off(&self, address: u32, width: usize) -> Result<usize, Fault> {
+            let offset = address.wrapping_sub(self.base) as usize;
+            if offset + width <= self.mem.len() { Ok(offset) } else { Err(Fault::Unmapped) }
+        }
+    }
+    impl Bus for PagedRam {
+        fn read8(&mut self, address: u32) -> Result<u8, Fault> { let o = self.off(address, 1)?; Ok(self.mem[o]) }
+        fn read16(&mut self, address: u32) -> Result<u16, Fault> { let o = self.off(address, 2)?; Ok(u16::from_le_bytes(self.mem[o..o + 2].try_into().unwrap())) }
+        fn read32(&mut self, address: u32) -> Result<u32, Fault> { let o = self.off(address, 4)?; Ok(u32::from_le_bytes(self.mem[o..o + 4].try_into().unwrap())) }
+        fn write8(&mut self, address: u32, value: u8) -> Result<(), Fault> { let o = self.off(address, 1)?; self.mem[o] = value; self.versions[o >> 8] += 1; Ok(()) }
+        fn write16(&mut self, address: u32, value: u16) -> Result<(), Fault> { let o = self.off(address, 2)?; self.mem[o..o + 2].copy_from_slice(&value.to_le_bytes()); self.versions[o >> 8] += 1; self.versions[(o + 1) >> 8] += 1; Ok(()) }
+        fn write32(&mut self, address: u32, value: u32) -> Result<(), Fault> { let o = self.off(address, 4)?; self.mem[o..o + 4].copy_from_slice(&value.to_le_bytes()); for p in o >> 8..=(o + 3) >> 8 { self.versions[p] += 1; } Ok(()) }
+        fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> { let o = self.off(pc, 4)?; Ok(self.mem[o..o + 4].try_into().unwrap()) }
+        fn page_versions(&self) -> &[u32] { &self.versions }
+        fn code_page(&mut self, pc: u32) -> u32 { pc.wrapping_sub(self.base) >> 8 }
+    }
+
+    #[test]
+    fn decode_cache_validates_the_whole_fetch_window() {
+        let base = 0x4037_0000;
+        let pc = base + 0xff;
+        let mut ram = PagedRam { base, mem: [0; 512], versions: [0; 2] };
+        ram.mem[0xff..0x103].copy_from_slice(&[0x0c, 0x03, 0xaa, 0xbb]);
+        let mut cpu = crate::Cpu::new(0); cpu.pc = pc; cpu.ps = 0;
+        assert_eq!(cpu.step(&mut ram).bytes, Some([0x0c, 0x03, 0xaa, 0xbb]));
+        cpu.pc = pc; ram.write8(pc + 3, 0xcc).unwrap();
+        assert_eq!(cpu.step(&mut ram).bytes, Some([0x0c, 0x03, 0xaa, 0xcc]));
+    }
+
+    #[test]
+    fn step_facts_distinguish_interrupts_and_trapping_instructions() {
+        let base = 0x4037_0000;
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0, 0, 0, 0xaa]);
+        let mut cpu = crate::Cpu::new(0); cpu.pc = base; cpu.ps = 0;
+        cpu.intenable = 1 << TIMER_INTERRUPT[0]; cpu.interrupt = 1 << TIMER_INTERRUPT[0];
+        let interrupt = cpu.step(&mut ram);
+        assert_eq!(interrupt.bytes, None);
+        assert_eq!(interrupt.kind, StepKind::TrapBefore(Trap::Interrupt(TIMER_INTERRUPT[0])));
+        assert_eq!((cpu.insn_count, cpu.ccount), (0, 0));
+
+        cpu.pc = base; cpu.ps = 0; cpu.interrupt = 0;
+        let illegal = cpu.step(&mut ram);
+        assert_eq!((illegal.bytes, illegal.length), (Some([0, 0, 0, 0xaa]), 3));
+        assert_eq!(illegal.kind, StepKind::TrapDuring(Trap::Exception(exc::ILLEGAL)));
+        assert_eq!((cpu.insn_count, cpu.ccount), (1, 1));
+    }
+
+    #[test]
+    fn step_facts_report_cache_and_tlb_effective_addresses() {
+        let base = 0x4037_0000;
+        let mut ram = FlatRam::new(base, 64);
+        ram.mem[..4].copy_from_slice(&[0x52, 0x73, 0x04, 0xaa]); // dhwbi a3, 16
+        let mut cpu = crate::Cpu::new(0); cpu.pc = base; cpu.ps = 0; cpu.set_ar(3, 0x3f80_0100);
+        let cache = cpu.step(&mut ram).control.unwrap();
+        assert_eq!(cache.kind, ControlEventKind::Cache(CacheOperation::DataHitWritebackInvalidate));
+        assert_eq!(cache.address, 0x3f80_0110);
+
+        ram.mem[..4].copy_from_slice(&[0x30, 0x33, 0x50, 0xaa]); // ritlb0 a3, a3
+        ram.ver += 1; cpu.pc = base; cpu.set_ar(3, 0x3c00_1234);
+        let tlb = cpu.step(&mut ram).control.unwrap();
+        assert_eq!(tlb.kind, ControlEventKind::Tlb(TlbOperation::ReadInstructionEntry0));
+        assert_eq!(tlb.address, 0x3c00_1234);
+        assert_eq!(cpu.get_ar(3), 0, "the event retained the pre-execution address");
+    }
+
+    #[test]
+    fn timing_only_advance_exposes_the_next_ccompare_wake() {
+        let mut cpu = crate::Cpu::new(0);
+        cpu.waiting = true; cpu.ps = 0; cpu.intenable = 1 << TIMER_INTERRUPT[0];
+        cpu.ccount = 0xffff_fffd; cpu.ccompare[0] = 1;
+        assert_eq!(cpu.cycles_until_wake(), Some(4));
+        cpu.advance_cycles(3);
+        assert_eq!(cpu.cycles_until_wake(), Some(1));
+        assert_eq!(cpu.insn_count, 0);
+        cpu.advance_cycles(1);
+        assert_ne!(cpu.interrupt & (1 << TIMER_INTERRUPT[0]), 0);
+        assert_eq!(cpu.insn_count, 0);
+        cpu.interrupt = 0; cpu.ccompare[0] = cpu.ccount;
+        assert_eq!(cpu.cycles_until_wake(), Some(1u64 << 32));
     }
 }
