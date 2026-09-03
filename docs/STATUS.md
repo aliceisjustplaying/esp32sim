@@ -16,9 +16,9 @@ what is adopted, and what the hardware queue holds. The goal is
   Xtensa LX7 interpreter and native JIT, the ESP32-S3 SoC and
   peripheral models, real-ROM boot, a wasm build (interpreter-only),
   and the web shell.
-- Task 3a's initial measured core is merged at `a142952`. Task 3b wires it
-  into the product interpreter through `Esp32Backend` at `88ae4dd`, with the
-  full adopted-cost replay for both fake and real backends at `808581f`.
+- Task 3a's initial measured core is merged at `c16a1ae`. Task 3b wires it
+  into the product interpreter through `Esp32Backend` at `70175c2`, with the
+  full adopted-cost replay for both fake and real backends at `0f1d12c`.
   Both adapters use the same typed transaction engine and structurally
   dual-core scheduler state. The product path delivers board deadlines and
   timestamped GPIO edges before the next transaction, commits timing only
@@ -32,7 +32,7 @@ what is adopted, and what the hardware queue holds. The goal is
 - The TinyDraw V2 board harvest is merged. It includes GP-SPI2 DMA,
   CST820 touch, the CO5300 panel, timestamped GPIO edges, browser touch,
   and the paced-stroke workflow, with the defect dispositions below.
-- The shared cache model is merged at `4608137`. One I-cache and one D-cache
+- The shared cache model is merged at `4c0e1c5`. One I-cache and one D-cache
   are shared by both live cores, with no per-core cache state. Geometry comes
   from typed `ChipConfig`; unmatched geometry is refused by name. The model
   provides explicit invalidation and writeback, carries no timing, and keeps
@@ -66,8 +66,8 @@ Read-only inputs. Harvest under review; do not resume.
 
 | Branch | Head | Contents | Known defects to review before harvest |
 | --- | --- | --- | --- |
-| `salvage/core-measured-phase1` | `516b1ad` | Reimplemented under review at `a142952` as the typed backend API, transaction engine, structurally dual-core scheduler, `FakeBackend` contract, and exact receipt tests | The salvage defects were not carried into Task 3a; interpreter integration, cache behavior, interrupt accounting, and the interpreter-versus-JIT gate remain later work |
-| `salvage/board-tinydraw-v2` | `b7c9b87` | Harvested at `30b7c8e` and `8dee48d`. Taken: generic GP-SPI with MISO, GP-SPI2 DMA delivery, CST820 touch, CO5300 panel, TCA9554, timestamped GPIO 13 tear and GPIO 21 touch edges, browser touch, and the one-command TinyDraw paced-stroke workflow. Dropped: the retrospective `input_changes(cycles)` API, the AMOLED board's dead ST7701 coupling, and the separate example script. | Dispositioned: the DMA walker has a 1,024-descriptor step budget, visited set, and typed read, cycle, and budget faults; GPIO 21 drives an active-low interrupt edge; the 60 Hz TE model remains explicitly an approximate compatibility signal with no adopted timing claim; PMIC, RTC, and IMU devices are labeled register-RAM stubs. The paced stroke and wasm build pass. |
+| `salvage/core-measured-phase1` | `516b1ad` | Reimplemented under review at `c16a1ae` as the typed backend API, transaction engine, structurally dual-core scheduler, `FakeBackend` contract, and exact receipt tests | The salvage defects were not carried into Task 3a; interpreter integration, cache behavior, interrupt accounting, and the interpreter-versus-JIT gate remain later work |
+| `salvage/board-tinydraw-v2` | `b7c9b87` | Harvested at `d4869f9` and `4af3de4`. Taken: generic GP-SPI with MISO, GP-SPI2 DMA delivery, CST820 touch, CO5300 panel, TCA9554, timestamped GPIO 13 tear and GPIO 21 touch edges, browser touch, and the one-command TinyDraw paced-stroke workflow. Dropped: the retrospective `input_changes(cycles)` API, the AMOLED board's dead ST7701 coupling, and the separate example script. | Dispositioned: the DMA walker has a 1,024-descriptor step budget, visited set, and typed read, cycle, and budget faults; GPIO 21 drives an active-low interrupt edge; the 60 Hz TE model remains explicitly an approximate compatibility signal with no adopted timing claim; PMIC, RTC, and IMU devices are labeled register-RAM stubs. The paced stroke and wasm build pass. |
 | `salvage/rust-safeguards` | `b138473` | `scripts/pre-commit.sh`: fmt, check, strict clippy, debug and release tests, rustdoc | Harvested under review; frozen source retained |
 | `salvage/gp-spi-device-hook` | `246c699` | Upstream-shaped synchronous GP-SPI board-response hook | Candidate for an upstream PR |
 | `salvage/ci-spec`, `salvage/upstream-ci` | `6ba6a6d`, `3b58cc6` | CI workflow material; decoder-conformance intent harvested at `4e5f47e` | The mandatory Xtensa and RISC-V corpora are in-tree and absence fails the tests; remaining CI material is not yet reviewed in place |
@@ -342,12 +342,12 @@ mode (needs GOAL milestone 2).
 
 ## Review residuals
 
-- Fast-mode TinyDraw boot regressed at the pre-rebase `da5e01b` because
-  Waveshare SPI2 GDMA timing also ran in fast mode. `d4c15d9` restores the
+- Fast-mode TinyDraw boot regressed at `f92cc71` because Waveshare SPI2 GDMA
+  timing also ran in fast mode. `5650849` restores the
   eager fast DMA path and limits deferred completion to measured timing;
   `esp32s3/tests/fast_boot_smoke.rs` guards READY.
 - The interpreter-versus-native-JIT architectural conformance gate is merged
-  at `2d42032`. Its committed corpus and 128 deterministic randomized SRAM
+  at `e04538f`. Its committed corpus and 128 deterministic randomized SRAM
   blocks compare registers, PC, touched memory, and the complete SRAM image.
 - Milestone 2's committed TinyDraw SRAM kernel fixture and deterministic ledger
   pass on explicitly pinned core 0. Shared cache state is transactional across
