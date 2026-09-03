@@ -315,15 +315,16 @@ for non-tail `call4`, `call8`, and `call12` recursion past the register-file
 knee, `syscall` with a level-1 handler that reads EPC1, advances it by the
 three-byte syscall width with wide `addi`, writes EPC1, executes `rsync`, and
 returns with `rfe`; `rfe` alone with EPC1 set to the next instruction; and
-`rfi 3` alone with EPC3 set to the next instruction. The corrected six-cell
+`rfi 3` alone with EPC3 set to the next instruction. The corrected seven-cell
 exception image builds, verifies, and completes its emulator dry-run with
-600 of 600 samples and zero refusals.
-Add a straight-line mask-ROM instruction-fetch cell. The two existing ROM
+700 of 700 samples and zero refusals. Its straight-line mask-ROM
+instruction-fetch cell invokes the verified five-byte `xtos_p_none` body at
+`0x400559a4`, exactly `entry; retw.n`, with zero cache-counter deltas required.
+The two existing ROM
 `memset` paths produce different, noninteger residuals and cannot adopt a ROM
 fetch price under R8; receipt:
 [`evidence/timing/derived-rom-fetch-idf61/`](evidence/timing/derived-rom-fetch-idf61/README.md).
-Require zero cache-counter deltas, verified encodings, and a passing emulator
-dry-run. The estimated board time is about two seconds. Nothing is flashed
+The estimated board time is about two seconds. Nothing is flashed
 until the maintainer starts the next capture session.
 
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
