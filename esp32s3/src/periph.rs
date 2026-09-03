@@ -406,7 +406,7 @@ pub struct Peripherals {
     pub io_mux: RegRam,
     /// register RAM behind unmodelled blocks, first-touch logging, pc attribution
     pub misc: Misc,
-    /// experiment hook: ESP_EMU_FAKE_READ=addr:or[:and],... applied to register reads
+    /// Experiment hook: `ESP_EMU_FAKE_READ=addr:or[:and],...` applied to register reads.
     pub fake_reads: HashMap<u32, (u32, u32)>,
     clock: ClockTree<4>,
     pub spi_exec: bool,       // SPI1 command pending execution against the flash array
