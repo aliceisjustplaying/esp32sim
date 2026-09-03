@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-03",
+  "status": "refused-before-execution",
+  "esp32sim": {
+    "baseCommit": "dec4d19f1e001654d78494bc25596d7bd165e810"
+  },
+  "contract": {
+    "tinydrawCommit": "7a157d44a9da3312b1ecda2b45b116af2de28e63",
+    "elfSha256": "1d67c35762fe58b72202a19b1c06912f0b9503a7331ba881cda3928648b54cd6",
+    "sdkconfigSha256": "7490046d6e8b00d80f2bb550439821fa9d4a50da762e6e46d2aa9bdf8d520b8b",
+    "manifestSha256": "46b521a52038d0327f9b7d1c749067409c96d1b96cc269245cb3e878d2fcde7a",
+    "verifierSha256": "747c7c1ff0ccf159c7329c2990af1800936b49cc431a145a294cc9d23bad6255",
+    "dryRunScriptSha256": "f85943bda88b2ffd465ae8c68905ce2db3f631b46d70d72d03d150f039b62016"
+  },
+  "fixtureSearch": {
+    "roots": [
+      "~/Archives/esp32s3",
+      "~/src/a/tinydraw",
+      "/private/tmp",
+      "/private/var/folders/bz/2fq5cy191gv1gc2dp40jk9c80000gn/T"
+    ],
+    "matchingContractElfFiles": 0,
+    "tinydrawBuildEnvironmentVariablesSet": 0
+  },
+  "rejectedCandidate": {
+    "directory": "~/Archives/esp32s3/evidence-bytes/lane0-idf61-outputs/idf61/esp32-gate-harness",
+    "projectVersion": "2.1.0-112-g632c966",
+    "projectDescriptionSha256": "e65c531f02fdc6974c551d795fa101e406d6c58b7065547220189b66e6e10d78",
+    "artifacts": {
+      "bootloader/bootloader.bin": "8b59883909728a4be8128a3cc689271a9cf1750bdc00f89d13829c5848a63308",
+      "partition_table/partition-table.bin": "f53268312c8caffe6c7f4e6c66d4092aeca3435c142db3116466f84a6a608d2d",
+      "tinydraw_esp32.bin": "7045f9d50308de1b236f245dd7fe03d78ad5b5448632849a691666b7b870a8cd",
+      "tinydraw_esp32.elf": "4e121a3642a6f18766cfe96c2be6adc8a0017fba4afa82105d642168ea40e2c8",
+      "sdkconfig": "44c7f88aecb794db451976084dc2f57f715968ec23953a082e5e5fc01ff23cf5"
+    },
+    "verifierExitCode": 2,
+    "verifierError": "ELF SHA-256 is 4e121a3642a6f18766cfe96c2be6adc8a0017fba4afa82105d642168ea40e2c8, expected 1d67c35762fe58b72202a19b1c06912f0b9503a7331ba881cda3928648b54cd6",
+    "executed": false
+  },
+  "observations": {
+    "schedulingHorizon": null,
+    "livePresentLines": null,
+    "liveStressLines": null,
+    "terminalLines": null,
+    "counterContractComplete": null
+  },
+  "securityAudit": {
+    "localCredentialValuesChecked": 2,
+    "localCredentialValuesFound": 0,
+    "firmwareArtifactCopiesCommitted": 0
+  },
+  "limits": {
+    "rerunResult": "unknown because no contract-matching immutable fixture was available",
+    "timingMode": "not entered; no timing value is adopted",
+    "hardware": "not accessed",
+    "tinydrawCheckout": "read-only and not rebuilt"
+  }
+}
