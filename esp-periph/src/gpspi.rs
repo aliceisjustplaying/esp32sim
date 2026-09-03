@@ -6,8 +6,7 @@ use crate::regram::RegRam;
 pub struct GpSpiTransfer {
     pub tx: Vec<u8>,
     pub rx_len: usize,
-    pub data_offset: usize,
-    pub data_len: usize,
+    data_len: usize,
     rx_word_base: usize,
 }
 
@@ -51,7 +50,6 @@ impl GpSpi {
             let bits = (user1 >> 27) + 1; let n = bits.div_ceil(8); let a = self.regs.read(0x04);
             for i in 0..n { tx.push((a >> (24 - 8 * i)) as u8); }
         }
-        let data_offset = tx.len();
         let mut data_len = 0;
         if user & (1 << 27) != 0 {                                        // MOSI data phase from W0.. (or W8.. with HIGHPART)
             let bits = (self.regs.read(0x1c) & 0x3ffff) + 1; let n = bits.div_ceil(8) as usize;
@@ -66,7 +64,7 @@ impl GpSpi {
         }
         let rx_len = if user & (1 << 28) != 0 { ((self.regs.read(0x20) & 0x3ffff) + 1).div_ceil(8) as usize } else { 0 };
         let rx_word_base = if user & (1 << 24) != 0 { 8 } else { 0 };
-        self.pending = Some(GpSpiTransfer { tx, rx_len, data_offset, data_len, rx_word_base });
+        self.pending = Some(GpSpiTransfer { tx, rx_len, data_len, rx_word_base });
     }
 
     pub fn has_pending_transfer(&self) -> bool { self.pending.is_some() }
