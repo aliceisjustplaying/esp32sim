@@ -1,18 +1,14 @@
-# atech-sim — run Atech ESP32-S3 firmware locally before touching hardware
+# The Atech 14-port board: the Pocket Synth firmware
 
-The firmware the Atech Hardware Platform generated for the "Pocket Synth"
-(`firmware/src/main.cpp`, unchanged) runs **natively on the Mac** in `hostsim/`:
-a virtual board with a local web UI (TFT, knob + LED ring, buttons, serial console,
-audio through the browser) and headless scenario tests. No cloud, no accounts.
-
-The same tree also builds the hardware image (PlatformIO, real SDK drivers) and,
-optionally, a Wokwi image (cloud simulator — needs a token; kept for occasional
-"does the real binary also boot" checks).
+The firmware the Atech Hardware Platform generated for the "Pocket Synth" (`firmware/src/main.cpp`)
+plus the audio work below, built with PlatformIO against the real SDK drivers. It runs unmodified
+in the esp32sim emulator (the `atech14` board model: TFT, knob + LED ring, buttons, USB console,
+audio to WAV or the browser) and on the board.
 
 ```sh
-make run        # local simulator → http://127.0.0.1:8765  (click "enable audio" to hear it)
-make test       # all sim/scenarios/*.yaml against the local simulator, TFT screenshots in hostsim/build/screenshots
-make flash      # real board
+make hw         # build firmware/.pio/build/hw/firmware.bin
+make flash      # flash the real board
+make test       # the emulator's golden tests for this firmware (console, audio, instruction count)
 ```
 
 ## Board (Atech 14-port, read from the device + SDK catalog)
@@ -28,15 +24,6 @@ make flash      # real board
 ## Layout
 
 ```
-hostsim/
-  hal/                      Arduino / FreeRTOS / Preferences API implemented for the host
-  hal/modules/…             the Atech driver PUBLIC APIs (same headers main.cpp includes)
-  drivers/                  host implementations: Speaker → WebAudio + SIM:AUDIO analysis,
-                            ST7735_TFT → GFXcanvas16 (identical fonts/rendering) → browser/PNG,
-                            RotaryEncoder → UI/scenario driven, ButtonModule → virtual GPIO
-  sim/                      VirtualBoard, HTTP+WebSocket server, scenario runner, PNG writer
-  web/index.html            the board UI
-  third_party/              Adafruit_GFX (BSD), ArduinoJson (MIT)
 firmware/
   src/main.cpp.generated    what the Atech Hardware Platform emitted — verbatim, never edited
   src/main.cpp              that file plus the audio work below (SID chip engine, SID jukebox)
@@ -47,11 +34,9 @@ firmware/
   lib/sidtunes/             four HVSC tunes embedded as C arrays (PlatformIO has no EMBED_FILES)
   src/modules/…             glue the hosted platform includes but the SDK doesn't ship:
                             AtechSerial (SDK wire protocol), atech_helpers.h, forwarding headers
-  src/sim/                  Wokwi-only: I2S shim (Wokwi has no I2S) → SIM:AUDIO lines
-  platformio.ini            env:sim (Wokwi) · env:hw (board)
-sim/diagram.json            Wokwi wiring: S3 DevKitC, ILI9341 (stands in for ST7735), KY-040,
-                            NeoPixel ring, 2 buttons
-sim/scenarios/*.yaml        headless tests · sim/screenshots/ TFT captures
+  platformio.ini            env:hw (the board)
+script1.txt                 the scripted scenario the emulator's golden test runs (buttons, knob, serial)
+regression.wav              that scenario's audio, bit-exact per run — the regression fixture
 tools/sync-sdk-modules.sh   refresh drivers after `uv pip install -U atech`
 examples/idf-minimal/       bare ESP-IDF sample (pre-Atech)
 ```
@@ -63,27 +48,16 @@ them from the `atech` package with `make sync-sdk` before building the firmware.
 
 ```sh
 make sdk                     # .venv with the atech SDK (drivers + `atech` CLI)
-make install-wokwi-cli       # once
-export WOKWI_CLI_TOKEN=…     # free: https://wokwi.com/dashboard/ci
-make build && make test      # build for Wokwi, run all scenarios
-make sim                     # interactive: type SDK actions, see serial output
+make hw
 ```
 
-## What the simulator reports
-
-The real `speaker.cpp` is compiled with its I2S calls redirected to
-`src/sim/sim_i2s.cpp`, which analyses the sample stream and prints, per ~46 ms
-of audio:
-
-```
-SIM:AUDIO:note=A4 f=441 rms=0.28
-```
+## The protocol
 
 Events use the SDK envelope, e.g.
 `{"type":"event","payload":{"event_type":"state","key":"note_triggered","value":"C4",…}}`,
-and actions are sent as `{"action":"set_note","value":"5"}` — identical to what
-`atech send` / `atech monitor` speak to the real board. `take-screenshot` steps
-save the TFT to `sim/screenshots/`.
+and actions are sent as `{"action":"set_note","value":"5"}` — what `atech send` / `atech monitor`
+speak to the real board, what the emulator's `serial` script command and the web page's console
+send, and what the goldens compare.
 
 ## Hardware
 
@@ -107,11 +81,16 @@ titles and authors on screen are read from each file's PSID header at run time.
 
 | Control | Action |
 | --- | --- |
-| hold **button 1** ~0.7 s | start / stop the jukebox |
-| **encoder** | previous / next tune |
-| **button 2** | next tune |
-| **knob press** | stop |
-| serial JSON | `{"action":"play_sid","value":"0"}`, `{"action":"next_sid"}`, `{"action":"stop_sid"}` |
+| hold **button 1** ~0.7 s | start the player / stop it and return to the synth |
+| **button 1** | next tune |
+| **button 2** | next subtune (a one-subtune file restarts) |
+| **encoder** | volume, 5 % per detent; the LED ring is the dial, cyan |
+| **knob press** | mute / unmute (ring turns red; the tune keeps running underneath) |
+| serial JSON | `{"action":"play_sid","value":"0"}`, `{"action":"next_sid"}`, `{"action":"sid_subtune","value":"3"}` (empty = next), `{"action":"set_volume","value":"0.5"}`, `{"action":"mute","value":"1"}` (empty = toggle), `{"action":"stop_sid"}` |
+
+The screen shows title and author from the PSID header, `tune/count  sub n/m`, and the volume bar
+(or a MUTE badge). The header reads SID PLAYER while a tune plays. Changes are posted as state events
+(`sid_tune`, `volume`, `mute`) on the serial protocol, so the emulator's console shows them.
 
 Try it in the emulator (the script drives the serial protocol, so no clicking):
 
@@ -132,29 +111,15 @@ Two things this board forced that the panel did not:
   costs about a quarter of one core, and `Speaker::writeSamples` blocking on the I2S DMA is what
   paces playback.
 
-## Scenarios
+## Testing
 
-`sim/scenarios/*.yaml` use the Wokwi scenario format (`wait-serial`, `delay`,
-`set-control`, `write-serial`, `take-screenshot`) so they run on both simulators.
-The local runner adds knob control, which Wokwi lacks:
+The emulator two directories up runs this firmware from the mask ROM through the bootloader and
+holds it to golden outputs (`tests/golden/atech-*`): `script1.txt` presses the buttons, turns the
+knob and sends a serial command; the audio it produces must match `regression.wav` byte for byte,
+the console text and the instruction count must match too, and the same run through the block
+interpreter without the JIT must agree. `make test` runs those. After an intentional firmware
+change, re-baseline with `UPDATE_GOLDENS=1` and copy the new WAV over `regression.wav`.
 
-```yaml
-- set-control: { part-id: knob, control: rotate, value: 2 }    # detents, negative = CCW
-- set-control: { part-id: knob, control: pressed, value: 1 }
-```
-
-## What each simulator is for
-
-| | hostsim (local) | Wokwi (cloud, optional) |
-|---|---|---|
-| Runs | `main.cpp` + driver logic compiled for the Mac | the actual ESP32-S3 binary |
-| Catches | behaviour bugs: synth engine, UI, protocol, state | driver/register/timing/stack/watchdog bugs |
-| Audio | heard in the browser + analysed | analysed only (no I2S in Wokwi) |
-| Needs | nothing | free account token |
-
-## Known limits (hostsim)
-
-- Timing is host timing (`millis()` is real time, tasks are threads); no watchdog, no stack limits.
-- The host `Speaker` reproduces the real driver's behaviour (background task, volume applied in
-  `writeSamples`, 85/15 note gap, RTTTL) but not its exact I2S buffering.
-- The rotary encoder is driven at detent level (no quadrature edges).
+Any input can be scripted (`docs/cli.md`, action scripts) and any run can capture the TFT
+(`--tft-png`), so a new behaviour is verified the way the SID player's controls were: a script
+that exercises every control, the console events it prints, and a screenshot.

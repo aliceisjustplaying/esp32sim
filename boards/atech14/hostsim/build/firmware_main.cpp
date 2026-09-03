@@ -301,13 +301,10 @@ void drawTuneUI() {
   st7735_tft_1.print(pos);
   // volume: a bar at the right of the footer, or MUTED
   const int bx = 112, by = 66, bw = 42, bh = 8;
-  if (jukeMuted) {                       // a red MUTE badge where the bar was, in the built-in 6x8 font
-    st7735_tft_1.drawRect(bx, by - 2, bw, bh + 4, ST7735_TFT::COLOR_RED);
-    st7735_tft_1.setFont(nullptr);
+  if (jukeMuted) {
     st7735_tft_1.setTextColor(ST7735_TFT::COLOR_RED);
-    st7735_tft_1.setCursor(bx + 9, by);
-    st7735_tft_1.print("MUTE");
-    st7735_tft_1.setFont(&FreeSans9pt7b);
+    st7735_tft_1.setCursor(bx - 4, 76);
+    st7735_tft_1.print("MUTED");
   } else {
     st7735_tft_1.drawRect(bx, by, bw, bh, UI_LABEL);
     int fill = (int)((bw - 2) * jukeVol + 0.5f);
