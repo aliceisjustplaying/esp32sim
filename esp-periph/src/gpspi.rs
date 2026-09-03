@@ -88,7 +88,6 @@ impl GpSpi {
     /// allowing the driver to observe both TRANS_DONE and the GDMA descriptor error.
     pub fn fail_dma_tx(&mut self) {
         self.abort_transfer();
-        self.transfers += 1;
         self.int_raw |= 1 << 12;
     }
 

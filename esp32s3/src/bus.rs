@@ -238,6 +238,9 @@ impl SocBus {
             2 => { let old = self.periph.read32(a); let sh = (addr & 2) * 8; (old & !(0xffff << sh)) | ((v & 0xffff) << sh) }
             _ => { let old = self.periph.read32(a); let sh = (addr & 3) * 8; (old & !(0xff << sh)) | ((v & 0xff) << sh) }
         };
+        if a == PERIPH_BASE + 0x24_000 && w & (1 << 24) != 0 {
+            self.spi2_dma_fault = None;
+        }
         self.periph.write32(a, w);
         self.complete_spi2_dma();
         self.deliver_spi2_transfer();
@@ -255,13 +258,7 @@ impl SocBus {
         if self.periph.spi2.dma_tx_pending.is_none() {
             return;
         }
-        let Some(channel) = self.periph.gdma.out_channel_for(0) else {
-            // IDF leaves DMA_TX_ENA set for an RX-only full-duplex transaction but starts no
-            // out-link because it has no TX buffer. The SPI engine clocks the receive normally.
-            self.periph.spi2.complete_dma_tx(&[]);
-            self.irq_dirty = true;
-            return;
-        };
+        let channel = self.periph.gdma.out_channel_for(0);
         match self.spi2_dma_completion() {
             Ok(Some(completion)) => {
                 for (descriptor, control) in completion.descriptor_writebacks {
@@ -275,7 +272,11 @@ impl SocBus {
                 self.irq_dirty = true;
             }
             Ok(None) => {}
-            Err(fault) => self.fail_spi2_dma(channel, fault),
+            Err(fault) => {
+                if let Some(channel) = channel {
+                    self.fail_spi2_dma(channel, fault);
+                }
+            }
         }
     }
 
@@ -355,7 +356,14 @@ impl SocBus {
             let remaining = length.saturating_sub(current.buf_pos) as usize;
             if remaining != 0 {
                 let count = remaining.min(wanted - payload.len());
-                self.append_spi2_dma_bytes(current.desc, buffer.wrapping_add(current.buf_pos), count, &mut payload)?;
+                for offset in 0..count {
+                    let address = buffer.wrapping_add(current.buf_pos).wrapping_add(offset as u32);
+                    payload.push(self.read8(address).map_err(|fault| DmaDescriptorFault::BufferRead {
+                        descriptor: current.desc,
+                        address,
+                        fault,
+                    })?);
+                }
                 channel.buf_pos += remaining as u32;                     // GDMA drains the descriptor
             }
             if channel.conf0 & (1 << 2) != 0 {
@@ -391,24 +399,6 @@ impl SocBus {
             return Err(DmaDescriptorFault::PayloadTooShort { expected: wanted, actual: payload.len() });
         }
         Ok(Some(Spi2DmaCompletion { channel: channel_index, final_channel: channel, descriptor_writebacks, payload }))
-    }
-
-    fn append_spi2_dma_bytes(&mut self, descriptor: u32, mut address: u32, mut count: usize, payload: &mut Vec<u8>) -> Result<(), DmaDescriptorFault> {
-        while count != 0 {
-            let entry = self.lookup(address).ok_or(DmaDescriptorFault::BufferRead { descriptor, address, fault: Fault::Unmapped })?;
-            let take = count.min(entry.hi.wrapping_sub(address) as usize);
-            if take == 0 {
-                return Err(DmaDescriptorFault::BufferRead { descriptor, address, fault: Fault::Unmapped });
-            }
-            let offset = entry.off as usize + address.wrapping_sub(entry.lo) as usize;
-            let Some(bytes) = self.buf(entry.src as u8).get(offset..offset + take) else {
-                return Err(DmaDescriptorFault::BufferRead { descriptor, address, fault: Fault::Unmapped });
-            };
-            payload.extend_from_slice(bytes);
-            address = address.wrapping_add(take as u32);
-            count -= take;
-        }
-        Ok(())
     }
 
     /// Move I2S TX data out of DMA descriptors at the sample rate.
@@ -874,6 +864,7 @@ mod gp_spi_board_tests {
     use std::sync::{Arc, Mutex};
 
     const SPI2: u32 = 0x6002_4000;
+    const GDMA: u32 = 0x6003_f000;
     const FIRST_DESC: u32 = 0x3fc9_0100;
 
     struct ProbeBoard {
@@ -908,17 +899,27 @@ mod gp_spi_board_tests {
 
     fn assert_dma_fault_and_recovery(bus: &mut SocBus, expected: DmaDescriptorFault) {
         assert_eq!(bus.spi2_dma_fault, Some(expected));
-        assert_ne!(bus.periph.gdma.out[0].int_raw & (1 << 2), 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xf, 1 << 2);
         assert!(!bus.periph.gdma.out[0].running);
         assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
-        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_eq!(bus.periph.spi2.transfers, 0);
         assert!(bus.periph.spi2.dma_tx_pending.is_none());
         assert!(!bus.periph.spi2.has_pending_transfer());
 
+        bus.write32(GDMA + 0x74, 1 << 2).expect("GDMA interrupt clear failed");
+        bus.write32(SPI2 + 0x38, 1 << 12).expect("SPI interrupt clear failed");
+        assert_eq!(bus.periph.gdma.out[0].int_raw & (1 << 2), 0);
+        assert_eq!(bus.periph.spi2.int_raw & (1 << 12), 0);
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
         bus.write32(SPI2 + 0x30, 0).expect("CPU mode setup failed");
+        bus.write32(SPI2 + 0x1c, 7).expect("CPU data length setup failed");
         bus.write32(SPI2 + 0x98, 0xa5).expect("CPU data setup failed");
         bus.write32(SPI2, 1 << 24).expect("recovery transaction failed");
-        assert_eq!(bus.periph.spi2.transfers, 2);
+        assert_eq!(bus.spi2_dma_fault, None);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[a5]:0"]);
     }
 
     #[test]
@@ -929,8 +930,7 @@ mod gp_spi_board_tests {
         bus.gpio_events = Some(Vec::new());
         bus.periph.gpio.changes.push((12, false));
 
-        bus.write32(SPI2 + 0x30, 1 << 28).expect("SPI DMA setup failed");
-        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28) | (1 << 27)).expect("SPI setup failed");
+        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).expect("SPI setup failed");
         bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).expect("SPI command phase failed");
         bus.write32(SPI2 + 0x1c, 7).expect("SPI response length failed");
         bus.write32(SPI2 + 0x20, 0x3e).expect("SPI miscellaneous setup failed");
@@ -947,6 +947,29 @@ mod gp_spi_board_tests {
         bus.write32(SPI2, 1 << 24).expect("second SPI command failed");
         assert_eq!(bus.periph.spi2.transfers, 2);
         assert_eq!(events.lock().expect("probe mutex poisoned").last().map(String::as_str), Some("spi:2:[a5]:0"));
+    }
+
+    #[test]
+    fn cpu_transfer_replaces_a_parked_dma_transfer_on_the_bus() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+
+        bus.write32(SPI2 + 0x30, 1 << 28).expect("SPI DMA setup failed");
+        bus.write32(SPI2 + 0x10, 1 << 27).expect("DMA transfer setup failed");
+        bus.write32(SPI2 + 0x1c, 7).expect("SPI data length failed");
+        bus.write32(SPI2, 1 << 24).expect("DMA command failed");
+        assert_eq!(bus.periph.spi2.dma_tx_pending, Some(8));
+        assert_eq!(bus.periph.spi2.transfers, 0);
+        assert!(events.lock().expect("probe mutex poisoned").is_empty());
+
+        bus.write32(SPI2 + 0x30, 0).expect("CPU mode setup failed");
+        bus.write32(SPI2 + 0x98, 0xa5).expect("CPU data setup failed");
+        bus.write32(SPI2, 1 << 24).expect("CPU command failed");
+
+        assert_eq!(bus.periph.spi2.dma_tx_pending, None);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[a5]:0"]);
     }
 
     #[test]
