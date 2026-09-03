@@ -7,21 +7,27 @@
   },
   "contract": {
     "tinydrawCommit": "7a157d44a9da3312b1ecda2b45b116af2de28e63",
-    "elfSha256": "1d67c35762fe58b72202a19b1c06912f0b9503a7331ba881cda3928648b54cd6",
-    "sdkconfigSha256": "7490046d6e8b00d80f2bb550439821fa9d4a50da762e6e46d2aa9bdf8d520b8b",
+    "pinnedInputs": {
+      "tinydraw_esp32.elf": "1d67c35762fe58b72202a19b1c06912f0b9503a7331ba881cda3928648b54cd6",
+      "sdkconfig": "7490046d6e8b00d80f2bb550439821fa9d4a50da762e6e46d2aa9bdf8d520b8b"
+    },
+    "unpinnedExternalBinaryInputs": [
+      "bootloader/bootloader.bin",
+      "partition_table/partition-table.bin",
+      "tinydraw_esp32.bin",
+      "auto-discovered ESP32-S3 ROM ELF"
+    ],
     "manifestSha256": "46b521a52038d0327f9b7d1c749067409c96d1b96cc269245cb3e878d2fcde7a",
     "verifierSha256": "747c7c1ff0ccf159c7329c2990af1800936b49cc431a145a294cc9d23bad6255",
     "dryRunScriptSha256": "f85943bda88b2ffd465ae8c68905ce2db3f631b46d70d72d03d150f039b62016"
   },
   "fixtureSearch": {
-    "roots": [
-      "~/Archives/esp32s3",
-      "~/src/a/tinydraw",
-      "/private/tmp",
-      "/private/var/folders/bz/2fq5cy191gv1gc2dp40jk9c80000gn/T"
-    ],
+    "receipt": "fixture-search.json",
+    "script": "audit_fixture.py",
+    "scriptSha256": "3aecc7770c7a1a17703d802d7d5c0802b72a57b17e991adfa5cf4592771da8fa",
+    "candidateElfFiles": 63,
     "matchingContractElfFiles": 0,
-    "tinydrawBuildEnvironmentVariablesSet": 0
+    "searchErrors": 0
   },
   "rejectedCandidate": {
     "directory": "~/Archives/esp32s3/evidence-bytes/lane0-idf61-outputs/idf61/esp32-gate-harness",
@@ -51,7 +57,8 @@
     "firmwareArtifactCopiesCommitted": 0
   },
   "limits": {
-    "rerunResult": "unknown because no contract-matching immutable fixture was available",
+    "rerunResult": "unknown because no ELF matching the current partial contract was available",
+    "completeExternalBinaryIdentity": "unknown because the current contract does not pin the app binary, bootloader, partition table, or ROM ELF",
     "timingMode": "not entered; no timing value is adopted",
     "hardware": "not accessed",
     "tinydrawCheckout": "read-only and not rebuilt"

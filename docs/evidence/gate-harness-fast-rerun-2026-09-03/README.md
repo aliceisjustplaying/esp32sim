@@ -1,18 +1,19 @@
 # Gate-harness fast-mode rerun, 2026-09-03
 
 The requested current-main gate-harness rerun did not start. The verifier
-failed closed before emulator execution because the contract-pinned build was
-not present in the canonical local artifact archive or an environment-named
-fixture.
+failed closed before emulator execution because no local ELF matched the
+identity pinned by the current contract.
 
 The contract requires TinyDraw commit
 `7a157d44a9da3312b1ecda2b45b116af2de28e63`, ELF SHA-256
 `1d67c35762fe58b72202a19b1c06912f0b9503a7331ba881cda3928648b54cd6`,
 and sdkconfig SHA-256
 `7490046d6e8b00d80f2bb550439821fa9d4a50da762e6e46d2aa9bdf8d520b8b`.
-No file with the required ELF hash was found under `~/Archives/esp32s3`, the
-read-only canonical TinyDraw checkout, or the task temporary roots. No
-TinyDraw build environment variable was set.
+No file with the required ELF hash was found among 63 firmware ELF
+candidates under `~/Archives/esp32s3`, the read-only canonical TinyDraw
+checkout, `/private/tmp`, or the actual `$TMPDIR`, `/Users/sarah/tmp`. The
+committed [`audit_fixture.py`](audit_fixture.py) reproduces the search, and
+[`fixture-search.json`](fixture-search.json) records its complete output.
 
 The similarly named archived build at
 `~/Archives/esp32s3/evidence-bytes/lane0-idf61-outputs/idf61/esp32-gate-harness`
@@ -26,10 +27,13 @@ receipt adopts no timing value and makes no claim about whether the small
 SPI2 DMA completion fix lets the gate workload finish.
 
 [`result.json`](result.json) records the exact expected and observed hashes,
-the verifier result, the search scope, and the limits. A valid rerun requires
-restoring the exact contract-pinned immutable build, including its app,
-bootloader, partition table, ELF, and sdkconfig, then verifying every artifact
-before execution. Rebuilding TinyDraw is outside this repository task.
+the verifier result, the search scope, and the limits. The current contract
+pins only the application ELF and sdkconfig. It does not authoritatively pin
+the app binary, bootloader, partition table, or auto-discovered ROM ELF, even
+though the dry-run executes those bytes. A valid rerun requires an
+authoritative receipt that pins every external binary input, restoration of
+those exact immutable bytes, and verification of all of them before execution.
+Rebuilding TinyDraw is outside this repository task.
 
 The ignored TinyDraw Wi-Fi credential values were checked byte-for-byte
 against this evidence directory before commit. Neither value is present. No

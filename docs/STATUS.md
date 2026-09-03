@@ -377,9 +377,10 @@ mode (needs GOAL milestone 2).
   scheduler, so it never completed. A 50-billion-instruction run produced no
   `TINYDRAW_LIVE_*` lines. No fast-mode counter reference was committed. This
   2026-09-03 post-fix rerun was refused before emulator execution because the
-  exact hash-pinned build bytes were absent from the canonical local archive;
-  the similarly named archived build has different source and artifact hashes.
-  Marker and counter completion remain unknown. Receipt:
+  63 local ELF candidates contained no match for the contract-pinned ELF hash.
+  The current contract also lacks authoritative hashes for the app binary,
+  bootloader, partition table, and auto-discovered ROM ELF. Marker and counter
+  completion remain unknown. Receipt:
   [`evidence/gate-harness-fast-rerun-2026-09-03/`](evidence/gate-harness-fast-rerun-2026-09-03/README.md).
 - The same panel-init stop was observed in the 2026-09-02 native-speed runs
   and is retained as historical evidence at
@@ -394,9 +395,9 @@ mode (needs GOAL milestone 2).
 
 1. Proposal: capture the verified seven-cell H1 image during the next
    maintainer-started hardware session.
-2. Proposal: restore the exact hash-pinned gate-harness build bytes, verify all
-   five artifacts, and rerun after the fast-mode small SPI2 DMA completion fix.
-   The native-speed rerun is complete.
+2. Proposal: authoritatively pin every external gate-harness binary input,
+   restore the exact immutable bytes, verify them all, and rerun after the
+   fast-mode small SPI2 DMA completion fix. The native-speed rerun is complete.
 3. Proposal: add per-frame firmware counters to the next maintainer capture so
    frame-scale correlation can begin after measured boot reaches READY.
 4. Proposal: begin milestone 5 contention pricing only after the measured boot
