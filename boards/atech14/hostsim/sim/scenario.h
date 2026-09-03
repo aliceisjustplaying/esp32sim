@@ -1,4 +1,4 @@
-// Runs the same YAML scenarios as the Wokwi setup (subset: wait-serial, delay, set-control,
+// Runs the YAML scenarios in ../scenarios (wait-serial, delay, set-control,
 // write-serial, take-screenshot) against the VirtualBoard. Extra control for the knob:
 //   set-control: { part-id: knob, control: rotate, value: 3 }    (negative = CCW)
 //   set-control: { part-id: knob, control: pressed, value: 1 }
