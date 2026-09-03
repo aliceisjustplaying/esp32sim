@@ -205,10 +205,10 @@ pub(crate) fn max_ar(i: &Insn) -> u8 {
 fn f32b(v: u32) -> f32 { f32::from_bits(v) }
 
 fn sat_i32(v: f32) -> u32 {
-    if v.is_nan() { 0x8000_0000 } else if v >= 2147483648.0 { 0x7fff_ffff } else if v <= -2147483648.0 { 0x8000_0000 } else { (v as i32) as u32 }
+    if v.is_nan() { 0x8000_0000 } else if v >= f32::from_bits(0x4f00_0000) { 0x7fff_ffff } else if v <= f32::from_bits(0xcf00_0000) { 0x8000_0000 } else { (v as i32) as u32 }
 }
 fn sat_u32(v: f32) -> u32 {
-    if v.is_nan() || v >= 4294967296.0 { 0xffff_ffff } else if v <= 0.0 { 0 } else { v as u32 }
+    if v.is_nan() || v >= f32::from_bits(0x4f80_0000) { 0xffff_ffff } else if v <= 0.0 { 0 } else { v as u32 }
 }
 
 /// Execute one instruction. Returns `Ok(())` when an instruction completed normally.

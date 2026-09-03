@@ -114,7 +114,7 @@ fn must_start_block(i: &Insn) -> bool {
 /// Decode a block starting at `pc0` and register it. Only the first fetch can fault: a later
 /// unmapped instruction simply ends the block and faults when it is reached as a block start.
 fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16), Trap> {
-    let code_short = cpu.blocks.jit_active() && cpu.blocks.code.as_ref().unwrap().remaining() < crate::jit::MAX_BLOCK_CODE;
+    let code_short = cpu.blocks.jit_active() && cpu.blocks.code.as_ref().expect("active JIT must have a code cache").remaining() < crate::jit::MAX_BLOCK_CODE;
     if cpu.blocks.arena.len() + MAX_LEN > ARENA_MAX || code_short { cpu.blocks.flush(); }
     let start = cpu.blocks.arena.len() as u32;
     let (mut pc, mut n, mut last) = (pc0, 0u16, pc0);
@@ -141,7 +141,7 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
     if cpu.blocks.jit_active() {
         let b = &mut cpu.blocks;
         let (s, e) = (start as usize, start as usize + n as usize);
-        if let Some(c) = crate::jit::compile(b.code.as_mut().unwrap(), &mut b.arena[s..e], pc0, fast) { code = c; b.compiled += 1; }
+        if let Some(c) = crate::jit::compile(b.code.as_mut().expect("active JIT must have a code cache"), &mut b.arena[s..e], pc0, fast) { code = c; b.compiled += 1; }
     }
     cpu.blocks.entries[ei] = Entry { pc: pc0, start, n, vidx: [vidx0, vidx1], ver, code };
     cpu.blocks.builds += 1;
@@ -179,13 +179,16 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
     if code != crate::jit::NONE && cpu.blocks.jit_enabled {
         if cpu.blocks.helpers.is_none() { cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>()); }
         let entry = cpu.blocks.arena[k as usize].off;
+        let blocks = std::ptr::addr_of!(cpu.blocks);
+        // SAFETY: Generated code reads the cache but does not mutate it. Its mutable CPU access
+        // cannot reach the cache while the generated block is running.
+        let b = unsafe { &*blocks };
+        let fm = bus.fast_mem();
+        let code_cache = b.code.as_ref().expect("active JIT must have a code cache");
+        let helpers = b.helpers.as_ref().expect("active JIT must have helpers");
         // SAFETY: `code` and `entry` came from this live cache entry, the helpers were created for
-        // `B`, and `fast_mem` below describes this exclusively borrowed bus for the duration.
-        let r = unsafe {
-            let b = &*(&cpu.blocks as *const BlockCache);          // the code reads nothing from the cache itself
-            let fm = bus.fast_mem();
-            crate::jit::run(b.code.as_ref().unwrap(), code, cpu, bus, b.helpers.as_ref().unwrap(), limit, entry, fm)
-        };
+        // `B`, and `fast_mem` describes this exclusively borrowed bus for the duration.
+        let r = unsafe { crate::jit::run(code_cache, code, cpu, bus, helpers, limit, entry, fm) };
         let (done, exit) = (r & 0xffff, r >> 16);
         cpu.insn_count += done as u64;
         cpu.advance_ccount(done);

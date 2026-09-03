@@ -91,7 +91,7 @@ impl FlatRam {
 impl Bus for FlatRam {
     fn read8(&mut self, a: u32) -> Result<u8, Fault> { let o = self.off(a, 1)?; Ok(self.mem[o]) }
     fn read16(&mut self, a: u32) -> Result<u16, Fault> { let o = self.off(a, 2)?; Ok(u16::from_le_bytes([self.mem[o], self.mem[o + 1]])) }
-    fn read32(&mut self, a: u32) -> Result<u32, Fault> { let o = self.off(a, 4)?; Ok(u32::from_le_bytes(self.mem[o..o + 4].try_into().unwrap())) }
+    fn read32(&mut self, a: u32) -> Result<u32, Fault> { let o = self.off(a, 4)?; Ok(u32::from_le_bytes([self.mem[o], self.mem[o + 1], self.mem[o + 2], self.mem[o + 3]])) }
     fn write8(&mut self, a: u32, v: u8) -> Result<(), Fault> { let o = self.off(a, 1)?; self.mem[o] = v; self.ver += 1; Ok(()) }
     fn write16(&mut self, a: u32, v: u16) -> Result<(), Fault> { let o = self.off(a, 2)?; self.mem[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.ver += 1; Ok(()) }
     fn write32(&mut self, a: u32, v: u32) -> Result<(), Fault> { let o = self.off(a, 4)?; self.mem[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.ver += 1; Ok(()) }

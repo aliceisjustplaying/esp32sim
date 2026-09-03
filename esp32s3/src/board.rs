@@ -239,7 +239,7 @@ impl BoardModel for WaveshareCam {
         Some(out)
     }
     fn camera_frame(&mut self) -> Option<(u32, u32, std::sync::Arc<Vec<u8>>)> {
-        let (w, h) = { let s = self.sensor.lock().unwrap(); (s.width, s.height) };
+        let (w, h) = { let s = self.sensor.lock().expect("camera sensor mutex poisoned"); (s.width, s.height) };
         if w == 0 || h == 0 { return None; }
         let stale = match &self.frame { Some((fw, fh, _)) => *fw != w || *fh != h, None => true };
         if stale {
@@ -295,7 +295,7 @@ impl BoardModel for WaveshareLcd4b {
     fn display_version(&self) -> u64 { self.frames }
     fn display_frames(&self) -> u64 { self.frames }
     fn touch(&mut self, x: u16, y: u16, down: bool) {
-        let mut t = self.touch_state.lock().unwrap(); t.x = x; t.y = y;
+        let mut t = self.touch_state.lock().expect("touch state mutex poisoned"); t.x = x; t.y = y;
         if down { t.down = true; t.seen = false; t.release_pending = false; } else if t.seen { t.down = false; } else { t.release_pending = true; }
     }
 }
@@ -628,14 +628,14 @@ mod co5300_tests {
                 clock_hz: 40_000_000,
                 mode: Spi2Mode::Quad,
             })
-            .unwrap();
+            .expect("receipt-backed SPI timing should be priced");
 
         assert_eq!(timing.submit_cycles, 5_755);
         assert_eq!(timing.completion_cycle, SUBMITTED_AT + 401_589);
         assert_eq!(board.next_deadline(), Some(timing.completion_cycle));
-        board.advance_to(timing.completion_cycle - 1).unwrap();
+        board.advance_to(timing.completion_cycle - 1).expect("board clock advance failed");
         assert!(!board.take_spi2_dma_completion());
-        board.advance_to(timing.completion_cycle).unwrap();
+        board.advance_to(timing.completion_cycle).expect("board clock advance failed");
         assert!(board.take_spi2_dma_completion());
     }
 
@@ -696,9 +696,9 @@ mod co5300_tests {
         let mut board = WaveshareAmoled18V2::new();
         let half_period = crate::periph::CPU_HZ / 120;
         assert_eq!(board.next_deadline(), Some(half_period));
-        board.advance_to(half_period - 1).unwrap();
+        board.advance_to(half_period - 1).expect("board clock advance failed");
         assert!(board.take_edges().is_empty());
-        board.advance_to(half_period).unwrap();
+        board.advance_to(half_period).expect("board clock advance failed");
         assert_eq!(
             board.take_edges(),
             [BoardEdge {
@@ -708,7 +708,7 @@ mod co5300_tests {
             }]
         );
         assert_eq!(board.next_deadline(), Some(half_period * 2));
-        board.advance_to(half_period * 2).unwrap();
+        board.advance_to(half_period * 2).expect("board clock advance failed");
         assert_eq!(
             board.take_edges(),
             [BoardEdge {
@@ -724,7 +724,7 @@ mod co5300_tests {
         let mut board = WaveshareAmoled18V2::new();
         board.touch(100, 200, true);
         assert_eq!(board.next_deadline(), Some(1));
-        board.advance_to(1).unwrap();
+        board.advance_to(1).expect("board clock advance failed");
         assert_eq!(
             board.take_edges(),
             [BoardEdge {
@@ -734,7 +734,7 @@ mod co5300_tests {
             }]
         );
         board.touch(100, 200, false);
-        board.advance_to(2).unwrap();
+        board.advance_to(2).expect("board clock advance failed");
         assert_eq!(
             board.take_edges(),
             [BoardEdge {
@@ -748,7 +748,7 @@ mod co5300_tests {
     #[test]
     fn amoled_board_rejects_reverse_time() {
         let mut board = WaveshareAmoled18V2::new();
-        board.advance_to(9).unwrap();
+        board.advance_to(9).expect("board clock advance failed");
         assert_eq!(
             board.advance_to(8),
             Err(BoardDeadlineError::TimeReversed {

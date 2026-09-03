@@ -11,7 +11,7 @@ const WAITI_LOOP: [u8; 6] = [0x00, 0x70, 0x00, 0x06, 0xff, 0xff];   // waiti 0 ;
 const SPIN: [u8; 3] = [0x06, 0xff, 0xff];                             // j .   (objdump: ffff06)
 
 fn machine() -> esp32s3::Machine { let mut m = esp32s3::machine([1, 2, 3, 4, 5, 6]); m.console.capture = true; m }
-fn park(m: &mut esp32s3::Machine, core: usize, at: u32, prog: &[u8]) { esp_soc::SocBus::load_bytes(&mut m.bus, at, prog).unwrap(); m.cores[core].pc = at; m.cores[core].ps = 0; }
+fn park(m: &mut esp32s3::Machine, core: usize, at: u32, prog: &[u8]) { esp_soc::SocBus::load_bytes(&mut m.bus, at, prog).expect("test program load failed"); m.cores[core].pc = at; m.cores[core].ps = 0; }
 
 #[test]
 fn peripheral_block_names_cover_aes_neighbors() {
@@ -39,11 +39,11 @@ fn idle_cores_skip_time() {
 fn core1_runs_when_released() {
     let mut m = machine();
     park(&mut m, 0, IRAM, &SPIN);
-    esp_soc::SocBus::load_bytes(&mut m.bus, RESET, &SPIN).unwrap();
+    esp_soc::SocBus::load_bytes(&mut m.bus, RESET, &SPIN).expect("reset program load failed");
     m.max_cycles = 64 * 100;
     m.run(u64::MAX);
     assert_eq!(m.cores[1].insn_count(), 0, "held in reset");
-    m.bus.write32(0x600c_0000, 0b010).unwrap();                // clock on, not stalled, not in reset
+    m.bus.write32(0x600c_0000, 0b010).expect("core control write failed");                // clock on, not stalled, not in reset
     m.max_cycles = 64 * 300;
     m.run(u64::MAX);
     assert!(m.cores[1].insn_count() > 0, "core 1 ran");
@@ -81,13 +81,13 @@ fn reboot_keeps_what_silicon_keeps() {
 #[test]
 fn scripts_use_the_board() {
     let mut m = machine();
-    m.load_script("1.0 press btn1 50\n2.0 knob cw 2\n3.0 serial hello\n# comment\n4.0 stop\n").unwrap();
+    m.load_script("1.0 press btn1 50\n2.0 knob cw 2\n3.0 serial hello\n# comment\n4.0 stop\n").expect("valid action script failed to load");
     let ev = &m.script.events;
     assert_eq!(ev.len(), 2 + 8 + 1 + 1);
     assert!(ev[0].0 == 240_000_000 && matches!(ev[0].1, ScriptAction::Gpio(17, false)), "{:?}", ev[0]);
     assert_eq!(ev[1].0, 240_000_000 + 12_000_000, "released 50 ms later");
     assert!(matches!(ev[2].1, ScriptAction::Gpio(5, false)), "a CW detent starts with CLK falling");
-    assert!(matches!(ev.last().unwrap().1, ScriptAction::Stop));
+    assert!(matches!(ev.last().expect("script events should not be empty").1, ScriptAction::Stop));
     assert!(m.load_script("1.0 press nosuchpin").is_err());
     assert!(m.load_script("1.0 frobnicate").is_err());
     m.bus.board = Box::new(NoBoard);
