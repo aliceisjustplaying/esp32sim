@@ -1,6 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
-const BUILD_ENVIRONMENT: &str = "TINYDRAW_VECTOR_V2_BUILD";
+const BUILD_ENVIRONMENT: &str = "TINYDRAW_IDF61_RECEIPT_BUILD";
+const PRODUCT_BUILD_ENVIRONMENT: &str = "TINYDRAW_VECTOR_V2_BUILD";
 const ROM_ENVIRONMENT: &str = "ESP32S3_ROM_ELF";
 const EXPECTED: &str = include_str!("../../tests/correlation/measured-boot-refusal.json");
 
@@ -34,7 +35,7 @@ fn run_measured_boot() -> Result<Vec<u8>, String> {
             "--no-dump",
             "--measured",
         ])
-        .env(BUILD_ENVIRONMENT, &build)
+        .env(PRODUCT_BUILD_ENVIRONMENT, &build)
         .output()
         .map_err(|error| format!("measured boot command must start: {error}"))?;
     if !output.status.success() {
