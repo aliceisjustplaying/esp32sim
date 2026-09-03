@@ -3,7 +3,9 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import audit_fixture
 
 
@@ -21,6 +23,19 @@ class AuditFixtureTest(unittest.TestCase):
             self.assertEqual(result["searchedUniqueRoots"], [str(root.resolve())])
             self.assertEqual(result["candidateElfFiles"], 1)
             self.assertEqual(result["matchingContractElfFiles"], 1)
+            self.assertEqual(result["matchingPaths"], [str(elf.resolve())])
+
+    def test_searches_elf_files_with_any_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            elf = root / "rom/esp32s3_rev0_rom.elf"
+            elf.parent.mkdir()
+            elf.write_bytes(b"mask rom")
+            expected = audit_fixture.sha256(elf)
+
+            result = audit_fixture.audit([root], expected)
+
+            self.assertEqual(result["candidateElfFiles"], 1)
             self.assertEqual(result["matchingPaths"], [str(elf.resolve())])
 
     def test_records_missing_root_without_a_match(self) -> None:

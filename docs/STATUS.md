@@ -377,7 +377,7 @@ mode (needs GOAL milestone 2).
   scheduler, so it never completed. A 50-billion-instruction run produced no
   `TINYDRAW_LIVE_*` lines. No fast-mode counter reference was committed. This
   2026-09-03 post-fix rerun was refused before emulator execution because the
-  63 local ELF candidates contained no match for the contract-pinned ELF hash.
+  207 local ELF candidates contained no match for the contract-pinned ELF hash.
   The current contract also lacks authoritative hashes for the app binary,
   bootloader, partition table, and auto-discovered ROM ELF. Marker and counter
   completion remain unknown. Receipt:
