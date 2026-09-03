@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 action="${1:-run}"
 endpoint="${2:-}"
 web_port="${endpoint:-${TINYDRAW_WEB_PORT:-8766}}"
-build_root="${TINYDRAW_VECTOR_V2_BUILD:-${HOME}/Archives/esp32s3/pinned-builds/tinydraw-vector-v2-9cb651e0}"
+build_root="${TINYDRAW_VECTOR_V2_BUILD:-${HOME}/Archives/esp32s3/pinned-builds/tinydraw-vector-v2-credential-free-7a157d4-a4a30bc1}"
 
 usage() {
   printf '%s\n' \
@@ -31,10 +31,10 @@ verify_build() {
       exit 2
     fi
   done <<'HASHES'
-634e8dfab00aaa24c8b4514aecd77d842d5a49438baca87abf5f3a35e474b5ab bootloader/bootloader.bin
+6f578c16dc6419d939e57ae576873bdb34facd104fb0941da65e7ee179d96a67 bootloader/bootloader.bin
 f53268312c8caffe6c7f4e6c66d4092aeca3435c142db3116466f84a6a608d2d partition_table/partition-table.bin
-1352e0c415aac2050b8159a7d7deae82f74f5f4202b9bbf000fefd0bc3573936 tinydraw_esp32.bin
-9cb651e09a5405bc68fa5aa4656a22977e1c54f3198cb86bd5bc9753ba1d251b tinydraw_esp32.elf
+a4a30bc1ae816f02897bbf8cda8b2647fa3a65a35364fab3629498a2f04d3742 tinydraw_esp32.bin
+645846a31eaff56738ca405a6287c06579c2d358bef843ee020d82429c245575 tinydraw_esp32.elf
 HASHES
 }
 
