@@ -41,6 +41,8 @@ impl GpSpi {
     }
     fn transfer(&mut self) {
         let user = self.regs.read(0x10); let user1 = self.regs.read(0x14); let user2 = self.regs.read(0x18);
+        let data_bits = (self.regs.read(0x1c) & 0x3ffff) + 1;
+        self.dma_tx_pending = None;
         let mut tx = Vec::new();
         if user & (1 << 31) != 0 {                                        // command phase, LSB byte first
             let n = (((user2 >> 28) & 0xf) + 1).div_ceil(8); let c = user2 & 0xffff;
@@ -52,17 +54,17 @@ impl GpSpi {
         }
         let mut data_len = 0;
         if user & (1 << 27) != 0 {                                        // MOSI data phase from W0.. (or W8.. with HIGHPART)
-            let bits = (self.regs.read(0x1c) & 0x3ffff) + 1; let n = bits.div_ceil(8) as usize;
+            let n = data_bits.div_ceil(8) as usize;
             data_len = n;
             if self.regs.read(0x30) & (1 << 28) != 0 {                    // DMA_TX_ENA: the bus fetches the data through GDMA
-                self.dma_tx_pending = Some(bits);
-                if self.log { eprintln!("[spi2] transfer {} header bytes, {} data bits by DMA", tx.len(), bits); }
+                self.dma_tx_pending = Some(data_bits);
+                if self.log { eprintln!("[spi2] transfer {} header bytes, {} data bits by DMA", tx.len(), data_bits); }
             } else {
                 let base = if user & (1 << 25) != 0 { 8 } else { 0 };
                 for i in 0..n.min((16 - base) * 4) { tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8); }
             }
         }
-        let rx_len = if user & (1 << 28) != 0 { ((self.regs.read(0x20) & 0x3ffff) + 1).div_ceil(8) as usize } else { 0 };
+        let rx_len = if user & (1 << 28) != 0 { data_bits.div_ceil(8) as usize } else { 0 };
         let rx_word_base = if user & (1 << 24) != 0 { 8 } else { 0 };
         self.pending = Some(GpSpiTransfer { tx, rx_len, data_len, rx_word_base });
     }
@@ -80,6 +82,14 @@ impl GpSpi {
     pub fn abort_transfer(&mut self) {
         self.dma_tx_pending = None;
         self.pending = None;
+    }
+
+    /// Finish a transaction whose DMA source faulted. Hardware still completes the SPI command,
+    /// allowing the driver to observe both TRANS_DONE and the GDMA descriptor error.
+    pub fn fail_dma_tx(&mut self) {
+        self.abort_transfer();
+        self.transfers += 1;
+        self.int_raw |= 1 << 12;
     }
 
     /// The bus delivered the DMA data phase.
@@ -129,7 +139,7 @@ mod tests {
         spi.write(0x18, (7 << 28) | 0x02);
         spi.write(0x04, 0x0400_0000);
         spi.write(0x1c, 23);
-        spi.write(0x20, 23);
+        spi.write(0x20, 0x3e);
         spi.write(0x98, 0x4433_2211);
 
         spi.write(0x00, 1 << 24);
@@ -158,5 +168,22 @@ mod tests {
         assert_eq!(transfer.tx, [0x12, 0x34]);
         spi.finish_transfer(transfer, &[]);
         assert_eq!(spi.transfers, 1);
+    }
+
+    #[test]
+    fn cpu_transfer_replaces_a_stale_dma_wait() {
+        let mut spi = GpSpi::new();
+        spi.write(0x30, 1 << 28);
+        spi.write(0x10, 1 << 27);
+        spi.write(0x1c, 7);
+        spi.write(0x00, 1 << 24);
+        assert!(spi.take_transfer().is_none());
+
+        spi.write(0x30, 0);
+        spi.write(0x98, 0x5a);
+        spi.write(0x00, 1 << 24);
+
+        let transfer = spi.take_transfer().expect("CPU transaction must replace a stale DMA wait");
+        assert_eq!(transfer.tx, [0x5a]);
     }
 }
