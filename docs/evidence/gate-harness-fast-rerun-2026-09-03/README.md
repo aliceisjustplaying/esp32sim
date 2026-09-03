@@ -9,7 +9,7 @@ The contract requires TinyDraw commit
 `1d67c35762fe58b72202a19b1c06912f0b9503a7331ba881cda3928648b54cd6`,
 and sdkconfig SHA-256
 `7490046d6e8b00d80f2bb550439821fa9d4a50da762e6e46d2aa9bdf8d520b8b`.
-No file with the required ELF hash was found among 63 firmware ELF
+No file with the required ELF hash was found among 207 ELF
 candidates under `~/Archives/esp32s3`, the read-only canonical TinyDraw
 checkout, `/private/tmp`, or the actual `$TMPDIR`, `/Users/sarah/tmp`. The
 committed [`audit_fixture.py`](audit_fixture.py) reproduces the search, and

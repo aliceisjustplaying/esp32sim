@@ -58,15 +58,16 @@ def audit(roots: Iterable[Path], expected: str = EXPECTED_ELF_SHA256) -> dict[st
             errors.append(f"{error.filename}: {error.strerror}")
 
         for directory, _, files in os.walk(resolved, onerror=record_error):
-            if "tinydraw_esp32.elf" not in files:
-                continue
-            path = Path(directory) / "tinydraw_esp32.elf"
-            try:
-                digest = sha256(path)
-            except OSError as error:
-                record_error(error)
-                continue
-            candidates.append({"path": str(path), "sha256": digest})
+            for filename in files:
+                if not filename.endswith(".elf"):
+                    continue
+                path = Path(directory) / filename
+                try:
+                    digest = sha256(path)
+                except OSError as error:
+                    record_error(error)
+                    continue
+                candidates.append({"path": str(path), "sha256": digest})
 
     candidates.sort(key=lambda item: item["path"])
     matching = [item["path"] for item in candidates if item["sha256"] == expected]
