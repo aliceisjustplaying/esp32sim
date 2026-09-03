@@ -229,8 +229,8 @@ impl Device for SpiMemC6 {
     fn debug(&mut self, on: bool) { Device::debug(&mut self.0, on) }
 }
 
-/// The analog I2C master (regi2c): two hosts, each a CTRL word — [7:0] slave block, [15:8]
-/// register, [23:16] data, [24] write, [25] busy — through which the ROM, IDF and the PHY blob
+/// The analog I2C master (regi2c): two hosts, each a CTRL word with `[7:0]` slave block,
+/// `[15:8]` register, `[23:16]` data, `[24]` write, and `[25]` busy. The ROM, IDF, and PHY blob
 /// reach the PLL, bias, ADC and RF trim registers. Written values read back per (block,
 /// register), like the S3 model. Two things the blobs poll for must come back set:
 /// `ANA_CONF0.BBPLL_CAL_DONE`, and the RF block's (0x63) status bits — its registers read as

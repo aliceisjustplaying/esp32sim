@@ -5,10 +5,10 @@
 //! bit-identical machine state.
 //!
 //! Register plan inside generated code (AAPCS64 callee-saved, so helpers may be called freely):
-//!   x19 = &Cpu, x20 = &Bus, x21 = &cpu.ar[0], w22 = windowbase*4, w23 = instructions left,
+//!   `x19 = &Cpu`, `x20 = &Bus`, `x21 = &cpu.ar[0]`, `w22 = windowbase*4`, `w23 = instructions left`,
 //!   x24 = TLB entries, x25 = &Helpers, w26 = cpu.lend, x27 = write-version counters,
 //!   w28 = lend − block start, so the loop-end test is a compare with an immediate. The initial
-//!   budget is kept in the frame at [sp, #96].
+//!   budget is kept in the frame at `[sp, #96]`.
 //! Guest register `n` lives at `ar[(w22 + n) & 63]`. Anything the fast path does not implement
 //! is executed by calling back into `exec_insn` through `Helpers::exec`.
 #![allow(clippy::too_many_arguments)]
