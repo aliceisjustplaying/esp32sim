@@ -3,29 +3,42 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 action="${1:-run}"
-tinydraw_root="${2:-${TINYDRAW_DIR:-$(cd "$repo_root/.." && pwd)/tinydraw}}"
-web_port="${3:-${TINYDRAW_WEB_PORT:-8766}}"
-build_root="$tinydraw_root/out/build/esp32-vector-v2"
+endpoint="${2:-}"
+web_port="${endpoint:-${TINYDRAW_WEB_PORT:-8766}}"
+build_root="${TINYDRAW_VECTOR_V2_BUILD:-${HOME}/Archives/esp32s3/pinned-builds/tinydraw-vector-v2-9cb651e0}"
 
 usage() {
   printf '%s\n' \
-    "usage: $0 {build|run|smoke|flash} [TINYDRAW_DIR] [WEB_PORT_OR_SERIAL_PORT]" \
+    "usage: $0 {build|verify|run|smoke} [WEB_PORT]" \
+    "       $0 flash [SERIAL_PORT]" \
     "" \
-    "Keep tinydraw next to esp32sim and run: $0 run" \
-    "Or set TINYDRAW_DIR once for a different checkout location."
+    "TinyDraw artifacts come from the immutable TINYDRAW_VECTOR_V2_BUILD pin." \
+    "This script never reads from or builds the TinyDraw checkout."
 }
 
-require_tinydraw() {
-  if [[ ! -x "$tinydraw_root/scripts/esp32" ]]; then
-    echo "TinyDraw checkout not found at $tinydraw_root" >&2
-    usage >&2
-    exit 2
-  fi
+verify_build() {
+  local expected relative actual
+  while read -r expected relative; do
+    if [[ ! -f "$build_root/$relative" ]]; then
+      echo "pinned TinyDraw artifact missing: $build_root/$relative" >&2
+      exit 2
+    fi
+    actual="$(shasum -a 256 "$build_root/$relative")"
+    actual="${actual%% *}"
+    if [[ "$actual" != "$expected" ]]; then
+      echo "pinned TinyDraw artifact hash mismatch: $relative" >&2
+      echo "expected $expected, found $actual" >&2
+      exit 2
+    fi
+  done <<'HASHES'
+634e8dfab00aaa24c8b4514aecd77d842d5a49438baca87abf5f3a35e474b5ab bootloader/bootloader.bin
+f53268312c8caffe6c7f4e6c66d4092aeca3435c142db3116466f84a6a608d2d partition_table/partition-table.bin
+1352e0c415aac2050b8159a7d7deae82f74f5f4202b9bbf000fefd0bc3573936 tinydraw_esp32.bin
+9cb651e09a5405bc68fa5aa4656a22977e1c54f3198cb86bd5bc9753ba1d251b tinydraw_esp32.elf
+HASHES
 }
 
-build_all() {
-  require_tinydraw
-  "$tinydraw_root/scripts/esp32" build
+build_emulator() {
   cargo build --release --manifest-path "$repo_root/Cargo.toml" -p esp32sim
 }
 
@@ -46,17 +59,22 @@ run_emulator() {
 
 case "$action" in
   build)
-    build_all
+    build_emulator
+    ;;
+  verify)
+    verify_build
     ;;
   run)
-    build_all
+    verify_build
+    build_emulator
     if command -v open >/dev/null 2>&1; then
       (sleep 1; open "http://127.0.0.1:$web_port/") >/dev/null 2>&1 &
     fi
     run_emulator --web "$web_port" --web-dir "$repo_root/web"
     ;;
   smoke)
-    build_all
+    verify_build
+    build_emulator
     smoke_log="$(mktemp "${TMPDIR:-/tmp}/tinydraw-v2-smoke.XXXXXX")"
     smoke_script="$(mktemp "${TMPDIR:-/tmp}/tinydraw-v2-touch.XXXXXX")"
     trap 'rm -f "$smoke_log" "$smoke_script"' EXIT
@@ -81,8 +99,8 @@ case "$action" in
     echo "TinyDraw V2 smoke test passed"
     ;;
   flash)
-    require_tinydraw
-    serial_port="${3:-}"
+    verify_build
+    serial_port="$endpoint"
     if [[ -z "$serial_port" ]]; then
       ports=(/dev/cu.usbmodem*)
       if [[ ! -e "${ports[0]}" || "${#ports[@]}" -ne 1 ]]; then
@@ -91,7 +109,12 @@ case "$action" in
       fi
       serial_port="${ports[0]}"
     fi
-    exec "$tinydraw_root/scripts/esp32" vector-v2 "$serial_port"
+    exec python -m esptool --chip esp32s3 --port "$serial_port" --baud 921600 \
+      --before default_reset --after hard_reset write_flash \
+      --flash-mode dio --flash-size 16MB --flash-freq 80m \
+      0x0 "$build_root/bootloader/bootloader.bin" \
+      0x8000 "$build_root/partition_table/partition-table.bin" \
+      0x10000 "$build_root/tinydraw_esp32.bin"
     ;;
   -h|--help|help)
     usage
