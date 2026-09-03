@@ -356,14 +356,12 @@ impl SocBus {
             let remaining = length.saturating_sub(current.buf_pos) as usize;
             if remaining != 0 {
                 let count = remaining.min(wanted - payload.len());
-                for offset in 0..count {
-                    let address = buffer.wrapping_add(current.buf_pos).wrapping_add(offset as u32);
-                    payload.push(self.read8(address).map_err(|fault| DmaDescriptorFault::BufferRead {
-                        descriptor: current.desc,
-                        address,
-                        fault,
-                    })?);
-                }
+                let address = buffer.wrapping_add(current.buf_pos);
+                self.append_mapped_bytes(address, count, &mut payload).map_err(|(address, fault)| DmaDescriptorFault::BufferRead {
+                    descriptor: current.desc,
+                    address,
+                    fault,
+                })?;
                 channel.buf_pos += remaining as u32;                     // GDMA drains the descriptor
             }
             if channel.conf0 & (1 << 2) != 0 {
@@ -399,6 +397,34 @@ impl SocBus {
             return Err(DmaDescriptorFault::PayloadTooShort { expected: wanted, actual: payload.len() });
         }
         Ok(Some(Spi2DmaCompletion { channel: channel_index, final_channel: channel, descriptor_writebacks, payload }))
+    }
+
+    /// Append a memory range a mapping at a time. Peripheral and unmapped addresses use the
+    /// ordinary byte read so their access semantics and first-fault bookkeeping stay unchanged.
+    fn append_mapped_bytes(&mut self, mut address: u32, mut count: usize, out: &mut Vec<u8>) -> Result<(), (u32, Fault)> {
+        while count != 0 {
+            if !Self::is_periph(address) {
+                if let Some(entry) = self.lookup(address) {
+                    let take = count.min(entry.hi.wrapping_sub(address) as usize);
+                    if take != 0 {
+                        let offset = entry.off as usize + address.wrapping_sub(entry.lo) as usize;
+                        if let Some(bytes) = self.buf(entry.src as u8).get(offset..offset + take) {
+                            out.extend_from_slice(bytes);
+                            address = address.wrapping_add(take as u32);
+                            count -= take;
+                            continue;
+                        }
+                    }
+                }
+            }
+            match self.read8(address) {
+                Ok(byte) => out.push(byte),
+                Err(fault) => return Err((address, fault)),
+            }
+            address = address.wrapping_add(1);
+            count -= 1;
+        }
+        Ok(())
     }
 
     /// Move I2S TX data out of DMA descriptors at the sample rate.
@@ -989,6 +1015,42 @@ mod gp_spi_board_tests {
         assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[11, 22, 33, 44]:0"]);
         assert_eq!(bus.read32(FIRST_DESC).expect("descriptor read failed") >> 31, 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+    }
+
+    #[test]
+    fn dma_payload_crosses_a_tlb_mapping_boundary() {
+        const DATA: u32 = 0x3fc8_fffe;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = dma_bus();
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        for (offset, byte) in [0x11, 0x22, 0x33, 0x44].into_iter().enumerate() {
+            bus.write8(DATA + offset as u32, byte).expect("test data write failed");
+        }
+        bus.write32(FIRST_DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 32);
+
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[11, 22, 33, 44]:0"]);
+        assert_eq!(bus.spi2_dma_fault, None);
+    }
+
+    #[test]
+    fn dma_payload_reports_the_first_unmapped_address() {
+        const DATA: u32 = DRAM_HIGH - 1;
+        let mut bus = dma_bus();
+        bus.write8(DATA, 0xaa).expect("test data write failed");
+        bus.write32(FIRST_DESC, 2 | (2 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 16);
+
+        let expected = DmaDescriptorFault::BufferRead { descriptor: FIRST_DESC, address: DRAM_HIGH, fault: Fault::Unmapped };
+        assert_eq!(bus.spi2_dma_fault, Some(expected));
+        assert_eq!(bus.last_fault, Some((DRAM_HIGH, false)));
+        assert_dma_fault_and_recovery(&mut bus, expected);
     }
 
     #[test]
