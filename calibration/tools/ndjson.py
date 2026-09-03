@@ -186,6 +186,21 @@ class RegisterExclusion:
     reason: str
 
 
+@dataclass(frozen=True)
+class RuntimeConfigurationContract:
+    schema_version: str
+    idf_version: str
+    target: str
+    cores: int
+    cpu_hz: int
+    ccount_hz: int
+    samples_per_cell: int
+    max_attempts_per_cell: int
+    recursion_depth: int
+    probe: str
+    emulator_chip_revision: int
+
+
 def _matrix_rank(rows: list[list[int]]) -> int:
     matrix = [[Fraction(value) for value in row] for row in rows]
     rank = 0
@@ -292,6 +307,7 @@ class ManifestContract:
     manifest_sha256: str = ""
     exclusions: tuple[RegisterExclusion, ...] = ()
     terminal_line: str = CAL_DONE
+    runtime_configuration: RuntimeConfigurationContract | None = None
 
     @classmethod
     def load(cls, path: Path = DEFAULT_MANIFEST) -> "ManifestContract":
@@ -311,7 +327,7 @@ class ManifestContract:
             payload,
             label,
             {"protocolVersion", "harnessVersion", "chipModel", "chipRevision", "cells"},
-            {"exclusions", "terminalLine"},
+            {"exclusions", "terminalLine", "runtimeConfiguration"},
         )
         protocol_version = _integer(payload["protocolVersion"], "manifest.protocolVersion", 1)
         if protocol_version != PROTOCOL_VERSION:
@@ -444,6 +460,57 @@ class ManifestContract:
             )
         if len(exclusions) != len(set(exclusions)):
             raise ValidationError("manifest.exclusions contains duplicates")
+        runtime_configuration = None
+        if "runtimeConfiguration" in payload:
+            path_name = "manifest.runtimeConfiguration"
+            runtime = _object(payload["runtimeConfiguration"], path_name)
+            _exact_keys(
+                runtime,
+                path_name,
+                {
+                    "schemaVersion",
+                    "idfVersion",
+                    "target",
+                    "cores",
+                    "cpuHz",
+                    "ccountHz",
+                    "samplesPerCell",
+                    "maxAttemptsPerCell",
+                    "recursionDepth",
+                    "probe",
+                    "emulatorChipRevision",
+                },
+            )
+            runtime_configuration = RuntimeConfigurationContract(
+                schema_version=_string(
+                    runtime["schemaVersion"], f"{path_name}.schemaVersion"
+                ),
+                idf_version=_string(
+                    runtime["idfVersion"], f"{path_name}.idfVersion"
+                ),
+                target=_string(runtime["target"], f"{path_name}.target"),
+                cores=_integer(runtime["cores"], f"{path_name}.cores", 1),
+                cpu_hz=_integer(runtime["cpuHz"], f"{path_name}.cpuHz", 1),
+                ccount_hz=_integer(
+                    runtime["ccountHz"], f"{path_name}.ccountHz", 1
+                ),
+                samples_per_cell=_integer(
+                    runtime["samplesPerCell"], f"{path_name}.samplesPerCell", 1
+                ),
+                max_attempts_per_cell=_integer(
+                    runtime["maxAttemptsPerCell"],
+                    f"{path_name}.maxAttemptsPerCell",
+                    1,
+                ),
+                recursion_depth=_integer(
+                    runtime["recursionDepth"], f"{path_name}.recursionDepth", 1
+                ),
+                probe=_string(runtime["probe"], f"{path_name}.probe"),
+                emulator_chip_revision=_integer(
+                    runtime["emulatorChipRevision"],
+                    f"{path_name}.emulatorChipRevision",
+                ),
+            )
         contract = cls(
             protocol_version=protocol_version,
             harness_version=_string(payload["harnessVersion"], "manifest.harnessVersion"),
@@ -452,6 +519,7 @@ class ManifestContract:
             cells=tuple(cells),
             exclusions=tuple(exclusions),
             terminal_line=_string(payload.get("terminalLine", CAL_DONE), "manifest.terminalLine"),
+            runtime_configuration=runtime_configuration,
             manifest_sha256=hashlib.sha256(data).hexdigest(),
         )
         design_ranks(contract.cells)
@@ -1123,6 +1191,7 @@ class CalibrationValidator:
         dry_run: bool = False,
     ) -> None:
         selected = contract.select(variant, request)
+        self.contract = contract
         self.contracts = {cell.id: cell for cell in selected}
         self.expected = [cell.id for cell in selected]
         self.dry_run = dry_run
@@ -1161,6 +1230,8 @@ class CalibrationValidator:
         if record_type == "configuration":
             if self.configuration is not None:
                 raise ValidationError(f"line {line_number} repeats the configuration record")
+            if self.contract.runtime_configuration is not None:
+                self._configuration(record, line_number)
             self.configuration = record
             return
         if record_type == "refusal":
@@ -1204,6 +1275,59 @@ class CalibrationValidator:
     @property
     def terminal_line(self) -> str:
         return self._terminal_line
+
+    def _configuration(self, record: dict[str, Any], line_number: int) -> None:
+        path = f"line {line_number}"
+        _exact_keys(
+            record,
+            path,
+            {
+                "type",
+                "schema_version",
+                "harness_version",
+                "idf_version",
+                "target",
+                "chip_revision",
+                "cores",
+                "cpu_hz",
+                "ccount_hz",
+                "probe",
+                "samples_per_cell",
+                "max_attempts_per_cell",
+                "recursion_depth",
+            },
+        )
+        runtime = self.contract.runtime_configuration
+        assert runtime is not None
+        expected_revision = (
+            runtime.emulator_chip_revision
+            if self.dry_run
+            else self.contract.chip_revision
+        )
+        expected = {
+            "type": "configuration",
+            "schema_version": runtime.schema_version,
+            "harness_version": self.contract.harness_version,
+            "idf_version": runtime.idf_version,
+            "target": runtime.target,
+            "chip_revision": expected_revision,
+            "cores": runtime.cores,
+            "cpu_hz": runtime.cpu_hz,
+            "ccount_hz": runtime.ccount_hz,
+            "probe": runtime.probe,
+            "samples_per_cell": runtime.samples_per_cell,
+            "max_attempts_per_cell": runtime.max_attempts_per_cell,
+            "recursion_depth": runtime.recursion_depth,
+        }
+        for key, expected_value in expected.items():
+            if isinstance(expected_value, int):
+                actual_value: str | int = _integer(record[key], f"{path}.{key}")
+            else:
+                actual_value = _string(record[key], f"{path}.{key}")
+            if actual_value != expected_value:
+                raise ValidationError(
+                    f"{path}.{key} is {actual_value!r}, expected {expected_value!r}"
+                )
 
     def _console_line(self, line: str, line_number: int) -> None:
         for line_name, contract in self.console_contracts.items():
@@ -1263,6 +1387,11 @@ class CalibrationValidator:
         self.refusals += 1
 
     def finalize(self) -> CalibrationTally:
+        if (
+            self.contract.runtime_configuration is not None
+            and self.configuration is None
+        ):
+            raise ValidationError("capture is missing the required configuration record")
         missing = [cell for cell in self.expected if cell not in self.covered]
         if missing:
             raise ValidationError(f"capture is missing cells: {', '.join(missing)}")

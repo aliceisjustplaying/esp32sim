@@ -3,6 +3,19 @@
   "harnessVersion": "1.2.0",
   "chipModel": "ESP32-S3",
   "chipRevision": 2,
+  "runtimeConfiguration": {
+    "schemaVersion": "1.0.0",
+    "idfVersion": "v6.1",
+    "target": "esp32s3",
+    "cores": 2,
+    "cpuHz": 240000000,
+    "ccountHz": 240000000,
+    "samplesPerCell": 100,
+    "maxAttemptsPerCell": 200,
+    "recursionDepth": 20,
+    "probe": "exception-ladders",
+    "emulatorChipRevision": 0
+  },
   "cells": [
     {"id": "call4_window_pair", "family": "exception", "samples": 100, "variants": ["normal"]},
     {"id": "call8_window_pair", "family": "exception", "samples": 100, "variants": ["normal"]},
