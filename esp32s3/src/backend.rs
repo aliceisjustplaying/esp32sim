@@ -6,11 +6,16 @@ use backend_api::{
     FlashMode, InstructionCost, MmioTier, Operation, PsramMode, RefusalReason, TimingMutation,
     TimingRefusal, TransactionEngine,
 };
+use emu_core::{
+    ControlEventKind, CostModel, ExecutionFacts, LifecycleFacts, LifecycleKind, MemoryAccess,
+    MemoryAccessKind, StepKind,
+};
 use xtensa_lx7::measured::{
     complete_instruction, observe_instruction, plan_instruction, CompletionError, PlanError,
 };
 use xtensa_lx7::measured::{
-    AccessKind, InstructionObservation, MemoryClass, TimingPlan, TimingSource,
+    AccessKind, AccessShape, BlockCostPayload, InstructionObservation, MemoryClass, TimingPlan,
+    TimingSource,
 };
 use xtensa_lx7::state::{exc, INTTYPE_LEVEL};
 use xtensa_lx7::{Op, Trap};
@@ -23,6 +28,9 @@ pub struct Esp32Backend {
     config: ChipConfig,
     previous_load: [Option<u8>; 2],
     cache: Option<CacheModel>,
+    config_registers: ConfigRegisters,
+    mmu: [u32; crate::bus::MMU_ENTRIES],
+    hook_cache_accessed: bool,
 }
 
 impl Default for Esp32Backend {
@@ -32,8 +40,25 @@ impl Default for Esp32Backend {
             config: ChipConfig::RECEIPT_SCOPE,
             previous_load: [None; 2],
             cache: CacheModel::new(ChipConfig::RECEIPT_SCOPE).ok(),
+            config_registers: ConfigRegisters::default(),
+            mmu: [crate::bus::MMU_INVALID; crate::bus::MMU_ENTRIES],
+            hook_cache_accessed: false,
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+struct ConfigRegisters {
+    system_cpu_per_conf: u32,
+    system_sysclk_conf: u32,
+    spi0_user: u32,
+    spi0_clock: u32,
+    spi0_sram_cmd: u32,
+    spi0_sram_clk: u32,
+    spi1_user: u32,
+    spi1_clock: u32,
+    extmem_dcache_ctrl: u32,
+    extmem_icache_ctrl: u32,
 }
 
 impl Esp32Backend {
@@ -110,10 +135,12 @@ impl Esp32Backend {
             return;
         };
         if observation.fetch_memory == MemoryClass::Flash {
+            self.hook_cache_accessed = true;
             let _result = cache.access(CacheAccessKind::Fetch, observation.pc);
         }
         if let (Some(memory), Some(access)) = (observation.access_memory, observation.access) {
             if matches!(memory, MemoryClass::Flash | MemoryClass::Psram) {
+                self.hook_cache_accessed = true;
                 let kind = match access.kind {
                     AccessKind::Load => CacheAccessKind::Load,
                     AccessKind::Store | AccessKind::Atomic => CacheAccessKind::Store,
@@ -121,6 +148,257 @@ impl Esp32Backend {
                 let _result = cache.access(kind, access.address);
             }
         }
+    }
+
+    fn reset_hook_state(&mut self) {
+        self.engine = TransactionEngine::default();
+        self.previous_load = [None; 2];
+        self.config_registers = ConfigRegisters::default();
+        self.mmu.fill(crate::bus::MMU_INVALID);
+        self.hook_cache_accessed = false;
+        self.update_config(self.config_registers.chip_config());
+    }
+
+    fn memory_class(&self, address: u32) -> MemoryClass {
+        use crate::bus::{
+            DBUS_HIGH, DBUS_LOW, DRAM_LOW, IBUS_HIGH, IBUS_LOW, IRAM_LOW, MMU_INVALID,
+            MMU_SPIRAM,
+        };
+        match address {
+            DRAM_LOW..=0x3fcf_ffff | IRAM_LOW..=0x403d_ffff => MemoryClass::InternalSram,
+            crate::bus::IROM_MASK_LOW..=0x4005_ffff | crate::bus::DROM_MASK_LOW..=0x3ff1_ffff => {
+                MemoryClass::MaskRom
+            }
+            crate::bus::RTC_FAST_LOW..=0x600f_ffff
+            | crate::bus::RTC_SLOW_LOW..=0x5000_1fff => MemoryClass::Rtc,
+            0x6000_0000..=0x600d_ffff => MemoryClass::Mmio,
+            _ if (DBUS_LOW..DBUS_HIGH).contains(&address)
+                || (IBUS_LOW..IBUS_HIGH).contains(&address) =>
+            {
+                let entry = self.mmu[((address & 0x1ff_ffff) >> 16) as usize];
+                if entry & MMU_INVALID != 0 {
+                    MemoryClass::Unknown
+                } else if entry & MMU_SPIRAM != 0 {
+                    MemoryClass::Psram
+                } else {
+                    MemoryClass::Flash
+                }
+            }
+            _ => MemoryClass::Unknown,
+        }
+    }
+
+    fn observation_from_facts(
+        &self,
+        facts: &ExecutionFacts<'_>,
+    ) -> Result<InstructionObservation, String> {
+        let bytes = facts
+            .outcome
+            .bytes
+            .ok_or_else(|| "InstructionBytes: unavailable (Unexplained tier)".to_string())?;
+        let instruction = xtensa_lx7::decode(facts.outcome.pc, bytes);
+        let accesses: Vec<_> = facts
+            .accesses
+            .iter()
+            .filter(|access| access.kind != MemoryAccessKind::Fetch)
+            .collect();
+        let first_access = accesses.first().copied();
+        if let Some(first) = first_access {
+            let same_transaction = accesses
+                .iter()
+                .all(|access| access.address == first.address);
+            if !same_transaction {
+                return Err("MultipleMemoryAccesses: cost not adopted (Unexplained tier)".into());
+            }
+        }
+        let access = first_access.map(|access| AccessShape {
+            kind: if instruction.op == Op::S32c1i {
+                AccessKind::Atomic
+            } else {
+                match access.kind {
+                    MemoryAccessKind::Read => AccessKind::Load,
+                    MemoryAccessKind::Write => AccessKind::Store,
+                    MemoryAccessKind::Fetch => AccessKind::Load,
+                }
+            },
+            address: access.address,
+            width: access.width,
+        });
+        let sequential_pc = facts
+            .outcome
+            .pc
+            .wrapping_add(u32::from(facts.outcome.length));
+        let conditional = is_conditional_branch(instruction.op);
+        let loop_back_edge_residue = (!conditional
+            && !is_explicit_control_flow(instruction.op)
+            && facts.outcome.next_pc < sequential_pc)
+            .then_some((facts.outcome.next_pc & 3) as u8);
+        Ok(InstructionObservation {
+            core: hook_core(facts.core)?,
+            pc: facts.outcome.pc,
+            bytes,
+            instruction,
+            fetch_memory: self.memory_class(facts.outcome.pc),
+            access_memory: access.map(|shape| self.memory_class(shape.address)),
+            access,
+            branch_taken: conditional.then_some(facts.outcome.next_pc != sequential_pc),
+            load_destination: hook_load_destination(instruction),
+            read_registers: hook_read_registers(instruction),
+            loop_back_edge_residue,
+            block_cost: BlockCostPayload {
+                start_pc: facts.outcome.pc,
+                static_cycles: 0,
+                components: Vec::new(),
+            },
+        })
+    }
+
+    fn validate_hook_writes(&self, accesses: &[MemoryAccess]) -> Result<(), String> {
+        for access in accesses.iter().filter(|access| {
+            access.kind == MemoryAccessKind::Write && access.fault.is_none()
+        }) {
+            let mmu_write = (crate::bus::MMU_TABLE
+                ..crate::bus::MMU_TABLE + crate::bus::MMU_ENTRIES as u32 * 4)
+                .contains(&access.address);
+            if mmu_write && (access.width != 4 || access.address & 3 != 0) {
+                return Err("PartialMmuTableWrite: cost not adopted (Unexplained tier)".into());
+            }
+            if mmu_write && self.hook_cache_accessed {
+                return Err("MmuRemapWithLiveCache: cost not adopted (Unexplained tier)".into());
+            }
+            if let Some(base) = ConfigRegisters::word_base(access.address) {
+                if access.width != 4 || access.address != base {
+                    return Err("PartialChipConfigWrite: cost not adopted (Unexplained tier)".into());
+                }
+                if self.hook_cache_accessed {
+                    return Err("CacheReconfigurationAfterAccess: cost not adopted (Unexplained tier)".into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_hook_writes(&mut self, accesses: &[MemoryAccess]) {
+        let mut config_changed = false;
+        for access in accesses.iter().filter(|access| {
+            access.kind == MemoryAccessKind::Write && access.fault.is_none()
+        }) {
+            if (crate::bus::MMU_TABLE
+                ..crate::bus::MMU_TABLE + crate::bus::MMU_ENTRIES as u32 * 4)
+                .contains(&access.address)
+            {
+                self.mmu[((access.address - crate::bus::MMU_TABLE) >> 2) as usize] =
+                    access.value;
+            }
+            config_changed |= self.config_registers.apply_write(*access);
+        }
+        if config_changed {
+            self.update_config(self.config_registers.chip_config());
+        }
+    }
+}
+
+impl ConfigRegisters {
+    fn chip_config(&self) -> ChipConfig {
+        let cpu_mhz = match (
+            (self.system_sysclk_conf >> 10) & 3,
+            self.system_cpu_per_conf & 3,
+        ) {
+            (0, _) => 40,
+            (1, 0) => 80,
+            (1, 1) => 160,
+            (1, 2) => 240,
+            _ => 40,
+        };
+        let clock_mhz = |register: u32| {
+            if register & (1 << 31) != 0 {
+                160
+            } else {
+                160 / (((register >> 16) & 0xff) as u16 + 1)
+            }
+        };
+        let flash0 = clock_mhz(self.spi0_clock);
+        let flash1 = clock_mhz(self.spi1_clock);
+        ChipConfig {
+            cpu_mhz,
+            apb_mhz: cpu_mhz.min(80),
+            flash_mode: if self.spi0_user & self.spi1_user & (1 << 24) != 0 {
+                FlashMode::Qio
+            } else {
+                FlashMode::Other
+            },
+            flash_mhz: if flash0 == flash1 { flash0 } else { 0 },
+            psram_mode: if self.spi0_sram_cmd & (1 << 21) != 0 {
+                PsramMode::OctalDtr
+            } else {
+                PsramMode::Other
+            },
+            psram_mhz: clock_mhz(self.spi0_sram_clk),
+            icache_size_bytes: if self.extmem_icache_ctrl & (1 << 2) != 0 {
+                32 * 1024
+            } else {
+                16 * 1024
+            },
+            icache_ways: if self.extmem_icache_ctrl & (1 << 1) != 0 {
+                8
+            } else {
+                4
+            },
+            icache_line_bytes: if self.extmem_icache_ctrl & (1 << 3) != 0 {
+                32
+            } else {
+                16
+            },
+            dcache_size_bytes: if self.extmem_dcache_ctrl & (1 << 2) != 0 {
+                64 * 1024
+            } else {
+                32 * 1024
+            },
+            dcache_ways: 8,
+            dcache_line_bytes: match (self.extmem_dcache_ctrl >> 3) & 3 {
+                0 => 16,
+                1 => 32,
+                2 => 64,
+                _ => 0,
+            },
+        }
+    }
+
+    fn word_base(address: u32) -> Option<u32> {
+        let bases: [u32; 10] = [
+            0x600c_0010,
+            0x600c_0060,
+            0x6000_3008,
+            0x6000_3014,
+            0x6000_3040,
+            0x6000_3050,
+            0x6000_2008,
+            0x6000_2014,
+            0x600c_4000,
+            0x600c_4060,
+        ];
+        bases
+        .into_iter()
+        .find(|base| (*base..(*base).saturating_add(4)).contains(&address))
+    }
+
+    fn apply_write(&mut self, access: MemoryAccess) -> bool {
+        let target = match access.address {
+            0x600c_0010 => Some(&mut self.system_cpu_per_conf),
+            0x600c_0060 => Some(&mut self.system_sysclk_conf),
+            0x6000_3008 => Some(&mut self.spi0_user),
+            0x6000_3014 => Some(&mut self.spi0_clock),
+            0x6000_3040 => Some(&mut self.spi0_sram_cmd),
+            0x6000_3050 => Some(&mut self.spi0_sram_clk),
+            0x6000_2008 => Some(&mut self.spi1_user),
+            0x6000_2014 => Some(&mut self.spi1_clock),
+            0x600c_4000 => Some(&mut self.extmem_dcache_ctrl),
+            0x600c_4060 => Some(&mut self.extmem_icache_ctrl),
+            _ => None,
+        };
+        let Some(target) = target else { return false };
+        *target = access.value;
+        true
     }
 }
 
@@ -282,6 +560,184 @@ impl TimingSource for Esp32Backend {
         self.previous_load[core_index(observation.core)] = observation.load_destination;
         self.commit_cache_accesses(observation);
         Ok(())
+    }
+}
+
+impl CostModel for Esp32Backend {
+    fn lifecycle(&mut self, facts: &LifecycleFacts) -> Result<(), String> {
+        if facts.chip != "esp32s3" || facts.cores != 2 || facts.cpu_hz != 240_000_000 {
+            return Err(format!(
+                "UnsupportedChipConfig: {} with {} cores at {} Hz (Unexplained tier)",
+                facts.chip, facts.cores, facts.cpu_hz
+            ));
+        }
+        match facts.kind {
+            LifecycleKind::Attach | LifecycleKind::ChipReset => self.reset_hook_state(),
+            LifecycleKind::CoreReset(core) => {
+                let index = core_index(hook_core(core)?);
+                self.previous_load[index] = None;
+            }
+        }
+        Ok(())
+    }
+
+    fn cycles(&mut self, facts: &ExecutionFacts<'_>) -> Result<u32, String> {
+        match facts.outcome.kind {
+            StepKind::Idle => return Ok(1),
+            StepKind::TrapBefore(trap) | StepKind::TrapDuring(trap) => {
+                return Err(trap_refusal(trap));
+            }
+            StepKind::Retired => {}
+        }
+        if let Some(control) = facts.outcome.control {
+            let class = match control.kind {
+                ControlEventKind::Cache(operation) => format!("CacheControl::{operation:?}"),
+                ControlEventKind::Tlb(operation) => format!("TlbControl::{operation:?}"),
+            };
+            return Err(format!(
+                "{class}: cost not adopted at {:#010x} (Unexplained tier)",
+                control.address
+            ));
+        }
+        self.validate_hook_writes(facts.accesses)?;
+        let observation = self.observation_from_facts(facts)?;
+        if observation.fetch_memory == MemoryClass::MaskRom {
+            return Err("MaskRomInstructionFetch: cost not adopted (Unexplained tier)".into());
+        }
+        if let Some(class) = exception_return_class(observation.instruction.op) {
+            return Err(format!(
+                "ExceptionReturn::{class:?}: cost not adopted (Unexplained tier)"
+            ));
+        }
+        let plan = self.price(&observation).map_err(format_timing_refusal)?;
+        let cycles = u32::try_from(plan.cycles)
+            .map_err(|_| "CycleOverflow: event exceeds u32 cycles (Unexplained tier)".to_string())?;
+        self.commit(&observation, &plan.components, &plan.mutations)
+            .map_err(format_timing_refusal)?;
+        self.apply_hook_writes(facts.accesses);
+        Ok(cycles)
+    }
+}
+
+fn hook_core(core: usize) -> Result<CoreId, String> {
+    match core {
+        0 => Ok(CoreId::Core0),
+        1 => Ok(CoreId::Core1),
+        _ => Err(format!(
+            "UnsupportedCore({core}): ESP32-S3 has two cores (Unexplained tier)"
+        )),
+    }
+}
+
+fn trap_refusal(trap: emu_core::Trap) -> String {
+    match trap {
+        Trap::Exception(cause) => format!(
+            "ExceptionEntry::{:?}: cost not adopted (Unexplained tier)",
+            exception_entry_class(cause)
+        ),
+        Trap::Interrupt(irq) => {
+            format!("InterruptEntry({irq}): cost not adopted (Unexplained tier)")
+        }
+        Trap::Unimplemented(_, raw) => format!(
+            "UnimplementedInstruction({raw:#010x}): cost not adopted (Unexplained tier)"
+        ),
+        Trap::Simcall => "Simcall: terminal event is not priced (Unexplained tier)".into(),
+        Trap::Ebreak(_) => "EbreakEntry: cost not adopted (Unexplained tier)".into(),
+    }
+}
+
+fn format_timing_refusal(refusal: TimingRefusal) -> String {
+    format!(
+        "{:?}: {:?} ({:?} tier, configuration {:?})",
+        refusal.class, refusal.reason, refusal.tier_candidate, refusal.configuration
+    )
+}
+
+const fn is_conditional_branch(op: Op) -> bool {
+    use Op::*;
+    matches!(
+        op,
+        Beqz | Bnez
+            | Bltz
+            | Bgez
+            | BeqzN
+            | BnezN
+            | Beqi
+            | Bnei
+            | Blti
+            | Bgei
+            | Bltui
+            | Bgeui
+            | Bnone
+            | Beq
+            | Blt
+            | Bltu
+            | Ball
+            | Bbc
+            | Bbci
+            | Bany
+            | Bne
+            | Bge
+            | Bgeu
+            | Bnall
+            | Bbs
+            | Bbsi
+            | Bf
+            | Bt
+    )
+}
+
+const fn is_explicit_control_flow(op: Op) -> bool {
+    use Op::*;
+    is_conditional_branch(op)
+        || matches!(
+            op,
+            J | Jx
+                | Call0
+                | Call4
+                | Call8
+                | Call12
+                | Callx0
+                | Callx4
+                | Callx8
+                | Callx12
+                | Ret
+                | RetN
+                | Retw
+                | RetwN
+                | Rfe
+                | Rfue
+                | Rfde
+                | Rfwo
+                | Rfwu
+                | Rfi
+    )
+}
+
+fn hook_load_destination(instruction: xtensa_lx7::Insn) -> Option<u8> {
+    use Op::*;
+    if matches!(
+        instruction.op,
+        L8ui | L16ui | L16si | L32i | L32iN | L32r | L32ai | L32e | Lsi | Lsip | Lsx | Lsxp
+    ) {
+        Some(instruction.t)
+    } else {
+        None
+    }
+}
+
+fn hook_read_registers(instruction: xtensa_lx7::Insn) -> u16 {
+    use Op::*;
+    let bit = |register: u8| 1u16 << register;
+    match instruction.op {
+        L32r | Movi | MoviN | J | Call0 | Call4 | Call8 | Call12 => 0,
+        L8ui | L16ui | L16si | L32i | L32iN | L32ai | L32e | Lsi | Lsip => {
+            bit(instruction.s)
+        }
+        S8i | S16i | S32i | S32iN | S32ri | S32e | S32nb | Ssi | Ssip | S32c1i => {
+            bit(instruction.s) | bit(instruction.t)
+        }
+        _ => bit(instruction.s) | bit(instruction.t),
     }
 }
 
@@ -732,6 +1188,27 @@ mod tests {
     const RESET_PC: u32 = 0x4038_0000;
     const BEQZ_N_A6: [u8; 2] = [0x8c, 0x06];
 
+    fn retired_facts<'a>(
+        pc: u32,
+        bytes: [u8; 4],
+        length: u8,
+        next_pc: u32,
+        accesses: &'a [MemoryAccess],
+    ) -> ExecutionFacts<'a> {
+        ExecutionFacts {
+            core: 0,
+            outcome: emu_core::StepOutcome {
+                pc,
+                next_pc,
+                bytes: Some(bytes),
+                length,
+                kind: StepKind::Retired,
+                control: None,
+            },
+            accesses,
+        }
+    }
+
     struct FailingDeadlineBoard;
 
     impl crate::board::BoardModel for FailingDeadlineBoard {
@@ -798,6 +1275,103 @@ mod tests {
             .run_trace(&[])
             .expect("empty suffix preserves the completed ledger")
             .canonical_ledger
+    }
+
+    #[test]
+    fn machine_hook_prices_branch_outcomes() {
+        let fetch = [MemoryAccess {
+            kind: MemoryAccessKind::Fetch,
+            address: RESET_PC,
+            width: 4,
+            value: u32::from_le_bytes([BEQZ_N_A6[0], BEQZ_N_A6[1], 0, 0]),
+            fault: None,
+        }];
+        let mut taken = Esp32Backend::default();
+        let facts = retired_facts(
+            RESET_PC,
+            [BEQZ_N_A6[0], BEQZ_N_A6[1], 0, 0],
+            2,
+            RESET_PC + 8,
+            &fetch,
+        );
+        assert_eq!(CostModel::cycles(&mut taken, &facts), Ok(3));
+
+        let mut not_taken = Esp32Backend::default();
+        let facts = retired_facts(
+            RESET_PC,
+            [BEQZ_N_A6[0], BEQZ_N_A6[1], 0, 0],
+            2,
+            RESET_PC + 2,
+            &fetch,
+        );
+        assert_eq!(CostModel::cycles(&mut not_taken, &facts), Ok(1));
+    }
+
+    #[test]
+    fn machine_hook_tracks_mmu_writes_before_cache_pricing() {
+        let store_bytes = [0x29, 0x08, 0, 0];
+        assert_eq!(xtensa_lx7::decode(RESET_PC, store_bytes).op, Op::S32iN);
+        let store_accesses = [
+            MemoryAccess {
+                kind: MemoryAccessKind::Fetch,
+                address: RESET_PC,
+                width: 4,
+                value: u32::from_le_bytes(store_bytes),
+                fault: None,
+            },
+            MemoryAccess {
+                kind: MemoryAccessKind::Write,
+                address: crate::bus::MMU_TABLE,
+                width: 4,
+                value: 0,
+                fault: None,
+            },
+        ];
+        let mut model = Esp32Backend::default();
+        let store = retired_facts(RESET_PC, store_bytes, 2, RESET_PC + 2, &store_accesses);
+        assert_eq!(CostModel::cycles(&mut model, &store), Ok(1));
+
+        let fetch_bytes = [0xf0, 0x20, 0, 0];
+        let flash_accesses = [MemoryAccess {
+            kind: MemoryAccessKind::Fetch,
+            address: 0x4200_0000,
+            width: 4,
+            value: u32::from_le_bytes(fetch_bytes),
+            fault: None,
+        }];
+        let fetch = retired_facts(0x4200_0000, fetch_bytes, 3, 0x4200_0003, &flash_accesses);
+        assert_eq!(CostModel::cycles(&mut model, &fetch), Ok(204));
+
+        let remap_accesses = [
+            store_accesses[0],
+            MemoryAccess {
+                address: crate::bus::MMU_TABLE + 4,
+                ..store_accesses[1]
+            },
+        ];
+        let remap = retired_facts(RESET_PC, store_bytes, 2, RESET_PC + 2, &remap_accesses);
+        assert_eq!(
+            CostModel::cycles(&mut model, &remap),
+            Err("MmuRemapWithLiveCache: cost not adopted (Unexplained tier)".into())
+        );
+    }
+
+    #[test]
+    fn machine_hook_refuses_unpriced_mask_rom_fetch() {
+        let mut machine = crate::machine([0; 6]);
+        machine
+            .bus
+            .load_bytes(crate::bus::IROM_MASK_LOW, &[0xf0, 0x20, 0x00])
+            .expect("mask ROM test instruction maps");
+        machine.cores[0].pc = crate::bus::IROM_MASK_LOW;
+        machine
+            .set_cost_model(Box::new(Esp32Backend::default()))
+            .expect("pristine S3 machine accepts the timing model");
+        assert!(matches!(
+            machine.run(1),
+            esp_soc::Stop::CostModel { core: 0, pc: crate::bus::IROM_MASK_LOW, ref reason }
+                if reason == "MaskRomInstructionFetch: cost not adopted (Unexplained tier)"
+        ));
     }
 
     fn flash_observation(core: CoreId) -> InstructionObservation {
