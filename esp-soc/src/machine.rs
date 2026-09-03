@@ -7,7 +7,10 @@ use crate::soc::{CoreState, Soc, SocBus, Stop};
 use crate::web::WebServer;
 use crate::{elf, png};
 use emu_core::core::pc_bit;
-use emu_core::{Bus, Core, CostModel, Trap};
+use emu_core::{
+    Bus, Core, CostModel, ExecutionFacts, Fault, LifecycleFacts, LifecycleKind,
+    MemoryAccess, MemoryAccessKind, StepKind, Trap,
+};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug)]
@@ -78,9 +81,78 @@ pub struct Machine<S: Soc> {
     pub rt: Realtime,
     debug_rom: bool,
     cost: Option<Box<dyn CostModel>>,
+    model_ready_at: Vec<u64>,
+    model_stop: Option<Stop>,
+    model_attach_error: Option<&'static str>,
 }
 
 const QUANTUM: u64 = 64;
+
+/// Records only accesses made synchronously by `Core::step`. Generated direct-memory access is
+/// disabled so every load and store passes through one of the typed methods below.
+struct RecordingBus<'a, B> { bus: &'a mut B, accesses: Vec<MemoryAccess> }
+
+impl<'a, B> RecordingBus<'a, B> {
+    fn new(bus: &'a mut B) -> Self { Self { bus, accesses: Vec::new() } }
+
+    fn finish(mut self, bytes: Option<[u8; 4]>, pc: u32) -> Vec<MemoryAccess> {
+        if let Some(bytes) = bytes {
+            self.accesses.retain(|access| access.kind != MemoryAccessKind::Fetch);
+            self.accesses.insert(0, MemoryAccess {
+                kind: MemoryAccessKind::Fetch, address: pc, width: 4,
+                value: u32::from_le_bytes(bytes), fault: None,
+            });
+        }
+        self.accesses
+    }
+}
+
+impl<B: Bus> Bus for RecordingBus<'_, B> {
+    fn read8(&mut self, address: u32) -> Result<u8, Fault> {
+        let result = self.bus.read8(address);
+        self.accesses.push(MemoryAccess { kind: MemoryAccessKind::Read, address, width: 1, value: result.unwrap_or(0) as u32, fault: result.err() });
+        result
+    }
+    fn read16(&mut self, address: u32) -> Result<u16, Fault> {
+        let result = self.bus.read16(address);
+        self.accesses.push(MemoryAccess { kind: MemoryAccessKind::Read, address, width: 2, value: result.unwrap_or(0) as u32, fault: result.err() });
+        result
+    }
+    fn read32(&mut self, address: u32) -> Result<u32, Fault> {
+        let result = self.bus.read32(address);
+        self.accesses.push(MemoryAccess { kind: MemoryAccessKind::Read, address, width: 4, value: result.unwrap_or(0), fault: result.err() });
+        result
+    }
+    fn write8(&mut self, address: u32, value: u8) -> Result<(), Fault> {
+        let result = self.bus.write8(address, value);
+        self.accesses.push(MemoryAccess { kind: MemoryAccessKind::Write, address, width: 1, value: value as u32, fault: result.err() });
+        result
+    }
+    fn write16(&mut self, address: u32, value: u16) -> Result<(), Fault> {
+        let result = self.bus.write16(address, value);
+        self.accesses.push(MemoryAccess { kind: MemoryAccessKind::Write, address, width: 2, value: value as u32, fault: result.err() });
+        result
+    }
+    fn write32(&mut self, address: u32, value: u32) -> Result<(), Fault> {
+        let result = self.bus.write32(address, value);
+        self.accesses.push(MemoryAccess { kind: MemoryAccessKind::Write, address, width: 4, value, fault: result.err() });
+        result
+    }
+    fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> {
+        let result = self.bus.fetch(pc);
+        self.accesses.push(MemoryAccess {
+            kind: MemoryAccessKind::Fetch, address: pc, width: 4,
+            value: result.map(u32::from_le_bytes).unwrap_or(0), fault: result.err(),
+        });
+        result
+    }
+    fn page_versions(&self) -> &[u32] { self.bus.page_versions() }
+    fn code_page(&mut self, pc: u32) -> u32 { self.bus.code_page(pc) }
+    fn note_pc(&mut self, pc: u32) { self.bus.note_pc(pc); }
+    fn block_break(&self) -> bool { self.bus.block_break() }
+    fn fast_mem(&mut self) -> Option<emu_core::bus::FastMem> { None }
+    fn tick(&mut self, cycles: u32) -> u32 { self.bus.tick(cycles) }
+}
 
 impl<S: Soc> Machine<S> {
     pub fn new(mac: [u8; 6], bus: S::Bus) -> Self {
@@ -95,7 +167,7 @@ impl<S: Soc> Machine<S> {
             console: Console { all: Vec::new(), usb: Vec::new(), uart0: Vec::new(), mask: 3, prefix: false, capture: false },
             web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, px_pending: 0, px_sent: 0, cam_pushed: u64::MAX, cam_sent: false },
             rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: false, log_last: None, log_insns: (0, 0) },
-            debug_rom: false, cost: None,
+            debug_rom: false, cost: None, model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
         }
     }
 
@@ -111,8 +183,18 @@ impl<S: Soc> Machine<S> {
         self.bus.misc().mmio_log = if self.probes.contains(Wants::MMIO) { Some(Vec::new()) } else { None };
         self.bus.observe_gpio(self.probes.contains(Wants::GPIO));
     }
-    /// Charge the cores' cycle counters per a silicon-calibrated model instead of 1 cycle per instruction.
-    pub fn set_cost_model(&mut self, m: Box<dyn CostModel>) { self.cost = Some(m); }
+    /// Attach a timing model before the machine has executed or reset.
+    pub fn set_cost_model(&mut self, mut model: Box<dyn CostModel>) -> Result<(), String> {
+        if self.cost.is_some() { return Err("a cost model is already attached".into()); }
+        if let Some(reason) = self.model_attach_error { return Err(reason.into()); }
+        if self.bus.cycles() != 0 || self.reboots != 0 || self.cores.iter().any(|core| core.insn_count() != 0) {
+            return Err("cost model attachment requires a pristine machine with no execution or reset".into());
+        }
+        model.lifecycle(&LifecycleFacts { kind: LifecycleKind::Attach, chip: S::NAME, cores: S::CORES, cpu_hz: S::CPU_HZ })?;
+        self.model_ready_at.fill(0);
+        self.cost = Some(model);
+        Ok(())
+    }
     pub fn has_observer(&self, name: &str) -> bool { self.observers.iter().any(|o| o.name() == name) }
     /// Every observer's end-of-run report, in the order they were added (files are written now).
     pub fn reports(&mut self) -> String {
@@ -180,6 +262,8 @@ impl<S: Soc> Machine<S> {
 
     /// Boot the application image at flash `app_off` the way the 2nd-stage bootloader would.
     pub fn boot_app(&mut self, app_off: usize) -> Result<u32, String> {
+        if self.cost.is_some() { return Err("synthetic app boot is unsupported with a cost model; boot from the reset vector".into()); }
+        self.model_attach_error = Some("cost model attachment after synthetic app boot is unsupported without a configuration snapshot");
         let entry = self.bus.boot_app(app_off)?;
         S::boot_core(&mut self.cores[0], entry);
         Ok(entry)
@@ -198,6 +282,13 @@ impl<S: Soc> Machine<S> {
         let cause = self.bus.reboot(self.mac);
         for (i, c) in self.cores.iter_mut().enumerate() { S::reset_core(c, i); if i > 0 { self.core_held[i] = true; } }
         self.reboots += 1;
+        self.model_ready_at.fill(self.bus.cycles());
+        if let Some(model) = &mut self.cost {
+            let facts = LifecycleFacts { kind: LifecycleKind::ChipReset, chip: S::NAME, cores: S::CORES, cpu_hz: S::CPU_HZ };
+            if let Err(reason) = model.lifecycle(&facts) {
+                self.model_stop = Some(Stop::CostModelLifecycle { kind: facts.kind, reason });
+            }
+        }
         cause
     }
 
@@ -275,7 +366,6 @@ impl<S: Soc> Machine<S> {
             if let Some(&ret) = self.stubs.get(&pc) { cpu.return_from_stub(ret); self.stub_hits += 1; return (1, None); }
         }
         let (used, trap) = cpu.run(&mut self.bus, budget);
-        if let Some(m) = &self.cost { let c = m.cycles(pc, used); if c > used { self.cores[core].advance_cycles(c - used); } }
         if self.probes.contains(Wants::BLOCK | Wants::TRAP) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
             let cpu = &self.cores[core];
@@ -319,7 +409,6 @@ impl<S: Soc> Machine<S> {
         self.bus.note_pc(pc);
         let outcome = cpu.step(&mut self.bus);
         let r = outcome.result();
-        if let Some(m) = &self.cost { let c = m.cycles(pc, 1); if c > 1 { cpu.advance_cycles(c - 1); } }
         if let (true, Err(t)) = (self.probes.contains(Wants::TRAP), &r) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
             let cpu = &self.cores[core];
@@ -343,10 +432,13 @@ impl<S: Soc> Machine<S> {
         None
     }
 
-    /// Run until something stops us (at most `max_insns` scheduling steps). Cores interleave in
-    /// quanta of 64 instructions; a core sitting in `waiti`/`wfi` with nothing pending costs
-    /// nothing, and when every core is idle time advances in `IDLE_CHUNK` steps.
+    /// Run until something stops us, for at most `max_insns` scheduling steps. The no-model path
+    /// uses 64-instruction quanta; the modeled path schedules one priced event at a time.
     pub fn run(&mut self, max_insns: u64) -> Stop {
+        if self.cost.is_some() { self.run_modeled(max_insns) } else { self.run_unmodeled(max_insns) }
+    }
+
+    fn run_unmodeled(&mut self, max_insns: u64) -> Stop {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
         for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); c.flush_caches(); }
@@ -405,6 +497,210 @@ impl<S: Soc> Machine<S> {
             if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
             if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Stop::Halted; }
             if n & 0xffff < QUANTUM { self.drain_console(); }
+        }
+    }
+
+    fn run_modeled(&mut self, max_insns: u64) -> Stop {
+        if let Some(stop) = &self.model_stop { return stop.clone(); }
+        self.stub_bloom = self.stubs.keys().fold(0, |mask, &pc| mask | pc_bit(pc));
+        self.probe_bloom = self.fn_probes.keys().fold(0, |mask, &pc| mask | pc_bit(pc));
+        for core in &mut self.cores { core.set_boundaries(self.stub_bloom | self.probe_bloom); core.flush_caches(); }
+        for observer in &mut self.observers { observer.on_modeled_run(); }
+
+        let trace = self.has_observer("trace");
+        let force_idle = self.probes.contains(Wants::NO_IDLE_SKIP);
+        let mut on = [false; 4];
+        let mut events = 0u64;
+        loop {
+            if let Some(stop) = self.refresh_modeled_core_states(&mut on, trace) {
+                self.model_stop = Some(stop.clone()); self.drain_console(); return stop;
+            }
+            if events >= max_insns { self.drain_console(); return Stop::MaxInsns; }
+            if let Err(stop) = self.settle_modeled_time(&mut on, trace, force_idle) {
+                if matches!(stop, Stop::CostModelLifecycle { .. }) { self.model_stop = Some(stop.clone()); }
+                self.drain_console(); return stop;
+            }
+
+            let now = self.bus.cycles();
+            let Some(core) = (0..S::CORES)
+                .filter(|&i| on[i] && (force_idle || !self.cores[i].waiting() || self.cores[i].irq_pending()))
+                .filter(|&i| self.model_ready_at[i] <= now)
+                .min_by_key(|&i| (self.model_ready_at[i], i))
+            else { self.drain_console(); return Stop::Halted };
+
+            let start = now;
+            let pc = self.cores[core].pc();
+            let cost = match self.step_core_modeled(core) {
+                Ok(cost) => cost,
+                Err(stop) => {
+                    if matches!(stop, Stop::CostModel { .. } | Stop::CostModelLifecycle { .. }) { self.model_stop = Some(stop.clone()); }
+                    self.drain_console(); return stop;
+                }
+            };
+            let Some(ready) = start.checked_add(cost as u64) else {
+                let stop = Stop::CostModel { core, pc, reason: "cost model cycle frontier overflow".into() };
+                self.model_stop = Some(stop.clone());
+                self.drain_console();
+                return stop;
+            };
+            if cost > 1 { self.cores[core].advance_cycles(cost - 1); }
+            self.model_ready_at[core] = ready;
+            events += 1;
+
+            if let Err(stop) = self.settle_modeled_time(&mut on, trace, force_idle) {
+                if matches!(stop, Stop::CostModelLifecycle { .. }) { self.model_stop = Some(stop.clone()); }
+                self.drain_console(); return stop;
+            }
+            if events & 0xffff == 0 { self.drain_console(); }
+        }
+    }
+
+    fn refresh_modeled_core_states(&mut self, on: &mut [bool; 4], trace: bool) -> Option<Stop> {
+        for (i, state) in on.iter_mut().enumerate().take(S::CORES) {
+            *state = match S::core_state(&self.bus, i) {
+                CoreState::Reset => { self.core_held[i] = true; false }
+                CoreState::Held => false,
+                CoreState::Running => {
+                    if self.core_held[i] {
+                        self.core_held[i] = false;
+                        S::reset_core(&mut self.cores[i], i);
+                        self.model_ready_at[i] = self.bus.cycles();
+                        if trace { eprintln!("          ** core{} released from reset", i); }
+                        let facts = LifecycleFacts { kind: LifecycleKind::CoreReset(i), chip: S::NAME, cores: S::CORES, cpu_hz: S::CPU_HZ };
+                        if let Some(model) = &mut self.cost {
+                            if let Err(reason) = model.lifecycle(&facts) { return Some(Stop::CostModelLifecycle { kind: facts.kind, reason }); }
+                        }
+                    }
+                    true
+                }
+            };
+        }
+        None
+    }
+
+    /// Advance the shared device horizon until at least one active core can start an event.
+    fn settle_modeled_time(&mut self, on: &mut [bool; 4], trace: bool, force_idle: bool) -> Result<(), Stop> {
+        loop {
+            if let Some(stop) = self.refresh_modeled_core_states(on, trace) { return Err(stop); }
+            self.after_round_rest();
+            self.refresh_irq();
+            if self.bus.sw_reset() { return Err(Stop::SwReset); }
+            let now = self.bus.cycles();
+            if now >= self.max_cycles { return Err(Stop::Halted); }
+
+            let next_core = (0..S::CORES)
+                .filter(|&i| on[i] && (force_idle || !self.cores[i].waiting() || self.cores[i].irq_pending()))
+                .map(|i| self.model_ready_at[i].max(now))
+                .min();
+            if next_core == Some(now) { return Ok(()); }
+
+            let mut target = next_core;
+            if let Some(delta) = self.bus.next_deadline() {
+                let deadline = now.saturating_add(delta.max(1));
+                target = Some(target.map_or(deadline, |current| current.min(deadline)));
+            }
+            if let Some(&(deadline, _)) = self.script.events.get(self.script.pos) {
+                let deadline = deadline.max(now.saturating_add(1));
+                target = Some(target.map_or(deadline, |current| current.min(deadline)));
+            }
+            for (i, &enabled) in on.iter().enumerate().take(S::CORES) {
+                if enabled && self.cores[i].waiting() && !self.cores[i].irq_pending() {
+                    if let Some(delta) = self.cores[i].cycles_until_wake() {
+                        let deadline = self.model_ready_at[i].max(now).saturating_add(delta.max(1));
+                        target = Some(target.map_or(deadline, |current| current.min(deadline)));
+                    }
+                }
+            }
+            let Some(target) = target.map(|target| target.min(self.max_cycles)) else { return Err(Stop::Halted); };
+            if target <= now { return Err(Stop::Halted); }
+            self.advance_modeled_time(target, on);
+        }
+    }
+
+    fn advance_modeled_time(&mut self, target: u64, on: &[bool; 4]) {
+        for (i, &enabled) in on.iter().enumerate().take(S::CORES) {
+            if enabled && self.cores[i].waiting() && !self.cores[i].irq_pending() && self.model_ready_at[i] < target {
+                let mut remaining = target - self.model_ready_at[i];
+                while remaining != 0 {
+                    let step = remaining.min(u32::MAX as u64) as u32;
+                    self.cores[i].advance_cycles(step);
+                    remaining -= step as u64;
+                }
+                self.model_ready_at[i] = target;
+            }
+        }
+        while self.bus.cycles() < target {
+            let step = (target - self.bus.cycles()).min(u32::MAX as u64);
+            self.after_round(step);
+        }
+    }
+
+    fn step_core_modeled(&mut self, core: usize) -> Result<u32, Stop> {
+        let pc = self.cores[core].pc();
+        if self.probe_bloom & pc_bit(pc) != 0 && !self.cores[core].waiting() {
+            if let Some(name) = self.fn_probes.get(&pc) {
+                let cpu = &self.cores[core];
+                eprintln!("[fn] i={} t={:.4}s c{} {}({}) ret={:#x}", cpu.insn_count(), self.bus.cycles() as f64 / S::CPU_HZ as f64, core, name, cpu.probe_args(), cpu.return_address());
+            }
+        }
+        if self.stub_bloom & pc_bit(pc) != 0 && !self.cores[core].waiting() && self.stubs.contains_key(&pc) {
+            return Err(Stop::CostModel { core, pc, reason: "function stubs are unsupported by modeled execution".into() });
+        }
+        {
+            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            for observer in &mut self.observers {
+                if observer.wants().contains(Wants::INSN) {
+                    if let Some(stop) = observer.on_insn(&cx, core, &self.cores[core], &mut self.bus, pc) { return Err(stop); }
+                }
+            }
+        }
+
+        self.bus.note_pc(pc);
+        let (outcome, accesses) = {
+            let mut bus = RecordingBus::new(&mut self.bus);
+            let mut outcome = self.cores[core].step(&mut bus);
+            // A control operation is an occurrence, not a decoded intention. Current cores can
+            // report it before a privilege or execution failure, so only retirement commits it.
+            if !matches!(outcome.kind, StepKind::Retired) { outcome.control = None; }
+            let accesses = bus.finish(outcome.bytes, outcome.pc);
+            (outcome, accesses)
+        };
+        if let Some(trap) = outcome.trap() {
+            if self.probes.contains(Wants::TRAP) {
+                let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+                for observer in &mut self.observers {
+                    if observer.wants().contains(Wants::TRAP) { observer.on_trap(&cx, core, &self.cores[core], pc, &trap); }
+                }
+            }
+            match trap {
+                Trap::Exception(_) => { self.exceptions += 1; }
+                Trap::Interrupt(irq) => { self.interrupts += 1; self.irq_hist[core][(irq & 31) as usize] += 1; }
+                Trap::Unimplemented(at, raw) if self.dbg.stop_on_unimplemented => return Err(Stop::Unimplemented(at, raw)),
+                Trap::Simcall => return Err(Stop::Simcall(pc)),
+                Trap::Ebreak(at) if !self.cores[core].has_trap_handler() => { self.exceptions += 1; return Err(Stop::Ebreak(at)); }
+                Trap::Ebreak(_) => { self.exceptions += 1; }
+                Trap::Unimplemented(_, _) => {}
+            }
+        }
+        self.refresh_irq();
+        {
+            let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+            for observer in &mut self.observers {
+                if observer.wants().contains(Wants::INSN) {
+                    if let Some(stop) = observer.after_insn(&cx, core, &self.cores[core], &mut self.bus) { return Err(stop); }
+                }
+            }
+        }
+        if self.probes.0 != 0 { self.deliver_events(); }
+        if self.bus.sw_reset() { return Err(Stop::SwReset); }
+        if self.exceptions >= self.dbg.stop_after_exceptions { return Err(Stop::Exceptions(self.exceptions)); }
+
+        let facts = ExecutionFacts { core, outcome, accesses: &accesses };
+        let result = self.cost.as_mut().expect("modeled path requires an attached model").cycles(&facts);
+        match result {
+            Ok(0) => Err(Stop::CostModel { core, pc, reason: "cost model returned zero cycles".into() }),
+            Ok(cycles) => Ok(cycles),
+            Err(reason) => Err(Stop::CostModel { core, pc, reason }),
         }
     }
 

@@ -5,14 +5,16 @@ use crate::observe::{Ctx, Observer, Wants};
 use crate::soc::{Soc, Stop};
 use std::collections::HashMap;
 
-pub struct BlockProfile { pub by_pc: HashMap<u32, u64>, pub top: usize }
-impl BlockProfile { pub fn new(top: usize) -> Self { BlockProfile { by_pc: HashMap::new(), top } } }
+pub struct BlockProfile { pub by_pc: HashMap<u32, u64>, pub top: usize, modeled: bool }
+impl BlockProfile { pub fn new(top: usize) -> Self { BlockProfile { by_pc: HashMap::new(), top, modeled: false } } }
 impl<S: Soc> Observer<S> for BlockProfile {
     fn name(&self) -> &'static str { "profile-blocks" }
     fn wants(&self) -> Wants { Wants::BLOCK }
+    fn on_modeled_run(&mut self) { self.modeled = true; }
     fn on_block(&mut self, _cx: &Ctx, _core: usize, pc: u32, insns: u32) { *self.by_pc.entry(pc).or_insert(0) += insns as u64; }
     fn on_insn(&mut self, _cx: &Ctx, _core: usize, _cpu: &S::Core, _bus: &mut S::Bus, pc: u32) -> Option<Stop> { *self.by_pc.entry(pc).or_insert(0) += 1; None }
     fn report(&mut self, cx: &Ctx) -> String {
+        if self.modeled { return "[profile-blocks] unavailable during modeled single-step execution\n".into(); }
         // fold block starts into their symbols; a block never crosses a symbol in practice
         let mut by_sym: HashMap<String, u64> = HashMap::new();
         let total: u64 = self.by_pc.values().sum();
