@@ -41,6 +41,7 @@ impl I2c {
               log: false, transactions: 0 }
     }
     pub fn attach(&mut self, addr: u8, dev: Box<dyn I2cDevice>) { self.devices.push((addr, dev)); }
+    pub fn has_device(&self, addr: u8) -> bool { self.devices.iter().any(|(attached, _)| *attached == addr) }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
 
     pub fn read(&mut self, off: u32) -> u32 {

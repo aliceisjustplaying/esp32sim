@@ -12,11 +12,6 @@ pub struct BoardEdge {
     pub level: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BoardDeadlineError {
-    TimeReversed { current: VirtualCycle, requested: VirtualCycle },
-}
-
 /// What a board does with the SoC's pin-level activity.
 pub trait BoardModel {
     fn name(&self) -> &'static str;
@@ -58,10 +53,12 @@ pub trait BoardModel {
     fn leds(&self) -> Option<(&[[u8; 3]], u64)> { None }
     /// Touch input from the UI (panel coordinates).
     fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
+    /// Current board-driven GPIO input levels, used to reconnect a persistent board after reset.
+    fn input_levels(&self) -> Vec<(u8, bool)> { Vec::new() }
     /// Earliest autonomous transition strictly after the board's current cycle.
     fn next_deadline(&self) -> Option<VirtualCycle> { None }
     /// Advance monotonically through every board transition due by `cycle`.
-    fn advance_to(&mut self, _cycle: VirtualCycle) -> Result<(), BoardDeadlineError> { Ok(()) }
+    fn advance_to(&mut self, _cycle: VirtualCycle) {}
     /// Timestamped GPIO input edges emitted by the last advance.
     fn take_edges(&mut self) -> Vec<BoardEdge> { Vec::new() }
     /// A pin by the name scripts and the UI use (`btn1`, `sw`, ...).

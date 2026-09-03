@@ -433,7 +433,7 @@ impl<S: Soc> Machine<S> {
                 ScriptAction::Gpio(pin, level) => { self.bus.gpio_set_input(pin, level); *self.bus.irq_dirty() = true; }
                 ScriptAction::Serial(text) => self.bus.serial_input(text.as_bytes()),
                 ScriptAction::Stop => { self.max_cycles = 0; }
-                ScriptAction::Touch(x, y, d) => { self.bus.board().touch(x, y, d); }
+                ScriptAction::Touch(x, y, d) => { self.bus.touch_input(x, y, d); }
                 ScriptAction::Poke(a, v) => { let _ = self.bus.write32(a, v); }
             }
         }
@@ -554,7 +554,7 @@ impl<S: Soc> Machine<S> {
                 }
                 "serial" => { let line = json_str(&m, "line").unwrap_or_default(); self.bus.serial_input(format!("{}\n", line).as_bytes()); }
                 "touch" => { let x: u16 = json_str(&m, "x").and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = json_str(&m, "y").and_then(|v| v.parse().ok()).unwrap_or(0);
-                             let down = json_str(&m, "down").unwrap_or_default() == "1"; self.bus.board().touch(x, y, down); }
+                             let down = json_str(&m, "down").unwrap_or_default() == "1"; self.bus.touch_input(x, y, down); }
                 _ => {}
             }
         }

@@ -74,6 +74,8 @@ pub trait SocBus: Bus {
     /// Bytes from the host into the USB-Serial/JTAG console.
     fn serial_input(&mut self, data: &[u8]);
     fn gpio_set_input(&mut self, pin: u8, level: bool);
+    /// Deliver host touch at the bus's current time horizon.
+    fn touch_input(&mut self, x: u16, y: u16, down: bool) { self.board().touch(x, y, down); }
     fn gpio_input(&self) -> u64;
     /// Start/stop recording GPIO edges (outputs as they reach the board, inputs as they are set).
     fn observe_gpio(&mut self, on: bool);
