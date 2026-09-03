@@ -384,9 +384,8 @@ mode (needs GOAL milestone 2).
 
 ## Proposed next steps
 
-1. Proposal: add the straight-line mask-ROM fetch cell to the corrected H1
-   image, extend the ELF verifier, and require the combined image to pass its
-   emulator dry-run before the next hardware capture.
+1. Proposal: capture the verified seven-cell H1 image during the next
+   maintainer-started hardware session.
 2. Proposal: restore uncosted fast-mode completion for small SPI2 DMA panel-init
    transfers while measured mode continues to refuse unpriced sizes by name.
    Then rerun the gate harness and the five-run native-speed baseline.
