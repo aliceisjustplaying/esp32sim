@@ -114,7 +114,16 @@ fn must_start_block(i: &Insn) -> bool {
 /// Decode a block starting at `pc0` and register it. Only the first fetch can fault: a later
 /// unmapped instruction simply ends the block and faults when it is reached as a block start.
 fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16), Trap> {
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "macos", target_os = "linux")
+    ))]
     let code_short = cpu.blocks.jit_active() && cpu.blocks.code.as_ref().unwrap().remaining() < crate::jit::MAX_BLOCK_CODE;
+    #[cfg(not(all(
+        target_arch = "aarch64",
+        any(target_os = "macos", target_os = "linux")
+    )))]
+    let code_short = false;
     if cpu.blocks.arena.len() + MAX_LEN > ARENA_MAX || code_short { cpu.blocks.flush(); }
     let start = cpu.blocks.arena.len() as u32;
     let (mut pc, mut n, mut last) = (pc0, 0u16, pc0);
