@@ -11,6 +11,6 @@ pub mod jit_a64;
 pub use bus::{Bus, Fault, FlatRam};
 pub use clock::{ClockDomain, ClockTree, Dividers};
 pub use core::{
-    CacheOperation, ControlEvent, ControlEventKind, Core, CostModel, MemoryAccess,
-    MemoryAccessKind, StepKind, StepOutcome, TlbOperation, Trap,
+    CacheOperation, ControlEvent, ControlEventKind, Core, CostModel, StepKind, StepOutcome,
+    TlbOperation, Trap,
 };

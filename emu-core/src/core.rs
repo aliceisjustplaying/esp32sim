@@ -2,7 +2,6 @@
 //! counts traps and drives tracing through this trait; everything architectural (register
 //! windows, CSRs, vectors) stays inside the core crate.
 use crate::bus::Bus;
-use crate::Fault;
 
 /// Why `step`/`run` returned early. Architectural traps have already been taken (the pc points
 /// at the handler); the emulator-level ones are reported so the machine can stop.
@@ -19,21 +18,6 @@ pub enum Trap {
     /// `ebreak` — a panic, an assert, or a debugger breakpoint in a RISC-V guest
     Ebreak(u32),
 }
-
-/// One CPU-originated memory access. A machine can collect these by wrapping the bus while it
-/// single-steps a core; device and DMA traffic stays outside that wrapper.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MemoryAccess {
-    pub kind: MemoryAccessKind,
-    pub address: u32,
-    pub width: u8,
-    /// A fetched/read value, or the value attempted by a write.
-    pub value: u32,
-    pub fault: Option<Fault>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MemoryAccessKind { Fetch, Read, Write }
 
 /// Cache operations whose effective address or occurrence cannot be reconstructed from bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,9 +59,9 @@ pub enum StepKind {
     TrapDuring(Trap),
 }
 
-/// Allocation-free facts produced by one slow-path core step. CPU memory accesses are collected
-/// in program order by a bus wrapper; `bytes` supplies the conceptual fetch even on an LX7 decode
-/// cache hit.
+/// Allocation-free facts produced by one slow-path core step. `bytes` supplies the conceptual
+/// fetch even on an LX7 decode-cache hit. A machine can separately wrap the bus to collect
+/// CPU-originated memory accesses without including device or DMA traffic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StepOutcome {
     pub pc: u32,
