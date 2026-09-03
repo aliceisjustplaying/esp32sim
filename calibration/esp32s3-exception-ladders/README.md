@@ -13,11 +13,12 @@ Build, verify, and dry-run:
 
 ```sh
 eim run "idf.py -C calibration/esp32s3-exception-ladders -B out/exception-ladders build" v6.1
-eim run "python3 calibration/esp32s3-exception-ladders/verify_elf.py out/exception-ladders/esp32s3_exception_ladders_calibration.elf out/exception-ladders/elf-verification.json --rom-elf \$ESP_ROM_ELF_DIR/esp32s3_rev0_rom.elf" v6.1
+eim run "python3 calibration/esp32s3-exception-ladders/verify_elf.py out/exception-ladders/esp32s3_exception_ladders_calibration.elf out/exception-ladders/elf-verification.json --objdump \$(command -v xtensa-esp32s3-elf-objdump)" v6.1
 calibration/tools/dry-run.sh calibration/esp32s3-exception-ladders out/exception-ladders
 ```
 
-The verifier pins the ROM ELF SHA-256, proves that the application alias is an
+The verifier resolves `esp32s3_rev0_rom.elf` through the IDF 6.1
+`ESP_ROM_ELF_DIR`, pins its SHA-256, proves that the application alias is an
 absolute mask-ROM address, and verifies the target's `.text` placement and
 both instruction encodings. It does not derive or adopt a timing price.
 

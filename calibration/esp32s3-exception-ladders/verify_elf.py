@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -22,6 +24,13 @@ CELL_IDS = (
 )
 ROM_SHA256 = "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd"
 ROM_TARGET = 0x400559A4
+CACHE_COUNTER_CTRL = "600c40c4"
+EXPECTED_CONFIGURATION = {
+    "protocolVersion": 2,
+    "harnessVersion": "1.2.0",
+    "chipModel": "ESP32-S3",
+    "chipRevision": 2,
+}
 HEADER = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
 INSN = re.compile(r"^([0-9a-f]+):\s+([0-9a-f]+)\s+([a-zA-Z0-9_.]+)(?:\s+(.*))?$")
 
@@ -32,21 +41,37 @@ class VerificationError(ValueError):
 
 def verify_manifest(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise VerificationError("manifest must be an object")
+    expected_top_level = {*EXPECTED_CONFIGURATION, "cells"}
+    if set(payload) != expected_top_level:
+        raise VerificationError("manifest does not have the exact H1 configuration contract")
+    for field, expected in EXPECTED_CONFIGURATION.items():
+        if payload.get(field) != expected:
+            raise VerificationError(f"manifest {field} must be {expected!r}")
     cells = payload.get("cells")
-    if not isinstance(cells, list):
+    if not isinstance(cells, list) or not all(isinstance(cell, dict) for cell in cells):
         raise VerificationError("manifest cells must be an array")
     ids = tuple(cell.get("id") for cell in cells)
     if ids != CELL_IDS:
         raise VerificationError("manifest must contain the exact ordered H1 cells")
     if any(cell.get("samples") != 100 for cell in cells):
         raise VerificationError("every H1 cell must request 100 samples")
+    if any(cell.get("variants") != ["normal"] for cell in cells):
+        raise VerificationError("every H1 cell must have exactly the normal variant")
+    expected_families = ["exception"] * 6 + ["instruction-fetch"]
+    if [cell.get("family") for cell in cells] != expected_families:
+        raise VerificationError("H1 cell families do not match the exact contract")
+    basic_keys = {"id", "family", "samples", "variants"}
+    for index, cell in enumerate(cells):
+        expected_keys = basic_keys | ({"knownTerms"} if index in (3, 6) else set())
+        if set(cell) != expected_keys:
+            raise VerificationError(f"manifest cell {CELL_IDS[index]} has unexpected fields")
     syscall = cells[3]
     expected_terms = ["rsr.epc1", "addi", "wsr.epc1", "rsync", "rfe"]
     if syscall.get("knownTerms") != expected_terms:
         raise VerificationError("syscall cell must record the five known handler terms")
     rom_terms = ["entry", "retw.n"]
-    if cells[6].get("family") != "instruction-fetch":
-        raise VerificationError("mask-ROM cell must be an instruction-fetch cell")
     if cells[6].get("knownTerms") != rom_terms:
         raise VerificationError("mask-ROM cell must record its two straight-line terms")
     return {
@@ -54,6 +79,7 @@ def verify_manifest(path: Path) -> dict[str, object]:
         "samplesPerCell": 100,
         "knownTerms": expected_terms,
         "maskRomKnownTerms": rom_terms,
+        "configuration": dict(EXPECTED_CONFIGURATION),
     }
 
 
@@ -196,25 +222,63 @@ def verify_disassembly(disassembly: str) -> dict[str, object]:
         ),
         None,
     ) or _require(functions, "measure_exception_sample")
-    clear = next(
-        (
-            index
-            for index, item in enumerate(measure)
-            if "clear_cache_counters" in item[3] or item[2].startswith("s32i")
-        ),
-        None,
-    )
-    dispatch = next(
-        (index for index, item in enumerate(measure) if item[2].startswith("callx")),
-        None,
-    )
-    if clear is None or dispatch is None or clear >= dispatch:
-        raise VerificationError("measurement lacks cache-counter clear before dispatch")
-    return {"cells": cells}
+    dispatches = [
+        index for index, item in enumerate(measure) if item[2] == "callx8"
+    ]
+    if len(dispatches) != 2:
+        raise VerificationError("measurement must have one warmup and one measured dispatch")
+    warmup, dispatch = dispatches
+    control_loads = [
+        index
+        for index, item in enumerate(measure[warmup + 1 : dispatch], warmup + 1)
+        if item[2] == "l32r" and CACHE_COUNTER_CTRL in item[3].lower()
+    ]
+    if len(control_loads) != 1:
+        raise VerificationError(
+            "measurement lacks the exact cache-counter control load before dispatch"
+        )
+    control_load = control_loads[0]
+    control_register = measure[control_load][3].split(",", 1)[0].strip()
+    counter_clear_stores = []
+    for index, item in enumerate(
+        measure[control_load + 1 : dispatch], control_load + 1
+    ):
+        if not item[2].startswith("s32i"):
+            continue
+        operands = [operand.strip() for operand in item[3].split(",")]
+        if len(operands) == 3 and operands[1:] == [control_register, "0"]:
+            counter_clear_stores.append(index)
+    if len(counter_clear_stores) != 1:
+        raise VerificationError(
+            "measurement lacks one exact cache-counter clear before dispatch"
+        )
+    clear = counter_clear_stores[0]
+    clear_source = measure[clear][3].split(",", 1)[0].strip()
+    clear_values = [
+        item
+        for item in measure[control_load + 1 : clear]
+        if item[2] in {"movi", "movi.n"}
+        and item[3].split(",", 1)[0].strip() == clear_source
+        and item[3].split(",", 1)[1].strip() == "3"
+    ]
+    if len(clear_values) != 1:
+        raise VerificationError("cache-counter clear does not write both clear bits")
+    later_stores = [
+        item for item in measure[clear + 1 : dispatch] if item[2].startswith("s32i")
+    ]
+    if later_stores:
+        raise VerificationError("cache-counter clear is not the final store before dispatch")
+    measurement_boundary = {
+        "counterControl": f"0x{CACHE_COUNTER_CTRL}",
+        "counterClearAddress": f"0x{measure[clear][0]:08x}",
+        "dispatchAddress": f"0x{measure[dispatch][0]:08x}",
+        "warmupDispatches": 1,
+    }
+    return {"cells": cells, "measurementBoundary": measurement_boundary}
 
 
 def verify_elf(
-    elf_path: Path, manifest_path: Path, rom_elf_path: Path
+    elf_path: Path, manifest_path: Path, rom_elf_path: Path, objdump: str
 ) -> dict[str, object]:
     manifest = verify_manifest(manifest_path)
     rom_bytes = rom_elf_path.read_bytes()
@@ -223,27 +287,27 @@ def verify_elf(
         raise VerificationError(
             f"mask ROM SHA-256 {rom_sha256} does not match the pinned ESP32-S3 ROM"
         )
-    objdump = subprocess.run(
-        ["xtensa-esp32s3-elf-objdump", "-d", str(elf_path)],
+    app_disassembly = subprocess.run(
+        [objdump, "-d", str(elf_path)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
-    disassembly = verify_disassembly(objdump)
+    disassembly = verify_disassembly(app_disassembly)
     app_symbols = subprocess.run(
-        ["xtensa-esp32s3-elf-objdump", "-t", str(elf_path)],
+        [objdump, "-t", str(elf_path)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
     rom_symbols = subprocess.run(
-        ["xtensa-esp32s3-elf-objdump", "-t", str(rom_elf_path)],
+        [objdump, "-t", str(rom_elf_path)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
     rom_disassembly = subprocess.run(
-        ["xtensa-esp32s3-elf-objdump", "-d", str(rom_elf_path)],
+        [objdump, "-d", str(rom_elf_path)],
         check=True,
         capture_output=True,
         text=True,
@@ -260,16 +324,48 @@ def verify_elf(
     }
 
 
+def resolve_rom_elf(explicit: Path | None) -> Path:
+    if explicit is not None:
+        return explicit
+    rom_directory = os.environ.get("ESP_ROM_ELF_DIR")
+    if not rom_directory:
+        raise VerificationError(
+            "ESP_ROM_ELF_DIR must locate the pinned ESP32-S3 ROM ELF"
+        )
+    return Path(rom_directory) / "esp32s3_rev0_rom.elf"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("elf", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--rom-elf", required=True, type=Path)
+    parser.add_argument("--objdump", default="xtensa-esp32s3-elf-objdump")
+    parser.add_argument("--rom-elf", type=Path)
     args = parser.parse_args()
-    result = verify_elf(
-        args.elf, Path(__file__).with_name("probe-cells.json"), args.rom_elf
+    if args.output.exists():
+        print(f"refusing to overwrite result: {args.output}", file=sys.stderr)
+        return 2
+    try:
+        result = verify_elf(
+            args.elf,
+            Path(__file__).with_name("probe-cells.json"),
+            resolve_rom_elf(args.rom_elf),
+            args.objdump,
+        )
+    except (
+        OSError,
+        TypeError,
+        json.JSONDecodeError,
+        subprocess.CalledProcessError,
+        VerificationError,
+    ) as error:
+        print(f"ELF verification failed: {error}", file=sys.stderr)
+        return 2
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"ELF verification passed: {args.output}")
     return 0
 
 
