@@ -130,6 +130,10 @@ impl SocBus {
         }
     }
 
+    /// Time until deferred device work must run. The bounded fallback covers devices without
+    /// an explicit timer deadline.
+    pub fn next_deadline(&self) -> u64 { self.tick_budget.saturating_sub(self.tick_pending).max(1) as u64 }
+
     /// Size the per-page version table to the buffers. Call after replacing `flash` or `psram`.
     pub fn rebuild_page_table(&mut self) {
         let sizes = [self.sram.len(), self.irom.len(), self.flash.len(), self.psram.len(), self.drom.len(), self.rtc_fast.len(), self.rtc_slow.len()];

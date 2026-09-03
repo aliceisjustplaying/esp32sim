@@ -42,6 +42,7 @@ impl Soc for S3 {
 
 impl esp_soc::SocBus for SocBus {
     fn cycles(&self) -> u64 { self.cycles }
+    fn next_deadline(&self) -> Option<u64> { Some(SocBus::next_deadline(self)) }
     fn irq_dirty(&mut self) -> &mut bool { &mut self.irq_dirty }
     fn refresh_irq(&mut self) -> bool {
         let dirty = self.periph.lines_dirty() || self.periph.intmatrix_dirty;
