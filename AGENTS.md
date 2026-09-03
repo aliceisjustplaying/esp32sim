@@ -59,6 +59,11 @@ points there.
 - One canonical checkout per live repository:
   `~/src/a/esp32sim` (this repo) and `~/src/a/tinydraw`. Do not make
   additional clones of either.
+- Work started from this repository treats `~/src/a/tinydraw` as read-only.
+  Product runs consume the immutable build named by
+  `TINYDRAW_VECTOR_V2_BUILD`; they never rebuild TinyDraw in place.
+- TinyDraw source changes require a separate TinyDraw task, branch, and
+  worktree. Never commit them on TinyDraw `main`.
 - An agent that needs isolation uses `git worktree add` from the
   canonical checkout and removes the worktree when its branch is
   merged or abandoned.
@@ -87,7 +92,7 @@ points there.
   upstream declines, recorded in `PROVENANCE.md`.
 - Granular commits with plain, specific messages; push at milestones.
 - Enable the git gates once per clone: `git config core.hooksPath
-  .githooks` (commit: format plus strict clippy; push: the full
+  .githooks` (commit: strict clippy; push: the full
   safeguard battery). Never use `--no-verify`.
 - The physical board has one owner at a time. Hardware needs are
   queued in `docs/STATUS.md`; never open the serial port or JTAG
