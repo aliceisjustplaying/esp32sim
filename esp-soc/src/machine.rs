@@ -275,7 +275,7 @@ impl<S: Soc> Machine<S> {
             if let Some(&ret) = self.stubs.get(&pc) { cpu.return_from_stub(ret); self.stub_hits += 1; return (1, None); }
         }
         let (used, trap) = cpu.run(&mut self.bus, budget);
-        if let Some(m) = &self.cost { let c = m.cycles(pc, used); if c > used { self.cores[core].idle_advance(c - used); } }
+        if let Some(m) = &self.cost { let c = m.cycles(pc, used); if c > used { self.cores[core].advance_cycles(c - used); } }
         if self.probes.contains(Wants::BLOCK | Wants::TRAP) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
             let cpu = &self.cores[core];
@@ -317,8 +317,9 @@ impl<S: Soc> Machine<S> {
         }
         let cpu = &mut self.cores[core];
         self.bus.note_pc(pc);
-        let r = cpu.step(&mut self.bus);
-        if let Some(m) = &self.cost { let c = m.cycles(pc, 1); if c > 1 { cpu.idle_advance(c - 1); } }
+        let outcome = cpu.step(&mut self.bus);
+        let r = outcome.result();
+        if let Some(m) = &self.cost { let c = m.cycles(pc, 1); if c > 1 { cpu.advance_cycles(c - 1); } }
         if let (true, Err(t)) = (self.probes.contains(Wants::TRAP), &r) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
             let cpu = &self.cores[core];

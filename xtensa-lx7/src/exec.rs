@@ -2,6 +2,7 @@
 use crate::bus::Bus;
 use crate::decode::{decode, Insn, Op};
 use crate::state::*;
+use emu_core::{CacheOperation, ControlEvent, ControlEventKind, StepKind, StepOutcome, TlbOperation};
 
 pub use emu_core::Trap;
 
@@ -212,27 +213,81 @@ fn sat_u32(v: f32) -> u32 {
 }
 
 /// Execute one instruction. Returns `Ok(())` when an instruction completed normally.
-pub fn step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(), Trap> {
-    if let Some(t) = cpu.check_interrupts() { return Err(t); }
-    if cpu.waiting { cpu.advance_ccount(1); return Ok(()); }
+pub fn step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(), Trap> { step_outcome(cpu, bus).result() }
 
+/// Execute one slow-path event and retain the fetch and control facts that cannot be recovered by
+/// wrapping the bus.
+pub fn step_outcome<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> StepOutcome {
     let pc = cpu.pc;
+    if let Some(t) = cpu.check_interrupts() {
+        return StepOutcome { pc, next_pc: cpu.pc, bytes: None, length: 0, kind: StepKind::TrapBefore(t), control: None };
+    }
+    if cpu.waiting {
+        cpu.advance_ccount(1);
+        return StepOutcome { pc, next_pc: pc, bytes: None, length: 0, kind: StepKind::Idle, control: None };
+    }
+
     let idx = crate::decode::icache_index(pc);
     let e = &cpu.icache[idx];
-    let (i, mar) = if e.pc == pc && bus.page_versions().get(e.vidx as usize).copied().unwrap_or(0) == e.ver { (e.insn, e.max_ar) } else {
-        let bytes = match bus.fetch(pc) { Ok(b) => b, Err(_) => return Err(cpu.raise_mem(exc::IFETCH_ERROR, pc)) };
+    let versions = bus.page_versions();
+    let hit = e.pc == pc
+        && versions.get(e.vidx as usize).copied().unwrap_or(0) == e.ver
+        && versions.get(e.vidx2 as usize).copied().unwrap_or(0) == e.ver2;
+    let (i, mar, bytes) = if hit { (e.insn, e.max_ar, e.bytes) } else {
+        let bytes = match bus.fetch(pc) {
+            Ok(b) => b,
+            Err(_) => {
+                let trap = cpu.raise_mem(exc::IFETCH_ERROR, pc);
+                return StepOutcome { pc, next_pc: cpu.pc, bytes: None, length: 0, kind: StepKind::TrapBefore(trap), control: None };
+            }
+        };
         let vidx = bus.code_page(pc);
         let ver = bus.page_versions().get(vidx as usize).copied().unwrap_or(0);
+        let vidx2 = if pc >> emu_core::bus::VPAGE_SHIFT == pc.wrapping_add(3) >> emu_core::bus::VPAGE_SHIFT { vidx } else { bus.code_page(pc.wrapping_add(3)) };
+        let ver2 = bus.page_versions().get(vidx2 as usize).copied().unwrap_or(0);
         let i = decode(pc, bytes); let m = max_ar(&i);
-        cpu.icache[idx] = crate::decode::CacheEntry { pc, ver, vidx, insn: i, max_ar: m };
-        (i, m)
+        cpu.icache[idx] = crate::decode::CacheEntry { pc, ver, vidx, ver2, vidx2, bytes, insn: i, max_ar: m };
+        (i, m, bytes)
     };
-    if let Some(t) = cpu.check_overflow(mar) { return Err(t); }
+    if let Some(t) = cpu.check_overflow(mar) {
+        return StepOutcome { pc, next_pc: cpu.pc, bytes: Some(bytes), length: i.len, kind: StepKind::TrapBefore(t), control: None };
+    }
 
+    let control = control_event(cpu, &i);
     let r = exec_insn(cpu, bus, &i);
     cpu.insn_count += 1;
     cpu.advance_ccount(1);
-    r
+    let kind = match r { Ok(()) => StepKind::Retired, Err(trap) => StepKind::TrapDuring(trap) };
+    StepOutcome { pc, next_pc: cpu.pc, bytes: Some(bytes), length: i.len, kind, control }
+}
+
+fn control_event(cpu: &Cpu, i: &Insn) -> Option<ControlEvent> {
+    use CacheOperation as Cache;
+    use ControlEventKind::{Cache as CacheEvent, Tlb as TlbEvent};
+    use Op::*;
+    use TlbOperation as Tlb;
+    let kind = match i.op {
+        Dpfr => CacheEvent(Cache::DataPrefetchRead), Dpfw => CacheEvent(Cache::DataPrefetchWrite),
+        Dpfro => CacheEvent(Cache::DataPrefetchReadOnce), Dpfwo => CacheEvent(Cache::DataPrefetchWriteOnce),
+        Dhwb => CacheEvent(Cache::DataHitWriteback), Dhwbi => CacheEvent(Cache::DataHitWritebackInvalidate),
+        Dhi => CacheEvent(Cache::DataHitInvalidate), Dii => CacheEvent(Cache::DataIndexInvalidate),
+        Dpfl => CacheEvent(Cache::DataPrefetchLocked), Dhu => CacheEvent(Cache::DataHitUnlock),
+        Diu => CacheEvent(Cache::DataIndexUnlock), Ipf => CacheEvent(Cache::InstructionPrefetch),
+        Ihi => CacheEvent(Cache::InstructionHitInvalidate), Iii => CacheEvent(Cache::InstructionIndexInvalidate),
+        Ipfl => CacheEvent(Cache::InstructionPrefetchLocked), Ihu => CacheEvent(Cache::InstructionHitUnlock),
+        Iiu => CacheEvent(Cache::InstructionIndexUnlock),
+        Ritlb0 => TlbEvent(Tlb::ReadInstructionEntry0), Ritlb1 => TlbEvent(Tlb::ReadInstructionEntry1),
+        Rdtlb0 => TlbEvent(Tlb::ReadDataEntry0), Rdtlb1 => TlbEvent(Tlb::ReadDataEntry1),
+        Pitlb => TlbEvent(Tlb::ProbeInstruction), Pdtlb => TlbEvent(Tlb::ProbeData),
+        Iitlb => TlbEvent(Tlb::InvalidateInstruction), Idtlb => TlbEvent(Tlb::InvalidateData),
+        Witlb => TlbEvent(Tlb::WriteInstruction), Wdtlb => TlbEvent(Tlb::WriteData),
+        _ => return None,
+    };
+    let address = match kind {
+        CacheEvent(_) => cpu.get_ar(i.s).wrapping_add(i.imm as u32),
+        TlbEvent(_) => cpu.get_ar(i.s),
+    };
+    Some(ControlEvent { kind, address })
 }
 
 macro_rules! ld {

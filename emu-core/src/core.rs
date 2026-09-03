@@ -19,6 +19,78 @@ pub enum Trap {
     Ebreak(u32),
 }
 
+/// Cache operations whose effective address or occurrence cannot be reconstructed from bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CacheOperation {
+    DataPrefetchRead, DataPrefetchWrite, DataPrefetchReadOnce, DataPrefetchWriteOnce,
+    DataHitWriteback, DataHitWritebackInvalidate, DataHitInvalidate, DataIndexInvalidate,
+    DataPrefetchLocked, DataHitUnlock, DataIndexUnlock,
+    InstructionPrefetch, InstructionHitInvalidate, InstructionIndexInvalidate,
+    InstructionPrefetchLocked, InstructionHitUnlock, InstructionIndexUnlock,
+    FenceInstruction,
+}
+
+/// TLB operations whose effective address cannot be reconstructed from the instruction bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TlbOperation {
+    ReadInstructionEntry0, ReadInstructionEntry1, ReadDataEntry0, ReadDataEntry1,
+    ProbeInstruction, ProbeData, InvalidateInstruction, InvalidateData,
+    WriteInstruction, WriteData,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ControlEventKind { Cache(CacheOperation), Tlb(TlbOperation) }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ControlEvent {
+    pub kind: ControlEventKind,
+    /// The effective address, or zero for an addressless operation such as RISC-V `fence.i`.
+    pub address: u32,
+}
+
+/// Whether an instruction retired, the core remained idle, or a trap occurred on either side of
+/// execution. A trap-before outcome has bytes when decoding succeeded before an overflow check,
+/// and no bytes when no instruction was fetched.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepKind {
+    Retired,
+    Idle,
+    TrapBefore(Trap),
+    TrapDuring(Trap),
+}
+
+/// Allocation-free facts produced by one slow-path core step. `bytes` supplies the conceptual
+/// fetch even on an LX7 decode-cache hit. A machine can separately wrap the bus to collect
+/// CPU-originated memory accesses without including device or DMA traffic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StepOutcome {
+    pub pc: u32,
+    pub next_pc: u32,
+    pub bytes: Option<[u8; 4]>,
+    pub length: u8,
+    pub kind: StepKind,
+    /// Current cores execute at most one cache or TLB control operation per instruction.
+    pub control: Option<ControlEvent>,
+}
+
+impl StepOutcome {
+    #[inline]
+    pub fn result(self) -> Result<(), Trap> {
+        match self.kind {
+            StepKind::Retired | StepKind::Idle => Ok(()),
+            StepKind::TrapBefore(trap) | StepKind::TrapDuring(trap) => Err(trap),
+        }
+    }
+
+    #[inline]
+    pub fn trap(&self) -> Option<Trap> {
+        match self.kind {
+            StepKind::Retired | StepKind::Idle => None,
+            StepKind::TrapBefore(trap) | StepKind::TrapDuring(trap) => Some(trap),
+        }
+    }
+}
+
 pub trait Core {
     /// Interrupt input as the SoC computes it: the Xtensa takes its 32 level lines as a mask,
     /// the RISC-V takes the one line its interrupt controller has arbitrated.
@@ -36,16 +108,22 @@ pub trait Core {
     fn irq_pending(&self) -> bool;
     /// The lines asserted in an `Irq` value, one bit per line (for observers).
     fn irq_bits(irq: &Self::Irq) -> u32;
-    /// Let cycles pass without executing anything (the core is in `waiti`/`wfi`): advances
-    /// whatever counter the core keeps and raises its own timer interrupts if they fall due.
-    fn idle_advance(&mut self, cycles: u32);
-    /// Execute one instruction. `Ok` when it completed normally.
-    fn step<B: Bus>(&mut self, bus: &mut B) -> Result<(), Trap>;
+    /// Let cycles pass without retiring an instruction. This advances architectural cycle
+    /// counters and raises core-local timer interrupts that fall due.
+    fn advance_cycles(&mut self, cycles: u32);
+    /// Existing no-model idle accounting. Cores may count scheduler-skipped time as host work;
+    /// model-added cycle deltas use `advance_cycles` and never call this method.
+    fn idle_advance(&mut self, cycles: u32) { self.advance_cycles(cycles); }
+    /// Cycles until a sleeping core's own timer can wake it. The value may be 2^32 when a
+    /// wrapping 32-bit comparison register equals the current counter.
+    fn cycles_until_wake(&self) -> Option<u64> { None }
+    /// Execute one slow-path event and return the facts needed by a machine-level timing model.
+    fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome;
     /// Execute up to `budget` instructions the fast way (blocks, JIT). Returns the iterations a
     /// loop over `step` would have consumed — executed instructions, plus one for a trap taken
     /// before an instruction ran — and the trap that ended the run, if any.
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
-        for i in 0..budget { if let Err(t) = self.step(bus) { return (i + 1, Some(t)); } }
+        for i in 0..budget { if let Some(t) = self.step(bus).trap() { return (i + 1, Some(t)); } }
         (budget, None)
     }
     /// pcs the machine intercepts (stubs, probes) as a bloom over `pc_bit`: a fast path must

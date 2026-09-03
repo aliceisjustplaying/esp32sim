@@ -47,11 +47,18 @@ pub struct Cpu {
     pub mtval: u32,
     pub mie: u32,
     pub mscratch: u32,
-    /// retired instructions; also drives `mcycle`/`mpccr` (1 instruction = 1 cycle)
+    /// Host-facing scheduling work. This remains monotonic across reset and includes skipped idle
+    /// cycles so existing run statistics keep their meaning.
     pub insn_count: u64,
-    /// `insn_count` at the last reset: the guest's cycle counter restarts at zero, as on silicon
-    /// (the bootloader's log timestamps are cycles since reset, not deltas)
+    /// Architecturally retired instructions. Traps accepted between instructions and trapping
+    /// instructions do not increment this counter.
+    pub retired_count: u64,
+    /// Architectural cycles, including timing-only advancement while no instruction retires.
+    pub cycle_count: u64,
+    /// Counter bases at the last reset. Guest counters restart at zero while the host-facing
+    /// monotonic counters do not.
     pub cycle_base: u64,
+    pub instret_base: u64,
     /// halted by WFI until the SoC raises a line
     pub waiting: bool,
     /// the line the SoC's interrupt controller wants taken, if any (`Core::set_irq`)
@@ -76,7 +83,7 @@ impl Cpu {
             pc: RESET_VECTOR, x: [0; 32],
             mstatus: 0x1800,          // MPP = machine
             mtvec: 0, mepc: 0, mcause: 0, mtval: 0, mie: 0, mscratch: 0,
-            insn_count: 0, cycle_base: 0, waiting: false, irq: None, misa: MISA_RV32IMC, reservation: None, boundary_bloom: 0, csr_other: HashMap::new(),
+            insn_count: 0, retired_count: 0, cycle_count: 0, cycle_base: 0, instret_base: 0, waiting: false, irq: None, misa: MISA_RV32IMC, reservation: None, boundary_bloom: 0, csr_other: HashMap::new(),
         }
     }
     pub fn new_rv32imac() -> Self { let mut c = Cpu::new(); c.misa = MISA_RV32IMAC; c }
@@ -84,11 +91,13 @@ impl Cpu {
     pub fn reset(&mut self) {
         // `insn_count` is the emulator's own monotonic counter — it drives the run statistics and
         // the trace, so a chip reset must not rewind it (a reset that did made the browser UI
-        // report a negative instruction rate). It also feeds `mcycle`, which is a free-running
-        // counter firmware only ever reads as a delta.
-        let (keep, misa, bloom) = (self.insn_count, self.misa, self.boundary_bloom);
+        // report a negative instruction rate). The architectural cycle counter is separately
+        // monotonic and firmware reads its reset-relative value.
+        let (insns, retired, cycles, misa, bloom) = (self.insn_count, self.retired_count, self.cycle_count, self.misa, self.boundary_bloom);
         *self = Cpu::new();
-        self.insn_count = keep; self.cycle_base = keep; self.misa = misa; self.boundary_bloom = bloom;
+        self.insn_count = insns; self.retired_count = retired; self.cycle_count = cycles;
+        self.cycle_base = cycles; self.instret_base = retired;
+        self.misa = misa; self.boundary_bloom = bloom;
     }
 
     #[inline(always)]
@@ -111,8 +120,10 @@ impl Cpu {
             MCAUSE => self.mcause,
             MTVAL => self.mtval,
             MIP => 0,                               // the SoC's INTC holds pending state, not `mip`
-            MCYCLE | MINSTRET | MPCCR | PCCR_U => (self.insn_count - self.cycle_base) as u32,
-            MCYCLEH | MINSTRETH => ((self.insn_count - self.cycle_base) >> 32) as u32,
+            MCYCLE | MPCCR | PCCR_U => self.cycle_count.wrapping_sub(self.cycle_base) as u32,
+            MCYCLEH => (self.cycle_count.wrapping_sub(self.cycle_base) >> 32) as u32,
+            MINSTRET => self.retired_count.wrapping_sub(self.instret_base) as u32,
+            MINSTRETH => (self.retired_count.wrapping_sub(self.instret_base) >> 32) as u32,
             MVENDORID => 0, MARCHID => 0, MIMPID => 0, MHARTID => 0,
             _ => self.csr_other.get(&n).copied().unwrap_or(0),
         }
@@ -129,8 +140,10 @@ impl Cpu {
             MCAUSE => self.mcause = v,
             MTVAL => self.mtval = v,
             // a write moves the guest-visible counter; the emulator's own count stays monotonic
-            MCYCLE | MINSTRET | MPCCR | PCCR_U => { let c = (self.insn_count - self.cycle_base) & !0xffff_ffff | v as u64; self.cycle_base = self.insn_count.wrapping_sub(c); }
-            MCYCLEH | MINSTRETH => { let c = (self.insn_count - self.cycle_base) & 0xffff_ffff | ((v as u64) << 32); self.cycle_base = self.insn_count.wrapping_sub(c); }
+            MCYCLE | MPCCR | PCCR_U => { let c = self.cycle_count.wrapping_sub(self.cycle_base) & !0xffff_ffff | v as u64; self.cycle_base = self.cycle_count.wrapping_sub(c); }
+            MCYCLEH => { let c = self.cycle_count.wrapping_sub(self.cycle_base) & 0xffff_ffff | ((v as u64) << 32); self.cycle_base = self.cycle_count.wrapping_sub(c); }
+            MINSTRET => { let c = self.retired_count.wrapping_sub(self.instret_base) & !0xffff_ffff | v as u64; self.instret_base = self.retired_count.wrapping_sub(c); }
+            MINSTRETH => { let c = self.retired_count.wrapping_sub(self.instret_base) & 0xffff_ffff | ((v as u64) << 32); self.instret_base = self.retired_count.wrapping_sub(c); }
             MISA | MIP | MVENDORID | MARCHID | MIMPID | MHARTID => {}   // read-only
             _ => { self.csr_other.insert(n, v); }
         }

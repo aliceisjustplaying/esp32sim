@@ -32,7 +32,7 @@ fn step_and_run_agree_and_the_loop_computes() {
     let (mut b, mut rb) = machine(&asm(MIX), "lui a0,0x40380");
     let mut left = 1500;
     while left > 0 { let (used, t) = b.run(&mut rb, left); assert_eq!(t, None); left -= used; }
-    assert_eq!(a.x, b.x); assert_eq!(a.pc, b.pc); assert_eq!(a.insn_count, b.insn_count); assert_eq!(ra.mem[0x100..0x110], rb.mem[0x100..0x110]);
+    assert_eq!(a.x, b.x); assert_eq!(a.pc, b.pc); assert_eq!(a.insn_count, b.insn_count); assert_eq!(a.retired_count, b.retired_count); assert_eq!(ra.mem[0x100..0x110], rb.mem[0x100..0x110]);
     assert_eq!(a.x[5], 9, "the call after the loop ran (t0 += 9)");
     assert_eq!(a.x[11], 700, "a1 counted 100 iterations of 7");
     assert_eq!(a.pc, BASE + asm(MIX).len() as u32 - 2, "parked on the final j");
