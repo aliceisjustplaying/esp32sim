@@ -10,6 +10,8 @@ use emu_core::{
     ControlEventKind, CostModel, ExecutionFacts, LifecycleFacts, LifecycleKind, MemoryAccess,
     MemoryAccessKind, StepKind,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 use xtensa_lx7::measured::{
     complete_instruction, observe_instruction, plan_instruction, CompletionError, PlanError,
 };
@@ -59,6 +61,58 @@ struct ConfigRegisters {
     spi1_clock: u32,
     extmem_dcache_ctrl: u32,
     extmem_icache_ctrl: u32,
+}
+
+/// Shared handle for a machine-attached timing model and its deterministic report state.
+#[derive(Clone, Debug)]
+pub struct Esp32CostModel {
+    inner: Rc<RefCell<Esp32Backend>>,
+}
+
+impl Default for Esp32CostModel {
+    fn default() -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(Esp32Backend::default())),
+        }
+    }
+}
+
+impl Esp32CostModel {
+    pub fn core_cycles(&self) -> Result<[u64; 2], String> {
+        let model = self
+            .inner
+            .try_borrow()
+            .map_err(|_| "CostModelState: model is already borrowed".to_string())?;
+        Ok([
+            model.engine.state().cores[0].cycle,
+            model.engine.state().cores[1].cycle,
+        ])
+    }
+
+    pub fn configuration(&self) -> Result<ChipConfig, String> {
+        self.inner
+            .try_borrow()
+            .map(|model| model.config)
+            .map_err(|_| "CostModelState: model is already borrowed".to_string())
+    }
+}
+
+impl CostModel for Esp32CostModel {
+    fn lifecycle(&mut self, facts: &LifecycleFacts) -> Result<(), String> {
+        let mut model = self
+            .inner
+            .try_borrow_mut()
+            .map_err(|_| "CostModelReentry: lifecycle callback reentered the model".to_string())?;
+        CostModel::lifecycle(&mut *model, facts)
+    }
+
+    fn cycles(&mut self, facts: &ExecutionFacts<'_>) -> Result<u32, String> {
+        let mut model = self
+            .inner
+            .try_borrow_mut()
+            .map_err(|_| "CostModelReentry: cycle callback reentered the model".to_string())?;
+        CostModel::cycles(&mut *model, facts)
+    }
 }
 
 impl Esp32Backend {

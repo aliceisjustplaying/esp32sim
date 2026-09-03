@@ -33,7 +33,8 @@ impl Soc for S3 {
         c.set_ar(0, 0);
     }
     fn irqs(bus: &SocBus, out: &mut [u32]) { let (l0, l1) = bus.periph.cpu_lines_both(); out[0] = l0; out[1] = l1; }
-    /// SYSTEM_CORE_1_CONTROL_0: clock gate, reset, run-stall.
+    /// Core 0 is always running. SYSTEM_CORE_1_CONTROL_0 controls core 1's clock gate, reset,
+    /// and run-stall state.
     fn core_state(bus: &SocBus, core: usize) -> CoreState {
         if core == 0 { return CoreState::Running; }
         let (clk, reset, stall) = bus.periph.core1_control();
