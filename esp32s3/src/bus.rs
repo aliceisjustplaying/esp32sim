@@ -69,7 +69,6 @@ pub struct SocBus {
     pub cycles: u64,
     pub last_fault: Option<(u32, bool)>,
     pub spi2_dma_fault: Option<DmaDescriptorFault>,
-    pub board_deadline_fault: Option<crate::board::BoardDeadlineError>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
     /// GPIO edges for observers, while one wants them: (cycle, pin, level)
@@ -113,12 +112,22 @@ impl SocBus {
         let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
-            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, board_deadline_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
+            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
         b
+    }
+
+    /// Attach fresh peripheral-side devices and restore the levels driven by the persistent board.
+    pub fn attach_board_devices(&mut self) {
+        for (bus, address, device) in self.board.i2c_devices() {
+            self.periph.i2c[bus as usize].attach(address, device);
+        }
+        for (pin, level) in self.board.input_levels() {
+            self.periph.gpio.set_input(pin, level);
+        }
     }
 
     /// Size the per-page version table to the buffers. Call after replacing `flash` or `psram`.
@@ -841,7 +850,7 @@ impl Bus for SocBus {
 }
 
 impl SocBus {
-    fn refresh_tick_budget(&mut self) {
+    pub(crate) fn refresh_tick_budget(&mut self) {
         let mut budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
         if let Some(deadline) = self.board.next_deadline() {
             let until_deadline = deadline.saturating_sub(self.cycles).clamp(1, u64::from(MAX_TICK_DEFER));
@@ -860,10 +869,7 @@ impl SocBus {
 
     fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.periph.tick(cycles as u64);
-        if let Err(fault) = self.board.advance_to(self.cycles) {
-            self.board_deadline_fault = Some(fault);
-            return 0;
-        }
+        self.board.advance_to(self.cycles);
         for edge in self.board.take_edges() {
             if let Some(events) = &mut self.gpio_events { events.push((edge.cycle, edge.pin, edge.level)); }
             if self.periph.gpio.set_input(edge.pin, edge.level) { self.irq_dirty = true; }
@@ -1208,18 +1214,49 @@ mod gp_spi_board_tests {
     }
 
     #[test]
-    fn amoled_touch_edge_reaches_gpio21_interrupt_logic() {
+    fn host_touch_uses_the_current_bus_horizon_and_keeps_its_edge_timestamp() {
         let mut bus = SocBus::new(1024, 1024, [0; 6]);
         bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
         bus.gpio_events = Some(Vec::new());
         bus.periph.gpio.pin[crate::board::PIN_AMOLED_TOUCH_INT as usize] = (2 << 7) | (1 << 13);
+        bus.tick_budget = MAX_TICK_DEFER;
 
-        bus.board.touch(100, 200, true);
-        Bus::tick(&mut bus, 1);
+        assert_eq!(Bus::tick(&mut bus, 37), 0);
+        assert_eq!(bus.tick_pending, 37);
+        esp_soc::SocBus::touch_input(&mut bus, 100, 200, true);
+        assert_eq!(bus.tick_pending, 0);
+        assert_eq!(bus.tick_budget, 1);
+        assert!(bus.gpio_events.as_deref().is_some_and(<[_]>::is_empty));
+
+        Bus::tick(&mut bus, 64);
 
         assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TOUCH_INT));
         assert!(bus.periph.gpio.irq());
         assert!(bus.irq_dirty);
-        assert_eq!(bus.gpio_events.as_deref(), Some(&[(1, crate::board::PIN_AMOLED_TOUCH_INT, false)][..]));
+        assert_eq!(bus.gpio_events.as_deref(), Some(&[(38, crate::board::PIN_AMOLED_TOUCH_INT, false)][..]));
+    }
+
+    #[test]
+    fn reboot_reattaches_amoled_i2c_devices_and_restores_board_input_levels() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.attach_board_devices();
+        for address in [0x15, 0x20, 0x34, 0x51, 0x6b] {
+            assert!(bus.periph.i2c[0].has_device(address));
+        }
+
+        Bus::tick(&mut bus, (crate::periph::CPU_HZ / 120) as u32);
+        esp_soc::SocBus::touch_input(&mut bus, 100, 200, true);
+        Bus::tick(&mut bus, 64);
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TE));
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TOUCH_INT));
+
+        esp_soc::SocBus::reboot(&mut bus, [0; 6]);
+
+        for address in [0x15, 0x20, 0x34, 0x51, 0x6b] {
+            assert!(bus.periph.i2c[0].has_device(address));
+        }
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TE));
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TOUCH_INT));
     }
 }

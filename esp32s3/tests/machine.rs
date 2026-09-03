@@ -77,6 +77,30 @@ fn reboot_keeps_what_silicon_keeps() {
     assert!(!m.dump_regs().contains("core1:"), "core 1 is back in reset");
 }
 
+/// Host touch keeps its intended board-edge timestamp and is applied at the fast scheduler's next
+/// existing bus tick, which is bounded by one instruction quantum.
+#[test]
+fn host_touch_is_delivered_on_the_next_fast_path_bus_tick() {
+    let mut m = machine();
+    park(&mut m, 0, IRAM, &SPIN);
+    m.bus.board = Box::new(esp32s3::board::WaveshareAmoled18V2::new());
+    m.bus.attach_board_devices();
+    m.bus.periph.gpio.pin[esp32s3::board::PIN_AMOLED_TOUCH_INT as usize] = (2 << 7) | (1 << 13);
+    m.max_cycles = 64;
+    assert!(matches!(m.run(u64::MAX), Stop::Halted));
+    let horizon = m.bus.cycles;
+    esp_soc::SocBus::observe_gpio(&mut m.bus, true);
+    esp_soc::SocBus::touch_input(&mut m.bus, 100, 200, true);
+    assert!(esp_soc::SocBus::take_gpio_events(&mut m.bus).is_empty());
+
+    m.max_cycles = horizon + 64;
+    assert!(matches!(m.run(u64::MAX), Stop::Halted));
+
+    assert!((horizon + 1..=horizon + 64).contains(&m.bus.cycles));
+    assert_eq!(esp_soc::SocBus::take_gpio_events(&mut m.bus),
+               [(horizon + 1, esp32s3::board::PIN_AMOLED_TOUCH_INT, false)]);
+}
+
 /// Scripts resolve the board's pin names and expand an encoder detent into its quadrature.
 #[test]
 fn scripts_use_the_board() {

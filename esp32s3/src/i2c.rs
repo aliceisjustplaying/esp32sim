@@ -60,8 +60,9 @@ pub struct St7701State { pub words: u64, pub last_cmd: u8, pub sleep_out: bool, 
 pub struct Tca9554 { pub regs: [u8; 4], ptr: u8, first: bool, panel: Option<std::sync::Arc<std::sync::Mutex<St7701State>>>, shift: u16, nbits: u8 }
 impl Tca9554 {
     pub fn new(panel: std::sync::Arc<std::sync::Mutex<St7701State>>) -> Self { Tca9554 { regs: [0xff, 0xff, 0x00, 0xff], ptr: 0, first: true, panel: Some(panel), shift: 0, nbits: 0 } }
-    /// Register-compatible TCA9554 for boards that use its outputs only for power and reset.
+    /// Disconnected register-RAM initialization stub. External output effects are not modeled.
     pub fn register_ram_stub() -> Self { Tca9554 { regs: [0xff, 0xff, 0x00, 0xff], ptr: 0, first: true, panel: None, shift: 0, nbits: 0 } }
+    fn input_port(&self) -> u8 { ((self.regs[1] & !self.regs[3]) | self.regs[3]) ^ self.regs[2] }
     fn output(&mut self, old: u8, new: u8) {
         let Some(panel) = self.panel.as_ref() else { return };
         let cs = new & 1 != 0; let mosi = (new >> 1) & 1; let clk_rise = new & 4 != 0 && old & 4 == 0;
@@ -80,10 +81,10 @@ impl I2cDevice for Tca9554 {
     fn start(&mut self, read: bool) -> bool { if !read { self.first = true; } true }
     fn write(&mut self, b: u8) -> bool {
         if self.first { self.ptr = b & 3; self.first = false; }
-        else { let old = self.regs[1]; self.regs[self.ptr as usize] = b; if self.ptr == 1 { self.output(old, b); } }
+        else if self.ptr != 0 { let old = self.regs[1]; self.regs[self.ptr as usize] = b; if self.ptr == 1 { self.output(old, b); } }
         true
     }
-    fn read(&mut self) -> u8 { self.regs[self.ptr as usize] }
+    fn read(&mut self) -> u8 { if self.ptr == 0 { self.input_port() } else { self.regs[self.ptr as usize] } }
 }
 
 /// Touch state shared between the board (UI) and the GT911 model.
@@ -189,5 +190,25 @@ mod tests {
         assert!(device.write(1));
         assert!(device.start(true));
         assert_eq!(device.read(), 0xa5);
+    }
+
+    #[test]
+    fn tca9554_input_port_is_read_only_and_reflects_pin_levels() {
+        let mut device = Tca9554::register_ram_stub();
+        assert!(device.start(false));
+        assert!(device.write(0));
+        assert!(device.write(0));
+        assert_eq!(device.regs[0], 0xff);
+
+        assert!(device.start(false));
+        assert!(device.write(3));
+        assert!(device.write(0xf0));
+        assert!(device.start(false));
+        assert!(device.write(1));
+        assert!(device.write(0x05));
+        assert!(device.start(false));
+        assert!(device.write(0));
+        assert!(device.start(true));
+        assert_eq!(device.read(), 0xf5);
     }
 }
