@@ -371,24 +371,27 @@ mode (needs GOAL milestone 2).
 - `.github/workflows/pages.yml` fetches the mask ROM unpinned from `releases/latest`: dormant because it triggers only on `main`, the upstream mirror; pin or remove it when the workflow is next touched.
 - `periph.rs` and `machine.rs` decomposition: deliberately deferred; extract only what Task 3b forces under the build-exactly-the-thing rule.
 - The current-main gate-harness image and console contract are pinned under
-  `calibration/esp32s3-gate-harness/`. Its fast-mode dry-run reaches panel
-  creation and then remains in `spi_device_polling_end`: the board path sends
-  the small panel-init SPI2 DMA transfer through the measured 32 KiB-only
-  scheduler, so it never completes. A 50-billion-instruction run produced no
-  `TINYDRAW_LIVE_*` lines. No fast-mode counter reference was committed.
-- The same panel-init stop blocks native boot throughput. Five bounded runs
-  reached up to 16.047 billion retired instructions and 66.667 emulated
-  seconds without `TINYDRAW_VECTOR_V2_READY`. These are pre-READY observations,
-  not completed-boot throughput or JIT claims. Receipt:
+  `calibration/esp32s3-gate-harness/`. Its 2026-09-02 fast-mode dry-run reached
+  panel creation and then remained in `spi_device_polling_end`: the board path
+  sent the small panel-init SPI2 DMA transfer through the measured 32 KiB-only
+  scheduler, so it never completed. A 50-billion-instruction run produced no
+  `TINYDRAW_LIVE_*` lines. No fast-mode counter reference was committed. This
+  dry-run has not been repeated after the completion fix.
+- The same panel-init stop was observed in the 2026-09-02 native-speed runs
+  and is retained as historical evidence at
   [`evidence/native-speed-2026-09-02/`](evidence/native-speed-2026-09-02/README.md).
+  After the fast-mode small SPI2 DMA completion fix, five native release/JIT
+  runs all reached `TINYDRAW_VECTOR_V2_READY` within a fixed 0.833-second
+  emulated horizon. The median process wall time was 0.55 seconds and the five
+  runs had identical console transcripts and architectural counts. Receipt:
+  [`evidence/native-speed-2026-09-03/`](evidence/native-speed-2026-09-03/README.md).
 
 ## Proposed next steps
 
 1. Proposal: capture the verified seven-cell H1 image during the next
    maintainer-started hardware session.
-2. Proposal: restore uncosted fast-mode completion for small SPI2 DMA panel-init
-   transfers while measured mode continues to refuse unpriced sizes by name.
-   Then rerun the gate harness and the five-run native-speed baseline.
+2. Proposal: rerun the gate harness dry-run after the fast-mode small SPI2 DMA
+   completion fix. The native-speed rerun is complete.
 3. Proposal: add per-frame firmware counters to the next maintainer capture so
    frame-scale correlation can begin after measured boot reaches READY.
 4. Proposal: begin milestone 5 contention pricing only after the measured boot

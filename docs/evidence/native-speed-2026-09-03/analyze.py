@@ -9,10 +9,11 @@ from pathlib import Path
 
 
 READY = "TINYDRAW_VECTOR_V2_READY"
+READY_LINE = re.compile(rf"^{READY}(?: |$)", re.MULTILINE)
 STOP = re.compile(
     r"^\[emu\] stop: MaxInsns . core0 (\d+) \+ core1 (\d+) insns in "
     r"([0-9.]+)s wall = ([0-9.]+) Minsn/s; emulated ([0-9.]+)s "
-    r"\((\d+) cycles\);",
+    r"\((\d+) cycles\); (\d+) exceptions, (\d+) interrupts$",
     re.MULTILINE,
 )
 JIT = re.compile(r"; jit: (\d+) compiled, (\d+) KB code")
@@ -25,7 +26,7 @@ def parse_run(directory: Path, number: int) -> dict[str, int | float | bool]:
     stop = STOP.search(stderr)
     jit = JIT.search(stderr)
     real = REAL.search(stderr)
-    if console.count(READY) != 1:
+    if len(READY_LINE.findall(console)) != 1:
         raise SystemExit(f"run {number}: expected exactly one READY marker")
     if stop is None or jit is None or real is None:
         raise SystemExit(f"run {number}: incomplete stop, JIT, or time receipt")
@@ -43,6 +44,8 @@ def parse_run(directory: Path, number: int) -> dict[str, int | float | bool]:
         "reportedRetiredMips": float(stop[4]),
         "emulatedSeconds": float(stop[5]),
         "cycles": int(stop[6]),
+        "exceptions": int(stop[7]),
+        "interrupts": int(stop[8]),
         "processWallSeconds": float(real[1]),
         "jitBlocksCompiled": int(jit[1]),
         "jitCodeKiB": int(jit[2]),
@@ -52,6 +55,26 @@ def parse_run(directory: Path, number: int) -> dict[str, int | float | bool]:
 def main() -> None:
     directory = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("raw")
     runs = [parse_run(directory, number) for number in range(1, 6)]
+    if any(run["cycles"] != 200_000_000 for run in runs):
+        raise SystemExit("every run must finish the fixed 200000000-cycle horizon")
+    deterministic_fields = (
+        "core0RetiredInstructions",
+        "core1RetiredInstructions",
+        "totalRetiredInstructions",
+        "jitBlocksCompiled",
+        "jitCodeKiB",
+        "exceptions",
+        "interrupts",
+    )
+    for field in deterministic_fields:
+        if len({run[field] for run in runs}) != 1:
+            raise SystemExit(f"runs disagree on deterministic field {field}")
+    consoles = [
+        (directory / f"run-{number}.console.txt").read_bytes()
+        for number in range(1, 6)
+    ]
+    if len(set(consoles)) != 1:
+        raise SystemExit("console transcripts are not byte-identical")
     summary = {
         "runs": runs,
         "medianProcessWallSeconds": statistics.median(
