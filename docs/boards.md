@@ -67,7 +67,7 @@ Needs `--flash-mb 16 --psram-mb 8`; `examples/waveshare-lcd4b/run-energy-panel.s
 | Device | Bus | Model |
 | --- | --- | --- |
 | CO5300 368x448 panel | SPI2 QSPI: SIO0 4, SIO1 5, SIO2 6, SIO3 7, SCLK 11, CS 12 | command/address windows and RGB565 frame memory; CPU and GDMA data phases use the same board transaction path |
-| Panel tear signal | GPIO 13 input | timestamped 60 Hz approximate compatibility signal; no timing claim is adopted |
+| Panel tear signal | GPIO 13 input | timestamped approximate compatibility signal; no timing claim is adopted |
 | CST820 touch at 0x15 | I2C0: SCL 14, SDA 15; active-low interrupt on GPIO 21 | identity and point reports; browser pointer input is latched until firmware reads it |
 | TCA9554 at 0x20 | I2C0 | power/reset register compatibility |
 | AXP2101 at 0x34, PCF85063A at 0x51, QMI8658 at 0x6B | I2C0 | initialization-compatible register stubs, not behavioral models |
