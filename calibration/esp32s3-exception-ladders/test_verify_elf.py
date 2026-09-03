@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -34,7 +35,7 @@ def manifest(tmp_path: Path, *, samples: int = 100) -> Path:
         json.dumps(
             {
                 "protocolVersion": 2,
-                "harnessVersion": "1.0.0",
+                "harnessVersion": "1.2.0",
                 "chipModel": "ESP32-S3",
                 "chipRevision": 2,
                 "cells": [
@@ -110,12 +111,20 @@ def disassembly() -> str:
 40370409: 03ea30 rsr.ccount a3
 4037040c: 1df0 retw.n
 40370500 <measure_exception_sample>:
-40370500: 000081 l32r a8, 403704f0 (600c40c4)
-40370503: 08c9 s32i.n a12, a8, 0
-40370505: 0008e0 callx8 a8
-40370508: 000091 l32r a9, 403704f4 (600c40cc)
-4037050b: 0998 l32i.n a9, a9, 0
-4037050d: f01d retw.n
+40370500: 0139 s32i.n a3, a1, 0
+40370502: 1149 s32i.n a4, a1, 4
+40370504: 0002e0 callx8 a2
+40370507: 000081 l32r a8, 403704f0 (600c40c4)
+4037050a: 390c movi.n a9, 3
+4037050c: 0020c0 memw
+4037050f: 006892 s32i a9, a8, 0
+40370512: 006f50 rsil a5, 15
+40370515: 03ea40 rsr.ccount a4
+40370518: 0021a2 l32i a10, a1, 0
+4037051b: 0003e0 callx8 a3
+4037051e: 000091 l32r a9, 403704f4 (600c40cc)
+40370521: 0998 l32i.n a9, a9, 0
+40370523: f01d retw.n
 """
 
 
@@ -128,6 +137,44 @@ def test_manifest_requires_exact_h1_cells_and_100_samples(tmp_path: Path) -> Non
 def test_manifest_rejects_a_non_100_sample_cell(tmp_path: Path) -> None:
     with pytest.raises(MODULE.VerificationError, match="100 samples"):
         MODULE.verify_manifest(manifest(tmp_path, samples=99))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("protocolVersion", 1, "protocolVersion"),
+        ("harnessVersion", "1.1.0", "harnessVersion"),
+        ("chipModel", "ESP32-C3", "chipModel"),
+        ("chipRevision", 1, "chipRevision"),
+    ],
+)
+def test_manifest_rejects_changed_configuration_identity(
+    tmp_path: Path, field: str, value: object, message: str
+) -> None:
+    path = manifest(tmp_path)
+    payload = json.loads(path.read_text())
+    payload[field] = value
+    path.write_text(json.dumps(payload))
+    with pytest.raises(MODULE.VerificationError, match=message):
+        MODULE.verify_manifest(path)
+
+
+def test_manifest_rejects_changed_variants(tmp_path: Path) -> None:
+    path = manifest(tmp_path)
+    payload = json.loads(path.read_text())
+    payload["cells"][0]["variants"] = ["normal", "xip-psram"]
+    path.write_text(json.dumps(payload))
+    with pytest.raises(MODULE.VerificationError, match="normal variant"):
+        MODULE.verify_manifest(path)
+
+
+def test_manifest_rejects_changed_cell_family(tmp_path: Path) -> None:
+    path = manifest(tmp_path)
+    payload = json.loads(path.read_text())
+    payload["cells"][0]["family"] = "instruction-fetch"
+    path.write_text(json.dumps(payload))
+    with pytest.raises(MODULE.VerificationError, match="families"):
+        MODULE.verify_manifest(path)
 
 
 def test_verified_encodings_cover_all_six_exception_cells() -> None:
@@ -156,9 +203,19 @@ def test_changed_return_encoding_fails_closed() -> None:
 
 def test_measurement_boundary_requires_counter_clear_before_dispatch() -> None:
     broken = disassembly().replace(
-        "40370503: 08c9 s32i.n a12, a8, 0\n", ""
+        "4037050f: 006892 s32i a9, a8, 0\n", ""
     )
-    with pytest.raises(MODULE.VerificationError, match="cache-counter clear"):
+    with pytest.raises(MODULE.VerificationError, match="exact cache-counter clear"):
+        MODULE.verify_disassembly(broken)
+
+
+def test_measurement_boundary_rejects_counter_clear_after_dispatch() -> None:
+    clear = "4037050f: 006892 s32i a9, a8, 0\n"
+    broken = disassembly().replace(clear, "").replace(
+        "4037051b: 0003e0 callx8 a3\n",
+        "4037051b: 0003e0 callx8 a3\n4037051e: 006892 s32i a9, a8, 0\n",
+    )
+    with pytest.raises(MODULE.VerificationError, match="exact cache-counter clear"):
         MODULE.verify_disassembly(broken)
 
 
@@ -205,3 +262,31 @@ def test_mask_rom_contract_rejects_changed_rom_encoding() -> None:
     broken = rom_disassembly().replace("400559a7: f01d retw.n", "400559a7: f03d nop.n")
     with pytest.raises(MODULE.VerificationError, match="instruction pair"):
         MODULE.verify_rom_contract(app_symbols(), rom_symbols(), broken)
+
+
+def test_rom_elf_resolves_from_capture_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ESP_ROM_ELF_DIR", str(tmp_path))
+    assert MODULE.resolve_rom_elf(None) == tmp_path / "esp32s3_rev0_rom.elf"
+
+
+def test_capture_objdump_argument_is_accepted(tmp_path: Path) -> None:
+    result = tmp_path / "verification.json"
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            str(tmp_path / "missing.elf"),
+            str(result),
+            "--objdump",
+            "/capture/toolchain/xtensa-esp32s3-elf-objdump",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert process.returncode == 2
+    assert "ELF verification failed:" in process.stderr
+    assert "unrecognized arguments" not in process.stderr
+    assert not result.exists()
