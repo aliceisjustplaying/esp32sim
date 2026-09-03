@@ -53,6 +53,8 @@ pub trait BoardModel {
     fn leds(&self) -> Option<(&[[u8; 3]], u64)> { None }
     /// Touch input from the UI (panel coordinates).
     fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
+    /// Touch input observed at a specific bus horizon. Untimed boards use the ordinary input path.
+    fn touch_at(&mut self, _cycle: VirtualCycle, x: u16, y: u16, down: bool) { self.touch(x, y, down); }
     /// Current board-driven GPIO input levels, used to reconnect a persistent board after reset.
     fn input_levels(&self) -> Vec<(u8, bool)> { Vec::new() }
     /// Earliest autonomous transition strictly after the board's current cycle.

@@ -1224,7 +1224,7 @@ mod gp_spi_board_tests {
         assert_eq!(Bus::tick(&mut bus, 37), 0);
         assert_eq!(bus.tick_pending, 37);
         esp_soc::SocBus::touch_input(&mut bus, 100, 200, true);
-        assert_eq!(bus.tick_pending, 0);
+        assert_eq!(bus.tick_pending, 37);
         assert_eq!(bus.tick_budget, 1);
         assert!(bus.gpio_events.as_deref().is_some_and(<[_]>::is_empty));
 

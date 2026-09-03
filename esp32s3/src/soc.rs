@@ -50,9 +50,8 @@ impl esp_soc::SocBus for SocBus {
     }
     fn flush_ticks(&mut self) { SocBus::flush_ticks(self) }
     fn touch_input(&mut self, x: u16, y: u16, down: bool) {
-        self.flush_ticks();
-        self.board.touch(x, y, down);
-        self.refresh_tick_budget();
+        self.board.touch_at(self.cycles, x, y, down);
+        if self.board.next_deadline().is_some() { self.refresh_tick_budget(); }
     }
     fn misc(&mut self) -> &mut Misc { &mut self.periph.misc }
     fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> { SocBus::load_bytes(self, addr, data) }
