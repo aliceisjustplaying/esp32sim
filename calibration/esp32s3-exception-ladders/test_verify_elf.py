@@ -38,6 +38,7 @@ def manifest(tmp_path: Path, *, samples: int = 100) -> Path:
                 "harnessVersion": "1.2.0",
                 "chipModel": "ESP32-S3",
                 "chipRevision": 2,
+                "runtimeConfiguration": dict(MODULE.EXPECTED_RUNTIME_CONFIGURATION),
                 "cells": [
                     {
                         "id": cell,
@@ -122,9 +123,26 @@ def disassembly() -> str:
 40370515: 03ea40 rsr.ccount a4
 40370518: 0021a2 l32i a10, a1, 0
 4037051b: 0003e0 callx8 a3
-4037051e: 000091 l32r a9, 403704f4 (600c40cc)
-40370521: 0998 l32i.n a9, a9, 0
-40370523: f01d retw.n
+4037051e: 0000a1 l32r a10, 403704f4 (600c40c8)
+40370521: 000081 l32r a8, 403704f8 (600c40cc)
+40370524: 0888 l32i.n a8, a8, 0
+40370526: 0aa8 l32i.n a10, a10, 0
+40370528: 80aa or a8, a8, a10
+4037052b: 0000a1 l32r a10, 403704fc (600c40d8)
+4037052e: 0aa8 l32i.n a10, a10, 0
+40370530: 80aa or a8, a8, a10
+40370533: 0000b1 l32r a11, 403704f0 (600c40d0)
+40370536: 0bb8 l32i.n a11, a11, 0
+40370538: 80ba or a8, a8, a11
+4037053b: 0000a1 l32r a10, 403704ec (600c40d4)
+4037053e: 0aa8 l32i.n a10, a10, 0
+40370540: 80aa or a8, a8, a10
+40370543: c09940 sub a9, a9, a4
+40370546: ee18 bnez.n a8, 40370556
+40370548: ec09 beqz.n a9, 40370556
+4037054a: 0199 s32i.n a9, a1, 0
+4037054c: 1b0c movi.n a11, 1
+40370556: f01d retw.n
 """
 
 
@@ -177,6 +195,15 @@ def test_manifest_rejects_changed_cell_family(tmp_path: Path) -> None:
         MODULE.verify_manifest(path)
 
 
+def test_manifest_rejects_changed_runtime_configuration(tmp_path: Path) -> None:
+    path = manifest(tmp_path)
+    payload = json.loads(path.read_text())
+    payload["runtimeConfiguration"]["cpuHz"] = 160_000_000
+    path.write_text(json.dumps(payload))
+    with pytest.raises(MODULE.VerificationError, match="runtimeConfiguration"):
+        MODULE.verify_manifest(path)
+
+
 def test_verified_encodings_cover_all_six_exception_cells() -> None:
     result = MODULE.verify_disassembly(disassembly())
     assert set(result["cells"]) == set(EXCEPTION_CELL_IDS)
@@ -193,6 +220,8 @@ def test_verified_encodings_cover_all_six_exception_cells() -> None:
     assert result["cells"]["syscall_rfe_pair"]["handlerEncodings"][-1] == "003000"
     assert result["cells"]["rfe_alone"]["returnEncoding"] == "003000"
     assert result["cells"]["rfi3_alone"]["returnEncoding"] == "003310"
+    assert result["measurementBoundary"]["cacheCountersRequiredZero"] is True
+    assert len(result["measurementBoundary"]["cacheCounterReadAddresses"]) == 5
 
 
 def test_changed_return_encoding_fails_closed() -> None:
@@ -216,6 +245,50 @@ def test_measurement_boundary_rejects_counter_clear_after_dispatch() -> None:
         "4037051b: 0003e0 callx8 a3\n4037051e: 006892 s32i a9, a8, 0\n",
     )
     with pytest.raises(MODULE.VerificationError, match="exact cache-counter clear"):
+        MODULE.verify_disassembly(broken)
+
+
+def test_measurement_boundary_requires_every_post_dispatch_counter_read() -> None:
+    broken = disassembly().replace("4037053e: 0aa8 l32i.n a10, a10, 0\n", "")
+    with pytest.raises(MODULE.VerificationError, match="all post-dispatch"):
+        MODULE.verify_disassembly(broken)
+
+
+def test_measurement_boundary_rejects_counter_read_after_zero_gate() -> None:
+    read = "4037053e: 0aa8 l32i.n a10, a10, 0\n"
+    broken = disassembly().replace(read, "").replace(
+        "40370546: ee18 bnez.n a8, 40370556\n",
+        "40370546: ee18 bnez.n a8, 40370556\n" + read,
+    )
+    with pytest.raises(MODULE.VerificationError, match="all post-dispatch"):
+        MODULE.verify_disassembly(broken)
+
+
+def test_measurement_boundary_requires_cache_zero_gate() -> None:
+    broken = disassembly().replace("40370546: ee18 bnez.n a8, 40370556\n", "")
+    with pytest.raises(MODULE.VerificationError, match="zero gate"):
+        MODULE.verify_disassembly(broken)
+
+
+def test_measurement_boundary_rejects_cache_gate_after_acceptance_store() -> None:
+    gate = "40370546: ee18 bnez.n a8, 40370556\n"
+    broken = disassembly().replace(gate, "").replace(
+        "4037054a: 0199 s32i.n a9, a1, 0\n",
+        "4037054a: 0199 s32i.n a9, a1, 0\n" + gate,
+    )
+    with pytest.raises(MODULE.VerificationError, match="gate"):
+        MODULE.verify_disassembly(broken)
+
+
+def test_measurement_boundary_requires_conditional_accepted_store() -> None:
+    broken = disassembly().replace("4037054a: 0199 s32i.n a9, a1, 0\n", "")
+    with pytest.raises(MODULE.VerificationError, match="accepted-sample store"):
+        MODULE.verify_disassembly(broken)
+
+
+def test_measurement_boundary_requires_zero_elapsed_gate() -> None:
+    broken = disassembly().replace("40370548: ec09 beqz.n a9, 40370556\n", "")
+    with pytest.raises(MODULE.VerificationError, match="zero-elapsed gate"):
         MODULE.verify_disassembly(broken)
 
 
@@ -245,7 +318,7 @@ def test_mask_rom_contract_proves_placement_and_instruction_encodings() -> None:
     assert result["address"] == "0x400559a4"
     assert result["section"] == ".text"
     assert result["instructionFetchesPerTrial"] == 2
-    assert result["cacheCountersRequiredZero"] is True
+    assert "cacheCountersRequiredZero" not in result
     assert [instruction["encoding"] for instruction in result["instructions"]] == [
         "002136",
         "f01d",
