@@ -54,7 +54,7 @@ pub const NUM_WINDOWS: u32 = (NUM_AREGS / 4) as u32;
 /// Per-interrupt level (index = interrupt number 0..31), from core-isa.h.
 pub const INT_LEVEL: [u8; 32] = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 7, 3, 5, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 3, 4, 3, 4, 5];
 /// Interrupt type masks.
-/// INT_ABOVE[l] = interrupts whose level is strictly greater than l (deliverable at PS.INTLEVEL = l).
+/// `INT_ABOVE[l]` contains interrupts whose level is strictly greater than `l` (deliverable at `PS.INTLEVEL = l`).
 pub const INT_ABOVE: [u32; 16] = {
     let mut t = [0u32; 16]; let mut l = 0;
     while l < 16 { let mut i = 0; while i < 32 { if INT_LEVEL[i] as usize > l { t[l] |= 1 << i; } i += 1; } l += 1; }
@@ -73,7 +73,7 @@ pub const EXCM_LEVEL: u32 = 3;
 #[derive(Clone)]
 pub struct Cpu {
     pub pc: u32,
-    /// physical address registers; AR[n] = ar[(windowbase*4 + n) % 64]
+    /// Physical address registers: `AR[n] = ar[(windowbase*4 + n) % 64]`.
     pub ar: [u32; NUM_AREGS],
     pub windowbase: u32,
     pub windowstart: u32,
