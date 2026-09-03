@@ -23,7 +23,9 @@ CELL_IDS = (
     "syscall_rfe_pair",
     "rfe_alone",
     "rfi3_alone",
+    "mask_rom_fetch_straight_line",
 )
+EXCEPTION_CELL_IDS = CELL_IDS[:-1]
 
 
 def manifest(tmp_path: Path, *, samples: int = 100) -> Path:
@@ -38,7 +40,11 @@ def manifest(tmp_path: Path, *, samples: int = 100) -> Path:
                 "cells": [
                     {
                         "id": cell,
-                        "family": "exception",
+                        "family": (
+                            "instruction-fetch"
+                            if cell == "mask_rom_fetch_straight_line"
+                            else "exception"
+                        ),
                         "samples": samples,
                         "variants": ["normal"],
                         **(
@@ -52,7 +58,11 @@ def manifest(tmp_path: Path, *, samples: int = 100) -> Path:
                                 ]
                             }
                             if cell == "syscall_rfe_pair"
-                            else {}
+                            else (
+                                {"knownTerms": ["entry", "retw.n"]}
+                                if cell == "mask_rom_fetch_straight_line"
+                                else {}
+                            )
                         ),
                     }
                     for cell in CELL_IDS
@@ -120,9 +130,9 @@ def test_manifest_rejects_a_non_100_sample_cell(tmp_path: Path) -> None:
         MODULE.verify_manifest(manifest(tmp_path, samples=99))
 
 
-def test_verified_encodings_cover_all_six_h1_cells() -> None:
+def test_verified_encodings_cover_all_six_exception_cells() -> None:
     result = MODULE.verify_disassembly(disassembly())
-    assert set(result["cells"]) == set(CELL_IDS)
+    assert set(result["cells"]) == set(EXCEPTION_CELL_IDS)
     assert result["cells"]["call4_window_pair"]["callMnemonic"] == "call4"
     assert result["cells"]["call8_window_pair"]["callMnemonic"] == "call8"
     assert result["cells"]["call12_window_pair"]["callMnemonic"] == "call12"
@@ -150,3 +160,48 @@ def test_measurement_boundary_requires_counter_clear_before_dispatch() -> None:
     )
     with pytest.raises(MODULE.VerificationError, match="cache-counter clear"):
         MODULE.verify_disassembly(broken)
+
+
+def app_symbols() -> str:
+    return "400559a4 g       *ABS* 00000000 mask_rom_fetch_straight_line\n"
+
+
+def rom_symbols() -> str:
+    return "400559a4 g     F .text 00000005 xtos_p_none\n"
+
+
+def rom_disassembly() -> str:
+    return """
+400559a4 <xtos_p_none>:
+400559a4: 002136 entry a1, 16
+400559a7: f01d retw.n
+400559a9: 000000 ill
+400559ac <xtos_unhandled_interrupt>:
+400559ac: 002136 entry a1, 16
+"""
+
+
+def test_mask_rom_contract_proves_placement_and_instruction_encodings() -> None:
+    result = MODULE.verify_rom_contract(
+        app_symbols(), rom_symbols(), rom_disassembly()
+    )
+    assert result["address"] == "0x400559a4"
+    assert result["section"] == ".text"
+    assert result["instructionFetchesPerTrial"] == 2
+    assert result["cacheCountersRequiredZero"] is True
+    assert [instruction["encoding"] for instruction in result["instructions"]] == [
+        "002136",
+        "f01d",
+    ]
+
+
+def test_mask_rom_contract_rejects_a_non_rom_alias() -> None:
+    broken = app_symbols().replace("400559a4", "403559a4")
+    with pytest.raises(MODULE.VerificationError, match="absolute ROM target"):
+        MODULE.verify_rom_contract(broken, rom_symbols(), rom_disassembly())
+
+
+def test_mask_rom_contract_rejects_changed_rom_encoding() -> None:
+    broken = rom_disassembly().replace("400559a7: f01d retw.n", "400559a7: f03d nop.n")
+    with pytest.raises(MODULE.VerificationError, match="instruction pair"):
+        MODULE.verify_rom_contract(app_symbols(), rom_symbols(), broken)

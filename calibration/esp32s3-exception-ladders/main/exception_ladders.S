@@ -1,5 +1,9 @@
 #include "xtensa/coreasm.h"
 
+/* ESP32-S3 rev 0 ROM xtos_p_none implementation. */
+.global mask_rom_fetch_straight_line
+.set mask_rom_fetch_straight_line, 0x400559a4
+
 .section .iram1, "ax"
 .align 4
 

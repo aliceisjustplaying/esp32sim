@@ -1,6 +1,6 @@
 {
   "protocolVersion": 2,
-  "harnessVersion": "1.1.0",
+  "harnessVersion": "1.2.0",
   "chipModel": "ESP32-S3",
   "chipRevision": 2,
   "cells": [
@@ -15,6 +15,13 @@
       "knownTerms": ["rsr.epc1", "addi", "wsr.epc1", "rsync", "rfe"]
     },
     {"id": "rfe_alone", "family": "exception", "samples": 100, "variants": ["normal"]},
-    {"id": "rfi3_alone", "family": "exception", "samples": 100, "variants": ["normal"]}
+    {"id": "rfi3_alone", "family": "exception", "samples": 100, "variants": ["normal"]},
+    {
+      "id": "mask_rom_fetch_straight_line",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": ["normal"],
+      "knownTerms": ["entry", "retw.n"]
+    }
   ]
 }

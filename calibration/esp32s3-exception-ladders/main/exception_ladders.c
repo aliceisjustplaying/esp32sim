@@ -24,6 +24,7 @@ extern uint32_t call12_window_pair(uint32_t depth);
 extern uint32_t syscall_rfe_pair(uint32_t depth);
 extern uint32_t rfe_alone(uint32_t depth);
 extern uint32_t rfi3_alone(uint32_t depth);
+extern uint32_t mask_rom_fetch_straight_line(uint32_t depth);
 
 typedef struct {
   uint32_t ibus_accesses;
@@ -79,11 +80,12 @@ static void emit_refusal(const char *name) {
   fflush(stdout);
 }
 
-static void emit_metric(const char *name, const uint32_t *samples) {
+static void emit_metric(const char *name, const char *memory,
+                        const char *access_pattern, const uint32_t *samples) {
   printf("CAL_RECORD {\"type\":\"metric\",\"name\":\"%s\","
-         "\"memory\":\"iram\",\"access_pattern\":\"exception-ladder\","
+         "\"memory\":\"%s\",\"access_pattern\":\"%s\","
          "\"operations_per_trial\":1,\"bytes_per_operation\":0,"
-         "\"ccount_samples\":[", name);
+         "\"ccount_samples\":[", name, memory, access_pattern);
   for (uint32_t index = 0; index < SAMPLES; ++index) {
     printf("%s%" PRIu32, index == 0 ? "" : ",", samples[index]);
   }
@@ -131,11 +133,12 @@ measure_direct_samples(probe_fn_t function, uint32_t *samples) {
   return accepted;
 }
 
-static void run_probe(const char *name, probe_fn_t function, uint32_t depth) {
+static void run_probe(const char *name, probe_fn_t function, uint32_t depth,
+                      const char *memory, const char *access_pattern) {
   uint32_t samples[SAMPLES];
   const uint32_t accepted = measure_probe_samples(function, depth, samples);
   if (accepted == SAMPLES) {
-    emit_metric(name, samples);
+    emit_metric(name, memory, access_pattern, samples);
   } else {
     emit_refusal(name);
   }
@@ -145,7 +148,7 @@ static void run_direct_probe(const char *name, probe_fn_t function) {
   uint32_t samples[SAMPLES];
   const uint32_t accepted = measure_direct_samples(function, samples);
   if (accepted == SAMPLES) {
-    emit_metric(name, samples);
+    emit_metric(name, "iram", "exception-ladder", samples);
   } else {
     emit_refusal(name);
   }
@@ -156,7 +159,7 @@ void app_main(void) {
   esp_chip_info(&chip);
   const uint32_t cpu_hz = esp_rom_get_cpu_ticks_per_us() * 1000000u;
   printf("CAL_RECORD {\"type\":\"configuration\","
-         "\"schema_version\":\"1.0.0\",\"harness_version\":\"1.1.0\","
+         "\"schema_version\":\"1.0.0\",\"harness_version\":\"1.2.0\","
          "\"idf_version\":\"%s\",\"target\":\"esp32s3\","
          "\"chip_revision\":%u,\"cores\":%u,\"cpu_hz\":%" PRIu32 ","
          "\"ccount_hz\":%" PRIu32 ",\"probe\":\"exception-ladders\","
@@ -165,12 +168,17 @@ void app_main(void) {
          chip.cores, cpu_hz, cpu_hz, SAMPLES, MAX_ATTEMPTS, RECURSION_DEPTH);
   fflush(stdout);
 
-  run_probe("call4_window_pair", call4_window_pair, RECURSION_DEPTH);
-  run_probe("call8_window_pair", call8_window_pair, RECURSION_DEPTH);
-  run_probe("call12_window_pair", call12_window_pair, RECURSION_DEPTH);
+  run_probe("call4_window_pair", call4_window_pair, RECURSION_DEPTH, "iram",
+            "exception-ladder");
+  run_probe("call8_window_pair", call8_window_pair, RECURSION_DEPTH, "iram",
+            "exception-ladder");
+  run_probe("call12_window_pair", call12_window_pair, RECURSION_DEPTH, "iram",
+            "exception-ladder");
   run_direct_probe("syscall_rfe_pair", syscall_rfe_pair);
   run_direct_probe("rfe_alone", rfe_alone);
   run_direct_probe("rfi3_alone", rfi3_alone);
+  run_probe("mask_rom_fetch_straight_line", mask_rom_fetch_straight_line, 0,
+            "rom", "straight-line");
 
   printf("CALIBRATION_DONE sink=%" PRIu32 "\n", benchmark_sink);
   fflush(stdout);
