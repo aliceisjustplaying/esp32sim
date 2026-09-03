@@ -1286,6 +1286,7 @@ mod gp_spi_board_tests {
         bus.periph.gdma.out[0].desc = FIRST_DESC;
         bus.periph.gdma.out[0].running = true;
 
+        bus.write32(SPI2 + 0x30, 1 << 28).expect("SPI DMA configuration failed");
         bus.write32(SPI2 + 0x0c, 1 << 12).expect("SPI clock setup failed");
         bus.write32(SPI2 + 0x10, (1 << 27) | (1 << 13)).expect("SPI mode setup failed");
         bus.write32(SPI2 + 0x1c, (TRANSFER_BYTES as u32 * 8) - 1).expect("SPI data length failed");
