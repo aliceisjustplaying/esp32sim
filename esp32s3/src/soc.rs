@@ -34,7 +34,8 @@ impl Soc for S3 {
     }
     fn irqs(bus: &SocBus, out: &mut [u32]) { let (l0, l1) = bus.periph.cpu_lines_both(); out[0] = l0; out[1] = l1; }
     /// SYSTEM_CORE_1_CONTROL_0: clock gate, reset, run-stall.
-    fn core_state(bus: &SocBus, _core: usize) -> CoreState {
+    fn core_state(bus: &SocBus, core: usize) -> CoreState {
+        if core == 0 { return CoreState::Running; }
         let (clk, reset, stall) = bus.periph.core1_control();
         if reset { CoreState::Reset } else if clk && !stall { CoreState::Running } else { CoreState::Held }
     }
@@ -154,4 +155,16 @@ impl esp_soc::SocBus for SocBus {
     fn audio(&self) -> (&[i16], u32) { let a = self.periph.audio(); (&a.pcm, a.sample_rate) }
     fn camera_frames(&self) -> u64 { self.periph.lcd_cam.frames }
     fn irq_sources_of(&self, core: usize, line: u32) -> Vec<usize> { (0..NUM_SOURCES).filter(|&s| self.periph.intmatrix.map[core][s] == line).collect() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn primary_core_is_not_controlled_by_core_one_reset_registers() {
+        let bus = SocBus::new(8 << 20, 2 << 20, [0; 6]);
+        assert_eq!(S3::core_state(&bus, 0), CoreState::Running);
+        assert_eq!(S3::core_state(&bus, 1), CoreState::Held);
+    }
 }
