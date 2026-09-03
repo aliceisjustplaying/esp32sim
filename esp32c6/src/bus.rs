@@ -144,7 +144,11 @@ impl SocBus {
     fn spi2_dma_tx(&mut self) {
         let Some(bits) = self.periph.spi2.dma_tx_pending else { return };
         let want = (bits as usize).div_ceil(8);
-        let Some(ch) = self.periph.gdma.gdma.out_channel_for(0) else { return };   // not started yet: the round's end retries
+        let Some(ch) = self.periph.gdma.gdma.out_channel_for(0) else {
+            // IDF keeps DMA_TX_ENA set for RX-only transfers without starting an out-link.
+            self.periph.spi2.complete_dma_tx(&[]);
+            return;
+        };
         let mut data = Vec::with_capacity(want);
         let (mut desc, mut last) = (self.periph.gdma.gdma.out[ch].desc, self.periph.gdma.gdma.out[ch].desc);
         let mut guard = 0;
