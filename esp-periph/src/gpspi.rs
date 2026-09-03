@@ -72,8 +72,16 @@ impl GpSpi {
     pub fn has_pending_transfer(&self) -> bool { self.pending.is_some() }
 
     pub fn take_transfer(&mut self) -> Option<GpSpiTransfer> {
-        self.dma_tx_pending = None;
+        if self.dma_tx_pending.is_some() {
+            return None;
+        }
         self.pending.take()
+    }
+
+    /// Cancel a transfer that the chip bus could not complete.
+    pub fn abort_transfer(&mut self) {
+        self.dma_tx_pending = None;
+        self.pending = None;
     }
 
     /// The bus delivered the DMA data phase.
@@ -135,6 +143,22 @@ mod tests {
         spi.finish_transfer(transfer, &[0xa5, 0x5a]);
         assert_eq!(spi.w[8], 0xffff_5aa5);
         assert_ne!(spi.int_raw & (1 << 12), 0);
+        assert_eq!(spi.transfers, 1);
+    }
+
+    #[test]
+    fn dma_transfer_is_not_visible_until_the_bus_supplies_its_data() {
+        let mut spi = GpSpi::new();
+        spi.write(0x30, 1 << 28);
+        spi.write(0x10, 1 << 27);
+        spi.write(0x1c, 15);
+        spi.write(0x00, 1 << 24);
+
+        assert!(spi.take_transfer().is_none());
+        spi.complete_dma_tx(&[0x12, 0x34]);
+        let transfer = spi.take_transfer().expect("DMA completion makes the transfer visible");
+        assert_eq!(transfer.tx, [0x12, 0x34]);
+        spi.finish_transfer(transfer, &[]);
         assert_eq!(spi.transfers, 1);
     }
 }

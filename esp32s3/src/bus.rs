@@ -264,7 +264,7 @@ impl SocBus {
             Ok(None) => {}
             Err(fault) => {
                 self.spi2_dma_fault = Some(fault);
-                let _ = self.periph.spi2.take_transfer();
+                self.periph.spi2.abort_transfer();
             }
         }
     }
