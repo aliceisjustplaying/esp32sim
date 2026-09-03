@@ -370,13 +370,17 @@ mode (needs GOAL milestone 2).
 - Root `LICENSE` file on the fork: waiting on the upstream author; the maintainer owns the contact.
 - `.github/workflows/pages.yml` fetches the mask ROM unpinned from `releases/latest`: dormant because it triggers only on `main`, the upstream mirror; pin or remove it when the workflow is next touched.
 - `periph.rs` and `machine.rs` decomposition: deliberately deferred; extract only what Task 3b forces under the build-exactly-the-thing rule.
-- The current-main gate-harness image and console contract are pinned under
-  `calibration/esp32s3-gate-harness/`. Its 2026-09-02 fast-mode dry-run reached
+- The current-main gate-harness image identity and console contract are pinned
+  under `calibration/esp32s3-gate-harness/`. Its 2026-09-02 fast-mode dry-run reached
   panel creation and then remained in `spi_device_polling_end`: the board path
   sent the small panel-init SPI2 DMA transfer through the measured 32 KiB-only
   scheduler, so it never completed. A 50-billion-instruction run produced no
   `TINYDRAW_LIVE_*` lines. No fast-mode counter reference was committed. This
-  dry-run has not been repeated after the completion fix.
+  2026-09-03 post-fix rerun was refused before emulator execution because the
+  exact hash-pinned build bytes were absent from the canonical local archive;
+  the similarly named archived build has different source and artifact hashes.
+  Marker and counter completion remain unknown. Receipt:
+  [`evidence/gate-harness-fast-rerun-2026-09-03/`](evidence/gate-harness-fast-rerun-2026-09-03/README.md).
 - The same panel-init stop was observed in the 2026-09-02 native-speed runs
   and is retained as historical evidence at
   [`evidence/native-speed-2026-09-02/`](evidence/native-speed-2026-09-02/README.md).
@@ -390,8 +394,9 @@ mode (needs GOAL milestone 2).
 
 1. Proposal: capture the verified seven-cell H1 image during the next
    maintainer-started hardware session.
-2. Proposal: rerun the gate harness dry-run after the fast-mode small SPI2 DMA
-   completion fix. The native-speed rerun is complete.
+2. Proposal: restore the exact hash-pinned gate-harness build bytes, verify all
+   five artifacts, and rerun after the fast-mode small SPI2 DMA completion fix.
+   The native-speed rerun is complete.
 3. Proposal: add per-frame firmware counters to the next maintainer capture so
    frame-scale correlation can begin after measured boot reaches READY.
 4. Proposal: begin milestone 5 contention pricing only after the measured boot

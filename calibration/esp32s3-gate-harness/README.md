@@ -34,4 +34,10 @@ lines. Core 0 remains in `spi_device_polling_end` because the small panel-init
 SPI2 DMA transfer does not complete. No fast-mode reference was committed
 because the emulator produced no counters.
 
+The 2026-09-03 post-fix rerun was refused before emulator execution because
+the hash-pinned build bytes were absent from the canonical local archive. The
+similarly named archived build has different source and artifact hashes. The
+post-fix marker and counter result remains unknown. Receipt:
+[`../../docs/evidence/gate-harness-fast-rerun-2026-09-03/`](../../docs/evidence/gate-harness-fast-rerun-2026-09-03/README.md).
+
 calibration/tools/capture.py --image calibration/esp32s3-gate-harness --build <out> --boots 3 --port <serial> --timeout-s 180
