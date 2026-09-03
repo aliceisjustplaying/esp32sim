@@ -373,7 +373,7 @@ impl<S: Soc> Machine<S> {
             if idle[..S::CORES].iter().all(|&x| x) && !slow_path {
                 // every core asleep: let time pass in larger steps until a device raises a line
                 let chunk = S::IDLE_CHUNK;
-                for (i, &enabled) in on.iter().enumerate().take(S::CORES) { if enabled { self.cores[i].advance_cycles(chunk as u32); } }
+                for (i, &enabled) in on.iter().enumerate().take(S::CORES) { if enabled { self.cores[i].idle_advance(chunk as u32); } }
                 n += chunk;
                 self.after_round(chunk);
                 if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
@@ -383,7 +383,7 @@ impl<S: Soc> Machine<S> {
             }
             for i in 0..S::CORES {
                 if !on[i] { continue; }
-                if idle[i] && !slow_path { self.cores[i].advance_cycles(QUANTUM as u32); } else if blocks {
+                if idle[i] && !slow_path { self.cores[i].idle_advance(QUANTUM as u32); } else if blocks {
                     let mut left = QUANTUM as u32;
                     while left > 0 {
                         let (used, stop) = self.step_blocks(i, left);

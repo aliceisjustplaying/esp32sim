@@ -127,6 +127,9 @@ pub trait Core {
     /// Let cycles pass without retiring an instruction. This advances architectural cycle
     /// counters and raises core-local timer interrupts that fall due.
     fn advance_cycles(&mut self, cycles: u32);
+    /// Existing no-model idle accounting. Cores may count scheduler-skipped time as host work;
+    /// model-added cycle deltas use `advance_cycles` and never call this method.
+    fn idle_advance(&mut self, cycles: u32) { self.advance_cycles(cycles); }
     /// Cycles until a sleeping core's own timer can wake it. The value may be 2^32 when a
     /// wrapping 32-bit comparison register equals the current counter.
     fn cycles_until_wake(&self) -> Option<u64> { None }

@@ -19,7 +19,8 @@ impl emu_core::Core for Cpu {
     fn set_irq(&mut self, line: Option<u32>) { self.irq = line; }
     fn irq_pending(&self) -> bool { self.irq.is_some() }
     fn irq_bits(irq: &Option<u32>) -> u32 { irq.map_or(0, |l| 1 << (l & 31)) }
-    fn advance_cycles(&mut self, cycles: u32) { self.insn_count += cycles as u64; self.cycle_count += cycles as u64; }
+    fn advance_cycles(&mut self, cycles: u32) { self.cycle_count += cycles as u64; }
+    fn idle_advance(&mut self, cycles: u32) { self.insn_count += cycles as u64; self.cycle_count += cycles as u64; }
     fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome { crate::exec::step_outcome(self, bus) }
     fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
     /// One instruction at a time, but like a block: stop when the bus reports that an interrupt
@@ -112,13 +113,15 @@ mod tests {
         let mut cpu = crate::Cpu::new(); cpu.pc = base; cpu.mtvec = base + 0x20;
         assert_eq!(cpu.step(&mut ram).kind, StepKind::Retired);
         cpu.advance_cycles(9);
-        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (10, 1, 10));
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (1, 1, 10));
         let instret = cpu.read_csr(csr::MINSTRET); let cycles = cpu.read_csr(csr::MCYCLE);
         assert_eq!((instret, cycles), (1, 10));
+        cpu.idle_advance(4);
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (5, 1, 14));
         assert!(matches!(cpu.step(&mut ram).kind, StepKind::TrapDuring(Trap::Exception(11))));
-        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (11, 1, 11));
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (6, 1, 15));
         let instret = cpu.read_csr(csr::MINSTRET); let cycles = cpu.read_csr(csr::MCYCLE);
-        assert_eq!((instret, cycles), (1, 11));
+        assert_eq!((instret, cycles), (1, 15));
     }
 
     #[test]
