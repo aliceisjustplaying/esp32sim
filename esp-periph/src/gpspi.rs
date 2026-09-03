@@ -2,19 +2,26 @@
 use crate::device::{Device, WriteEffect};
 use crate::regram::RegRam;
 
+/// One complete transfer waiting for the board attached to a GP-SPI host.
+pub struct GpSpiTransfer {
+    pub tx: Vec<u8>,
+    pub rx_len: usize,
+    pub data_offset: usize,
+    pub data_len: usize,
+    rx_word_base: usize,
+}
+
 /// General-purpose SPI master as the Arduino HAL / IDF `spi_master` use it. The CPU fills
 /// W0..W15 (or, with `DMA_CONF.DMA_TX_ENA`, points a GDMA out-channel at the data), sets the phase
-/// enables and lengths, writes CMD.UPDATE then CMD.USR, and waits for the transfer. Transfers
-/// complete instantly; the bytes that went out on MOSI are queued in `tx` for the board (the
-/// display), MISO reads back as 0xFF. A DMA data phase is left in `dma_tx_pending` for the chip's
-/// bus, which owns the memory the descriptors point at, to finish with `complete_dma_tx`.
-pub struct GpSpi { pub regs: RegRam, pub w: [u32; 16], pub int_raw: u32, pub int_ena: u32, pub tx: Vec<u8>, pub transfers: u64, pub log: bool,
+/// enables and lengths, writes CMD.UPDATE then CMD.USR, and waits for the transfer. The chip bus
+/// supplies any DMA data, asks its board for the MISO response, then finishes the transfer.
+pub struct GpSpi { pub regs: RegRam, pub w: [u32; 16], pub int_raw: u32, pub int_ena: u32, pub transfers: u64, pub log: bool,
                    /// bit length of a MOSI phase that DMA must supply, until the bus completes it
-                   pub dma_tx_pending: Option<u32> }
+                   pub dma_tx_pending: Option<u32>, pending: Option<GpSpiTransfer> }
 impl Default for GpSpi { fn default() -> Self { Self::new() } }
 
 impl GpSpi {
-    pub fn new() -> Self { GpSpi { regs: RegRam::new(), w: [0; 16], int_raw: 0, int_ena: 0, tx: Vec::new(), transfers: 0, log: false, dma_tx_pending: None } }
+    pub fn new() -> Self { GpSpi { regs: RegRam::new(), w: [0; 16], int_raw: 0, int_ena: 0, transfers: 0, log: false, dma_tx_pending: None, pending: None } }
     pub fn irq(&self) -> bool { self.int_raw & self.int_ena != 0 }
     pub fn read(&self, off: u32) -> u32 {
         match off {
@@ -35,38 +42,62 @@ impl GpSpi {
     }
     fn transfer(&mut self) {
         let user = self.regs.read(0x10); let user1 = self.regs.read(0x14); let user2 = self.regs.read(0x18);
-        let start = self.tx.len();
+        let mut tx = Vec::new();
         if user & (1 << 31) != 0 {                                        // command phase, LSB byte first
             let n = (((user2 >> 28) & 0xf) + 1).div_ceil(8); let c = user2 & 0xffff;
-            for i in 0..n { self.tx.push((c >> (8 * i)) as u8); }
+            for i in 0..n { tx.push((c >> (8 * i)) as u8); }
         }
         if user & (1 << 30) != 0 {                                        // address phase, MSB first from the top of ADDR
             let bits = (user1 >> 27) + 1; let n = bits.div_ceil(8); let a = self.regs.read(0x04);
-            for i in 0..n { self.tx.push((a >> (24 - 8 * i)) as u8); }
+            for i in 0..n { tx.push((a >> (24 - 8 * i)) as u8); }
         }
+        let data_offset = tx.len();
+        let mut data_len = 0;
         if user & (1 << 27) != 0 {                                        // MOSI data phase from W0.. (or W8.. with HIGHPART)
             let bits = (self.regs.read(0x1c) & 0x3ffff) + 1; let n = bits.div_ceil(8) as usize;
+            data_len = n;
             if self.regs.read(0x30) & (1 << 28) != 0 {                    // DMA_TX_ENA: the bus fetches the data through GDMA
                 self.dma_tx_pending = Some(bits);
-                if self.log { eprintln!("[spi2] transfer {} header bytes, {} data bits by DMA", self.tx.len() - start, bits); }
-                return;
+                if self.log { eprintln!("[spi2] transfer {} header bytes, {} data bits by DMA", tx.len(), bits); }
+            } else {
+                let base = if user & (1 << 25) != 0 { 8 } else { 0 };
+                for i in 0..n.min((16 - base) * 4) { tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8); }
             }
-            let base = if user & (1 << 25) != 0 { 8 } else { 0 };
-            for i in 0..n.min((16 - base) * 4) { self.tx.push((self.w[base + i / 4] >> (8 * (i % 4))) as u8); }
         }
-        if user & (1 << 28) != 0 {                                        // MISO: nothing answers
-            let base = if user & (1 << 24) != 0 { 8 } else { 0 };
-            for k in base..16 { self.w[k] = 0xffff_ffff; }
-        }
-        if self.log { eprintln!("[spi2] transfer {} bytes: {:02x?}", self.tx.len() - start, &self.tx[start..(start + 16).min(self.tx.len())]); }
-        self.transfers += 1;
-        self.int_raw |= 1 << 12;                                          // TRANS_DONE
+        let rx_len = if user & (1 << 28) != 0 { ((self.regs.read(0x20) & 0x3ffff) + 1).div_ceil(8) as usize } else { 0 };
+        let rx_word_base = if user & (1 << 24) != 0 { 8 } else { 0 };
+        self.pending = Some(GpSpiTransfer { tx, rx_len, data_offset, data_len, rx_word_base });
     }
-    /// The bus delivered the DMA data phase: finish the transfer.
+
+    pub fn has_pending_transfer(&self) -> bool { self.pending.is_some() }
+
+    pub fn take_transfer(&mut self) -> Option<GpSpiTransfer> {
+        self.dma_tx_pending = None;
+        self.pending.take()
+    }
+
+    /// The bus delivered the DMA data phase.
     pub fn complete_dma_tx(&mut self, data: &[u8]) {
         self.dma_tx_pending = None;
-        self.tx.extend_from_slice(data);
+        if let Some(transfer) = self.pending.as_mut() {
+            transfer.tx.extend_from_slice(&data[..data.len().min(transfer.data_len)]);
+        }
         if self.log { eprintln!("[spi2] dma data {} bytes: {:02x?}", data.len(), &data[..data.len().min(16)]); }
+    }
+
+    /// Complete a transfer with the board's MISO response.
+    pub fn finish_transfer(&mut self, transfer: GpSpiTransfer, rx: &[u8]) {
+        if transfer.rx_len != 0 {
+            for k in transfer.rx_word_base..16 { self.w[k] = 0xffff_ffff; }
+            let capacity = (16 - transfer.rx_word_base) * 4;
+            for i in 0..transfer.rx_len.min(capacity) {
+                let b = rx.get(i).copied().unwrap_or(0xff);
+                let word = transfer.rx_word_base + i / 4;
+                let shift = 8 * (i % 4);
+                self.w[word] = (self.w[word] & !(0xff << shift)) | ((b as u32) << shift);
+            }
+        }
+        if self.log { eprintln!("[spi2] transfer tx={} rx={}: {:02x?}", transfer.tx.len(), transfer.rx_len, &transfer.tx[..transfer.tx.len().min(16)]); }
         self.transfers += 1;
         self.int_raw |= 1 << 12;                                          // TRANS_DONE
     }
@@ -79,4 +110,31 @@ impl Device for GpSpi {
     fn debug(&mut self, on: bool) { self.log = on; }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn splits_phases_and_writes_the_board_response_to_miso_words() {
+        let mut spi = GpSpi::new();
+        let user = (1 << 31) | (1 << 30) | (1 << 28) | (1 << 27) | (1 << 24);
+        spi.write(0x10, user);
+        spi.write(0x14, 23 << 27);
+        spi.write(0x18, (7 << 28) | 0x02);
+        spi.write(0x04, 0x0400_0000);
+        spi.write(0x1c, 23);
+        spi.write(0x20, 23);
+        spi.write(0x98, 0x4433_2211);
+
+        spi.write(0x00, 1 << 24);
+        let transfer = spi.take_transfer().expect("USR must issue one board transaction");
+        assert_eq!(transfer.tx, [0x02, 0x04, 0x00, 0x00, 0x11, 0x22, 0x33]);
+        assert_eq!(transfer.rx_len, 3);
+        assert_eq!(spi.transfers, 0);
+
+        spi.finish_transfer(transfer, &[0xa5, 0x5a]);
+        assert_eq!(spi.w[8], 0xffff_5aa5);
+        assert_ne!(spi.int_raw & (1 << 12), 0);
+        assert_eq!(spi.transfers, 1);
+    }
+}

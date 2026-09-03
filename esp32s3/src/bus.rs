@@ -210,6 +210,7 @@ impl SocBus {
             _ => { let old = self.periph.read32(a); let sh = (addr & 3) * 8; (old & !(0xff << sh)) | ((v & 0xff) << sh) }
         };
         self.periph.write32(a, w);
+        self.deliver_spi2_transfer();
         // GPIO output registers (OUT/W1TS/W1TC/OUT1...) are hammered by bit-banged SPI and never change an
         // interrupt line directly; the periodic 32-cycle poll still sees any indirect effect
         if !(0x6000_4004..=0x6000_4018).contains(&a) { self.irq_dirty = true; }
@@ -218,6 +219,21 @@ impl SocBus {
             self.periph.spi1.execute(&mut self.flash, &mut self.psram);
             for (m, off, len) in std::mem::take(&mut self.periph.spi1.dirty) { self.note_written(match m { crate::periph::DirtyMem::Flash => SRC_FLASH, crate::periph::DirtyMem::Psram => SRC_PSRAM }, off, len); }
         }
+    }
+
+    fn deliver_spi2_transfer(&mut self) {
+        if self.periph.spi2.dma_tx_pending.is_some() {
+            return;
+        }
+        let Some(transfer) = self.periph.spi2.take_transfer() else { return };
+        // Chip select and command/data lines are GPIOs. The board must see their preceding edges
+        // before it receives the transaction.
+        if !self.periph.gpio.changes.is_empty() {
+            let changes = std::mem::take(&mut self.periph.gpio.changes);
+            self.board.gpio_changes(&changes);
+        }
+        let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
+        self.periph.spi2.finish_transfer(transfer, &rx);
     }
 
     /// Move I2S TX data out of DMA descriptors at the sample rate.
@@ -671,8 +687,48 @@ impl SocBus {
             if let Some(ev) = &mut self.gpio_events { for &(pin, level) in &ch { ev.push((self.cycles, pin, level)); } }
             self.board.gpio_changes(&ch);
         }
-        if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
+        self.deliver_spi2_transfer();
         if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
         0
     }
+}
+#[cfg(test)]
+mod gp_spi_board_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    const SPI2: u32 = 0x6002_4000;
+
+    struct ProbeBoard {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl crate::board::BoardModel for ProbeBoard {
+        fn name(&self) -> &'static str { "probe" }
+        fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
+            self.events.lock().expect("probe mutex poisoned").push(format!("gpio:{changes:?}"));
+        }
+        fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+            self.events.lock().expect("probe mutex poisoned").push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
+            vec![0x5a; rx_len]
+        }
+    }
+
+    #[test]
+    fn board_answers_before_usr_write_returns_and_after_pending_gpio_edges() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        bus.periph.gpio.changes.push((12, false));
+
+        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).expect("SPI setup failed");
+        bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).expect("SPI command phase failed");
+        bus.write32(SPI2 + 0x20, 7).expect("SPI response length failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command failed");
+
+        assert_eq!(bus.periph.spi2.w[0] & 0xff, 0x5a);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["gpio:[(12, false)]", "spi:2:[9f]:1"]);
+    }
+
 }

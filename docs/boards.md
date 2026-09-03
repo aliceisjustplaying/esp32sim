@@ -8,6 +8,7 @@ pub trait BoardModel {
     fn name(&self) -> &'static str;
     fn gpio_changes(&mut self, changes: &[(u8, bool)]) {}      // output edges, in order
     fn rmt_frame(&mut self, ch: usize, bits: &[bool]) {}       // a decoded RMT transmission
+    fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8>
     fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn I2cDevice>)> // (bus, address, device)
     fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)>    // for the UI/PNG: w, h, RGB565, change counter
     fn leds(&self) -> Option<(&[[u8; 3]], u64)>               // LED ring/strip colours, change counter
@@ -78,7 +79,7 @@ No devices; console only. For stock ESP-IDF projects (`examples/hello_world`).
 ## Adding a board
 
 The worked example is in [adding.md](adding.md#a-board-a-device-with-things-wired-to-the-chip):
-`impl BoardModel` (GPIO edges, RMT frames, SPI bytes, LCD frames in; display, LEDs, camera preview,
+`impl BoardModel` (GPIO edges, RMT frames, SPI transactions, LCD frames in; display, LEDs, camera preview,
 named pins, encoder, report out), I2C devices as `I2cDevice`, one arm in `make_board`, a run script
 under `examples/<board>/` and a row in this file. The page switches its layout on the `board`
 message (`web/index.html`).
