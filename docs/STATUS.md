@@ -6,7 +6,7 @@ what is adopted, and what the hardware queue holds. The goal is
 
 ## What exists
 
-- Branch `alice` (this branch): upstream esp32sim pinned at `c6164f8`
+- Branch `alice` (this branch): upstream esp32sim pinned at `3733e35`
   plus provenance, strict Rust safeguards, and this documentation and
   evidence set. The safeguards pin Rust 1.98.0, apply workspace-wide
   deny-level lints, preserve release overflow checks and debug
@@ -50,9 +50,11 @@ what is adopted, and what the hardware queue holds. The goal is
 - Branches `salvage/*`: frozen earlier work, inventoried below.
 - The TinyDraw checkout is read-only from this repository. Current product
   runs use the immutable IDF 6.1 build at
-  `~/Archives/esp32s3/pinned-builds/tinydraw-vector-v2-9cb651e0`, whose four
+  `~/Archives/esp32s3/pinned-builds/tinydraw-vector-v2-credential-free-7a157d4-a4a30bc1`,
+  built from fetched TinyDraw `main` at `7a157d4` with nonsecret dummy Wi-Fi
+  inputs. Its four
   boot artifacts are checked before use against
-  [`evidence/tinydraw-vector-v2-build-2026-09-03.json`](evidence/tinydraw-vector-v2-build-2026-09-03.json).
+  [`evidence/tinydraw-vector-v2-credential-free-build-2026-09-03.json`](evidence/tinydraw-vector-v2-credential-free-build-2026-09-03.json).
   Any future TinyDraw source work uses its own branch and isolated worktree.
 - An adversarial review of all salvage material exists in the archived
   predecessor repository (its final state, `reviews/` directory).
