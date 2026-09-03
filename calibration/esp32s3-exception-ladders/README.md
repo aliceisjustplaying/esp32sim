@@ -21,6 +21,10 @@ The verifier resolves `esp32s3_rev0_rom.elf` through the IDF 6.1
 `ESP_ROM_ELF_DIR`, pins its SHA-256, proves that the application alias is an
 absolute mask-ROM address, and verifies the target's `.text` placement and
 both instruction encodings. It does not derive or adopt a timing price.
+Strict capture requires the manifest-pinned IDF, harness, target, revision,
+core count, clocks, sample and attempt counts, and recursion depth. The dry-run
+path alone accepts emulator-reported chip revision 0; hardware capture requires
+the board contract's revision 2.
 
 Capture two clean boots:
 

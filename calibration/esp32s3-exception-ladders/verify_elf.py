@@ -25,11 +25,31 @@ CELL_IDS = (
 ROM_SHA256 = "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd"
 ROM_TARGET = 0x400559A4
 CACHE_COUNTER_CTRL = "600c40c4"
+CACHE_COUNTERS = (
+    "600c40c8",
+    "600c40cc",
+    "600c40d0",
+    "600c40d4",
+    "600c40d8",
+)
 EXPECTED_CONFIGURATION = {
     "protocolVersion": 2,
     "harnessVersion": "1.2.0",
     "chipModel": "ESP32-S3",
     "chipRevision": 2,
+}
+EXPECTED_RUNTIME_CONFIGURATION = {
+    "schemaVersion": "1.0.0",
+    "idfVersion": "v6.1",
+    "target": "esp32s3",
+    "cores": 2,
+    "cpuHz": 240000000,
+    "ccountHz": 240000000,
+    "samplesPerCell": 100,
+    "maxAttemptsPerCell": 200,
+    "recursionDepth": 20,
+    "probe": "exception-ladders",
+    "emulatorChipRevision": 0,
 }
 HEADER = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
 INSN = re.compile(r"^([0-9a-f]+):\s+([0-9a-f]+)\s+([a-zA-Z0-9_.]+)(?:\s+(.*))?$")
@@ -43,12 +63,26 @@ def verify_manifest(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise VerificationError("manifest must be an object")
-    expected_top_level = {*EXPECTED_CONFIGURATION, "cells"}
+    expected_top_level = {*EXPECTED_CONFIGURATION, "runtimeConfiguration", "cells"}
     if set(payload) != expected_top_level:
         raise VerificationError("manifest does not have the exact H1 configuration contract")
     for field, expected in EXPECTED_CONFIGURATION.items():
-        if payload.get(field) != expected:
+        if payload.get(field) != expected or type(payload.get(field)) is not type(
+            expected
+        ):
             raise VerificationError(f"manifest {field} must be {expected!r}")
+    runtime_configuration = payload.get("runtimeConfiguration")
+    if (
+        runtime_configuration != EXPECTED_RUNTIME_CONFIGURATION
+        or not isinstance(runtime_configuration, dict)
+        or any(
+            type(runtime_configuration.get(field)) is not type(expected)
+            for field, expected in EXPECTED_RUNTIME_CONFIGURATION.items()
+        )
+    ):
+        raise VerificationError(
+            "manifest runtimeConfiguration must match the exact H1 contract"
+        )
     cells = payload.get("cells")
     if not isinstance(cells, list) or not all(isinstance(cell, dict) for cell in cells):
         raise VerificationError("manifest cells must be an array")
@@ -80,6 +114,7 @@ def verify_manifest(path: Path) -> dict[str, object]:
         "knownTerms": expected_terms,
         "maskRomKnownTerms": rom_terms,
         "configuration": dict(EXPECTED_CONFIGURATION),
+        "runtimeConfiguration": dict(EXPECTED_RUNTIME_CONFIGURATION),
     }
 
 
@@ -168,6 +203,125 @@ def verify_rom_contract(
             for address, encoding, mnemonic, operands in target
         ],
         "instructionFetchesPerTrial": len(target),
+    }
+
+
+def _operands(instruction: tuple[int, str, str, str]) -> list[str]:
+    return [operand.strip() for operand in instruction[3].split(",")]
+
+
+def _branch_target(instruction: tuple[int, str, str, str]) -> int | None:
+    operands = _operands(instruction)
+    if len(operands) != 2:
+        return None
+    match = re.match(r"^([0-9a-fA-F]+)", operands[1])
+    return int(match.group(1), 16) if match is not None else None
+
+
+def _verify_post_dispatch_cache_gate(
+    measure: list[tuple[int, str, str, str]], dispatch: int
+) -> dict[str, object]:
+    tail = measure[dispatch + 1 :]
+    loads: dict[str, tuple[int, str]] = {}
+    for counter in CACHE_COUNTERS:
+        matches = [
+            (index, _operands(item)[0])
+            for index, item in enumerate(tail, dispatch + 1)
+            if item[2] == "l32r"
+            and counter in item[3].lower()
+            and len(_operands(item)) == 2
+        ]
+        if len(matches) != 1:
+            raise VerificationError(
+                f"measurement lacks one exact post-dispatch read base for 0x{counter}"
+            )
+        loads[counter] = matches[0]
+
+    base_counters: dict[str, str] = {}
+    taint: dict[str, set[str]] = {}
+    reads: dict[str, int] = {}
+    dirty_gate: tuple[int, tuple[int, str, str, str]] | None = None
+    for index, item in enumerate(tail, dispatch + 1):
+        operands = _operands(item)
+        loaded_counter = next(
+            (counter for counter, (load, _) in loads.items() if load == index), None
+        )
+        if loaded_counter is not None:
+            register = operands[0]
+            base_counters[register] = loaded_counter
+            taint[register] = set()
+            continue
+        if item[2].startswith("l32i") and len(operands) == 3 and operands[2] == "0":
+            destination, base = operands[:2]
+            counter = base_counters.get(base)
+            if counter is not None:
+                if counter in reads:
+                    raise VerificationError(
+                        f"measurement reads cache counter 0x{counter} more than once"
+                    )
+                reads[counter] = index
+                taint[destination] = {counter}
+            continue
+        if item[2] == "or" and len(operands) == 3:
+            destination, left, right = operands
+            taint[destination] = taint.get(left, set()) | taint.get(right, set())
+            continue
+        if item[2].startswith("bnez") and len(operands) == 2:
+            if taint.get(operands[0], set()) == set(CACHE_COUNTERS):
+                dirty_gate = (index, item)
+                break
+    if set(reads) != set(CACHE_COUNTERS) or dirty_gate is None:
+        raise VerificationError(
+            "measurement does not fold all post-dispatch cache-counter reads into the zero gate"
+        )
+
+    gate_index, gate = dirty_gate
+    rejection_target = _branch_target(gate)
+    if rejection_target is None:
+        raise VerificationError("cache-counter zero gate has no exact rejection target")
+    elapsed_definitions = [
+        (index, _operands(item)[0])
+        for index, item in enumerate(measure[dispatch + 1 : gate_index], dispatch + 1)
+        if item[2] == "sub" and len(_operands(item)) == 3
+    ]
+    if len(elapsed_definitions) != 1:
+        raise VerificationError("measurement lacks one elapsed-cycle value before acceptance")
+    elapsed_register = elapsed_definitions[0][1]
+    elapsed_gates = [
+        (index, item)
+        for index, item in enumerate(measure[gate_index + 1 :], gate_index + 1)
+        if item[2].startswith("beqz")
+        and len(_operands(item)) == 2
+        and _operands(item)[0] == elapsed_register
+        and _branch_target(item) == rejection_target
+    ]
+    if len(elapsed_gates) != 1:
+        raise VerificationError(
+            "measurement lacks the zero-elapsed gate to the cache rejection path"
+        )
+    elapsed_gate_index = elapsed_gates[0][0]
+    accepted_stores = [
+        (index, item)
+        for index, item in enumerate(
+            measure[elapsed_gate_index + 1 :], elapsed_gate_index + 1
+        )
+        if item[0] < rejection_target
+        and item[2].startswith("s32i")
+        and len(_operands(item)) == 3
+        and _operands(item)[0] == elapsed_register
+    ]
+    if len(accepted_stores) != 1:
+        raise VerificationError(
+            "measurement lacks one accepted-sample store behind the cache zero gate"
+        )
+    return {
+        "cacheCounterRegisters": [f"0x{counter}" for counter in CACHE_COUNTERS],
+        "cacheCounterReadAddresses": [
+            f"0x{measure[reads[counter]][0]:08x}" for counter in CACHE_COUNTERS
+        ],
+        "cacheZeroGateAddress": f"0x{gate[0]:08x}",
+        "rejectionTargetAddress": f"0x{rejection_target:08x}",
+        "acceptedSampleStoreAddress": f"0x{accepted_stores[0][1][0]:08x}",
         "cacheCountersRequiredZero": True,
     }
 
@@ -273,6 +427,7 @@ def verify_disassembly(disassembly: str) -> dict[str, object]:
         "counterClearAddress": f"0x{measure[clear][0]:08x}",
         "dispatchAddress": f"0x{measure[dispatch][0]:08x}",
         "warmupDispatches": 1,
+        **_verify_post_dispatch_cache_gate(measure, dispatch),
     }
     return {"cells": cells, "measurementBoundary": measurement_boundary}
 
@@ -313,6 +468,9 @@ def verify_elf(
         text=True,
     ).stdout
     rom_contract = verify_rom_contract(app_symbols, rom_symbols, rom_disassembly)
+    rom_contract["cacheCountersRequiredZero"] = disassembly[
+        "measurementBoundary"
+    ]["cacheCountersRequiredZero"]
     verified_cells = dict(disassembly["cells"])
     verified_cells["mask_rom_fetch_straight_line"] = rom_contract
     return {

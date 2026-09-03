@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ndjson import (
     ATTRIBUTION_CHECKSUMS,
     ATTRIBUTION_ITERATIONS,
+    CAL_PREFIX,
     CAL_DONE,
     PREFIX,
     CalibrationValidator,
@@ -18,6 +19,7 @@ from ndjson import (
     CellContract,
     ManifestContract,
     PSRAM_SERVICE_BYTES,
+    RuntimeConfigurationContract,
     ValidationError,
     design_ranks,
     expected_aggressor_checksum,
@@ -55,6 +57,49 @@ def manifest_payload() -> dict[str, object]:
             }
         ],
     }
+
+
+def runtime_contract() -> ManifestContract:
+    return ManifestContract(
+        protocol_version=2,
+        harness_version="1.2.0",
+        chip_model="ESP32-S3",
+        chip_revision=2,
+        cells=(CellContract("rtc_read", 1, ("normal",)),),
+        runtime_configuration=RuntimeConfigurationContract(
+            schema_version="1.0.0",
+            idf_version="v6.1",
+            target="esp32s3",
+            cores=2,
+            cpu_hz=240_000_000,
+            ccount_hz=240_000_000,
+            samples_per_cell=100,
+            max_attempts_per_cell=200,
+            recursion_depth=20,
+            probe="exception-ladders",
+            emulator_chip_revision=0,
+        ),
+    )
+
+
+def runtime_configuration(**updates: object) -> str:
+    record: dict[str, object] = {
+        "type": "configuration",
+        "schema_version": "1.0.0",
+        "harness_version": "1.2.0",
+        "idf_version": "v6.1",
+        "target": "esp32s3",
+        "chip_revision": 2,
+        "cores": 2,
+        "cpu_hz": 240_000_000,
+        "ccount_hz": 240_000_000,
+        "probe": "exception-ladders",
+        "samples_per_cell": 100,
+        "max_attempts_per_cell": 200,
+        "recursion_depth": 20,
+    }
+    record.update(updates)
+    return CAL_PREFIX + json.dumps(record)
 
 
 def contention_contract() -> ManifestContract:
@@ -946,6 +991,79 @@ class CaptureValidatorTest(unittest.TestCase):
                 '"ccount_samples":[17]}',
                 1,
             )
+
+    def test_manifest_parses_optional_runtime_configuration_contract(self) -> None:
+        payload = manifest_payload()
+        payload["runtimeConfiguration"] = {
+            "schemaVersion": "1.0.0",
+            "idfVersion": "v6.1",
+            "target": "esp32s3",
+            "cores": 2,
+            "cpuHz": 240_000_000,
+            "ccountHz": 240_000_000,
+            "samplesPerCell": 100,
+            "maxAttemptsPerCell": 200,
+            "recursionDepth": 20,
+            "probe": "exception-ladders",
+            "emulatorChipRevision": 0,
+        }
+        parsed = ManifestContract.from_bytes(json.dumps(payload).encode())
+        assert parsed.runtime_configuration is not None
+        self.assertEqual(parsed.runtime_configuration.idf_version, "v6.1")
+        self.assertEqual(parsed.runtime_configuration.emulator_chip_revision, 0)
+
+    def test_calibration_strict_requires_matching_runtime_configuration(self) -> None:
+        validator = CalibrationValidator(runtime_contract(), "normal", "all")
+        validator.feed_line(runtime_configuration(), 1)
+        validator.feed_line(
+            'CAL_RECORD {"type":"metric","name":"rtc_read","ccount_samples":[17]}',
+            2,
+        )
+        validator.feed_line(CAL_DONE, 3)
+        self.assertTrue(validator.finalize().as_dict()["complete"])
+
+    def test_calibration_requires_runtime_configuration_when_manifest_declares_it(self) -> None:
+        validator = CalibrationValidator(runtime_contract(), "normal", "all")
+        validator.feed_line(
+            'CAL_RECORD {"type":"metric","name":"rtc_read","ccount_samples":[17]}',
+            1,
+        )
+        validator.feed_line(CAL_DONE, 2)
+        with self.assertRaisesRegex(ValidationError, "required configuration"):
+            validator.finalize()
+
+    def test_calibration_strict_rejects_emulator_revision(self) -> None:
+        validator = CalibrationValidator(runtime_contract(), "normal", "all")
+        with self.assertRaisesRegex(ValidationError, "chip_revision.*expected 2"):
+            validator.feed_line(runtime_configuration(chip_revision=0), 1)
+
+    def test_calibration_dry_run_accepts_only_declared_emulator_revision(self) -> None:
+        accepted = CalibrationValidator(runtime_contract(), "normal", "all", True)
+        accepted.feed_line(runtime_configuration(chip_revision=0), 1)
+        rejected = CalibrationValidator(runtime_contract(), "normal", "all", True)
+        with self.assertRaisesRegex(ValidationError, "chip_revision.*expected 0"):
+            rejected.feed_line(runtime_configuration(chip_revision=2), 1)
+
+    def test_calibration_runtime_configuration_fails_closed_on_every_identity(self) -> None:
+        changed = {
+            "schema_version": "2.0.0",
+            "harness_version": "1.1.0",
+            "idf_version": "v5.5",
+            "target": "esp32",
+            "chip_revision": 1,
+            "cores": 1,
+            "cpu_hz": 160_000_000,
+            "ccount_hz": 80_000_000,
+            "probe": "other",
+            "samples_per_cell": 99,
+            "max_attempts_per_cell": 199,
+            "recursion_depth": 19,
+        }
+        for field, value in changed.items():
+            with self.subTest(field=field):
+                validator = CalibrationValidator(runtime_contract(), "normal", "all")
+                with self.assertRaisesRegex(ValidationError, field):
+                    validator.feed_line(runtime_configuration(**{field: value}), 1)
 
     def test_calibration_dry_run_allows_only_cache_counter_refusal(self) -> None:
         accepted = CalibrationValidator(contract(), "normal", "store_hit_psram", True)
