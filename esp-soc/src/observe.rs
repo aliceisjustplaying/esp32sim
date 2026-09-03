@@ -45,6 +45,8 @@ impl Ctx<'_> {
 pub trait Observer<S: Soc> {
     fn name(&self) -> &'static str;
     fn wants(&self) -> Wants;
+    /// Called before a modeled run. Block callbacks are unavailable on its single-step path.
+    fn on_modeled_run(&mut self) {}
     /// Before `pc` executes on `core`. A `Stop` ends the run.
     fn on_insn(&mut self, _cx: &Ctx, _core: usize, _cpu: &S::Core, _bus: &mut S::Bus, _pc: u32) -> Option<Stop> { None }
     /// After the instruction (and its trap, if any) on `core`.

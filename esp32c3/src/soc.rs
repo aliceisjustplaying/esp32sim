@@ -31,6 +31,9 @@ impl Soc for C3 {
 
 impl esp_soc::SocBus for SocBus {
     fn cycles(&self) -> u64 { self.cycles }
+    fn next_deadline(&self) -> Option<u64> {
+        match self.periph.cycles_until_timer() { u32::MAX => None, cycles => Some(cycles.max(1) as u64) }
+    }
     fn irq_dirty(&mut self) -> &mut bool { &mut self.irq_dirty }
     fn refresh_irq(&mut self) -> bool { self.periph.refresh_lines(); true }
     fn misc(&mut self) -> &mut Misc { &mut self.periph.misc }

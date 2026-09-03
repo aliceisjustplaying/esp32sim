@@ -62,6 +62,7 @@ impl<S: Soc> MachineApi for Machine<S> {
                 Stop::Exceptions(_) => return 4,
                 Stop::Simcall(_) => return 5,
                 Stop::Watch(..) => return 6,
+                Stop::CostModel { reason, .. } | Stop::CostModelLifecycle { reason, .. } => { log(&format!("[emu] cost model: {}", reason)); return 7; }
             }
         }
     }
