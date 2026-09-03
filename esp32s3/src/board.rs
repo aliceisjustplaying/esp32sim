@@ -12,13 +12,14 @@
 pub use esp_soc::board::{Board, BoardModel, NoBoard};
 use esp_soc::picture;
 
-/// Board by name: `atech14` (default), `none`, `waveshare-cam`, `waveshare-lcd4b`.
+/// Board by name: `atech14` (default), `none`, or a supported Waveshare board.
 pub fn make_board(name: &str) -> Option<Board> {
     match name {
         "atech14" | "atech" => Some(Box::new(Atech14::new())),
         "none" | "bare" => Some(Box::new(NoBoard)),
         "waveshare-cam" | "waveshare" => Some(Box::new(WaveshareCam::new())),
         "waveshare-lcd4b" | "lcd4b" => Some(Box::new(WaveshareLcd4b::new())),
+        "waveshare-amoled18-v2" | "amoled18-v2" => Some(Box::new(WaveshareAmoled18V2::new())),
         _ => None,
     }
 }
@@ -33,6 +34,17 @@ pub const PIN_ENC_DT: u8 = 4;
 pub const PIN_ENC_SW: u8 = 9;
 pub const PIN_BTN1: u8 = 17;
 pub const PIN_BTN2: u8 = 16;
+
+pub const PIN_AMOLED_SDIO0: u8 = 4;
+pub const PIN_AMOLED_SDIO1: u8 = 5;
+pub const PIN_AMOLED_SDIO2: u8 = 6;
+pub const PIN_AMOLED_SDIO3: u8 = 7;
+pub const PIN_AMOLED_SCLK: u8 = 11;
+pub const PIN_AMOLED_CS: u8 = 12;
+pub const PIN_AMOLED_TE: u8 = 13;
+pub const PIN_AMOLED_I2C_SCL: u8 = 14;
+pub const PIN_AMOLED_I2C_SDA: u8 = 15;
+pub const PIN_AMOLED_TOUCH_INT: u8 = 21;
 
 /// ST7735 controller model: 132x162 GRAM, address window, MADCTL, RGB565 pixels over SPI.
 pub struct St7735 {
@@ -293,5 +305,171 @@ impl BoardModel for WaveshareLcd4b {
     fn touch(&mut self, x: u16, y: u16, down: bool) {
         let mut t = self.touch_state.lock().unwrap(); t.x = x; t.y = y;
         if down { t.down = true; t.seen = false; t.release_pending = false; } else if t.seen { t.down = false; } else { t.release_pending = true; }
+    }
+}
+
+/// CO5300 controller and 368x448 RGB565 frame memory used by the Waveshare AMOLED V2 board.
+pub struct Co5300 {
+    pub frame: Vec<u16>,
+    pub frames: u64,
+    pub pixels_written: u64,
+    x0: u16,
+    x1: u16,
+    y0: u16,
+    y1: u16,
+    x: u16,
+    y: u16,
+    pending: Option<u8>,
+    pixel_hi: Option<u8>,
+}
+
+impl Co5300 {
+    pub const WIDTH: usize = 368;
+    pub const HEIGHT: usize = 448;
+
+    pub fn new() -> Self {
+        Self {
+            frame: vec![0; Self::WIDTH * Self::HEIGHT],
+            frames: 0,
+            pixels_written: 0,
+            x0: 0,
+            x1: Self::WIDTH as u16 - 1,
+            y0: 0,
+            y1: Self::HEIGHT as u16 - 1,
+            x: 0,
+            y: 0,
+            pending: None,
+            pixel_hi: None,
+        }
+    }
+
+    pub fn transaction(&mut self, tx: &[u8]) {
+        if tx.len() == 4 && matches!(tx[0], 0x02 | 0x32) {
+            let command = tx[2];
+            self.pending = Some(command);
+            self.pixel_hi = None;
+            if command == 0x2c { self.x = self.x0; self.y = self.y0; self.frames += 1; }
+            return;
+        }
+        match self.pending {
+            Some(0x2a) if tx.len() >= 4 => {
+                self.x0 = u16::from_be_bytes([tx[0], tx[1]]);
+                self.x1 = u16::from_be_bytes([tx[2], tx[3]]);
+                self.x = self.x0;
+                self.pending = None;
+            }
+            Some(0x2b) if tx.len() >= 4 => {
+                self.y0 = u16::from_be_bytes([tx[0], tx[1]]);
+                self.y1 = u16::from_be_bytes([tx[2], tx[3]]);
+                self.y = self.y0;
+                self.pending = None;
+            }
+            Some(0x2c | 0x3c) => {
+                for &byte in tx {
+                    match self.pixel_hi.take() {
+                        None => self.pixel_hi = Some(byte),
+                        Some(high) => self.write_pixel(u16::from_be_bytes([high, byte])),
+                    }
+                }
+            }
+            Some(_) => self.pending = None,
+            None => {}
+        }
+    }
+
+    fn write_pixel(&mut self, pixel: u16) {
+        if (self.x as usize) < Self::WIDTH && (self.y as usize) < Self::HEIGHT {
+            self.frame[self.y as usize * Self::WIDTH + self.x as usize] = pixel;
+            self.pixels_written += 1;
+        }
+        if self.x >= self.x1 {
+            self.x = self.x0;
+            if self.y >= self.y1 { self.y = self.y0; } else { self.y += 1; }
+        } else {
+            self.x += 1;
+        }
+    }
+}
+
+impl Default for Co5300 { fn default() -> Self { Self::new() } }
+
+/// Waveshare ESP32-S3-Touch-AMOLED-1.8 V2 with the CO5300 and CST820 device set.
+pub struct WaveshareAmoled18V2 {
+    pub gpio_events: u64,
+    pub panel: Co5300,
+    pub touch_state: std::sync::Arc<std::sync::Mutex<crate::i2c::TouchState>>,
+}
+
+impl WaveshareAmoled18V2 {
+    pub fn new() -> Self { Self { gpio_events: 0, panel: Co5300::new(), touch_state: Default::default() } }
+}
+
+impl Default for WaveshareAmoled18V2 { fn default() -> Self { Self::new() } }
+
+impl BoardModel for WaveshareAmoled18V2 {
+    fn name(&self) -> &'static str { "waveshare-amoled18-v2" }
+    fn gpio_changes(&mut self, changes: &[(u8, bool)]) { self.gpio_events += changes.len() as u64; }
+    fn gpio_events(&self) -> u64 { self.gpio_events }
+    fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+        if host == 2 { self.panel.transaction(tx); }
+        vec![0xff; rx_len]
+    }
+    fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn crate::i2c::I2cDevice>)> {
+        use crate::i2c::*;
+        vec![
+            (0, 0x15, Box::new(Cst820::new(self.touch_state.clone()))),
+            (0, 0x20, Box::new(Tca9554::register_ram_stub())),
+            (0, 0x34, Box::new(Reg8Device::new("axp2101-pmic-initialization-stub", &[(0x03, 0x4a)]))),
+            (0, 0x51, Box::new(Reg8Device::new("pcf85063a-rtc-initialization-stub", &[]))),
+            (0, 0x6b, Box::new(Reg8Device::new("qmi8658-imu-initialization-stub", &[(0x00, 0x05)]))),
+        ]
+    }
+    fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> {
+        Some((Co5300::WIDTH as u32, Co5300::HEIGHT as u32, self.panel.frame.clone(), self.panel.pixels_written))
+    }
+    fn display_version(&self) -> u64 { self.panel.pixels_written }
+    fn display_frames(&self) -> u64 { self.panel.frames }
+    fn display_quiet_push(&self) -> bool { true }
+    fn touch(&mut self, x: u16, y: u16, down: bool) {
+        let mut touch = self.touch_state.lock().expect("AMOLED touch state mutex poisoned");
+        touch.x = x.min(Co5300::WIDTH as u16 - 1);
+        touch.y = y.min(Co5300::HEIGHT as u16 - 1);
+        if down { touch.down = true; touch.seen = false; touch.release_pending = false; }
+        else if touch.seen { touch.down = false; }
+        else { touch.release_pending = true; }
+    }
+}
+
+#[cfg(test)]
+mod amoled_tests {
+    use super::*;
+
+    #[test]
+    fn qspi_windowed_write_updates_panel_pixels() {
+        let mut panel = Co5300::new();
+        panel.transaction(&[0x02, 0, 0x2a, 0]);
+        panel.transaction(&[0, 1, 0, 2]);
+        panel.transaction(&[0x02, 0, 0x2b, 0]);
+        panel.transaction(&[0, 3, 0, 3]);
+        panel.transaction(&[0x32, 0, 0x2c, 0]);
+        panel.transaction(&[0xf8, 0, 0x07, 0xe0]);
+        assert_eq!(panel.frame[3 * Co5300::WIDTH + 1], 0xf800);
+        assert_eq!(panel.frame[3 * Co5300::WIDTH + 2], 0x07e0);
+        assert_eq!(panel.pixels_written, 2);
+        assert_eq!(panel.frames, 1);
+    }
+
+    #[test]
+    fn board_exposes_the_v2_device_addresses_on_i2c0() {
+        let mut board = WaveshareAmoled18V2::new();
+        let addresses: Vec<_> = board.i2c_devices().into_iter().map(|(bus, address, _)| (bus, address)).collect();
+        assert_eq!(addresses, [(0, 0x15), (0, 0x20), (0, 0x34), (0, 0x51), (0, 0x6b)]);
+    }
+
+    #[test]
+    fn board_name_selects_only_the_v2_model() {
+        assert_eq!(make_board("waveshare-amoled18-v2").unwrap().name(), "waveshare-amoled18-v2");
+        assert_eq!(make_board("amoled18-v2").unwrap().name(), "waveshare-amoled18-v2");
+        assert!(make_board("waveshare-amoled18").is_none());
     }
 }
