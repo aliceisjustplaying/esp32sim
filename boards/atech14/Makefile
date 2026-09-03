@@ -1,9 +1,7 @@
 # Atech ESP32-S3 (14-port board) "Pocket Synth" — simulation environment
 #
-#   make hostsim    build the LOCAL simulator (native build of the firmware, no cloud)
-#   make run        start the local simulator's web UI at http://127.0.0.1:8765
-#   make test       run every scenario in hostsim/scenarios against the local simulator
 #   make hw         build the hardware firmware (env:hw — real I2S, real ST7735)
+#   make test       run the emulator's golden tests for this firmware (needs the S3 mask ROM ELF)
 #   make flash      flash the real board          make monitor   serial monitor
 #   make sync-sdk   re-copy the real drivers from the installed `atech` SDK
 #   make sdk        (re)create .venv with the open Atech SDK (pip package `atech`)
@@ -15,16 +13,10 @@ PORT     ?= /dev/cu.usbmodem1101
 export PATH := $(HOME)/bin:$(PATH)
 ATECH     = .venv/bin/atech
 
-.PHONY: hostsim run test hw flash monitor check send clean sdk sync-sdk idf-example
+.PHONY: test hw flash monitor check send clean sdk sync-sdk idf-example
 
-hostsim:
-	$(MAKE) -C hostsim
-
-run: hostsim
-	$(MAKE) -C hostsim run
-
-test: hostsim
-	$(MAKE) -C hostsim test
+test:
+	cd ../.. && cargo test --release -p esp32sim --test goldens -- --include-ignored atech
 
 hw:
 	cd firmware && pio run -e hw
@@ -49,7 +41,7 @@ sync-sdk:
 	tools/sync-sdk-modules.sh
 
 clean:
-	rm -rf firmware/.pio; $(MAKE) -C hostsim clean
+	rm -rf firmware/.pio
 
 # The minimal ESP-IDF sample from before the Atech firmware existed
 idf-example:
