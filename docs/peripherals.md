@@ -29,7 +29,7 @@ registers are logged with `--log-periph`).
 | WiFi MAC | 0x60033000 | partial | TX queues, RX descriptor ring, interrupt events, TSF, filters — enough for scan/auth/assoc/data with the unmodified blob (docs/wifi-plan.md) |
 | RNG | 0x6003B000 | full | random words |
 | regi2c / I2C_MST (PLL, RF analog) | 0x6000E000 | stub | reads back what was written; BBPLL and pkdet calibration-done bits set |
-| GP-SPI2 master | 0x60024000 | partial | CPU-driven transfers (command/address/MOSI phases, W0–W15, UPDATE/USR, TRANS_DONE); DMA and MISO devices — |
+| GP-SPI2 master | 0x60024000 | partial | CPU-driven command/address/data phases; board MISO responses; bounded GDMA TX descriptor completion; RX DMA is not modeled |
 | PCNT | 0x60017000 | full | 4 units × 2 channels, pos/neg/ctrl modes via the GPIO matrix, limits/thresholds/zero events, counter reset/pause |
 | LEDC, ADC, SPI3, TWAI, SDMMC, USB-OTG | — | — | |
 | WiFi baseband/PHY/RF, BT | — | — | radio registers are faked, not modelled; see wifi-plan.md |

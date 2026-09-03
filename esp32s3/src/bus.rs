@@ -2,6 +2,7 @@
 //! memories, external flash + PSRAM through the 512-entry cache MMU, peripherals.
 use crate::periph::{Peripherals, PERIPH_BASE, PERIPH_END};
 use crate::board::Board;
+use std::collections::HashSet;
 use xtensa_lx7::bus::{Bus, Fault};
 
 pub const SRAM_SIZE: usize = 512 * 1024;
@@ -27,6 +28,33 @@ pub const MMU_INVALID: u32 = 1 << 14;
 pub const MMU_SPIRAM: u32 = 1 << 15;
 pub const PAGE: u32 = 0x1_0000;
 
+const SPI2_DMA_DESCRIPTOR_STEP_BUDGET: usize = 1024;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DmaDescriptorWord {
+    Control,
+    Buffer,
+    Next,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DmaDescriptorFault {
+    Read { descriptor: u32, word: DmaDescriptorWord, fault: Fault },
+    BufferRead { descriptor: u32, address: u32, fault: Fault },
+    Writeback { descriptor: u32, fault: Fault },
+    NotOwned { descriptor: u32 },
+    Cycle { descriptor: u32 },
+    StepBudgetExceeded { budget: usize },
+    PayloadTooShort { expected: usize, actual: usize },
+}
+
+struct Spi2DmaCompletion {
+    channel: usize,
+    final_channel: crate::periph::GdmaOutCh,
+    descriptor_writebacks: Vec<(u32, u32)>,
+    payload: Vec<u8>,
+}
+
 pub struct SocBus {
     pub sram: Vec<u8>,
     pub irom: Vec<u8>,
@@ -40,6 +68,7 @@ pub struct SocBus {
     pub board: Board,
     pub cycles: u64,
     pub last_fault: Option<(u32, bool)>,
+    pub spi2_dma_fault: Option<DmaDescriptorFault>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
     /// GPIO edges for observers, while one wants them: (cycle, pin, level)
@@ -83,7 +112,7 @@ impl SocBus {
         let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
-            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
+            mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
         let mut b = bus_uninit;
@@ -209,7 +238,12 @@ impl SocBus {
             2 => { let old = self.periph.read32(a); let sh = (addr & 2) * 8; (old & !(0xffff << sh)) | ((v & 0xffff) << sh) }
             _ => { let old = self.periph.read32(a); let sh = (addr & 3) * 8; (old & !(0xff << sh)) | ((v & 0xff) << sh) }
         };
+        if a == PERIPH_BASE + 0x24_000 && w & (1 << 24) != 0 {
+            self.spi2_dma_fault = None;
+        }
         self.periph.write32(a, w);
+        self.complete_spi2_dma();
+        self.deliver_spi2_transfer();
         // GPIO output registers (OUT/W1TS/W1TC/OUT1...) are hammered by bit-banged SPI and never change an
         // interrupt line directly; the periodic 32-cycle poll still sees any indirect effect
         if !(0x6000_4004..=0x6000_4018).contains(&a) { self.irq_dirty = true; }
@@ -218,6 +252,179 @@ impl SocBus {
             self.periph.spi1.execute(&mut self.flash, &mut self.psram);
             for (m, off, len) in std::mem::take(&mut self.periph.spi1.dirty) { self.note_written(match m { crate::periph::DirtyMem::Flash => SRC_FLASH, crate::periph::DirtyMem::Psram => SRC_PSRAM }, off, len); }
         }
+    }
+
+    fn complete_spi2_dma(&mut self) {
+        if self.periph.spi2.dma_tx_pending.is_none() {
+            return;
+        }
+        let channel = self.periph.gdma.out_channel_for(0);
+        match self.spi2_dma_completion() {
+            Ok(Some(completion)) => {
+                for (descriptor, control) in completion.descriptor_writebacks {
+                    if let Err(fault) = self.write32(descriptor, control) {
+                        self.fail_spi2_dma(completion.channel, DmaDescriptorFault::Writeback { descriptor, fault });
+                        return;
+                    }
+                }
+                self.periph.gdma.out[completion.channel] = completion.final_channel;
+                self.periph.spi2.complete_dma_tx(&completion.payload);
+                self.irq_dirty = true;
+            }
+            Ok(None) => {}
+            Err(fault) => {
+                if let Some(channel) = channel {
+                    self.fail_spi2_dma(channel, fault);
+                }
+            }
+        }
+    }
+
+    fn fail_spi2_dma(&mut self, channel: usize, fault: DmaDescriptorFault) {
+        if self.periph.spi2.log { eprintln!("[spi2] DMA descriptor fault: {fault:?}"); }
+        self.spi2_dma_fault = Some(fault);
+        let gdma = &mut self.periph.gdma.out[channel];
+        gdma.running = false;
+        gdma.int_raw |= 1 << 2;                                         // OUT_DSCR_ERR
+        self.periph.spi2.fail_dma_tx();
+        self.irq_dirty = true;
+    }
+
+    fn deliver_spi2_transfer(&mut self) {
+        if self.periph.spi2.dma_tx_pending.is_some() {
+            return;
+        }
+        let Some(transfer) = self.periph.spi2.take_transfer() else { return };
+        // Chip select and command/data lines are GPIOs. The board must see their preceding edges
+        // before it receives the transaction.
+        if !self.periph.gpio.changes.is_empty() {
+            let changes = std::mem::take(&mut self.periph.gpio.changes);
+            if let Some(events) = &mut self.gpio_events {
+                for &(pin, level) in &changes {
+                    events.push((self.cycles, pin, level));
+                }
+            }
+            self.board.gpio_changes(&changes);
+        }
+        let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
+        self.periph.spi2.finish_transfer(transfer, &rx);
+    }
+
+    /// Collect one GP-SPI2 data phase and its GDMA completion without partially committing a
+    /// malformed descriptor chain.
+    fn spi2_dma_completion(&mut self) -> Result<Option<Spi2DmaCompletion>, DmaDescriptorFault> {
+        let Some(bits) = self.periph.spi2.dma_tx_pending else { return Ok(None) };
+        let Some(channel_index) = self.periph.gdma.out_channel_for(0) else { return Ok(None) };
+        let wanted = (bits as usize).div_ceil(8);
+        let mut payload = Vec::with_capacity(wanted);
+        let mut visited = HashSet::new();
+        let mut channel = self.periph.gdma.out[channel_index];
+        let mut descriptor_writebacks = Vec::new();
+        let mut steps = 0;
+        while payload.len() < wanted {
+            let current = channel;
+            if !current.running || current.desc == 0 {
+                break;
+            }
+            if steps == SPI2_DMA_DESCRIPTOR_STEP_BUDGET {
+                return Err(DmaDescriptorFault::StepBudgetExceeded { budget: SPI2_DMA_DESCRIPTOR_STEP_BUDGET });
+            }
+            steps += 1;
+            if !visited.insert(current.desc) {
+                return Err(DmaDescriptorFault::Cycle { descriptor: current.desc });
+            }
+            let control = self.read32(current.desc).map_err(|fault| DmaDescriptorFault::Read {
+                descriptor: current.desc,
+                word: DmaDescriptorWord::Control,
+                fault,
+            })?;
+            let length = (control >> 12) & 0xfff;
+            if control & (1 << 31) == 0 {
+                return Err(DmaDescriptorFault::NotOwned { descriptor: current.desc });
+            }
+            let buffer = self.read32(current.desc.wrapping_add(4)).map_err(|fault| DmaDescriptorFault::Read {
+                descriptor: current.desc,
+                word: DmaDescriptorWord::Buffer,
+                fault,
+            })?;
+            let next = self.read32(current.desc.wrapping_add(8)).map_err(|fault| DmaDescriptorFault::Read {
+                descriptor: current.desc,
+                word: DmaDescriptorWord::Next,
+                fault,
+            })?;
+            let eof = control & (1 << 30) != 0;
+            let remaining = length.saturating_sub(current.buf_pos) as usize;
+            if remaining != 0 {
+                let count = remaining.min(wanted - payload.len());
+                let address = buffer.wrapping_add(current.buf_pos);
+                self.append_mapped_bytes(address, count, &mut payload).map_err(|(address, fault)| DmaDescriptorFault::BufferRead {
+                    descriptor: current.desc,
+                    address,
+                    fault,
+                })?;
+                channel.buf_pos += remaining as u32;                     // GDMA drains the descriptor
+            }
+            if channel.conf0 & (1 << 2) != 0 {
+                let writable = current.desc.checked_add(4).is_some_and(|end| {
+                    self.lookup(current.desc).is_some_and(|entry| entry.writable != 0 && end <= entry.hi)
+                });
+                if !writable {
+                    return Err(DmaDescriptorFault::Writeback { descriptor: current.desc, fault: Fault::Prohibited });
+                }
+                descriptor_writebacks.push((current.desc, control & !(1 << 31)));
+            }
+            channel.int_raw |= 1 << 0;
+            if eof {
+                channel.int_raw |= 1 << 1;
+                channel.eof_desc = current.desc;
+            }
+            if next == 0 {
+                channel.running = false;
+                channel.desc = 0;
+                channel.int_raw |= 1 << 3;
+            } else {
+                channel.desc = next;
+                channel.buf_pos = 0;
+            }
+            if eof {
+                break;
+            }
+            if payload.len() == wanted {
+                break;
+            }
+        }
+        if payload.len() != wanted {
+            return Err(DmaDescriptorFault::PayloadTooShort { expected: wanted, actual: payload.len() });
+        }
+        Ok(Some(Spi2DmaCompletion { channel: channel_index, final_channel: channel, descriptor_writebacks, payload }))
+    }
+
+    /// Append a memory range a mapping at a time. Peripheral and unmapped addresses use the
+    /// ordinary byte read so their access semantics and first-fault bookkeeping stay unchanged.
+    fn append_mapped_bytes(&mut self, mut address: u32, mut count: usize, out: &mut Vec<u8>) -> Result<(), (u32, Fault)> {
+        while count != 0 {
+            if !Self::is_periph(address) {
+                if let Some(entry) = self.lookup(address) {
+                    let take = count.min(entry.hi.wrapping_sub(address) as usize);
+                    if take != 0 {
+                        let offset = entry.off as usize + address.wrapping_sub(entry.lo) as usize;
+                        if let Some(bytes) = self.buf(entry.src as u8).get(offset..offset + take) {
+                            out.extend_from_slice(bytes);
+                            address = address.wrapping_add(take as u32);
+                            count -= take;
+                            continue;
+                        }
+                    }
+                }
+            }
+            match self.read8(address) {
+                Ok(byte) => out.push(byte),
+                Err(fault) => return Err((address, fault)),
+            }
+            address = address.wrapping_add(1);
+            count -= 1;
+        }
+        Ok(())
     }
 
     /// Move I2S TX data out of DMA descriptors at the sample rate.
@@ -643,6 +850,7 @@ impl SocBus {
 
     fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.periph.tick(cycles as u64);
+        self.complete_spi2_dma();
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
@@ -671,8 +879,313 @@ impl SocBus {
             if let Some(ev) = &mut self.gpio_events { for &(pin, level) in &ch { ev.push((self.cycles, pin, level)); } }
             self.board.gpio_changes(&ch);
         }
-        if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
+        self.deliver_spi2_transfer();
         if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
         0
+    }
+}
+#[cfg(test)]
+mod gp_spi_board_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    const SPI2: u32 = 0x6002_4000;
+    const GDMA: u32 = 0x6003_f000;
+    const FIRST_DESC: u32 = 0x3fc9_0100;
+
+    struct ProbeBoard {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl crate::board::BoardModel for ProbeBoard {
+        fn name(&self) -> &'static str { "probe" }
+        fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
+            self.events.lock().expect("probe mutex poisoned").push(format!("gpio:{changes:?}"));
+        }
+        fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+            self.events.lock().expect("probe mutex poisoned").push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
+            (0..rx_len).map(|i| 0x50 + i as u8).collect()
+        }
+    }
+
+    fn dma_bus() -> SocBus {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.periph.gdma.out[0].peri_sel = 0;
+        bus.periph.gdma.out[0].desc = FIRST_DESC;
+        bus.periph.gdma.out[0].running = true;
+        bus
+    }
+
+    fn start_dma(bus: &mut SocBus, bits: u32) {
+        bus.write32(SPI2 + 0x30, 1 << 28).expect("SPI DMA configuration failed");
+        bus.write32(SPI2 + 0x10, 1 << 27).expect("SPI user configuration failed");
+        bus.write32(SPI2 + 0x1c, bits - 1).expect("SPI data length failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command failed");
+    }
+
+    fn assert_dma_fault_and_recovery(bus: &mut SocBus, expected: DmaDescriptorFault) {
+        assert_eq!(bus.spi2_dma_fault, Some(expected));
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xf, 1 << 2);
+        assert!(!bus.periph.gdma.out[0].running);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(bus.periph.spi2.transfers, 0);
+        assert!(bus.periph.spi2.dma_tx_pending.is_none());
+        assert!(!bus.periph.spi2.has_pending_transfer());
+
+        bus.write32(GDMA + 0x74, 1 << 2).expect("GDMA interrupt clear failed");
+        bus.write32(SPI2 + 0x38, 1 << 12).expect("SPI interrupt clear failed");
+        assert_eq!(bus.periph.gdma.out[0].int_raw & (1 << 2), 0);
+        assert_eq!(bus.periph.spi2.int_raw & (1 << 12), 0);
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        bus.write32(SPI2 + 0x30, 0).expect("CPU mode setup failed");
+        bus.write32(SPI2 + 0x1c, 7).expect("CPU data length setup failed");
+        bus.write32(SPI2 + 0x98, 0xa5).expect("CPU data setup failed");
+        bus.write32(SPI2, 1 << 24).expect("recovery transaction failed");
+        assert_eq!(bus.spi2_dma_fault, None);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[a5]:0"]);
+    }
+
+    #[test]
+    fn idf_shaped_read_uses_ms_dlen_and_a_following_cpu_transfer_completes() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        bus.gpio_events = Some(Vec::new());
+        bus.periph.gpio.changes.push((12, false));
+
+        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).expect("SPI setup failed");
+        bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).expect("SPI command phase failed");
+        bus.write32(SPI2 + 0x1c, 7).expect("SPI response length failed");
+        bus.write32(SPI2 + 0x20, 0x3e).expect("SPI miscellaneous setup failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command failed");
+
+        assert_eq!(bus.periph.spi2.w[0] & 0xff, 0x50);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["gpio:[(12, false)]", "spi:2:[9f]:1"]);
+        assert_eq!(bus.gpio_events.as_deref(), Some(&[(0, 12, false)][..]));
+
+        bus.write32(SPI2 + 0x30, 0).expect("CPU mode setup failed");
+        bus.write32(SPI2 + 0x10, 1 << 27).expect("CPU transfer setup failed");
+        bus.write32(SPI2 + 0x98, 0xa5).expect("CPU data setup failed");
+        bus.write32(SPI2, 1 << 24).expect("second SPI command failed");
+        assert_eq!(bus.periph.spi2.transfers, 2);
+        assert_eq!(events.lock().expect("probe mutex poisoned").last().map(String::as_str), Some("spi:2:[a5]:0"));
+    }
+
+    #[test]
+    fn cpu_transfer_replaces_a_parked_dma_transfer_on_the_bus() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+
+        bus.write32(SPI2 + 0x30, 1 << 28).expect("SPI DMA setup failed");
+        bus.write32(SPI2 + 0x10, 1 << 27).expect("DMA transfer setup failed");
+        bus.write32(SPI2 + 0x1c, 7).expect("SPI data length failed");
+        bus.write32(SPI2, 1 << 24).expect("DMA command failed");
+        assert_eq!(bus.periph.spi2.dma_tx_pending, Some(8));
+        assert_eq!(bus.periph.spi2.transfers, 0);
+        assert!(events.lock().expect("probe mutex poisoned").is_empty());
+
+        bus.write32(SPI2 + 0x30, 0).expect("CPU mode setup failed");
+        bus.write32(SPI2 + 0x98, 0xa5).expect("CPU data setup failed");
+        bus.write32(SPI2, 1 << 24).expect("CPU command failed");
+
+        assert_eq!(bus.periph.spi2.dma_tx_pending, None);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[a5]:0"]);
+    }
+
+    #[test]
+    fn spi2_data_phase_comes_from_gdma_descriptor() {
+        const DATA: u32 = 0x3fc9_0200;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = dma_bus();
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        bus.write32(DATA, 0x4433_2211).expect("test data write failed");
+        bus.write32(FIRST_DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+
+        start_dma(&mut bus, 32);
+
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[11, 22, 33, 44]:0"]);
+        assert_eq!(bus.read32(FIRST_DESC).expect("descriptor read failed") >> 31, 0);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+    }
+
+    #[test]
+    fn dma_payload_crosses_a_tlb_mapping_boundary() {
+        const DATA: u32 = 0x3fc8_fffe;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = dma_bus();
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        for (offset, byte) in [0x11, 0x22, 0x33, 0x44].into_iter().enumerate() {
+            bus.write8(DATA + offset as u32, byte).expect("test data write failed");
+        }
+        bus.write32(FIRST_DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 32);
+
+        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[11, 22, 33, 44]:0"]);
+        assert_eq!(bus.spi2_dma_fault, None);
+    }
+
+    #[test]
+    fn dma_payload_reports_the_first_unmapped_address() {
+        const DATA: u32 = DRAM_HIGH - 1;
+        let mut bus = dma_bus();
+        bus.write8(DATA, 0xaa).expect("test data write failed");
+        bus.write32(FIRST_DESC, 2 | (2 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 16);
+
+        let expected = DmaDescriptorFault::BufferRead { descriptor: FIRST_DESC, address: DRAM_HIGH, fault: Fault::Unmapped };
+        assert_eq!(bus.spi2_dma_fault, Some(expected));
+        assert_eq!(bus.last_fault, Some((DRAM_HIGH, false)));
+        assert_dma_fault_and_recovery(&mut bus, expected);
+    }
+
+    #[test]
+    fn descriptor_control_read_failure_is_typed() {
+        let mut bus = dma_bus();
+        bus.periph.gdma.out[0].desc = DRAM_HIGH;
+
+        start_dma(&mut bus, 8);
+
+        assert_dma_fault_and_recovery(&mut bus, DmaDescriptorFault::Read {
+            descriptor: DRAM_HIGH,
+            word: DmaDescriptorWord::Control,
+            fault: Fault::Unmapped,
+        });
+    }
+
+    #[test]
+    fn descriptor_buffer_read_failure_is_typed() {
+        let mut bus = dma_bus();
+        bus.write32(FIRST_DESC, 1 | (1 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, 0).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 8);
+
+        assert_dma_fault_and_recovery(&mut bus, DmaDescriptorFault::BufferRead {
+            descriptor: FIRST_DESC,
+            address: 0,
+            fault: Fault::Unmapped,
+        });
+    }
+
+    #[test]
+    fn descriptor_cycle_is_typed() {
+        let mut bus = dma_bus();
+        bus.write32(FIRST_DESC, 1 << 31).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, 0).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, FIRST_DESC).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 8);
+
+        assert_dma_fault_and_recovery(&mut bus, DmaDescriptorFault::Cycle { descriptor: FIRST_DESC });
+    }
+
+    #[test]
+    fn cpu_owned_descriptor_is_typed() {
+        let mut bus = dma_bus();
+        bus.write32(FIRST_DESC, 1 | (1 << 12)).expect("descriptor write failed");
+
+        start_dma(&mut bus, 8);
+
+        assert_dma_fault_and_recovery(&mut bus, DmaDescriptorFault::NotOwned { descriptor: FIRST_DESC });
+    }
+
+    #[test]
+    fn out_descriptor_length_is_not_limited_by_size() {
+        const DATA: u32 = 0x3fc9_0200;
+        let mut bus = dma_bus();
+        bus.write32(DATA, 0xbbaa).expect("test data write failed");
+        bus.write32(FIRST_DESC, 1 | (2 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 16);
+
+        assert_eq!(bus.spi2_dma_fault, None);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+    }
+
+    #[test]
+    fn short_descriptor_chain_is_typed() {
+        const DATA: u32 = 0x3fc9_0200;
+        let mut bus = dma_bus();
+        bus.write8(DATA, 0xaa).expect("test data write failed");
+        bus.write32(FIRST_DESC, 1 | (1 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 16);
+
+        assert_dma_fault_and_recovery(&mut bus, DmaDescriptorFault::PayloadTooShort { expected: 2, actual: 1 });
+    }
+
+    #[test]
+    fn read_only_auto_writeback_descriptor_is_typed() {
+        const DATA: u32 = 0x3fc9_0200;
+        let mut bus = dma_bus();
+        bus.periph.gdma.out[0].desc = IROM_MASK_LOW;
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+        bus.write8(DATA, 0xaa).expect("test data write failed");
+        bus.irom[0..4].copy_from_slice(&(1u32 | (1 << 12) | (1 << 30) | (1 << 31)).to_le_bytes());
+        bus.irom[4..8].copy_from_slice(&DATA.to_le_bytes());
+        bus.irom[8..12].copy_from_slice(&0u32.to_le_bytes());
+
+        start_dma(&mut bus, 8);
+
+        assert_dma_fault_and_recovery(&mut bus, DmaDescriptorFault::Writeback {
+            descriptor: IROM_MASK_LOW,
+            fault: Fault::Prohibited,
+        });
+    }
+
+    #[test]
+    fn descriptor_step_budget_is_typed() {
+        let mut bus = dma_bus();
+        for step in 0..=SPI2_DMA_DESCRIPTOR_STEP_BUDGET {
+            let descriptor = FIRST_DESC + step as u32 * 12;
+            bus.write32(descriptor, 1 << 31).expect("descriptor write failed");
+            bus.write32(descriptor + 4, 0).expect("descriptor buffer write failed");
+            bus.write32(descriptor + 8, descriptor + 12).expect("descriptor link write failed");
+        }
+
+        start_dma(&mut bus, 0x40000);
+
+        assert_dma_fault_and_recovery(&mut bus, DmaDescriptorFault::StepBudgetExceeded {
+            budget: SPI2_DMA_DESCRIPTOR_STEP_BUDGET,
+        });
+    }
+
+    #[test]
+    fn short_ms_dlen_retires_an_overlong_eof_descriptor() {
+        const DATA: u32 = 0x3fc9_0200;
+        let mut bus = dma_bus();
+        bus.write32(DATA, 0x4433_2211).expect("test data write failed");
+        bus.write32(FIRST_DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31)).expect("descriptor write failed");
+        bus.write32(FIRST_DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(FIRST_DESC + 8, 0).expect("descriptor link write failed");
+
+        start_dma(&mut bus, 16);
+
+        assert_eq!(bus.spi2_dma_fault, None);
+        assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
+        assert_eq!(bus.periph.gdma.out[0].eof_desc, FIRST_DESC);
+        assert!(!bus.periph.gdma.out[0].running);
+        assert_eq!(bus.periph.spi2.transfers, 1);
     }
 }

@@ -129,7 +129,7 @@ impl SocBus {
         // A GP-SPI transfer reaches the board now, after the GPIO edges that preceded it: the
         // display's D/C line is a GPIO the driver sets right before each transaction.
         if self.periph.spi2.dma_tx_pending.is_some() { self.spi2_dma_tx(); }
-        if !self.periph.spi2.tx.is_empty() || !self.periph.gpio.changes.is_empty() { self.deliver_board_events(); }
+        if self.periph.spi2.has_pending_transfer() || !self.periph.gpio.changes.is_empty() { self.deliver_board_events(); }
         self.irq_dirty = true;
     }
 
@@ -172,7 +172,10 @@ impl SocBus {
             if let Some(ev) = &mut self.gpio_events { for &(pin, level) in &ch { ev.push((self.cycles, pin, level)); } }
             self.board.gpio_changes(&ch);
         }
-        if !self.periph.spi2.tx.is_empty() { let d = std::mem::take(&mut self.periph.spi2.tx); self.board.spi_tx(2, &d); }
+        if let Some(transfer) = self.periph.spi2.take_transfer() {
+            let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
+            self.periph.spi2.finish_transfer(transfer, &rx);
+        }
         if !self.periph.rmt.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
     }
 

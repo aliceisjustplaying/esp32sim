@@ -12,6 +12,12 @@ pub trait BoardModel {
     fn rmt_frame(&mut self, _ch: usize, _bits: &[bool]) {}
     /// Bytes a GP-SPI master (`host` = 2 or 3) shifted out on MOSI.
     fn spi_tx(&mut self, _host: u8, _data: &[u8]) {}
+    /// One complete GP-SPI transaction. The default preserves transmit-only boards and models an
+    /// unattached MISO line.
+    fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
+        self.spi_tx(host, tx);
+        vec![0xff; rx_len]
+    }
     fn gpio_events(&self) -> u64 { 0 }
     /// Devices on the I2C buses: (bus, 7-bit address, device).
     fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn I2cDevice>)> { Vec::new() }
