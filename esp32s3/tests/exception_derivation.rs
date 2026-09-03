@@ -4,7 +4,7 @@ use esp32s3::{Esp32Backend, Machine, MeasuredMachine, MeasuredStep, MeasuredStep
 use std::path::PathBuf;
 use xtensa_lx7::measured::PlanError;
 
-const BUILD_ENVIRONMENT: &str = "TINYDRAW_VECTOR_V2_BUILD";
+const BUILD_ENVIRONMENT: &str = "TINYDRAW_IDF61_RECEIPT_BUILD";
 
 #[derive(Clone, Copy)]
 struct Attempt {
@@ -20,7 +20,7 @@ fn required_elf() -> Result<PathBuf, String> {
     std::env::var_os(BUILD_ENVIRONMENT)
         .map(PathBuf::from)
         .map(|build| build.join("tinydraw_esp32.elf"))
-        .ok_or_else(|| format!("{BUILD_ENVIRONMENT} must name the TinyDraw product build"))
+        .ok_or_else(|| format!("{BUILD_ENVIRONMENT} must name the historical TinyDraw receipt build"))
 }
 
 fn idf61_machine() -> Result<Machine, String> {

@@ -42,9 +42,11 @@ def sha256(path: Path) -> str:
 
 
 def load_attempts() -> list[dict[str, object]]:
-    build = os.environ.get("TINYDRAW_VECTOR_V2_BUILD")
+    build = os.environ.get("TINYDRAW_IDF61_RECEIPT_BUILD")
     if build is None:
-        raise SystemExit("TINYDRAW_VECTOR_V2_BUILD must name the TinyDraw product build")
+        raise SystemExit(
+            "TINYDRAW_IDF61_RECEIPT_BUILD must name the historical TinyDraw receipt build"
+        )
     elf = Path(build) / "tinydraw_esp32.elf"
     digest = sha256(elf)
     if digest != ELF_SHA256:

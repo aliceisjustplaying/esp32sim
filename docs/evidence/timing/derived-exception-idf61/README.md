@@ -17,7 +17,7 @@ receipt path for this family.
 Reproduce with:
 
 ```text
-TINYDRAW_VECTOR_V2_BUILD=/path/to/esp32-vector-v2 python3 analyze.py
+TINYDRAW_IDF61_RECEIPT_BUILD=/path/to/esp32-vector-v2 python3 analyze.py
 ```
 
 The JSON is canonical `json.dumps(..., indent=2, sort_keys=True)` output.
