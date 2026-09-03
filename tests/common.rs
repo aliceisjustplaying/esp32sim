@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Workspace root (this file lives in `<root>/tests/`).
-pub fn root() -> PathBuf { Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf() }
+pub fn root() -> PathBuf { Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("crate manifest directory must have a workspace parent").to_path_buf() }
 pub fn golden(name: &str) -> PathBuf { root().join("tests/golden").join(name) }
 
 /// The mask ROM ELF for `chip` (`esp32s3_rev0` / `esp32c3_rev3`): `ESP32SIM_ROM_DIR/<name>.elf`,
@@ -22,17 +22,20 @@ pub fn rom(name: &str) -> PathBuf {
             for d in dirs { let p = d.join(&file); if p.exists() { best = Some(p); } }
         }
     }
-    best.unwrap_or_else(|| panic!("{} not found: set ESP32SIM_ROM_DIR or install ESP-IDF (~/.espressif/tools/esp-rom-elfs)", file))
+    assert!(best.is_some(), "{} not found: set ESP32SIM_ROM_DIR or install ESP-IDF (~/.espressif/tools/esp-rom-elfs)", file);
+    best.expect("ROM path was checked above")
 }
 
 pub struct Run { pub stdout: String, pub stderr: String, pub insns: u64 }
 
 /// Run an emulator binary; stdout is the guest console, stderr the emulator's own report.
 pub fn run(bin: &str, args: &[&str]) -> Run {
-    let out = Command::new(bin).args(args).current_dir(root()).output().unwrap_or_else(|e| panic!("{}: {}", bin, e));
+    let out = Command::new(bin).args(args).current_dir(root()).output().expect("emulator binary must run");
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
     assert!(out.status.success(), "{} {:?} failed: {}\n{}", bin, args, out.status, tail(&stderr));
-    let insns = insn_count(&stderr).unwrap_or_else(|| panic!("no `[emu] stop:` line in stderr:\n{}", tail(&stderr)));
+    let insns = insn_count(&stderr);
+    assert!(insns.is_some(), "no `[emu] stop:` line in stderr:\n{}", tail(&stderr));
+    let insns = insns.expect("instruction count was checked above");
     Run { stdout: String::from_utf8_lossy(&out.stdout).to_string(), stderr, insns }
 }
 
@@ -52,40 +55,45 @@ fn tail(s: &str) -> String { let n = s.len(); s[n.saturating_sub(1500)..].to_str
 /// Compare `actual` with the golden file; `UPDATE_GOLDENS=1` rewrites it instead.
 pub fn expect_text(name: &str, actual: &str) {
     let p = golden(name);
-    if std::env::var("UPDATE_GOLDENS").is_ok() { std::fs::write(&p, actual).unwrap(); return; }
-    let want = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {} (run with UPDATE_GOLDENS=1 to create it)", p.display(), e));
+    if std::env::var("UPDATE_GOLDENS").is_ok() { std::fs::write(&p, actual).expect("text golden must be writable"); return; }
+    let want = std::fs::read_to_string(&p).expect("text golden must exist, run with UPDATE_GOLDENS=1 to create it");
     if want != actual {
         let got = p.with_extension("actual");
-        std::fs::write(&got, actual).unwrap();
+        std::fs::write(&got, actual).expect("actual output file must be writable");
         let (mut ln, mut wl, mut al) = (0, want.lines(), actual.lines());
         loop {
             ln += 1;
             match (wl.next(), al.next()) {
                 (Some(w), Some(a)) if w == a => continue,
-                (w, a) => panic!("{} differs at line {}:\n  want: {:?}\n  got:  {:?}\n(full output in {})", name, ln, w, a, got.display()),
+                (None, None) => break,
+                (w, a) => {
+                    assert_eq!(w, a, "{} differs at line {} (full output in {})", name, ln, got.display());
+                    return;
+                }
             }
         }
+        assert_eq!(want, actual, "{} differs (full output in {})", name, got.display());
     }
 }
 
 pub fn expect_sha(name: &str, data: &[u8]) {
     let p = golden(name);
     let hex = sha256_hex(data);
-    if std::env::var("UPDATE_GOLDENS").is_ok() { std::fs::write(&p, format!("{}\n", hex)).unwrap(); return; }
-    let want = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {} (run with UPDATE_GOLDENS=1 to create it)", p.display(), e));
+    if std::env::var("UPDATE_GOLDENS").is_ok() { std::fs::write(&p, format!("{}\n", hex)).expect("hash golden must be writable"); return; }
+    let want = std::fs::read_to_string(&p).expect("hash golden must exist, run with UPDATE_GOLDENS=1 to create it");
     assert_eq!(want.trim(), hex, "{}: {} bytes hash differently", name, data.len());
 }
 
 pub fn expect_u64(name: &str, v: u64) {
     let p = golden(name);
-    if std::env::var("UPDATE_GOLDENS").is_ok() { std::fs::write(&p, format!("{}\n", v)).unwrap(); return; }
-    let want: u64 = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {}", p.display(), e)).trim().parse().unwrap();
+    if std::env::var("UPDATE_GOLDENS").is_ok() { std::fs::write(&p, format!("{}\n", v)).expect("integer golden must be writable"); return; }
+    let want: u64 = std::fs::read_to_string(&p).expect("integer golden must be readable").trim().parse().expect("integer golden must contain a valid u64");
     assert_eq!(want, v, "{}", name);
 }
 
 /// Where a test may write its outputs.
 pub fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("esp32sim-test-{}", std::process::id())); std::fs::create_dir_all(&d).unwrap(); d.join(name)
+    let d = std::env::temp_dir().join(format!("esp32sim-test-{}", std::process::id())); std::fs::create_dir_all(&d).expect("test output directory must be creatable"); d.join(name)
 }
 
 pub fn sha256_hex(data: &[u8]) -> String { sha256(data).iter().map(|b| format!("{:02x}", b)).collect() }
@@ -100,7 +108,7 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     let mut m = data.to_vec(); m.push(0x80); while m.len() % 64 != 56 { m.push(0); } m.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
     for chunk in m.chunks(64) {
         let mut w = [0u32; 64];
-        for i in 0..16 { w[i] = u32::from_be_bytes(chunk[i * 4..i * 4 + 4].try_into().unwrap()); }
+        for i in 0..16 { w[i] = u32::from_be_bytes(chunk[i * 4..i * 4 + 4].try_into().expect("SHA-256 words are four bytes")); }
         for i in 16..64 { let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3); let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10); w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1); }
         let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
         for i in 0..64 {

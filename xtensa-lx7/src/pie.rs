@@ -66,7 +66,7 @@ pub fn format(w: u32, idx: usize) -> String {
     let p = &OPS[idx]; let o = extract(w, p);
     let mut parts = Vec::new();
     for k in 0..o.n {
-        let r = o.r[k].unwrap();
+        let r = o.r[k].expect("extracted operand must have a role");
         parts.push(match r {
             Role::Qa | Role::Qa0 | Role::Qa1 | Role::Qm | Role::Qs | Role::Qs0 | Role::Qs1 | Role::Qu | Role::Qu1 | Role::Qv | Role::Qx | Role::Qy | Role::Qz | Role::Qz1 => format!("q{}", o.v[k]),
             Role::As | Role::Ad | Role::Au | Role::Ax | Role::Ay | Role::At => format!("a{}", o.v[k]),

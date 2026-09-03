@@ -283,6 +283,7 @@ impl SocBus {
         };
         e.vbase = self.ver_base[e.src as usize] + (e.off as usize >> VPAGE_SHIFT) as u32;
         let off = e.off as usize;
+        // SAFETY: tlb_fill verified above that the mapped page lies within the selected buffer.
         e.base = unsafe { self.buf_mut(e.src as u8).as_mut_ptr().add(off) };
         self.tlb[tlb_idx(addr)] = e;
         Some(e)
@@ -776,7 +777,7 @@ impl SocBus {
         }
         // 2) the panel consumes `due` bytes from the FIFO
         let n = due.min(self.periph.lcd_cam.lcd_fifo.len());
-        for _ in 0..n { let b = self.periph.lcd_cam.lcd_fifo.pop_front().unwrap(); self.periph.lcd_cam.lcd_line.push(b); }
+        for _ in 0..n { let b = self.periph.lcd_cam.lcd_fifo.pop_front().expect("FIFO length was checked"); self.periph.lcd_cam.lcd_line.push(b); }
         while self.periph.lcd_cam.lcd_line.len() >= frame_bytes {
             let frame = std::mem::take(&mut self.periph.lcd_cam.lcd_line);
             self.board.lcd_frame(ha, va, &frame[..frame_bytes]);
@@ -930,9 +931,9 @@ impl SocBus {
         // the frame is dropped, exactly as a real ring would overflow.
         let busy = { let d = self.periph.wifi.last_rx_desc; d != 0 && self.read32(d).unwrap_or(0) & (1 << 30) != 0 };
         if busy && now_us.wrapping_sub(self.periph.wifi.last_rx_us) < 50_000 { return; }
-        let mut due = { let ap = self.periph.wifi.ap.as_mut().unwrap(); ap.step(now_us) };
+        let mut due = { let ap = self.periph.wifi.ap.as_mut().expect("wifi air step requires an access point"); ap.step(now_us) };
         let eth_in = std::mem::take(&mut self.periph.wifi.eth_rx);
-        for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().unwrap().data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
+        for e in eth_in { if let Some(f) = self.periph.wifi.ap.as_mut().expect("wifi air step requires an access point").data_from_ds(&e) { due.push(crate::wifi::AirFrame { at_us: now_us, frame: f }); } }
         if due.is_empty() { return; }
         // management responses (auth, assoc, probe) go before beacons: a connect exchange must not be
         // crowded out by beacon traffic
@@ -952,7 +953,7 @@ impl SocBus {
         let size = (dw0 & 0xfff) as usize;
         let total = 48 + frame.len() + 4;
         if dw0 & (1 << 31) == 0 || buf == 0 || size < total { self.periph.wifi.rx_dropped += 1; return; }
-        let (chan, log) = { let ap = self.periph.wifi.ap.as_ref().unwrap(); (ap.cfg.channel as u32, ap.log) };
+        let (chan, log) = { let ap = self.periph.wifi.ap.as_ref().expect("wifi receive requires an access point"); (ap.cfg.channel as u32, ap.log) };
         let mut b = Vec::with_capacity(total);
         // rx_ctrl word 0 (silicon: a real broadcast beacon reads 0x111b20ad, bit 28 set, signed rssi in the low
         // byte). The MAC has already address-filtered, so every delivered frame is "for us"; use the same flags
@@ -1002,7 +1003,7 @@ impl Bus for SocBus {
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 2) as u16); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; let b = self.buf(e.src as u8); Ok(u16::from_le_bytes([b[o], b[o + 1]])) }
             Some(_) => Ok(u16::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?])),       // straddles a page
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -1010,7 +1011,7 @@ impl Bus for SocBus {
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 4)); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; let b = self.buf(e.src as u8); Ok(u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])) }
             Some(_) => Ok(u32::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?, self.read8(addr + 2)?, self.read8(addr + 3)?])),
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -1042,7 +1043,7 @@ impl Bus for SocBus {
         let Some(e) = self.lookup(pc) else { self.last_fault = Some((pc, false)); return Err(Fault::Unmapped) };
         let o = e.off as usize + (pc - e.lo) as usize;
         let b = self.buf(e.src as u8);
-        if let Some(w) = b.get(o..o + 4) { return Ok(w.try_into().unwrap()); }
+        if let Some(w) = b.get(o..o + 4) { let mut r = [0u8; 4]; r.copy_from_slice(w); return Ok(r); }
         // last bytes of a buffer (or of a mapped page): what physical memory has, zero beyond
         let mut r = [0u8; 4];
         for (i, byte) in r.iter_mut().enumerate() { if let Some(x) = b.get(o + i) { *byte = *x; } }
@@ -1191,13 +1192,13 @@ mod gp_spi_board_tests {
         fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
             self.events
                 .lock()
-                .unwrap()
+                .expect("probe event mutex poisoned")
                 .push(format!("gpio:{changes:?}"));
         }
         fn spi_transfer(&mut self, host: u8, tx: &[u8], rx_len: usize) -> Vec<u8> {
             self.events
                 .lock()
-                .unwrap()
+                .expect("probe event mutex poisoned")
                 .push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
             vec![0x5a; rx_len]
         }
@@ -1213,15 +1214,15 @@ mod gp_spi_board_tests {
         });
         bus.periph.gpio.changes.push((12, false));
 
-        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).unwrap();
-        bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).unwrap();
-        bus.write32(SPI2 + 0x20, 7).unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
+        bus.write32(SPI2 + 0x10, (1 << 31) | (1 << 28)).expect("SPI setup write failed");
+        bus.write32(SPI2 + 0x18, (7 << 28) | 0x9f).expect("SPI setup write failed");
+        bus.write32(SPI2 + 0x20, 7).expect("SPI setup write failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command write failed");
 
         assert_eq!(bus.periph.spi2.w[0] & 0xff, 0x5a);
         assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
         assert_eq!(
-            &*events.lock().unwrap(),
+            &*events.lock().expect("probe event mutex poisoned"),
             &["gpio:[(12, false)]", "spi:2:[9f]:1"]
         );
     }
@@ -1236,22 +1237,22 @@ mod gp_spi_board_tests {
         bus.board = Box::new(ProbeBoard {
             events: events.clone(),
         });
-        bus.write32(DATA, 0x4433_2211).unwrap();
+        bus.write32(DATA, 0x4433_2211).expect("test data write failed");
         bus.write32(DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31))
-            .unwrap();
-        bus.write32(DESC + 4, DATA).unwrap();
-        bus.write32(DESC + 8, 0).unwrap();
+            .expect("descriptor write failed");
+        bus.write32(DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(DESC + 8, 0).expect("descriptor link write failed");
         bus.periph.gdma.out[0].conf0 = 1 << 2;
         bus.periph.gdma.out[0].peri_sel = 0;
         bus.periph.gdma.out[0].desc = DESC;
         bus.periph.gdma.out[0].running = true;
 
-        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
-        bus.write32(SPI2 + 0x1c, 31).unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
+        bus.write32(SPI2 + 0x10, 1 << 27).expect("SPI setup write failed");
+        bus.write32(SPI2 + 0x1c, 31).expect("SPI length write failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command write failed");
 
-        assert_eq!(&*events.lock().unwrap(), &["spi:2:[11, 22, 33, 44]:0"]);
-        assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
+        assert_eq!(&*events.lock().expect("probe event mutex poisoned"), &["spi:2:[11, 22, 33, 44]:0"]);
+        assert_eq!(bus.read32(DESC).expect("descriptor read failed") >> 31, 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
     }
 
@@ -1268,24 +1269,24 @@ mod gp_spi_board_tests {
             DESC,
             TRANSFER_BYTES | (TRANSFER_BYTES << 12) | (1 << 30) | (1 << 31),
         )
-        .unwrap();
-        bus.write32(DESC + 4, DATA).unwrap();
-        bus.write32(DESC + 8, 0).unwrap();
+        .expect("descriptor write failed");
+        bus.write32(DESC + 4, DATA).expect("descriptor buffer write failed");
+        bus.write32(DESC + 8, 0).expect("descriptor link write failed");
         bus.periph.gdma.out[0].conf0 = 1 << 2;
         bus.periph.gdma.out[0].peri_sel = 0;
         bus.periph.gdma.out[0].desc = DESC;
         bus.periph.gdma.out[0].running = true;
 
-        bus.write32(SPI2 + 0x0c, 1 << 12).unwrap();
-        bus.write32(SPI2 + 0x10, (1 << 27) | (1 << 13)).unwrap();
-        bus.write32(SPI2 + 0x1c, (TRANSFER_BYTES * 8) - 1).unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
+        bus.write32(SPI2 + 0x0c, 1 << 12).expect("SPI DMA setup write failed");
+        bus.write32(SPI2 + 0x10, (1 << 27) | (1 << 13)).expect("SPI setup write failed");
+        bus.write32(SPI2 + 0x1c, (TRANSFER_BYTES * 8) - 1).expect("SPI length write failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command write failed");
 
         assert!(!bus.measured_timing_active);
         assert_eq!(bus.periph.spi2.transfers, 1);
         assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
-        assert_eq!(bus.read32(DESC).unwrap() >> 31, 0);
+        assert_eq!(bus.read32(DESC).expect("descriptor read failed") >> 31, 0);
         assert_eq!(bus.spi2_dma_timing_fault, None);
         assert_eq!(bus.last_spi2_dma_timing, None);
         assert!(bus.pending_spi2_dma.is_none());
@@ -1301,7 +1302,7 @@ mod gp_spi_board_tests {
 
         let mut bus = SocBus::new(1024, 1024, [0; 6]);
         bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
-        bus.advance_measured_to(SUBMITTED_AT).unwrap();
+        bus.advance_measured_to(SUBMITTED_AT).expect("measured clock advance failed");
 
         let mut remaining = TRANSFER_BYTES;
         let mut descriptor = FIRST_DESC;
@@ -1314,9 +1315,9 @@ mod gp_spi_board_tests {
                 descriptor,
                 length as u32 | ((length as u32) << 12) | eof | (1 << 31),
             )
-            .unwrap();
-            bus.write32(descriptor + 4, DATA).unwrap();
-            bus.write32(descriptor + 8, next).unwrap();
+            .expect("descriptor write failed");
+            bus.write32(descriptor + 4, DATA).expect("descriptor buffer write failed");
+            bus.write32(descriptor + 8, next).expect("descriptor link write failed");
             descriptor = next;
         }
         bus.periph.gdma.out[0].conf0 = 1 << 2;
@@ -1324,11 +1325,11 @@ mod gp_spi_board_tests {
         bus.periph.gdma.out[0].desc = FIRST_DESC;
         bus.periph.gdma.out[0].running = true;
 
-        bus.write32(SPI2 + 0x0c, 1 << 12).unwrap();
-        bus.write32(SPI2 + 0x10, (1 << 27) | (1 << 13)).unwrap();
+        bus.write32(SPI2 + 0x0c, 1 << 12).expect("SPI DMA setup write failed");
+        bus.write32(SPI2 + 0x10, (1 << 27) | (1 << 13)).expect("SPI setup write failed");
         bus.write32(SPI2 + 0x1c, (TRANSFER_BYTES as u32 * 8) - 1)
-            .unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
+            .expect("SPI length write failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command write failed");
 
         let completion = SUBMITTED_AT + 401_589;
         assert_eq!(
@@ -1341,15 +1342,15 @@ mod gp_spi_board_tests {
         assert_eq!(bus.periph.spi2.transfers, 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0);
 
-        bus.advance_measured_to(completion - 1).unwrap();
+        bus.advance_measured_to(completion - 1).expect("measured clock advance failed");
         assert_eq!(bus.periph.spi2.transfers, 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0);
 
-        bus.advance_measured_to(completion).unwrap();
+        bus.advance_measured_to(completion).expect("measured clock advance failed");
         assert_eq!(bus.periph.spi2.transfers, 1);
         assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
         assert_eq!(bus.periph.gdma.out[0].int_raw & 0xb, 0xb);
-        assert_eq!(bus.read32(FIRST_DESC).unwrap() >> 31, 0);
+        assert_eq!(bus.read32(FIRST_DESC).expect("descriptor read failed") >> 31, 0);
     }
 
     #[test]
@@ -1357,16 +1358,16 @@ mod gp_spi_board_tests {
         const SPI2: u32 = 0x6002_4000;
         const DESC: u32 = 0x3fc9_0100;
         let mut bus = SocBus::new(1024, 1024, [0; 6]);
-        bus.write32(DESC, 1 << 31).unwrap();
-        bus.write32(DESC + 4, 0).unwrap();
-        bus.write32(DESC + 8, DESC).unwrap();
+        bus.write32(DESC, 1 << 31).expect("descriptor write failed");
+        bus.write32(DESC + 4, 0).expect("descriptor buffer write failed");
+        bus.write32(DESC + 8, DESC).expect("descriptor link write failed");
         bus.periph.gdma.out[0].peri_sel = 0;
         bus.periph.gdma.out[0].desc = DESC;
         bus.periph.gdma.out[0].running = true;
 
-        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
-        bus.write32(SPI2 + 0x1c, 7).unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
+        bus.write32(SPI2 + 0x10, 1 << 27).expect("SPI setup write failed");
+        bus.write32(SPI2 + 0x1c, 7).expect("SPI length write failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command write failed");
 
         assert_eq!(
             bus.spi2_dma_fault,
@@ -1381,17 +1382,17 @@ mod gp_spi_board_tests {
         let mut bus = SocBus::new(1024, 1024, [0; 6]);
         for step in 0..=SPI2_DMA_DESCRIPTOR_STEP_BUDGET {
             let descriptor = FIRST_DESC + (step as u32) * 12;
-            bus.write32(descriptor, 1 << 31).unwrap();
-            bus.write32(descriptor + 4, 0).unwrap();
-            bus.write32(descriptor + 8, descriptor + 12).unwrap();
+            bus.write32(descriptor, 1 << 31).expect("descriptor write failed");
+            bus.write32(descriptor + 4, 0).expect("descriptor buffer write failed");
+            bus.write32(descriptor + 8, descriptor + 12).expect("descriptor link write failed");
         }
         bus.periph.gdma.out[0].peri_sel = 0;
         bus.periph.gdma.out[0].desc = FIRST_DESC;
         bus.periph.gdma.out[0].running = true;
 
-        bus.write32(SPI2 + 0x10, 1 << 27).unwrap();
-        bus.write32(SPI2 + 0x1c, 0x3ffff).unwrap();
-        bus.write32(SPI2, 1 << 24).unwrap();
+        bus.write32(SPI2 + 0x10, 1 << 27).expect("SPI setup write failed");
+        bus.write32(SPI2 + 0x1c, 0x3ffff).expect("SPI length write failed");
+        bus.write32(SPI2, 1 << 24).expect("SPI command write failed");
 
         assert_eq!(
             bus.spi2_dma_fault,

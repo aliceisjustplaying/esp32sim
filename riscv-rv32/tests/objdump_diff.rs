@@ -27,7 +27,7 @@ fn check(files: &str) -> usize {
     let (mut total, mut bad) = (0usize, 0usize);
     let mut by_mnemonic: BTreeMap<String, (usize, usize, String)> = BTreeMap::new();
     for file in files.split(':') {
-        let text = std::fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {}", file, e));
+        let text = std::fs::read_to_string(file).expect("failed to read decoder corpus");
         for line in text.lines() {
             // "40000000:\t0000006f          \tj\t40000000 <_start>"
             let l = line.trim_start();
@@ -76,7 +76,7 @@ fn check(files: &str) -> usize {
         for (m, (n, b, ex)) in worst.iter().take(15) {
             msg.push_str(&format!("  {:<12} {:>6}/{:<6}  {}\n", m, b, n, ex));
         }
-        panic!("{}", msg);
+        assert_eq!(bad, 0, "{msg}");
     }
     eprintln!("decoder: {} instructions, 0 mismatches", total);
     total

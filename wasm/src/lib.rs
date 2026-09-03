@@ -132,7 +132,7 @@ unsafe fn text<'a>(ptr: *const u8, len: usize) -> &'a str {
 }
 
 /// Buffers the page fills before handing them to `esp32sim_load` / `esp32sim_in_*`.
-#[no_mangle] pub extern "C" fn esp32sim_alloc(len: usize) -> *mut u8 { let mut v = vec![0u8; len.max(1)]; let p = v.as_mut_ptr(); std::mem::forget(v); p }
+#[no_mangle] pub extern "C" fn esp32sim_alloc(len: usize) -> *mut u8 { let mut v = std::mem::ManuallyDrop::new(vec![0u8; len.max(1)]); v.as_mut_ptr() }
 /// Release a buffer returned by `esp32sim_alloc`.
 ///
 /// # Safety

@@ -94,14 +94,14 @@ impl VirtualNet {
             // resolver but still looks like it came from the emulated one
             17 if self.nat.is_some() => {
                 let (sport, dport) = (be16(&body[0..2]), be16(&body[2..4]));
-                let (host_dst, reply_src) = if dport == 53 { (self.nat.as_ref().unwrap().resolver, dip) } else { (dip, dip) };
+                let (host_dst, reply_src) = if dport == 53 { (self.nat.as_ref().expect("NAT presence was checked").resolver, dip) } else { (dip, dip) };
                 let now = self.now_us;
-                self.nat.as_mut().unwrap().udp_out(src, &sip, sport, &host_dst, &reply_src, dport, &body[8..], now);
+                self.nat.as_mut().expect("NAT presence was checked").udp_out(src, &sip, sport, &host_dst, &reply_src, dport, &body[8..], now);
                 Vec::new()
             }
             6 if self.nat.is_some() => {
                 let now = self.now_us;
-                self.nat.as_mut().unwrap().tcp_in(src, &sip, &dip, body, now)
+                self.nat.as_mut().expect("NAT presence was checked").tcp_in(src, &sip, &dip, body, now)
             }
             17 if body.len() >= 8 && be16(&body[2..4]) == 53 => self.dns(&body[8..], src, &sip, &dip, be16(&body[0..2])),
             17 if body.len() >= 8 && be16(&body[2..4]) == 123 => self.ntp(&body[8..], src, &sip, &dip, be16(&body[0..2])),

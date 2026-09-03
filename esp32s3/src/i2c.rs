@@ -30,7 +30,7 @@ impl Ov5640 {
     }
     pub fn get(&self, r: u16) -> u8 { *self.regs.get(&r).unwrap_or(&0) }
     fn sync_state(&self) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lock().expect("camera sensor mutex poisoned");
         st.width = ((self.get(0x3808) as u32 & 0xf) << 8) | self.get(0x3809) as u32;    // DVP output width
         st.height = ((self.get(0x380a) as u32 & 0x7) << 8) | self.get(0x380b) as u32;   // DVP output height
         st.format = self.get(0x4300);
@@ -144,7 +144,7 @@ pub struct Gt911 { addr: u16, phase: u8, touch: std::sync::Arc<std::sync::Mutex<
 impl Gt911 {
     pub fn new(touch: std::sync::Arc<std::sync::Mutex<TouchState>>, w: u16, h: u16) -> Self { Gt911 { addr: 0, phase: 0, touch, reads: 0, w, h } }
     fn reg(&self, a: u16) -> u8 {
-        let mut tl = self.touch.lock().unwrap();
+        let mut tl = self.touch.lock().expect("touch state mutex poisoned");
         if a == 0x814e {
             // like the real controller's buffer: a touch stays readable until the host has seen it once
             if tl.release_pending && tl.seen { tl.down = false; tl.release_pending = false; }
