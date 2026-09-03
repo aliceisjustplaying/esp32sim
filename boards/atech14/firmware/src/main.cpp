@@ -147,11 +147,12 @@ void playCurrentNote() {
   gateVoice(0, freq, 300);
   renderVoices();
 }
-void drawHeaderUI() {
+void drawHeaderUI(const char* title = "POCKET SYNTH") {
+  st7735_tft_1.fillRect(0, 0, 160, 22, UI_BG);
   st7735_tft_1.setFont(&FreeSansBold9pt7b);
   st7735_tft_1.setTextColor(UI_ACCENT);
   st7735_tft_1.setCursor(6, 16);
-  st7735_tft_1.print("POCKET SYNTH");
+  st7735_tft_1.print(title);
 }
 // ---- SID tune player (lib/crsid: a whole C64 — 6502 CPU, SID, CIA, VIC) ------------------------
 // The synth above drives a SID *chip* model directly. This plays real .sid files, which are 6502
@@ -169,6 +170,39 @@ static cRSID_C64instance* tuneC64 = nullptr;
 static bool tunePlaying = false;
 static int  tuneIndex = 0, tuneSubtune = 1, tuneSubtunes = 1;
 static char tuneTitle[33] = "", tuneAuthor[33] = "";
+// Jukebox volume and mute. The volume is the speaker's; mute keeps it and plays at zero, so the
+// tune keeps running (and pacing the loop) and comes back where it was.
+static float jukeVol = 0.3f;
+static bool  jukeMuted = false;
+#define JUKE_VOL_STEP 0.05f
+
+// The encoder ring is the volume dial while a tune plays: a pointer from 7 o'clock (silent) round
+// to 5 o'clock (full), cyan, or red when muted. Ring positions run counter-clockwise from 12.
+static void jukeRing() {
+  if (jukeMuted) rotary_encoder_1.setRingColor(255, 40, 0); else rotary_encoder_1.setRingColor(0, 200, 255);
+  float sweep = 10.0f;                              // LEDs of travel, leaving the bottom gap
+  float pos = 7.0f - sweep * jukeVol;               // 7 o'clock → clockwise (decreasing) → 5 o'clock
+  if (pos < 0) pos += 12.0f;
+  rotary_encoder_1.setRingPosition(pos);
+}
+static void jukeApplyVolume() {
+  speaker_1.setVolume(jukeMuted ? 0.0f : jukeVol);
+  jukeRing();
+  needsRedraw = true;
+}
+static void jukeSetVolume(float v) {
+  if (v < 0.0f) v = 0.0f; if (v > 1.0f) v = 1.0f;
+  jukeVol = v;
+  jukeApplyVolume();
+  char txt[8]; snprintf(txt, sizeof(txt), "%d", (int)(jukeVol * 100.0f + 0.5f));
+  wifi.postStateEvent("volume", txt);
+}
+static void jukeSetMute(bool on) {
+  jukeMuted = on;
+  jukeApplyVolume();
+  wifi.postStateEvent("mute", on ? "1" : "0");
+  Serial.printf("[sid] %s\n", on ? "muted" : "unmuted");
+}
 
 static void tuneField(char* dst, const char* src) {
   memcpy(dst, src, 32);                // PSID header strings are fixed 32-byte fields, often unterminated
@@ -194,17 +228,31 @@ static bool tuneStart(int idx, int subtune) {
   if (subtune <= 0) subtune = h->DefaultSubtune ? h->DefaultSubtune : 1;
   if (subtune > tuneSubtunes) subtune = 1;
   cRSID_initSIDtune(tuneC64, h, subtune);
+  bool entering = !tunePlaying;
   tuneIndex = idx; tuneSubtune = subtune; tunePlaying = true;
+  if (entering) { jukeVol = speaker_1.getVolume(); jukeMuted = false; drawHeaderUI("SID PLAYER"); jukeApplyVolume(); }
   needsRedraw = true;
   Serial.printf("[sid] playing \"%s\" by %s (subtune %d/%d)\n",
                 tuneTitle, tuneAuthor, subtune, tuneSubtunes);
+  char ev[48]; snprintf(ev, sizeof(ev), "%d/%d %d/%d", tuneIndex + 1, SID_TUNE_COUNT, tuneSubtune, tuneSubtunes);
+  wifi.postStateEvent("sid_tune", ev);
   return true;
+}
+
+// Next subtune of the current tune, wrapping (a one-subtune file restarts).
+static void tuneNextSubtune() {
+  if (!tunePlaying) return;
+  tuneStart(tuneIndex, tuneSubtune % tuneSubtunes + 1);
 }
 
 static void tuneStop() {
   if (!tunePlaying) return;
   tunePlaying = false;
   speaker_1.stop();
+  if (jukeMuted) { jukeMuted = false; speaker_1.setVolume(jukeVol); }   // the synth is never muted
+  rotary_encoder_1.setRingColor(0, 200, 255);
+  rotary_encoder_1.setRingPosition(NAN);                                // ring follows the knob again
+  drawHeaderUI();
   needsRedraw = true;
   if (tuneC64) { cRSID_free(); tuneC64 = nullptr; }
   Serial.printf("[sid] stopped (free heap %u)\n", (unsigned)ESP.getFreeHeap());
@@ -248,9 +296,23 @@ void drawTuneUI() {
   st7735_tft_1.print(tuneAuthor);
   st7735_tft_1.setTextColor(UI_ACCENT);
   st7735_tft_1.setCursor(6, 76);
-  char pos[16];
-  snprintf(pos, sizeof(pos), "SID %d/%d", tuneIndex + 1, SID_TUNE_COUNT);
+  char pos[24];
+  snprintf(pos, sizeof(pos), "%d/%d  sub %d/%d", tuneIndex + 1, SID_TUNE_COUNT, tuneSubtune, tuneSubtunes);
   st7735_tft_1.print(pos);
+  // volume: a bar at the right of the footer, or MUTED
+  const int bx = 112, by = 66, bw = 42, bh = 8;
+  if (jukeMuted) {                       // a red MUTE badge where the bar was, in the built-in 6x8 font
+    st7735_tft_1.drawRect(bx, by - 2, bw, bh + 4, ST7735_TFT::COLOR_RED);
+    st7735_tft_1.setFont(nullptr);
+    st7735_tft_1.setTextColor(ST7735_TFT::COLOR_RED);
+    st7735_tft_1.setCursor(bx + 9, by);
+    st7735_tft_1.print("MUTE");
+    st7735_tft_1.setFont(&FreeSans9pt7b);
+  } else {
+    st7735_tft_1.drawRect(bx, by, bw, bh, UI_LABEL);
+    int fill = (int)((bw - 2) * jukeVol + 0.5f);
+    if (fill > 0) st7735_tft_1.fillRect(bx + 1, by + 1, fill, bh - 2, UI_VALUE);
+  }
 }
 
 void handleMessage(const char* action, const char* value) {
@@ -302,7 +364,17 @@ void handleMessage(const char* action, const char* value) {
   if (strcmp(action, "set_volume") == 0) {
     float v = atof(value);
     if (v < 0.0f || v > 1.0f) return;
-    speaker_1.setVolume(v);
+    if (tunePlaying) jukeSetVolume(v); else speaker_1.setVolume(v);
+    return;
+  }
+  if (strcmp(action, "mute") == 0) {                       // "1", "0", or empty = toggle
+    if (!tunePlaying) return;
+    jukeSetMute(value && *value ? atoi(value) != 0 : !jukeMuted);
+    return;
+  }
+  if (strcmp(action, "sid_subtune") == 0) {                // a number, or empty = next
+    if (!tunePlaying) return;
+    if (value && *value) tuneStart(tuneIndex, atoi(value)); else tuneNextSubtune();
     return;
   }
   if (strcmp(action, "set_waveform") == 0) {
@@ -464,30 +536,35 @@ void mainTask(void* parameter) {
         button_2.update();
 
         // ---- SID jukebox: hold button 1 for ~0.7 s to start or stop tune playback ----
+        static bool btn1Long = false;                       // this press has already acted as a long press
         {
           static uint32_t btn1DownMs = 0;
-          static bool btn1Long = false;
           if (button_1.isPressed()) {
             if (!btn1DownMs) btn1DownMs = millis();
             else if (!btn1Long && millis() - btn1DownMs > 700) {
               btn1Long = true;
               if (tunePlaying) tuneStop(); else tuneStart(tuneIndex, 0);
             }
-          } else { btn1DownMs = 0; btn1Long = false; }
+          } else { btn1DownMs = 0; }                       // btn1Long is cleared by whoever consumes the release
         }
 
-        // While a tune plays the board is a C64 jukebox, not a synth: the encoder and button 2
-        // pick tunes, the knob press stops. Rendering paces this loop, so nothing else runs here.
+        // While a tune plays the board is a SID player, not a synth:
+        //   encoder      volume        knob press   mute / unmute
+        //   button 1     next tune     button 2     next subtune
+        //   hold 1       stop (back to the synth)
+        // Rendering paces this loop, so nothing else runs here.
         if (tunePlaying) {
           int32_t tpos = rotary_encoder_1.getPosition();
           if (tpos != lastEncoderPos) {
             int32_t delta = tpos - lastEncoderPos;
             lastEncoderPos = tpos;
-            tuneStart(tuneIndex + (delta > 0 ? 1 : -1), 0);
+            jukeSetVolume(jukeVol + JUKE_VOL_STEP * (float)delta);
           }
-          if (button_2.wasPressed()) tuneStart(tuneIndex + 1, 0);
-          if (rotary_encoder_1.wasPressed()) tuneStop();
-          button_1.wasPressed(); button_1.wasReleased(); button_2.wasReleased();  // drop synth edges
+          if (rotary_encoder_1.wasPressed()) jukeSetMute(!jukeMuted);
+          button_1.wasPressed();                                             // acted on at release
+          if (button_1.wasReleased()) { if (!btn1Long) tuneStart(tuneIndex + 1, 0); btn1Long = false; }
+          if (button_2.wasPressed()) tuneNextSubtune();
+          button_2.wasReleased();
           if (needsRedraw && (millis() - lastFrameMs >= 30)) {
             lastFrameMs = millis();
             needsRedraw = false;
@@ -532,6 +609,7 @@ void mainTask(void* parameter) {
         wifi.postStateEvent("note_triggered", noteStr);
         }
         if (button_1.wasReleased()) {
+        btn1Long = false;
         wifi.postButtonEvent("button_release", 0);
         }
 

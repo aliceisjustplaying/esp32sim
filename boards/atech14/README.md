@@ -5,13 +5,11 @@ The firmware the Atech Hardware Platform generated for the "Pocket Synth"
 a virtual board with a local web UI (TFT, knob + LED ring, buttons, serial console,
 audio through the browser) and headless scenario tests. No cloud, no accounts.
 
-The same tree also builds the hardware image (PlatformIO, real SDK drivers) and,
-optionally, a Wokwi image (cloud simulator — needs a token; kept for occasional
-"does the real binary also boot" checks).
+The same tree also builds the hardware image (PlatformIO, real SDK drivers).
 
 ```sh
 make run        # local simulator → http://127.0.0.1:8765  (click "enable audio" to hear it)
-make test       # all sim/scenarios/*.yaml against the local simulator, TFT screenshots in hostsim/build/screenshots
+make test       # all hostsim/scenarios/*.yaml against the local simulator, TFT screenshots in hostsim/build/screenshots
 make flash      # real board
 ```
 
@@ -47,11 +45,8 @@ firmware/
   lib/sidtunes/             four HVSC tunes embedded as C arrays (PlatformIO has no EMBED_FILES)
   src/modules/…             glue the hosted platform includes but the SDK doesn't ship:
                             AtechSerial (SDK wire protocol), atech_helpers.h, forwarding headers
-  src/sim/                  Wokwi-only: I2S shim (Wokwi has no I2S) → SIM:AUDIO lines
-  platformio.ini            env:sim (Wokwi) · env:hw (board)
-sim/diagram.json            Wokwi wiring: S3 DevKitC, ILI9341 (stands in for ST7735), KY-040,
-                            NeoPixel ring, 2 buttons
-sim/scenarios/*.yaml        headless tests · sim/screenshots/ TFT captures
+  platformio.ini            env:hw (the board)
+hostsim/scenarios/*.yaml    headless tests for the local simulator (TFT captures in hostsim/build/screenshots)
 tools/sync-sdk-modules.sh   refresh drivers after `uv pip install -U atech`
 examples/idf-minimal/       bare ESP-IDF sample (pre-Atech)
 ```
@@ -63,17 +58,13 @@ them from the `atech` package with `make sync-sdk` before building the firmware.
 
 ```sh
 make sdk                     # .venv with the atech SDK (drivers + `atech` CLI)
-make install-wokwi-cli       # once
-export WOKWI_CLI_TOKEN=…     # free: https://wokwi.com/dashboard/ci
-make build && make test      # build for Wokwi, run all scenarios
-make sim                     # interactive: type SDK actions, see serial output
+make test                    # build the local simulator, run all scenarios
 ```
 
 ## What the simulator reports
 
-The real `speaker.cpp` is compiled with its I2S calls redirected to
-`src/sim/sim_i2s.cpp`, which analyses the sample stream and prints, per ~46 ms
-of audio:
+The local simulator's speaker driver (`hostsim/drivers/speaker.cpp`) analyses the sample
+stream the firmware writes and prints, per ~46 ms of audio:
 
 ```
 SIM:AUDIO:note=A4 f=441 rms=0.28
@@ -83,7 +74,7 @@ Events use the SDK envelope, e.g.
 `{"type":"event","payload":{"event_type":"state","key":"note_triggered","value":"C4",…}}`,
 and actions are sent as `{"action":"set_note","value":"5"}` — identical to what
 `atech send` / `atech monitor` speak to the real board. `take-screenshot` steps
-save the TFT to `sim/screenshots/`.
+save the TFT to `hostsim/build/screenshots/`.
 
 ## Hardware
 
@@ -107,11 +98,16 @@ titles and authors on screen are read from each file's PSID header at run time.
 
 | Control | Action |
 | --- | --- |
-| hold **button 1** ~0.7 s | start / stop the jukebox |
-| **encoder** | previous / next tune |
-| **button 2** | next tune |
-| **knob press** | stop |
-| serial JSON | `{"action":"play_sid","value":"0"}`, `{"action":"next_sid"}`, `{"action":"stop_sid"}` |
+| hold **button 1** ~0.7 s | start the player / stop it and return to the synth |
+| **button 1** | next tune |
+| **button 2** | next subtune (a one-subtune file restarts) |
+| **encoder** | volume, 5 % per detent; the LED ring is the dial, cyan |
+| **knob press** | mute / unmute (ring turns red; the tune keeps running underneath) |
+| serial JSON | `{"action":"play_sid","value":"0"}`, `{"action":"next_sid"}`, `{"action":"sid_subtune","value":"3"}` (empty = next), `{"action":"set_volume","value":"0.5"}`, `{"action":"mute","value":"1"}` (empty = toggle), `{"action":"stop_sid"}` |
+
+The screen shows title and author from the PSID header, `tune/count  sub n/m`, and the volume bar
+(or MUTED). The header reads SID PLAYER while a tune plays. Changes are posted as state events
+(`sid_tune`, `volume`, `mute`) on the serial protocol, so the emulator's console shows them.
 
 Try it in the emulator (the script drives the serial protocol, so no clicking):
 
@@ -134,9 +130,8 @@ Two things this board forced that the panel did not:
 
 ## Scenarios
 
-`sim/scenarios/*.yaml` use the Wokwi scenario format (`wait-serial`, `delay`,
-`set-control`, `write-serial`, `take-screenshot`) so they run on both simulators.
-The local runner adds knob control, which Wokwi lacks:
+`hostsim/scenarios/*.yaml` are small YAML step lists (`wait-serial`, `delay`, `set-control`,
+`write-serial`, `take-screenshot`) the local simulator runs headlessly; the knob has a control too:
 
 ```yaml
 - set-control: { part-id: knob, control: rotate, value: 2 }    # detents, negative = CCW
@@ -145,12 +140,12 @@ The local runner adds knob control, which Wokwi lacks:
 
 ## What each simulator is for
 
-| | hostsim (local) | Wokwi (cloud, optional) |
+| | hostsim (local) | esp32sim (the emulator, two directories up) |
 |---|---|---|
-| Runs | `main.cpp` + driver logic compiled for the Mac | the actual ESP32-S3 binary |
+| Runs | `main.cpp` + driver logic compiled for the Mac | the actual ESP32-S3 binary, ROM and bootloader included |
 | Catches | behaviour bugs: synth engine, UI, protocol, state | driver/register/timing/stack/watchdog bugs |
-| Audio | heard in the browser + analysed | analysed only (no I2S in Wokwi) |
-| Needs | nothing | free account token |
+| Audio | heard in the browser + analysed | captured to WAV, bit-exact per run (the regression) |
+| Needs | nothing | the mask ROM ELF from ESP-IDF |
 
 ## Known limits (hostsim)
 
