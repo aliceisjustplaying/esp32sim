@@ -270,7 +270,7 @@ mod tests {
 
 fn bn_trim(a: &[u32]) -> Vec<u32> {
     let mut v = a.to_vec();
-    while v.len() > 1 && *v.last().unwrap() == 0 { v.pop(); }
+    while v.len() > 1 && v.last() == Some(&0) { v.pop(); }
     v
 }
 
@@ -389,7 +389,7 @@ pub fn bn_modexp(x: &[u32], y: &[u32], m: &[u32]) -> Vec<u32> {
     let y = bn_trim(y);
     let mut base = bn_mod(x, &m);
     let mut acc = vec![1u32];
-    let top = y.len() * 32 - y.last().unwrap().leading_zeros() as usize;
+    let top = y.len() * 32 - y.last().expect("trimmed exponent has a limb").leading_zeros() as usize;
     for bit in 0..top {
         if y[bit / 32] >> (bit % 32) & 1 != 0 { acc = bn_mod(&bn_mul(&acc, &base), &m); }
         base = bn_mod(&bn_mul(&base, &base), &m);

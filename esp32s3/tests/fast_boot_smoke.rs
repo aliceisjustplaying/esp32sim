@@ -1,4 +1,3 @@
-use esp32s3::Machine;
 use std::path::{Path, PathBuf};
 
 const BUILD_ENVIRONMENT: &str = "TINYDRAW_VECTOR_V2_BUILD";
@@ -20,11 +19,11 @@ fn read(path: &Path) -> Result<Vec<u8>, String> {
 fn tinydraw_reaches_ready_in_fast_mode() -> Result<(), String> {
     let build = required_path(BUILD_ENVIRONMENT)?;
     let rom = required_path(ROM_ENVIRONMENT)?;
-    let mut machine = Machine::new([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
+    let mut machine = esp32s3::machine([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
     machine.bus.board = esp32s3::board::make_board("waveshare-amoled18-v2")
         .ok_or_else(|| "waveshare-amoled18-v2 board must exist".to_string())?;
-    for (address, device) in machine.bus.board.i2c_devices() {
-        machine.bus.periph.i2c[0].attach(address, device);
+    for (controller, address, device) in machine.bus.board.i2c_devices() {
+        machine.bus.periph.i2c[controller as usize].attach(address, device);
     }
     machine.bus.flash = vec![0xff; 16 * 1024 * 1024];
     let flash_capacity = (16usize * 1024 * 1024).trailing_zeros() as u8;
@@ -41,13 +40,14 @@ fn tinydraw_reaches_ready_in_fast_mode() -> Result<(), String> {
     machine.write_flash(0x10000, &read(&build.join("tinydraw_esp32.bin"))?)?;
     machine.add_symbols(&read(&build.join("tinydraw_esp32.elf"))?)?;
     machine.boot_rom();
-    machine.console_mask = 1;
+    machine.console.mask = 1;
 
     let _stop = machine.run(MAX_INSTRUCTIONS);
 
     assert!(
         machine
-            .console_usb
+            .console
+            .usb
             .windows(READY_MARKER.len())
             .any(|window| window == READY_MARKER),
         "USB console did not contain TINYDRAW_VECTOR_V2_READY within {MAX_INSTRUCTIONS} fast-mode instructions"

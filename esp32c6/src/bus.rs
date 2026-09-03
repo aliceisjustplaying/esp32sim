@@ -136,7 +136,7 @@ impl SocBus {
     /// A word of SRAM for the DMA engines (descriptors and buffers live there).
     fn sram32(&self, addr: u32) -> u32 {
         let o = addr.wrapping_sub(SRAM_LOW) as usize;
-        if o + 4 <= self.sram.len() { u32::from_le_bytes(self.sram[o..o + 4].try_into().unwrap()) } else { 0 }
+        if o + 4 <= self.sram.len() { u32::from_le_bytes(self.sram[o..o + 4].try_into().expect("bounded SRAM word has four bytes")) } else { 0 }
     }
 
     /// GP-SPI2's MOSI data phase through the GDMA out-channel bound to it (trigger 0): walk the
@@ -234,11 +234,11 @@ impl Bus for SocBus {
     }
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 2) as u16); }
-        rd!(self, addr, 2, |b: &[u8]| u16::from_le_bytes(b.try_into().unwrap()))
+        rd!(self, addr, 2, |b: &[u8]| u16::from_le_bytes(b.try_into().expect("read16 provides two bytes")))
     }
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 4)); }
-        rd!(self, addr, 4, |b: &[u8]| u32::from_le_bytes(b.try_into().unwrap()))
+        rd!(self, addr, 4, |b: &[u8]| u32::from_le_bytes(b.try_into().expect("read32 provides four bytes")))
     }
     fn write8(&mut self, addr: u32, v: u8) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v as u32, 1); return Ok(()); }

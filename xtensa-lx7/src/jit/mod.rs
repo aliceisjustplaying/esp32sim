@@ -53,7 +53,7 @@ mod native {
             // integer flags borrow no memory, and failure is checked before the pointer is stored.
             let p = unsafe { mmap(std::ptr::null_mut(), size, 7, flags, -1, 0) };
             if p as isize == -1 || p.is_null() { return None; }
-            Some(CodeCache { base: p as *mut u8, size, used: 0 })
+            Some(CodeCache { base: p.cast::<u8>(), size, used: 0 })
         }
         pub fn remaining(&self) -> usize { self.size - self.used }
         pub fn used(&self) -> usize { self.used }
@@ -63,16 +63,20 @@ mod native {
             let bytes = words.len() * 4;
             if self.used + bytes > self.size { return None; }
             let off = self.used;
-            // SAFETY: The bounds check keeps the destination range inside the owned mapping. The
-            // source slice is distinct, and the exclusive cache borrow prevents concurrent writes.
-            // The cache-maintenance calls receive exactly the initialized code range.
-            unsafe {
-                #[cfg(target_os = "macos")] pthread_jit_write_protect_np(0);
-                std::ptr::copy_nonoverlapping(words.as_ptr() as *const u8, self.base.add(off), bytes);
-                #[cfg(target_os = "macos")] pthread_jit_write_protect_np(1);
-                #[cfg(target_os = "macos")] sys_icache_invalidate(self.base.add(off) as *mut c_void, bytes);
-                #[cfg(target_os = "linux")] __clear_cache(self.base.add(off) as *mut c_void, self.base.add(off + bytes) as *mut c_void);
-            }
+            // SAFETY: The exclusive cache borrow prevents generated code from running while its
+            // mapping is writable.
+            #[cfg(target_os = "macos")] unsafe { pthread_jit_write_protect_np(0) };
+            // SAFETY: The bounds check keeps the destination range inside the owned mapping.
+            let dst = unsafe { self.base.add(off) };
+            // SAFETY: The source slice is distinct and contains `bytes` initialized bytes.
+            unsafe { std::ptr::copy_nonoverlapping(words.as_ptr().cast::<u8>(), dst, bytes) };
+            // SAFETY: The exclusive cache borrow prevents concurrent writes while protection is
+            // restored.
+            #[cfg(target_os = "macos")] unsafe { pthread_jit_write_protect_np(1) };
+            // SAFETY: `dst` starts the initialized code range and `bytes` is its exact length.
+            #[cfg(target_os = "macos")] unsafe { sys_icache_invalidate(dst.cast::<c_void>(), bytes) };
+            // SAFETY: Both pointers bound the initialized code range within the owned mapping.
+            #[cfg(target_os = "linux")] unsafe { __clear_cache(dst.cast::<c_void>(), self.base.add(off + bytes).cast::<c_void>()) };
             self.used += bytes;
             Some(off as u32)
         }
@@ -124,7 +128,12 @@ mod native {
     extern "C" fn h_exec<B: Bus>(cpu: *mut Cpu, bus: *mut B, insn: *const BlockInsn, pc: u32) -> u32 {
         // SAFETY: The CPU and bus pointers are the exclusive pointers supplied to `run`, and the
         // instruction points into the stable block arena for the duration of that call.
-        let (cpu, bus, i) = unsafe { (&mut *cpu, &mut *bus, &*insn) };
+        // SAFETY: Generated code passes the exclusive CPU pointer supplied to `run`.
+        let cpu = unsafe { &mut *cpu };
+        // SAFETY: Generated code passes the exclusive bus pointer supplied to `run`.
+        let bus = unsafe { &mut *bus };
+        // SAFETY: The instruction points into the stable block arena for this call.
+        let i = unsafe { &*insn };
         cpu.pc = pc;
         bus.note_pc(pc);
         match exec_insn(cpu, bus, &i.insn) { Ok(()) => (bus.block_break() as u32) << 1, Err(t) => { cpu.jit_trap = Some(t); 1 } }

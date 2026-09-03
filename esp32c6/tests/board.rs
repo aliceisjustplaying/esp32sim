@@ -22,7 +22,7 @@ fn st7789_window_madctl_and_visible_columns() {
     b.gpio_changes(&[(PIN_LCD_DC, false)]); b.spi_tx(2, &[0x2c]);
     b.gpio_changes(&[(PIN_LCD_DC, true)]); b.spi_tx(2, &[0x00, 0x1f, 0x00, 0x1f, 0x00, 0x1f, 0x00, 0x1f]);
     assert_eq!(b.panel.pixels_written, 4);
-    let (w, h, px, _) = b.display().unwrap();
+    let (w, h, px, _) = b.display().expect("board must expose its display");
     assert_eq!((w, h), (172, 320));
     // MX mirrors RAM columns and the glass mirrors them back: logical x = 0 is visible column 0;
     // BGR order swaps the channels back, so the 0x001f we sent shows as red 0xf800
@@ -40,9 +40,9 @@ fn ws2812_from_rmt_bits() {
     let mut b = WaveshareC6Lcd147::new();
     let bits = |bytes: [u8; 3]| -> Vec<bool> { bytes.iter().flat_map(|&v| (0..8).map(move |i| v & (0x80 >> i) != 0)).collect() };
     b.rmt_frame(0, &bits([0x10, 0xab, 0x03]));                          // G, R, B on the wire
-    let (leds, updates) = b.leds().unwrap();
+    let (leds, updates) = b.leds().expect("board must expose its LEDs");
     assert_eq!((leds[0], updates), ([0xab, 0x10, 0x03], 1));
     b.rmt_frame(0, &bits([0, 0, 0])[..20]);                              // a short frame changes nothing
-    assert_eq!(b.leds().unwrap().1, 1);
+    assert_eq!(b.leds().expect("board must expose its LEDs").1, 1);
     assert_eq!(b.named_pin("boot"), Some(esp32c6::board::PIN_BOOT));
 }

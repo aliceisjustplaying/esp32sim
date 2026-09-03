@@ -161,7 +161,7 @@ fn setup_s3(o: &Opts) -> esp32s3::Machine {
     if let Some(p) = &o.cam_image { match esp_soc::picture::load(p) { Ok(pic) => { eprintln!("[emu] camera picture {} ({}x{})", p, pic.w, pic.h); m.bus.board.set_camera_picture(pic); } Err(e) => { eprintln!("[emu] {}", e); std::process::exit(2); } } }
     m.bus.periph.lcd_cam.frame_cycles = (esp32s3::periph::CPU_HZ as f64 / o.cam_fps) as u64;
     if let Some(mb) = o.flash_mb { if mb != 8 { m.bus.set_flash_size(mb << 20); } }
-    if let Some(mb) = o.psram_mb { if mb != 2 { m.bus.set_psram_size(mb << 20).unwrap(); } }
+    if let Some(mb) = o.psram_mb { if mb != 2 { m.bus.set_psram_size(mb << 20).expect("PSRAM size must be a supported power of two"); } }
     if let Some(p) = &o.efuse_regs {
         let txt = std::fs::read_to_string(p).expect("efuse file");
         let mut n = 0;
@@ -277,10 +277,21 @@ fn run_measured_s3(mut m: esp32s3::Machine, o: &Opts) {
     let Some(elf_path) = o.elfs.last().map(PathBuf::from) else { eprintln!("--measured requires --elf"); std::process::exit(2) };
     let rom_bytes = std::fs::read(&rom_path).expect("rom");
     m.load_rom(&rom_bytes).expect("rom");
-    if let Some(p) = &o.flash_image { m.write_flash(0, &std::fs::read(p).expect("flash image")).unwrap(); }
-    if let Some(p) = &o.bootloader { m.write_flash(0, &std::fs::read(p).expect("bootloader")).unwrap(); }
-    if let Some(p) = &o.ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }
-    if let Some(p) = &o.app { m.write_flash(0x10000, &std::fs::read(p).expect("app")).unwrap(); }
+    let parsed_rom = esp_soc::elf::parse(&rom_bytes).expect("measured ROM symbols");
+    let mut rom_symbols = std::collections::BTreeMap::new();
+    for (name, address) in parsed_rom.by_name {
+        rom_symbols
+            .entry(address)
+            .and_modify(|current: &mut String| {
+                if name < *current { current.clone_from(&name); }
+            })
+            .or_insert(name);
+    }
+    for (address, name) in rom_symbols { m.symbols.entry(address).or_insert(name); }
+    if let Some(p) = &o.flash_image { m.write_flash(0, &std::fs::read(p).expect("flash image")).expect("complete flash image must fit configured flash capacity"); }
+    if let Some(p) = &o.bootloader { m.write_flash(0, &std::fs::read(p).expect("bootloader")).expect("bootloader must fit configured flash capacity"); }
+    if let Some(p) = &o.ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).expect("partition table must fit configured flash capacity"); }
+    if let Some(p) = &o.app { m.write_flash(0x10000, &std::fs::read(p).expect("app")).expect("application image must fit configured flash capacity"); }
     for p in &o.elfs { m.add_symbols(&std::fs::read(p).expect("elf")).expect("elf symbols"); }
     match o.boot.as_deref().unwrap_or("app") {
         "app" => { m.boot_app(0x10000).unwrap_or_else(|error| { eprintln!("[emu] {error}"); std::process::exit(2) }); }
@@ -308,10 +319,10 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
         None if boot == "rom" => { eprintln!("[emu] no {} mask ROM ELF found (pass --rom, or use --boot app)", S::NAME); std::process::exit(2) }
         None => {}
     }
-    if let Some(p) = &o.flash_image { m.write_flash(0, &std::fs::read(p).expect("flash image")).unwrap(); }
-    if let Some(p) = &o.bootloader { m.write_flash(0x0, &std::fs::read(p).expect("bootloader")).unwrap(); }
-    if let Some(p) = &o.ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).unwrap(); }
-    if let Some(p) = &o.app { m.write_flash(0x10000, &std::fs::read(p).expect("app")).unwrap(); }
+    if let Some(p) = &o.flash_image { m.write_flash(0, &std::fs::read(p).expect("flash image")).expect("complete flash image must fit configured flash capacity"); }
+    if let Some(p) = &o.bootloader { m.write_flash(0x0, &std::fs::read(p).expect("bootloader")).expect("bootloader must fit configured flash capacity"); }
+    if let Some(p) = &o.ptable { m.write_flash(0x8000, &std::fs::read(p).expect("ptable")).expect("partition table must fit configured flash capacity"); }
+    if let Some(p) = &o.app { m.write_flash(0x10000, &std::fs::read(p).expect("app")).expect("application image must fit configured flash capacity"); }
     for spec in &o.flash_at {
         let (off, path) = spec.split_once('=').unwrap_or_else(|| { eprintln!("--flash-at needs OFFSET=FILE"); std::process::exit(2) });
         let off = usize::from_str_radix(off.trim_start_matches("0x"), 16).unwrap_or_else(|_| { eprintln!("--flash-at: bad offset {}", off); std::process::exit(2) });
@@ -347,7 +358,7 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     m.console.prefix = o.console_prefix;
     if let Some(p) = &o.regtrace { m.add_observer(Box::new(RegTrace::new(std::fs::File::create(p).expect("regtrace file"), o.regtrace_max, o.regtrace_from_pc))); }
     if let Some(port) = o.web_port {
-        let dir = o.web_dir.clone().unwrap_or_else(|| { let exe = std::env::current_exe().unwrap(); let mut d = exe.parent().unwrap().to_path_buf(); for _ in 0..3 { if d.join("web").exists() { break; } d = d.parent().unwrap().to_path_buf(); } d.join("web").to_string_lossy().to_string() });
+        let dir = o.web_dir.clone().unwrap_or_else(|| { let exe = std::env::current_exe().expect("current executable path must be available"); let mut d = exe.parent().expect("current executable path must have a parent directory").to_path_buf(); for _ in 0..3 { if d.join("web").exists() { break; } d = d.parent().expect("web asset search must remain below the filesystem root").to_path_buf(); } d.join("web").to_string_lossy().to_string() });
         let w = esp_soc::web::WebServer::start(port, dir.clone()).expect("web server");
         eprintln!("[emu] board UI: http://127.0.0.1:{}/  (serving {})", port, dir);
         m.web = Some(w); m.rt.enabled = true;

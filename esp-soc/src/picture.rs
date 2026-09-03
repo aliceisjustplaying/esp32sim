@@ -22,7 +22,7 @@ fn ppm(d: &[u8]) -> Result<Picture, String> {
         if i < d.len() && d[i] == b'#' { while i < d.len() && d[i] != b'\n' { i += 1; } continue; }
         let s = i; while i < d.len() && d[i].is_ascii_digit() { i += 1; }
         if s == i { return Err("ppm: bad header".into()); }
-        nums.push(std::str::from_utf8(&d[s..i]).unwrap().parse::<u32>().map_err(|e| e.to_string())?);
+        nums.push(std::str::from_utf8(&d[s..i]).map_err(|e| format!("ppm: invalid numeric header: {e}"))?.parse::<u32>().map_err(|e| e.to_string())?);
     }
     i += 1;
     let (w, h) = (nums[0], nums[1]);
