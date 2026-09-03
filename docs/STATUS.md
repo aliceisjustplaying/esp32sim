@@ -173,6 +173,10 @@ ROM cells did not produce an adoptable cost, so this refusal is neither an
 engine bug nor R8-derivable and the boot loop stops here. The two-run histogram
 and pinned image hashes are in
 [`../tests/correlation/measured-boot-refusal.json`](../tests/correlation/measured-boot-refusal.json).
+The current credential-free TinyDraw product build from `7a157d4` reaches the
+same deterministic refusal through the machine timing hook. Its independent
+two-run receipt is
+[`../tests/correlation/measured-boot-product-refusal.json`](../tests/correlation/measured-boot-product-refusal.json).
 
 Toolchain rule: every receipt pins its ESP-IDF version, sdkconfig
 hash, and compiler. The current baseline is ESP-IDF v6.1 with
