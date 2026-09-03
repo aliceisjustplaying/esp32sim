@@ -35,7 +35,7 @@ impl emu_core::Core for Cpu {
     }
     fn regs(&self, out: &mut Vec<(&'static str, u32)>) { for (&name, &value) in X[1..].iter().zip(&self.x[1..]) { out.push((name, value)); } out.push(("mstatus", self.mstatus)); }
     fn arg(&self, n: usize) -> u32 { self.x[10 + n] }
-    fn return_from_stub(&mut self, v: u32) { self.x[10] = v; self.pc = self.x[1]; self.insn_count += 1; self.cycle_count += 1; }
+    fn return_from_stub(&mut self, v: u32) { self.x[10] = v; self.pc = self.x[1]; self.insn_count += 1; self.retired_count += 1; self.cycle_count += 1; }
     fn disasm(&self, pc: u32, bytes: [u8; 4]) -> String { crate::disasm::format(&crate::decode::decode(pc, bytes)).replace('\t', " ") }
     fn insn_len(bytes: [u8; 4]) -> u32 { crate::decode::decode(0, bytes).len as u32 }
     const TRACE_WIDTH: usize = 28;
@@ -133,5 +133,29 @@ mod tests {
         let event = cpu.step(&mut ram).control.unwrap();
         assert_eq!(event.kind, ControlEventKind::Cache(CacheOperation::FenceInstruction));
         assert_eq!(event.address, 0);
+    }
+
+    #[test]
+    fn stub_return_preserves_guest_counter_accounting() {
+        let mut cpu = crate::Cpu::new();
+        cpu.x[1] = 0x4038_0100;
+        cpu.return_from_stub(7);
+        assert_eq!((cpu.pc, cpu.x[10]), (0x4038_0100, 7));
+        assert_eq!((cpu.insn_count, cpu.retired_count, cpu.cycle_count), (1, 1, 1));
+        let instret = cpu.read_csr(csr::MINSTRET); let cycles = cpu.read_csr(csr::MCYCLE);
+        assert_eq!((instret, cycles), (1, 1));
+    }
+
+    #[test]
+    fn counter_writes_wrap_without_debug_overflow() {
+        let mut cpu = crate::Cpu::new();
+        cpu.write_csr(csr::MCYCLE, 0xffff_fff0);
+        cpu.write_csr(csr::MCYCLEH, 0x8000_0000);
+        assert_eq!(cpu.read_csr(csr::MCYCLE), 0xffff_fff0);
+        assert_eq!(cpu.read_csr(csr::MCYCLEH), 0x8000_0000);
+        cpu.write_csr(csr::MINSTRET, 0xffff_ffe0);
+        cpu.write_csr(csr::MINSTRETH, 0x9000_0000);
+        assert_eq!(cpu.read_csr(csr::MINSTRET), 0xffff_ffe0);
+        assert_eq!(cpu.read_csr(csr::MINSTRETH), 0x9000_0000);
     }
 }
