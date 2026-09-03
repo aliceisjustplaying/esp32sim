@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-03",
+  "acceptance": {
+    "requiredMarker": "TINYDRAW_VECTOR_V2_READY",
+    "requiredRuns": 5,
+    "completedRuns": 5,
+    "status": "passed",
+    "scope": "READY must occur once in each USB console transcript before the fixed 200000000-cycle horizon"
+  },
+  "mode": {
+    "buildProfile": "release",
+    "execution": "native fast mode with default AArch64 JIT",
+    "boot": "rom",
+    "board": "waveshare-amoled18-v2",
+    "flashMiB": 16,
+    "psramMiB": 8,
+    "console": "usb",
+    "maxSchedulingSteps": 200000000,
+    "observedCycleHorizon": 200000000,
+    "productEnvironment": "TINYDRAW_VECTOR_V2_BUILD",
+    "romEnvironment": "ESP32S3_ROM_ELF"
+  },
+  "machine": {
+    "modelIdentifier": "MacBookPro18,3",
+    "processor": "Apple M1 Pro",
+    "cores": "10 (8 performance and 2 efficiency)",
+    "memory": "32 GB",
+    "architecture": "arm64",
+    "operatingSystem": "macOS 27.0",
+    "buildVersion": "26A5425a"
+  },
+  "toolchain": {
+    "activeRustToolchain": "1.98.0-aarch64-apple-darwin",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "rustcLlvm": "22.1.8",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "clang": "Apple clang 21.0.0 (clang-2100.3.33.1)",
+    "clangTarget": "arm64-apple-darwin27.0.0"
+  },
+  "esp32sim": {
+    "commit": "347dd5d8e3e02467e43cbde7c2ea590d84be3b54",
+    "baselineParent": "be2b30c",
+    "binarySha256": "370756ec52460a9a5ac29fa5cb67817569ce1e3e095d97f4f339042ce8ab4dde",
+    "buildCommand": "cargo build --release --locked --manifest-path <esp32sim>/Cargo.toml -p esp32sim"
+  },
+  "romElf": {
+    "file": "esp32s3_rev0_rom.elf",
+    "releaseDirectory": "20241011",
+    "sha256": "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd"
+  },
+  "productImage": {
+    "sourceCommit": "9c42566932a53fc41a004533bd3702e985879dcc",
+    "appVersion": "2.2.0-17-g9c42566",
+    "espIdf": "v6.1",
+    "provenance": "docs/evidence/tinydraw-vector-v2-build-2026-09-03.json",
+    "artifacts": {
+      "bootloader/bootloader.bin": "634e8dfab00aaa24c8b4514aecd77d842d5a49438baca87abf5f3a35e474b5ab",
+      "partition_table/partition-table.bin": "f53268312c8caffe6c7f4e6c66d4092aeca3435c142db3116466f84a6a608d2d",
+      "tinydraw_esp32.bin": "1352e0c415aac2050b8159a7d7deae82f74f5f4202b9bbf000fefd0bc3573936",
+      "tinydraw_esp32.elf": "9cb651e09a5405bc68fa5aa4656a22977e1c54f3198cb86bd5bc9753ba1d251b"
+    }
+  },
+  "command": "target/release/esp32sim --rom <rom-elf> --boot rom --bootloader <product-build>/bootloader/bootloader.bin --ptable <product-build>/partition_table/partition-table.bin --app <product-build>/tinydraw_esp32.bin --elf <product-build>/tinydraw_esp32.elf --board waveshare-amoled18-v2 --flash-mb 16 --psram-mb 8 --console usb --no-dump --max-insns 200000000",
+  "runs": [
+    {
+      "run": 1,
+      "ready": true,
+      "stopReason": "MaxInsns",
+      "core0RetiredInstructions": 36007510,
+      "core1RetiredInstructions": 16598086,
+      "totalRetiredInstructions": 52605596,
+      "emulatorWallSeconds": 0.5,
+      "processWallSeconds": 0.61,
+      "reportedRetiredMips": 99.8,
+      "emulatedSeconds": 0.833,
+      "cycles": 200000000,
+      "jitBlocksCompiled": 34072,
+      "jitCodeKiB": 28735,
+      "exceptions": 99940,
+      "interrupts": 5215
+    },
+    {
+      "run": 2,
+      "ready": true,
+      "stopReason": "MaxInsns",
+      "core0RetiredInstructions": 36007510,
+      "core1RetiredInstructions": 16598086,
+      "totalRetiredInstructions": 52605596,
+      "emulatorWallSeconds": 0.5,
+      "processWallSeconds": 0.55,
+      "reportedRetiredMips": 97.7,
+      "emulatedSeconds": 0.833,
+      "cycles": 200000000,
+      "jitBlocksCompiled": 34072,
+      "jitCodeKiB": 28735,
+      "exceptions": 99940,
+      "interrupts": 5215
+    },
+    {
+      "run": 3,
+      "ready": true,
+      "stopReason": "MaxInsns",
+      "core0RetiredInstructions": 36007510,
+      "core1RetiredInstructions": 16598086,
+      "totalRetiredInstructions": 52605596,
+      "emulatorWallSeconds": 0.5,
+      "processWallSeconds": 0.54,
+      "reportedRetiredMips": 100.4,
+      "emulatedSeconds": 0.833,
+      "cycles": 200000000,
+      "jitBlocksCompiled": 34072,
+      "jitCodeKiB": 28735,
+      "exceptions": 99940,
+      "interrupts": 5215
+    },
+    {
+      "run": 4,
+      "ready": true,
+      "stopReason": "MaxInsns",
+      "core0RetiredInstructions": 36007510,
+      "core1RetiredInstructions": 16598086,
+      "totalRetiredInstructions": 52605596,
+      "emulatorWallSeconds": 0.5,
+      "processWallSeconds": 0.55,
+      "reportedRetiredMips": 98.0,
+      "emulatedSeconds": 0.833,
+      "cycles": 200000000,
+      "jitBlocksCompiled": 34072,
+      "jitCodeKiB": 28735,
+      "exceptions": 99940,
+      "interrupts": 5215
+    },
+    {
+      "run": 5,
+      "ready": true,
+      "stopReason": "MaxInsns",
+      "core0RetiredInstructions": 36007510,
+      "core1RetiredInstructions": 16598086,
+      "totalRetiredInstructions": 52605596,
+      "emulatorWallSeconds": 0.5,
+      "processWallSeconds": 0.55,
+      "reportedRetiredMips": 98.8,
+      "emulatedSeconds": 0.833,
+      "cycles": 200000000,
+      "jitBlocksCompiled": 34072,
+      "jitCodeKiB": 28735,
+      "exceptions": 99940,
+      "interrupts": 5215
+    }
+  ],
+  "summary": {
+    "medianProcessWallSeconds": 0.55,
+    "slowestProcessWallSeconds": 0.61,
+    "medianRetiredMips": 98.8,
+    "emulatedToWallRatioAtMedianApprox": 1.5,
+    "allConsoleTranscriptsByteIdentical": true,
+    "deterministicRetiredCounts": true,
+    "hostLoadControlled": false,
+    "sustainedThroughputClaim": false
+  },
+  "rawReceipts": {
+    "run-1.console.txt": "a32c5b666f34f01974a075faddd5a711611467d7ecfce2b96c0922348bf4c395",
+    "run-1.stderr.txt": "1b0d97658bc2aa90a8e1a0a295f1143333776c11c2f9af871c0d8f7dedaa9370",
+    "run-2.console.txt": "a32c5b666f34f01974a075faddd5a711611467d7ecfce2b96c0922348bf4c395",
+    "run-2.stderr.txt": "f3eb56f64deedc87b2e15843df0d0fa2248a44c34cf1e9104559ff6f16314058",
+    "run-3.console.txt": "a32c5b666f34f01974a075faddd5a711611467d7ecfce2b96c0922348bf4c395",
+    "run-3.stderr.txt": "f62051238edbf8ca5a9219a00da07a9ea810a01a22f4fe290bed0be2d6a4a3d7",
+    "run-4.console.txt": "a32c5b666f34f01974a075faddd5a711611467d7ecfce2b96c0922348bf4c395",
+    "run-4.stderr.txt": "458a7369ed776bda39ff3257117da25dd29a39d098c6f9a8a0c4c5c341827482",
+    "run-5.console.txt": "a32c5b666f34f01974a075faddd5a711611467d7ecfce2b96c0922348bf4c395",
+    "run-5.stderr.txt": "5ad6ef36d1cc99a70c4a40b431789850500180d71999f02ed31623c9f10062b2"
+  },
+  "securityAudit": {
+    "localCredentialValuesChecked": 2,
+    "localCredentialValuesFound": 0,
+    "pinnedArtifactFileCopiesFound": 0
+  },
+  "limits": {
+    "readyLatency": "unknown within this receipt; READY occurred before the fixed horizon",
+    "timingMode": "fast mode, so no hardware timing price is adopted"
+  }
+}

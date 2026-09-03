@@ -1,9 +1,13 @@
 # Native product boot speed, 2026-09-02
 
-The Task 4 native release fast-mode check is blocked. The authorized TinyDraw
-product image emitted no `TINYDRAW_VECTOR_V2_READY` marker in five bounded ROM
-boots, including a final 16,000,000,000-cycle run covering 66.667 emulated
-seconds and 162.15 wall seconds.
+This historical blocked result was resolved after the fast-mode small SPI2 DMA
+completion fix. The five-run READY-qualified rerun is recorded in
+[`../native-speed-2026-09-03/`](../native-speed-2026-09-03/README.md).
+
+The Task 4 native release fast-mode check was blocked at this commit. The
+authorized TinyDraw product image emitted no `TINYDRAW_VECTOR_V2_READY` marker
+in five bounded ROM boots, including a final 16,000,000,000-cycle run covering
+66.667 emulated seconds and 162.15 wall seconds.
 
 The exact image is TinyDraw `fc6d9347549730a0e57aa926f8f6935e12636844`,
 ESP-IDF v6.1, from the committed Tier B archive reference. Its physical serial
