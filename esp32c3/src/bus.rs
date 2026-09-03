@@ -164,11 +164,11 @@ impl Bus for SocBus {
     }
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 2) as u16); }
-        rd!(self, addr, 2, |b: &[u8]| u16::from_le_bytes(b.try_into().unwrap()))
+        rd!(self, addr, 2, |b: &[u8]| u16::from_le_bytes(b.try_into().expect("read16 provides two bytes")))
     }
     fn read32(&mut self, addr: u32) -> Result<u32, Fault> {
         if Self::is_periph(addr) { return Ok(self.periph_read(addr, 4)); }
-        rd!(self, addr, 4, |b: &[u8]| u32::from_le_bytes(b.try_into().unwrap()))
+        rd!(self, addr, 4, |b: &[u8]| u32::from_le_bytes(b.try_into().expect("read32 provides four bytes")))
     }
     fn write8(&mut self, addr: u32, v: u8) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.periph_write(addr, v as u32, 1); return Ok(()); }

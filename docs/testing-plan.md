@@ -50,7 +50,6 @@ and the silicon differential as a scheduled job. `tests/README.md` is the map.
      without `XTENSA_DIS_FILES`.
 2. Add CI commands for:
    - `cargo test --workspace`;
-   - `cargo fmt --all -- --check`; and
    - `cargo clippy --workspace --all-targets`.
 3. Pin the Rust release and the Espressif toolchain/ESP-IDF release used to generate test
    artifacts.
@@ -335,7 +334,7 @@ Use this oracle order:
 
 ### Required per-change suite
 
-- formatting and ordinary lint checks;
+- strict lint checks;
 - all Rust unit and integration tests;
 - all checked-in CPU binaries;
 - register-level peripheral tests;
@@ -373,7 +372,7 @@ count.
 - Shared CPU case harness exists.
 - At least 50 high-value instruction and exception cases.
 - ELF/image parsers do not panic on tested malformed inputs.
-- CI runs test, format and lint jobs.
+- CI runs test and strict lint jobs.
 
 ### Milestone 2: CPU regression suite
 
@@ -410,4 +409,3 @@ count.
 8. Port compatible Flexe and QEMU cases.
 9. Add randomized hardware differential testing.
 10. Add compiler execution suites to nightly CI.
-

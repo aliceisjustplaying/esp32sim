@@ -10,7 +10,7 @@ const BASE: u32 = 0x4038_0000;
 /// objdump prints each RISC-V instruction as one little-endian word (or half-word) in hex.
 fn asm(listing: &str) -> Vec<u8> {
     let mut out = Vec::new();
-    for g in listing.split_whitespace() { let w = u32::from_str_radix(g, 16).unwrap(); out.extend_from_slice(&w.to_le_bytes()[..g.len() / 2]); }
+    for g in listing.split_whitespace() { let w = u32::from_str_radix(g, 16).expect("test assembly must contain hex words"); out.extend_from_slice(&w.to_le_bytes()[..g.len() / 2]); }
     out
 }
 
@@ -28,7 +28,7 @@ const MIX: &str = "40380537 10050513 4581 2bc00613 c10c 4114 059d 068a 00b6c733 
 #[test]
 fn step_and_run_agree_and_the_loop_computes() {
     let (mut a, mut ra) = machine(&asm(MIX), "lui a0,0x40380");
-    for _ in 0..1500 { step(&mut a, &mut ra).unwrap(); }
+    for _ in 0..1500 { step(&mut a, &mut ra).expect("test program must execute without traps"); }
     let (mut b, mut rb) = machine(&asm(MIX), "lui a0,0x40380");
     let mut left = 1500;
     while left > 0 { let (used, t) = b.run(&mut rb, left); assert_eq!(t, None); left -= used; }
@@ -46,7 +46,7 @@ fn vectored_interrupt_and_mret() {
     let handler = asm("342023f3 34102e73 0e11 341e1073 30200073");   // csrr t2,mcause; csrr t3,mepc; addi t3,t3,4; csrw mepc,t3; mret
     let vector = 0x200 + 4 * 3;
     ram.mem[vector..vector + handler.len()].copy_from_slice(&handler);
-    for _ in 0..9 { step(&mut cpu, &mut ram).unwrap(); }
+    for _ in 0..9 { step(&mut cpu, &mut ram).expect("setup must execute without traps"); }
     assert!(cpu.mie_enabled());
     assert!(!cpu.irq_pending());
     cpu.set_irq(Some(3));
@@ -57,7 +57,7 @@ fn vectored_interrupt_and_mret() {
     assert_eq!(cpu.mcause, 0x8000_0003); assert_eq!(cpu.mepc, pc_before);
     assert!(!cpu.mie_enabled(), "MIE cleared on entry");
     cpu.set_irq(None);                                     // the handler acknowledged the source
-    for _ in 0..5 { step(&mut cpu, &mut ram).unwrap(); }   // ... mret
+    for _ in 0..5 { step(&mut cpu, &mut ram).expect("handler must execute without traps"); }   // ... mret
     assert_eq!(cpu.x[7], 0x8000_0003, "the handler read mcause");
     assert_eq!(cpu.pc, pc_before + 4);
     assert!(cpu.mie_enabled(), "MIE restored by mret");
@@ -90,8 +90,8 @@ const ATOMICS: &str = "40380537 10050513 4595 c10c 1005262f 061d 18c526af 18c527
 #[test]
 fn atomics_reserve_swap_and_combine() {
     let (mut cpu, mut ram) = machine(&asm(ATOMICS), "lui a0,0x40380");
-    for _ in 0..16 { step(&mut cpu, &mut ram).unwrap(); }
-    let word = |ram: &FlatRam| u32::from_le_bytes(ram.mem[0x100..0x104].try_into().unwrap());
+    for _ in 0..16 { step(&mut cpu, &mut ram).expect("atomic test must execute without traps"); }
+    let word = |ram: &FlatRam| u32::from_le_bytes(ram.mem[0x100..0x104].try_into().expect("word slice has four bytes"));
     assert_eq!(cpu.x[12], 12, "lr.w read the stored 5, then +7");
     assert_eq!(cpu.x[13], 0, "sc.w with a live reservation succeeds");
     assert_eq!(cpu.x[14], 1, "a second sc.w finds no reservation and fails");

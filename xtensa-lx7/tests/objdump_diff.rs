@@ -36,7 +36,7 @@ fn check(files: &str) -> usize {
             let Ok(pc) = u32::from_str_radix(addr_s.trim(), 16) else { continue };
             let hex: String = bytes_s.chars().filter(|c| !c.is_whitespace()).collect();
             if !hex.len().is_multiple_of(2) || hex.is_empty() { continue; }
-            let mut raw: Vec<u8> = (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap()).collect();
+            let mut raw: Vec<u8> = (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).expect("objdump bytes must be hexadecimal")).collect();
             raw.reverse();   // objdump prints the word big-endian; memory order is little-endian
             let expect = rest.trim();
             if expect.starts_with(".byte") || expect.is_empty() { continue; }

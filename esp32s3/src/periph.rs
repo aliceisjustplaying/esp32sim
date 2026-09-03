@@ -136,7 +136,7 @@ impl WifiMac {
             (0x33, 0xcac) => { self.txq_complete &= !(v & 0xf); }
             (0x33, o) if Self::txq_of(o).is_some() => {                                   // MAC_TX_PLCP0[queue]
                 self.ram.write(off, v);
-                if v & (1 << 31) != 0 { let q = Self::txq_of(o).unwrap(); self.tx_pending.push((q, DMA_ADDR_BASE | (v & 0xf_ffff))); }
+                if v & (1 << 31) != 0 { let q = Self::txq_of(o).expect("matched MAC TX queue register"); self.tx_pending.push((q, DMA_ADDR_BASE | (v & 0xf_ffff))); }
             }
             (0x33, _) => self.ram.write(off, v),
             (_, _) => self.ram2.write(off, v),

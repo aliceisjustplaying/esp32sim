@@ -444,11 +444,11 @@ impl<S: Soc> Machine<S> {
             let start = *self.rt.wall_start.get_or_insert_with(std::time::Instant::now);
             let emulated = std::time::Duration::from_secs_f64(self.bus.cycles() as f64 / S::CPU_HZ as f64);
             let wall = start.elapsed();
-            if emulated > wall + std::time::Duration::from_millis(2) { std::thread::sleep(emulated - wall); self.rt.behind = 0.0; }
+            if emulated > wall + std::time::Duration::from_millis(2) { std::thread::sleep(emulated.saturating_sub(wall)); self.rt.behind = 0.0; }
             else if wall > emulated + std::time::Duration::from_millis(50) {
-                self.rt.behind = (wall - emulated).as_secs_f64();
+                self.rt.behind = wall.saturating_sub(emulated).as_secs_f64();
                 // more than half a second behind: resynchronise (skip the lag) rather than flood the client while catching up
-                if wall > emulated + std::time::Duration::from_millis(500) { self.rt.resyncs += 1; self.rt.wall_start = Some(std::time::Instant::now() - emulated); }
+                if wall > emulated + std::time::Duration::from_millis(500) { self.rt.resyncs += 1; self.rt.wall_start = Some(std::time::Instant::now().checked_sub(emulated).expect("emulated uptime must fit before the current monotonic instant")); }
             } else { self.rt.behind = 0.0; }
         }
     }
@@ -577,7 +577,7 @@ impl<S: Soc> Machine<S> {
         for (ln, line) in text.lines().enumerate() {
             let line = line.trim(); if line.is_empty() || line.starts_with('#') { continue; }
             let mut it = line.splitn(2, char::is_whitespace);
-            let t: f64 = it.next().unwrap().parse().map_err(|_| format!("line {}: bad time", ln + 1))?;
+            let t: f64 = it.next().expect("a nonempty script line always begins with a time token").parse().map_err(|_| format!("line {}: bad time", ln + 1))?;
             let after = it.next().unwrap_or("").trim_start();
             let cmd = after.split_whitespace().next().unwrap_or("");
             let rest = after[cmd.len()..].trim();
