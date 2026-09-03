@@ -35,9 +35,11 @@ SPI2 DMA transfer does not complete. No fast-mode reference was committed
 because the emulator produced no counters.
 
 The 2026-09-03 post-fix rerun was refused before emulator execution because
-the hash-pinned build bytes were absent from the canonical local archive. The
-similarly named archived build has different source and artifact hashes. The
-post-fix marker and counter result remains unknown. Receipt:
+no local ELF matched the hash pinned by this partial contract. This contract
+does not yet pin the app binary, bootloader, partition table, or ROM ELF that
+the dry-run executes. Those inputs need authoritative hashes before the exact
+immutable build can be restored and rerun. The post-fix marker and counter
+result remains unknown. Receipt:
 [`../../docs/evidence/gate-harness-fast-rerun-2026-09-03/`](../../docs/evidence/gate-harness-fast-rerun-2026-09-03/README.md).
 
 calibration/tools/capture.py --image calibration/esp32s3-gate-harness --build <out> --boots 3 --port <serial> --timeout-s 180
