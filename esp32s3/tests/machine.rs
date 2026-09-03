@@ -96,6 +96,28 @@ fn scripts_use_the_board() {
     assert!(make_board("waveshare-lcd4b").is_some() && make_board("nope").is_none());
 }
 
+#[test]
+fn browser_touch_reaches_the_amoled_controller_and_gpio() {
+    let mut m = machine();
+    let board = esp32s3::board::WaveshareAmoled18V2::new();
+    let touch = board.touch_state.clone();
+    m.bus.board = Box::new(board);
+    let web = esp_soc::web::WebServer::queued();
+    web.push_incoming(r#"{"t":"touch","x":"123","y":"234","down":"1"}"#.to_string());
+    m.web = Some(web);
+    park(&mut m, 0, IRAM, &SPIN);
+    m.max_cycles = esp32s3::periph::CPU_HZ / 50 + 256;
+
+    assert!(matches!(m.run(u64::MAX), Stop::Halted));
+    let state = *touch.lock().expect("AMOLED touch state mutex poisoned");
+    assert!(state.down);
+    assert_eq!((state.x, state.y), (123, 234));
+
+    m.max_cycles = m.bus.cycles + 256;
+    assert!(matches!(m.run(u64::MAX), Stop::Halted));
+    assert!(!m.bus.periph.gpio.level(esp32s3::board::PIN_AMOLED_TOUCH_INT));
+}
+
 /// Console bytes from every stream go to the backlogs and the aggregate; the mask only chooses
 /// what stdout gets, and capture keeps stdout out of it entirely.
 #[test]

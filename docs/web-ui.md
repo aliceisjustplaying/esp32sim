@@ -44,6 +44,7 @@ Text frames:
 | `knob` | `d` (+1 cw / −1 ccw per detent); the emulator queues the quadrature edges 2 ms apart |
 | `serial` | `line` — sent to the USB-CDC RX with a newline |
 | `gpio` | `pin`, `level` |
+| `touch` | `x`, `y`, `down` (1 = touching) |
 
 Binary frame type 3: camera picture, `w u16le, h u16le`, RGBA8888 — used by the picture
 upload and the webcam (4 fps). Frames up to 8 MB are accepted.

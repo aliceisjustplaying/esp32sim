@@ -142,7 +142,8 @@ unsafe fn text<'a>(ptr: *const u8, len: usize) -> &'a str {
     drop(unsafe { Vec::from_raw_parts(ptr, len.max(1), len.max(1)) });
 }
 
-/// `board` is a CLI board name (atech14, waveshare-cam, waveshare-lcd4b, none) for the ESP32-S3,
+/// `board` is a CLI board name (atech14, waveshare-cam, waveshare-lcd4b,
+/// waveshare-amoled18-v2, none) for the ESP32-S3,
 /// or `esp32c3` for the RISC-V chip, which is console-only and takes no board. Null on failure.
 ///
 /// # Safety
