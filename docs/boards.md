@@ -12,6 +12,7 @@ pub trait BoardModel {
     fn i2c_devices(&mut self) -> Vec<(u8, u8, Box<dyn I2cDevice>)> // (bus, address, device)
     fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)>    // for the UI/PNG: w, h, RGB565, change counter
     fn leds(&self) -> Option<(&[[u8; 3]], u64)>               // LED ring/strip colours, change counter
+    fn touch_at(&mut self, cycle: VirtualCycle, x: u16, y: u16, down: bool)
     fn next_deadline(&self) -> Option<VirtualCycle>           // next autonomous board transition
     fn advance_to(&mut self, cycle: VirtualCycle)                    // advance through due transitions
     fn take_edges(&mut self) -> Vec<BoardEdge>                // timestamped GPIO input edges

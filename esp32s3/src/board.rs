@@ -431,6 +431,25 @@ impl WaveshareAmoled18V2 {
             edges: Vec::new(),
         }
     }
+
+    fn queue_touch(&mut self, cycle: VirtualCycle, x: u16, y: u16, down: bool) {
+        let mut touch = self.touch_state.lock().expect("AMOLED touch state mutex poisoned");
+        touch.x = x.min(Co5300::WIDTH as u16 - 1);
+        touch.y = y.min(Co5300::HEIGHT as u16 - 1);
+        if down { touch.down = true; touch.seen = false; touch.release_pending = false; }
+        else if touch.seen { touch.down = false; }
+        else { touch.release_pending = true; }
+        drop(touch);
+        let level = !down;
+        let queued_level = self.pending_touch_final.or(self.pending_touch_irq.map(|(_, level)| level)).unwrap_or(self.touch_irq_level);
+        if level != queued_level {
+            match self.pending_touch_irq {
+                Some((_, first_level)) if level == first_level => self.pending_touch_final = None,
+                Some(_) => self.pending_touch_final = Some(level),
+                None => self.pending_touch_irq = Some((cycle.max(self.cycle).saturating_add(1), level)),
+            }
+        }
+    }
 }
 
 impl Default for WaveshareAmoled18V2 { fn default() -> Self { Self::new() } }
@@ -462,24 +481,8 @@ impl BoardModel for WaveshareAmoled18V2 {
     fn input_levels(&self) -> Vec<(u8, bool)> {
         vec![(PIN_AMOLED_TE, self.te_level), (PIN_AMOLED_TOUCH_INT, self.touch_irq_level)]
     }
-    fn touch(&mut self, x: u16, y: u16, down: bool) {
-        let mut touch = self.touch_state.lock().expect("AMOLED touch state mutex poisoned");
-        touch.x = x.min(Co5300::WIDTH as u16 - 1);
-        touch.y = y.min(Co5300::HEIGHT as u16 - 1);
-        if down { touch.down = true; touch.seen = false; touch.release_pending = false; }
-        else if touch.seen { touch.down = false; }
-        else { touch.release_pending = true; }
-        drop(touch);
-        let level = !down;
-        let queued_level = self.pending_touch_final.or(self.pending_touch_irq.map(|(_, level)| level)).unwrap_or(self.touch_irq_level);
-        if level != queued_level {
-            match self.pending_touch_irq {
-                Some((_, first_level)) if level == first_level => self.pending_touch_final = None,
-                Some(_) => self.pending_touch_final = Some(level),
-                None => self.pending_touch_irq = Some((self.cycle.saturating_add(1), level)),
-            }
-        }
-    }
+    fn touch(&mut self, x: u16, y: u16, down: bool) { self.queue_touch(self.cycle, x, y, down); }
+    fn touch_at(&mut self, cycle: VirtualCycle, x: u16, y: u16, down: bool) { self.queue_touch(cycle, x, y, down); }
     fn next_deadline(&self) -> Option<VirtualCycle> {
         match (self.next_te_cycle, self.pending_touch_irq) {
             (Some(te), Some((touch, _))) => Some(te.min(touch)),
