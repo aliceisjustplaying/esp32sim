@@ -853,7 +853,9 @@ impl SocBus {
     pub(crate) fn refresh_tick_budget(&mut self) {
         let mut budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
         if let Some(deadline) = self.board.next_deadline() {
-            let until_deadline = deadline.saturating_sub(self.cycles).clamp(1, u64::from(MAX_TICK_DEFER));
+            let until_deadline = u64::from(self.tick_pending)
+                .saturating_add(deadline.saturating_sub(self.cycles))
+                .clamp(1, u64::from(MAX_TICK_DEFER));
             budget = budget.min(until_deadline as u32);
         }
         self.tick_budget = budget;
@@ -930,6 +932,15 @@ mod gp_spi_board_tests {
             self.events.lock().expect("probe mutex poisoned").push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
             (0..rx_len).map(|i| 0x50 + i as u8).collect()
         }
+    }
+
+    struct FixedDeadlineBoard {
+        deadline: u64,
+    }
+
+    impl crate::board::BoardModel for FixedDeadlineBoard {
+        fn name(&self) -> &'static str { "fixed-deadline-test" }
+        fn next_deadline(&self) -> Option<u64> { Some(self.deadline) }
     }
 
     fn dma_bus() -> SocBus {
@@ -1225,7 +1236,7 @@ mod gp_spi_board_tests {
         assert_eq!(bus.tick_pending, 37);
         esp_soc::SocBus::touch_input(&mut bus, 100, 200, true);
         assert_eq!(bus.tick_pending, 37);
-        assert_eq!(bus.tick_budget, 1);
+        assert_eq!(bus.tick_budget, 38);
         assert!(bus.gpio_events.as_deref().is_some_and(<[_]>::is_empty));
 
         Bus::tick(&mut bus, 64);
@@ -1234,6 +1245,19 @@ mod gp_spi_board_tests {
         assert!(bus.periph.gpio.irq());
         assert!(bus.irq_dirty);
         assert_eq!(bus.gpio_events.as_deref(), Some(&[(38, crate::board::PIN_AMOLED_TOUCH_INT, false)][..]));
+    }
+
+    #[test]
+    fn no_edge_touch_keeps_pending_cycles_in_the_deadline_threshold() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(FixedDeadlineBoard { deadline: 300 });
+        bus.tick_budget = MAX_TICK_DEFER;
+
+        assert_eq!(Bus::tick(&mut bus, 100), 0);
+        esp_soc::SocBus::touch_input(&mut bus, 0, 0, false);
+        assert_eq!((bus.cycles, bus.tick_pending, bus.tick_budget), (100, 100, MAX_TICK_DEFER));
+        assert_eq!(Bus::tick(&mut bus, 155), 0);
+        assert_eq!(Bus::tick(&mut bus, 1), 1);
     }
 
     #[test]
