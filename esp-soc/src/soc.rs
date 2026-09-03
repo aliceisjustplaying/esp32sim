@@ -1,11 +1,11 @@
 //! What a chip provides to `Machine`: its cores, and a bus that also answers the machine's
 //! questions about console output, reset, boot, the board, audio and interrupt routing.
 use crate::board::BoardModel;
-use emu_core::{Bus, Core};
+use emu_core::{Bus, Core, LifecycleKind};
 use esp_periph::Misc;
 
 /// Why `Machine::run` returned.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Stop {
     MaxInsns,
     Halted,
@@ -20,6 +20,10 @@ pub enum Stop {
     /// `--watch`: a word changed value (addr, old, new)
     Watch(u32, u32, u32),
     Exceptions(u64),
+    /// The model could not price an execution event. Its effects remain committed.
+    CostModel { core: usize, pc: u32, reason: String },
+    /// The model refused a reset event, which has no instruction pc.
+    CostModelLifecycle { kind: LifecycleKind, reason: String },
 }
 
 /// A secondary core's state as its SoC registers say.
@@ -54,6 +58,8 @@ pub trait Soc: 'static {
 
 pub trait SocBus: Bus {
     fn cycles(&self) -> u64;
+    /// CPU cycles from the current device horizon to the next transition that may wake a core.
+    fn next_deadline(&self) -> Option<u64> { None }
     fn irq_dirty(&mut self) -> &mut bool;
     /// Re-derive the interrupt lines after a device change; true if a core's input may differ.
     fn refresh_irq(&mut self) -> bool;
