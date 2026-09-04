@@ -310,22 +310,30 @@ active work. Hardware resumes only when a milestone 2 through 4 cost class
 lacks a receipt. Display-path and DMA decomposition are parked until milestone
 4 is complete.
 
-H1. Capture the IDF 6.1 `esp32s3-exception-ladders` image: 100 samples each
-for non-tail `call4`, `call8`, and `call12` recursion past the register-file
+H1. Complete. On two clean boots, the IDF 6.1
+`esp32s3-exception-ladders` image captured 100 samples each for non-tail
+`call4`, `call8`, and `call12` recursion past the register-file
 knee, `syscall` with a level-1 handler that reads EPC1, advances it by the
 three-byte syscall width with wide `addi`, writes EPC1, executes `rsync`, and
 returns with `rfe`; `rfe` alone with EPC1 set to the next instruction; and
 `rfi 3` alone with EPC3 set to the next instruction. The corrected seven-cell
-exception image builds, verifies, and completes its emulator dry-run with
-700 of 700 samples and zero refusals. Its straight-line mask-ROM
+exception image completed 700 of 700 samples and zero refusals per boot.
+Six cells are constant across both boots. The `call4` cell has a stable
+352-cycle median and p90 plus four larger samples in each boot, so it remains
+a distribution. Its straight-line mask-ROM
 instruction-fetch cell invokes the verified five-byte `xtos_p_none` body at
 `0x400559a4`, exactly `entry; retw.n`, with zero cache-counter deltas required.
-The two existing ROM
-`memset` paths produce different, noninteger residuals and cannot adopt a ROM
-fetch price under R8; receipt:
-[`evidence/timing/derived-rom-fetch-idf61/`](evidence/timing/derived-rom-fetch-idf61/README.md).
-The estimated board time is about two seconds. Nothing is flashed
-until the maintainer starts the next capture session.
+The direct cells leave exact candidates `rfe = 5`, `rfi 3 = 4`, and syscall
+entry `E = 7`. The 35-cycle window target then identifies only
+`E_window_overflow8 + E_window_underflow8 + rfwo + rfwu = 17`. Equating the
+typed window entries with the syscall candidate would leave
+`rfwo + rfwu = 3`, but no pinned source proves that equality. Every recursion
+pairs overflow and underflow, so the two return columns remain identical. The
+mask-ROM cell includes an
+interval-priced call sequence and has no matched IRAM control. R8(b) has no
+unused real-path validation for the return and entry candidates, so no price
+is adopted and every existing refusal remains. Receipt:
+[`evidence/timing/h1-exception-ladders-2026-09-04/`](evidence/timing/h1-exception-ladders-2026-09-04/README.md).
 
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
 capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
