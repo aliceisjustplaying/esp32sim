@@ -355,11 +355,25 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
         build / "bootloader" / "bootloader.bin": b"boot",
         build / "partition_table" / "partition-table.bin": b"partitions",
         build / "sdkconfig": b"config",
+        build / "flash_args": b"generated arguments",
         tmp_path / "probe-cells.json": b"manifest",
         tmp_path / "esp32s3_rev0_rom.elf": b"rom",
     }
     for path, contents in paths.items():
         path.write_bytes(contents)
+    (build / "flasher_args.json").write_text(
+        json.dumps(
+            {
+                "flash_files": {
+                    "0x10000": "probe.bin",
+                    "0x0": "bootloader/bootloader.bin",
+                    "0x8000": "partition_table/partition-table.bin",
+                },
+                "flash_settings": {"flash_mode": "dio"},
+                "extra_esptool_args": {"chip": "esp32s3"},
+            }
+        )
+    )
 
     result = MODULE.verify_artifacts(
         build / "probe.elf",
@@ -373,6 +387,8 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
         "bootloaderBinary",
         "partitionTableBinary",
         "sdkconfig",
+        "flasherArguments",
+        "flashArguments",
         "probeManifest",
         "maskRomElf",
     }
@@ -380,10 +396,20 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
         b"app"
     ).hexdigest()
     assert result["flashLayout"] == [
-        {"offset": "0x0", "artifact": "bootloaderBinary"},
-        {"offset": "0x8000", "artifact": "partitionTableBinary"},
-        {"offset": "0x10000", "artifact": "applicationBinary"},
+        {
+            "offset": "0x0",
+            "artifact": "bootloaderBinary",
+            "path": "bootloader/bootloader.bin",
+        },
+        {
+            "offset": "0x8000",
+            "artifact": "partitionTableBinary",
+            "path": "partition_table/partition-table.bin",
+        },
+        {"offset": "0x10000", "artifact": "applicationBinary", "path": "probe.bin"},
     ]
+    assert result["flashSettings"] == {"flash_mode": "dio"}
+    assert result["esptoolArguments"] == {"chip": "esp32s3"}
 
 
 def test_capture_objdump_argument_is_accepted(tmp_path: Path) -> None:
