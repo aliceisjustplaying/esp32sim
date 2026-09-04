@@ -1,5 +1,5 @@
 use emu_core::{Bus, Core};
-use esp32sim_wasm_jit::{compile_sram_block, REGISTER_COUNT};
+use esp32sim_wasm_jit::{compile_shared_sram_block, compile_sram_block, REGISTER_COUNT};
 use esp_soc::SocBus;
 use std::process::Command;
 
@@ -33,6 +33,42 @@ fn wasm_kernel_matches_the_receipt_priced_interpreter() {
     assert_eq!(compiled.instruction_count, KERNEL_INSTRUCTIONS as usize);
     assert_eq!(compiled.cycle_cost, expected.cycles);
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn shared_memory_kernel_updates_the_browser_handoff_record() {
+    let compiled = compile_shared_sram_block(
+        KERNEL_START,
+        &KERNEL[..KERNEL_BYTES],
+        128,
+        8192,
+        SRAM_BASE,
+        SRAM_LEN,
+    )
+    .expect("the shared-memory kernel compiles");
+    const SCRIPT: &str = r#"
+const fs = require('fs');
+const memory = new WebAssembly.Memory({initial: 1});
+const view = new DataView(memory.buffer);
+view.setUint32(128 + 2 * 4, 0x3fc89000, true);
+view.setUint32(128 + 3 * 4, 7, true);
+view.setUint32(128 + 64, 0x4038645b, true);
+view.setUint32(8192 + 4, 0x3fc89100, true);
+view.setUint32(8192 + 0x2c4, 0x12345678, true);
+WebAssembly.instantiate(fs.readFileSync(process.argv[1]), {env: {memory}}).then(({instance}) => {
+  instance.exports.run();
+  process.stdout.write(`${view.getUint32(128 + 11 * 4, true)},${view.getUint32(128 + 64, true)},${view.getBigUint64(128 + 72, true)}`);
+}).catch(error => { console.error(error); process.exit(1); });
+"#;
+    let path = write_module(&compiled.bytes, "shared");
+    let output = Command::new("node")
+        .args(["-e", SCRIPT])
+        .arg(&path)
+        .output()
+        .expect("run shared-memory module under Node");
+    std::fs::remove_file(path).expect("remove wasm module");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "1,1077437550,7");
 }
 
 #[test]

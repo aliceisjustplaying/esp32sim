@@ -109,9 +109,16 @@ Next inside the JIT, in order of measured value:
 2. **Inline the common fallbacks**: `call8`/`entry`/`retw` are the most frequent helper calls.
 3. **PIE in generated code or NEON in the interpreter** — the detector's remaining cost.
 
-## Phase 2b — the wasm backend (open)
+## Phase 2b — the wasm backend (in progress)
 
 One block IR, two backends — the native one exists; for the browser build:
+
+- **landed checkpoint**: the first receipt-priced SRAM block emitter now has a shared-memory
+  browser handoff. The worker caches generated modules and commits only complete 64-instruction
+  single-core scheduler quanta; unsupported instructions, timer crossings and failed guards fall
+  back. Shared-memory modules check PC once at entry and then fall through the straight-line
+  sequence. CI executes the real wasm ABI under Node. This is integration coverage, not a
+  whole-firmware speed result.
 
 - **wasm backend**: emit a wasm module per batch of hot blocks. Measured with a spike:
   compile+instantiate costs **~0.3 µs per block** when batched (64+ blocks/module) and

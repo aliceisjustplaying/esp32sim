@@ -51,6 +51,18 @@ fn core1_runs_when_released() {
     assert_eq!(m.cores[1].prid, 0xABAB);
 }
 
+#[test]
+fn browser_external_blocks_are_single_core_scheduler_transactions() {
+    let mut m = machine();
+    park(&mut m, 0, IRAM, &SPIN);
+    assert_eq!(m.browser_external_block_budget(1), Some(64));
+    assert!(m.finish_browser_external_quantum().is_none());
+    assert_eq!(m.bus.cycles, 64);
+
+    m.bus.write32(0x600c_0000, 0b010).unwrap();
+    assert_eq!(m.browser_external_block_budget(7), None, "core 1 is running");
+}
+
 /// A chip reset re-creates the digital peripherals but keeps the efuses, the straps, the RTC
 /// domain and the captured audio, and publishes the cause where the ROM reads it.
 #[test]
