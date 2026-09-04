@@ -41,6 +41,9 @@ register presets).
 | `--realtime` | pace to wall time without the UI |
 | `--web PORT [--web-dir DIR]` | browser UI (implies real time) |
 | `--cam-image F`, `--cam-fps N` | camera source for boards with a camera |
+| `--cooja` (C6) | run as a Cooja-NG external mote: the lock-step NDJSON protocol on stdin/stdout, the guest console as `log` events, the 802.15.4 frames as `tx`/`rx` (see [esp32c6.md](esp32c6.md), "Cooja-NG lock-step") |
+| `--cooja-slice-us N` | how long a busy guest runs before asking csim to step it again (default 1000; `hello.args.slice_us` overrides) |
+| `--cooja-verbose` | narrate the exchange on stderr |
 
 ## Outputs
 | Flag | Meaning |

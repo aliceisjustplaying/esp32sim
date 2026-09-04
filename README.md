@@ -144,8 +144,10 @@ Checked against a Waveshare ESP32-C6-LCD-1.47: **203 of 204 console lines identi
 boot cycles, including the ROM's `Saved PC:` after `esp_restart()`; the one difference is that
 line on the first boot. `--board waveshare-c6-lcd147` adds that board — the ST7789 over SPI2 and
 the GDMA, the WS2812, the BOOT button — and the C6's 802.15.4 MAC answers energy scans, so the
-board's LVGL spectrum-scanner firmware runs end to end (`examples/waveshare-c6-lcd147/`). See
-[docs/esp32c6.md](docs/esp32c6.md).
+board's LVGL spectrum-scanner firmware runs end to end (`examples/waveshare-c6-lcd147/`). The MAC
+also sends and receives frames with the timing of the air, and `--cooja` makes the C6 an external
+mote of Cooja-NG, driven in exact lock-step over NDJSON (an unmodified Contiki-NG-on-IDF image
+exchanging broadcasts with emulated MSP430 nodes). See [docs/esp32c6.md](docs/esp32c6.md).
 
 ## Scripts (host actions at emulated time)
 
