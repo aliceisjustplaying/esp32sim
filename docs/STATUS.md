@@ -329,6 +329,20 @@ fetch price under R8; receipt:
 The estimated board time is about two seconds. Nothing is flashed
 until the maintainer starts the next capture session.
 
+H2. Capture the IDF 6.1 `esp32s3-exception-rank-followup` image in one
+batch: exactly two clean boots and 100 accepted samples for each of its nine
+exception cells, with zero refusals. The executable-derived seven-column
+matrix has rank seven and determinant one. Adoption additionally requires
+exact constant direct totals and matched differences across both boots, a
+receipt whose full source commit equals the verified clean checkout, committed
+archive hashes, measured-engine reproduction of unused H1 totals 6, 5, and 18,
+and WindowOverflow8 entry plus WindowUnderflow8 entry plus `rfwo` plus `rfwu`
+equal to 17. The reservation is exactly one flash plus 30 seconds of board
+capture, with no product-restore stage. The shared runner clears serial input
+while reset is held and preserves partial logs on failure. Mask-ROM fetch is
+not in this batch and remains an exact-tier refusal. Nothing is flashed until
+the maintainer starts the capture after independent review.
+
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
 capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
 SDA/SCL, GPIO 21 touch interrupt) resolving the 40 MHz bus, cold
