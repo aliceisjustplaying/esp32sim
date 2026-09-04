@@ -142,7 +142,8 @@ unsafe fn text<'a>(ptr: *const u8, len: usize) -> &'a str {
     drop(unsafe { Vec::from_raw_parts(ptr, len.max(1), len.max(1)) });
 }
 
-/// `board` is a CLI board name (atech14, waveshare-cam, waveshare-lcd4b, none) for the ESP32-S3,
+/// `board` is a CLI board name (atech14, waveshare-cam, waveshare-lcd4b,
+/// waveshare-amoled18-v2, none) for the ESP32-S3,
 /// or `esp32c3` for the RISC-V chip, which is console-only and takes no board. Null on failure.
 ///
 /// # Safety
@@ -173,7 +174,7 @@ pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_
         let mut m = esp32s3::machine([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]);
         let Some(b) = esp32s3::board::make_board(&board) else { log(&format!("[emu] unknown board '{}'", board)); return std::ptr::null_mut() };
         m.bus.board = b;
-        for (bus, addr, dev) in m.bus.board.i2c_devices() { m.bus.periph.i2c[bus as usize].attach(addr, dev); }
+        m.bus.attach_board_devices();
         m.bus.set_flash_size(flash_mb << 20);
         let _ = m.bus.set_psram_size(psram_mb << 20);
         m.bus.periph.lcd_cam.frame_cycles = esp32s3::periph::CPU_HZ / 10;

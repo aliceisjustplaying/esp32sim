@@ -49,6 +49,10 @@ impl esp_soc::SocBus for SocBus {
         dirty
     }
     fn flush_ticks(&mut self) { SocBus::flush_ticks(self) }
+    fn touch_input(&mut self, x: u16, y: u16, down: bool) {
+        self.board.touch_at(self.cycles, x, y, down);
+        if self.board.next_deadline().is_some() { self.refresh_tick_budget(); }
+    }
     fn misc(&mut self) -> &mut Misc { &mut self.periph.misc }
     fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> { SocBus::load_bytes(self, addr, data) }
     fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String> {
@@ -87,6 +91,7 @@ impl esp_soc::SocBus for SocBus {
     /// Digital peripherals re-initialised, cache MMU invalid; SRAM, RTC memories, efuses and the
     /// RTC-domain registers survive, as on silicon. Returns the cause the ROM will report.
     fn reboot(&mut self, mac: [u8; 6]) -> u32 {
+        self.flush_ticks();
         let cause = self.periph.rtc.reset_cause;
         let old = std::mem::replace(&mut self.periph, periph::Peripherals::new(mac));
         let p = &mut self.periph;
@@ -99,6 +104,8 @@ impl esp_soc::SocBus for SocBus {
         p.i2s0.pcm = old.i2s0.pcm; p.i2s0.frames_out = old.i2s0.frames_out; p.i2s1.pcm = old.i2s1.pcm; p.i2s1.frames_out = old.i2s1.frames_out;   // keep the captured audio continuous
         self.mmu = [MMU_INVALID; MMU_ENTRIES];
         self.invalidate_tlb();
+        self.attach_board_devices();
+        self.refresh_tick_budget();
         self.irq_dirty = true;
         cause
     }

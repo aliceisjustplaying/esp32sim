@@ -120,6 +120,16 @@ impl SocBus {
         b
     }
 
+    /// Attach fresh peripheral-side devices and restore the levels driven by the persistent board.
+    pub fn attach_board_devices(&mut self) {
+        for (bus, address, device) in self.board.i2c_devices() {
+            self.periph.i2c[bus as usize].attach(address, device);
+        }
+        for (pin, level) in self.board.input_levels() {
+            self.periph.gpio.set_input(pin, level);
+        }
+    }
+
     /// Size the per-page version table to the buffers. Call after replacing `flash` or `psram`.
     pub fn rebuild_page_table(&mut self) {
         let sizes = [self.sram.len(), self.irom.len(), self.flash.len(), self.psram.len(), self.drom.len(), self.rtc_fast.len(), self.rtc_slow.len()];
@@ -223,7 +233,7 @@ impl SocBus {
     }
     fn periph_write(&mut self, addr: u32, v: u32, size: u32) {
         self.periph_write_inner(addr, v, size);
-        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);   // the write may have armed something
+        self.refresh_tick_budget();   // the write may have armed something
     }
     fn periph_write_inner(&mut self, addr: u32, v: u32, size: u32) {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
@@ -840,16 +850,32 @@ impl Bus for SocBus {
 }
 
 impl SocBus {
+    pub(crate) fn refresh_tick_budget(&mut self) {
+        let mut budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        if let Some(deadline) = self.board.next_deadline() {
+            let until_deadline = u64::from(self.tick_pending)
+                .saturating_add(deadline.saturating_sub(self.cycles))
+                .clamp(1, u64::from(MAX_TICK_DEFER));
+            budget = budget.min(until_deadline as u32);
+        }
+        self.tick_budget = budget;
+    }
+
     /// Deliver the deferred cycles to the device models now.
     pub fn flush_ticks(&mut self) {
         let c = std::mem::take(&mut self.tick_pending);
         if c == 0 { return; }
         self.tick_impl(c);
-        self.tick_budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        self.refresh_tick_budget();
     }
 
     fn tick_impl(&mut self, cycles: u32) -> u32 {
         self.periph.tick(cycles as u64);
+        self.board.advance_to(self.cycles);
+        for edge in self.board.take_edges() {
+            if let Some(events) = &mut self.gpio_events { events.push((edge.cycle, edge.pin, edge.level)); }
+            if self.periph.gpio.set_input(edge.pin, edge.level) { self.irq_dirty = true; }
+        }
         self.complete_spi2_dma();
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
@@ -906,6 +932,15 @@ mod gp_spi_board_tests {
             self.events.lock().expect("probe mutex poisoned").push(format!("spi:{host}:{tx:02x?}:{rx_len}"));
             (0..rx_len).map(|i| 0x50 + i as u8).collect()
         }
+    }
+
+    struct FixedDeadlineBoard {
+        deadline: u64,
+    }
+
+    impl crate::board::BoardModel for FixedDeadlineBoard {
+        fn name(&self) -> &'static str { "fixed-deadline-test" }
+        fn next_deadline(&self) -> Option<u64> { Some(self.deadline) }
     }
 
     fn dma_bus() -> SocBus {
@@ -1187,5 +1222,65 @@ mod gp_spi_board_tests {
         assert_eq!(bus.periph.gdma.out[0].eof_desc, FIRST_DESC);
         assert!(!bus.periph.gdma.out[0].running);
         assert_eq!(bus.periph.spi2.transfers, 1);
+    }
+
+    #[test]
+    fn host_touch_uses_the_current_bus_horizon_and_keeps_its_edge_timestamp() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.gpio_events = Some(Vec::new());
+        bus.periph.gpio.pin[crate::board::PIN_AMOLED_TOUCH_INT as usize] = (2 << 7) | (1 << 13);
+        bus.tick_budget = MAX_TICK_DEFER;
+
+        assert_eq!(Bus::tick(&mut bus, 37), 0);
+        assert_eq!(bus.tick_pending, 37);
+        esp_soc::SocBus::touch_input(&mut bus, 100, 200, true);
+        assert_eq!(bus.tick_pending, 37);
+        assert_eq!(bus.tick_budget, 38);
+        assert!(bus.gpio_events.as_deref().is_some_and(<[_]>::is_empty));
+
+        Bus::tick(&mut bus, 64);
+
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TOUCH_INT));
+        assert!(bus.periph.gpio.irq());
+        assert!(bus.irq_dirty);
+        assert_eq!(bus.gpio_events.as_deref(), Some(&[(38, crate::board::PIN_AMOLED_TOUCH_INT, false)][..]));
+    }
+
+    #[test]
+    fn no_edge_touch_keeps_pending_cycles_in_the_deadline_threshold() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(FixedDeadlineBoard { deadline: 300 });
+        bus.tick_budget = MAX_TICK_DEFER;
+
+        assert_eq!(Bus::tick(&mut bus, 100), 0);
+        esp_soc::SocBus::touch_input(&mut bus, 0, 0, false);
+        assert_eq!((bus.cycles, bus.tick_pending, bus.tick_budget), (100, 100, MAX_TICK_DEFER));
+        assert_eq!(Bus::tick(&mut bus, 155), 0);
+        assert_eq!(Bus::tick(&mut bus, 1), 1);
+    }
+
+    #[test]
+    fn reboot_reattaches_amoled_i2c_devices_and_restores_board_input_levels() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.board = Box::new(crate::board::WaveshareAmoled18V2::new());
+        bus.attach_board_devices();
+        for address in [0x15, 0x20, 0x34, 0x51, 0x6b] {
+            assert!(bus.periph.i2c[0].has_device(address));
+        }
+
+        Bus::tick(&mut bus, (crate::periph::CPU_HZ / 120) as u32);
+        esp_soc::SocBus::touch_input(&mut bus, 100, 200, true);
+        Bus::tick(&mut bus, 64);
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TE));
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TOUCH_INT));
+
+        esp_soc::SocBus::reboot(&mut bus, [0; 6]);
+
+        for address in [0x15, 0x20, 0x34, 0x51, 0x6b] {
+            assert!(bus.periph.i2c[0].has_device(address));
+        }
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TE));
+        assert!(!bus.periph.gpio.level(crate::board::PIN_AMOLED_TOUCH_INT));
     }
 }
