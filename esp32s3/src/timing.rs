@@ -24,18 +24,34 @@ pub enum ReceiptId {
     Idf61StraightLineIssue,
     /// IDF 6.1 SRAM load measurement summarized in `tests/fixtures/sram-cost-receipt.json`.
     Idf61IndependentSramAccess,
+    /// IDF 6.1 register-block measurement summarized in
+    /// `tests/fixtures/mmio-read-receipt.json`.
+    Idf61RegisterBlockRead,
 }
 
 impl ReceiptId {
     pub const fn file(self) -> &'static str {
-        "esp32s3/tests/fixtures/sram-cost-receipt.json"
+        match self {
+            Self::Idf61StraightLineIssue | Self::Idf61IndependentSramAccess => {
+                "esp32s3/tests/fixtures/sram-cost-receipt.json"
+            }
+            Self::Idf61RegisterBlockRead => "esp32s3/tests/fixtures/mmio-read-receipt.json",
+        }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MmioReadTier {
+    Fast,
+    Apb,
+    Nrx,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CostClass {
     InstructionIssue,
     IndependentSramAccess,
+    MmioRead(MmioReadTier),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,26 +165,43 @@ impl CostModel for Esp32S3SramCostModel {
 
         let (load_destination, read_registers, expects_load) =
             classify(instruction.op, instruction.s, instruction.t)?;
-        let mut components = vec![CostComponent {
+        let instruction_issue = CostComponent {
             class: CostClass::InstructionIssue,
             tier: CostTier::Exact,
             cycles: 1,
             receipt: ReceiptId::Idf61StraightLineIssue,
-        }];
+        };
+        let mut components = Vec::new();
         if expects_load {
             let access = exactly_one_load(data_accesses, instruction.op)?;
-            validate_sram_load(access, instruction.op)?;
-            components.push(CostComponent {
-                class: CostClass::IndependentSramAccess,
-                tier: CostTier::Exact,
-                cycles: 0,
-                receipt: ReceiptId::Idf61IndependentSramAccess,
-            });
+            match classify_load(access, instruction.op)? {
+                LoadClass::Sram => {
+                    components.push(instruction_issue);
+                    components.push(CostComponent {
+                        class: CostClass::IndependentSramAccess,
+                        tier: CostTier::Exact,
+                        cycles: 0,
+                        receipt: ReceiptId::Idf61IndependentSramAccess,
+                    });
+                }
+                LoadClass::Mmio(tier) => components.push(CostComponent {
+                    class: CostClass::MmioRead(tier),
+                    tier: CostTier::Exact,
+                    cycles: match tier {
+                        MmioReadTier::Fast => 9,
+                        MmioReadTier::Apb => 15,
+                        MmioReadTier::Nrx => 18,
+                    },
+                    receipt: ReceiptId::Idf61RegisterBlockRead,
+                }),
+            }
         } else if !data_accesses.is_empty() {
             return Err(format!(
                 "UnexpectedMemoryAccess({:?}): cost not adopted (unexplained tier)",
                 instruction.op
             ));
+        } else {
+            components.push(instruction_issue);
         }
 
         let mut state = self.state.borrow_mut();
@@ -240,7 +273,12 @@ fn exactly_one_load(accesses: &[MemoryAccess], op: Op) -> Result<&MemoryAccess, 
     }
 }
 
-fn validate_sram_load(access: &MemoryAccess, op: Op) -> Result<(), String> {
+enum LoadClass {
+    Sram,
+    Mmio(MmioReadTier),
+}
+
+fn classify_load(access: &MemoryAccess, op: Op) -> Result<LoadClass, String> {
     if access.fault.is_some() {
         return Err(format!(
             "MemoryFault({op:?}): cost not adopted (unexplained tier)"
@@ -251,11 +289,37 @@ fn validate_sram_load(access: &MemoryAccess, op: Op) -> Result<(), String> {
             "UnalignedOrNonWordSramLoad({op:?}): cost not adopted (unexplained tier)"
         ));
     }
-    if !(DRAM_LOW..DRAM_HIGH).contains(&access.address) {
-        return Err(format!(
+    if (DRAM_LOW..DRAM_HIGH).contains(&access.address) {
+        return Ok(LoadClass::Sram);
+    }
+    if let Some(tier) = receipted_mmio_read_tier(access.address) {
+        return Ok(LoadClass::Mmio(tier));
+    }
+    match access.address {
+        0x6000_703c | 0x6000_8038 => Err(format!(
+            "MmioRead({:#010x}): receipt is a distribution with no adopted scalar cost",
+            access.address
+        )),
+        0x6000_0000..=0x600f_ffff => Err(format!(
+            "MmioRead({:#010x}): register not covered by the adopted receipt",
+            access.address
+        )),
+        _ => Err(format!(
             "DataAccess({:#010x}): non-SRAM cost not adopted (unexplained tier)",
             access.address
-        ));
+        )),
     }
-    Ok(())
+}
+
+fn receipted_mmio_read_tier(address: u32) -> Option<MmioReadTier> {
+    match address {
+        0x600c_0060 | 0x600c_1014 | 0x600c_4004 | 0x600c_e05c => Some(MmioReadTier::Fast),
+        0x6001_ccd4 => Some(MmioReadTier::Nrx),
+        0x6000_001c | 0x6000_2018 | 0x6000_3018 | 0x6000_40b0 | 0x6000_50f0 | 0x6000_90b4
+        | 0x6000_e044 | 0x6001_3050 | 0x6001_f070 | 0x6002_0070 | 0x6002_3044 | 0x6002_4014
+        | 0x6002_6014 | 0x6003_8008 | 0x6003_b018 | 0x6003_f0a8 | 0x6004_0000 => {
+            Some(MmioReadTier::Apb)
+        }
+        _ => None,
+    }
 }

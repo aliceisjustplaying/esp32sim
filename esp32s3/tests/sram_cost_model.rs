@@ -1,5 +1,5 @@
 use emu_core::{Bus, Core};
-use esp32s3::{CostClass, Esp32S3SramCostModel, ReceiptId};
+use esp32s3::{CostClass, Esp32S3SramCostModel, MmioReadTier, ReceiptId};
 use esp_soc::Stop;
 
 const PC: u32 = 0x4038_645b;
@@ -7,6 +7,7 @@ const BASE: u32 = 0x3fc8_9000;
 const POINTER: u32 = 0x3fc8_9100;
 const PROGRAM: &[u8] = include_bytes!("fixtures/tinydraw-sram-kernel.bin");
 const RECEIPT: &str = include_str!("fixtures/sram-cost-receipt.json");
+const MMIO_RECEIPT: &str = include_str!("fixtures/mmio-read-receipt.json");
 
 fn configured_machine() -> (esp32s3::Machine, Esp32S3SramCostModel) {
     let mut machine = esp32s3::machine([0; 6]);
@@ -67,14 +68,14 @@ fn prices_the_receipted_tinydraw_sram_sequence_deterministically() {
 }
 
 #[test]
-fn refuses_non_sram_data_without_committing_a_ledger_entry() {
+fn refuses_unreceipted_mmio_without_committing_a_ledger_entry() {
     let (mut machine, model) = configured_machine();
     machine.cores[0].set_ar(2, 0x600f_e000);
     let stop = machine.run(1);
     assert!(
         matches!(
             stop,
-            Stop::CostModel { ref reason, .. } if reason.contains("non-SRAM cost not adopted")
+            Stop::CostModel { ref reason, .. } if reason.contains("register not covered")
         ),
         "{stop:?}"
     );
@@ -101,4 +102,51 @@ fn refuses_an_unpriced_load_use_dependency() {
         "{stop:?}"
     );
     assert_eq!(model.ledger().len(), 1);
+}
+
+#[test]
+fn prices_only_the_exact_receipted_mmio_reads() {
+    assert!(
+        MMIO_RECEIPT.contains("67d213b0f823452582115e74d18f48f0e4142bfa8851f181388fac83c9245dd6")
+    );
+    assert!(
+        MMIO_RECEIPT.contains("90bee849abeca5449fa8e330497717cf9a01562a106eee0e72b604abf55a50b5")
+    );
+
+    for (address, tier, cycles) in [
+        (0x600c_1014, MmioReadTier::Fast, 9),
+        (0x6000_001c, MmioReadTier::Apb, 15),
+        (0x6001_ccd4, MmioReadTier::Nrx, 18),
+    ] {
+        let (mut machine, model) = configured_machine();
+        machine.cores[0].set_ar(2, address - 4);
+
+        assert!(matches!(machine.run(1), Stop::MaxInsns));
+        let ledger = model.ledger();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger[0].cycles, cycles);
+        assert_eq!(ledger[0].components.len(), 1);
+        assert_eq!(ledger[0].components[0].class, CostClass::MmioRead(tier));
+        assert_eq!(
+            ledger[0].components[0].receipt,
+            ReceiptId::Idf61RegisterBlockRead
+        );
+        assert_eq!(
+            ledger[0].components[0].receipt.file(),
+            "esp32s3/tests/fixtures/mmio-read-receipt.json"
+        );
+    }
+}
+
+#[test]
+fn refuses_mmio_reads_without_an_exact_receipt() {
+    let (mut machine, model) = configured_machine();
+    machine.cores[0].set_ar(2, 0x6000_8038 - 4);
+
+    let stop = machine.run(1);
+    assert!(
+        matches!(stop, Stop::CostModel { ref reason, .. } if reason.contains("distribution")),
+        "{stop:?}"
+    );
+    assert!(model.ledger().is_empty());
 }
