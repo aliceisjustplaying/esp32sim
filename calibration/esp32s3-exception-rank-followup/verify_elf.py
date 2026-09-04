@@ -574,7 +574,10 @@ def verify(
         name: tuple(row) for name, row in elf_contract.pop("reconstructedRows").items()
     }
     reconstructed_rows["rom_minus_iram_control"] = ROWS["rom_minus_iram_control"]
-    elf_contract["executableRankProof"] = proof(reconstructed_rows)
+    if set(reconstructed_rows) != set(ROWS):
+        raise VerificationError("executable row names do not match the paper design")
+    ordered_rows = {name: reconstructed_rows[name] for name in ROWS}
+    elf_contract["executableRankProof"] = proof(ordered_rows)
     return {
         "schemaVersion": 1,
         "sourceCommit": source_commit,
