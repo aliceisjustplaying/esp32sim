@@ -27,6 +27,7 @@ use crate::bus::Bus;
 use crate::decode::{decode, Insn, Op};
 use crate::exec::{exec_insn, max_ar, Trap};
 use crate::state::{sr, Cpu};
+use emu_core::{ModeledExecution, ModeledStepOutcome, StepKind, StepOutcome};
 
 pub use emu_core::core::pc_bit;
 
@@ -61,13 +62,15 @@ pub struct BlockCache {
     code: Option<crate::jit::CodeCache>,
     helpers: Option<crate::jit::Helpers>,
     pub jit_enabled: bool,
+    /// Generate receipt-backed cycle charges for modeled single-instruction dispatches.
+    pub(crate) costed_jit: bool,
     pub compiled: u64,
 }
 
 impl BlockCache {
     pub fn new() -> Self {
         BlockCache { entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
-                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, compiled: 0 }
+                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, costed_jit: false, compiled: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
@@ -87,7 +90,7 @@ impl BlockCache {
 
 impl Default for BlockCache { fn default() -> Self { Self::new() } }
 /// A clone of a CPU starts with an empty cache; compiled code is tied to the original's arena.
-impl Clone for BlockCache { fn clone(&self) -> Self { let mut b = Self::new(); b.jit_enabled = self.jit_enabled; b } }
+impl Clone for BlockCache { fn clone(&self) -> Self { let mut b = Self::new(); b.jit_enabled = self.jit_enabled; b.costed_jit = self.costed_jit; b } }
 
 /// The instruction ends a block: control transfer, or a change to interrupt/timer/window state
 /// that the per-block checks depend on.
@@ -157,7 +160,7 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
     if cpu.blocks.jit_active() {
         let b = &mut cpu.blocks;
         let (s, e) = (start as usize, start as usize + n as usize);
-        if let Some(c) = crate::jit::compile(b.code.as_mut().expect("active JIT must have a code cache"), &mut b.arena[s..e], pc0, fast) { code = c; b.compiled += 1; }
+        if let Some(c) = crate::jit::compile(b.code.as_mut().expect("active JIT must have a code cache"), &mut b.arena[s..e], pc0, fast, b.costed_jit) { code = c; b.compiled += 1; }
     }
     cpu.blocks.entries[ei] = Entry { pc: pc0, start, n, vidx: [vidx0, vidx1], ver, code };
     cpu.blocks.builds += 1;
@@ -233,4 +236,179 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
     // cut short by the budget or a timer deadline while still inside the block: resume there
     if trap.is_none() && !broke && k < end { cpu.blocks.resume = (ei, k, cpu.pc); }
     (done + pre as u32, trap)
+}
+
+/// Run one receipt-priced instruction through native code when its complete cost is static.
+/// Runtime-priced instructions use the measured interpreter.
+pub fn run_costed_step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> ModeledStepOutcome {
+    let pc = cpu.pc;
+    if !cpu.blocks.jit_active() || !cpu.blocks.costed_jit {
+        return interpreted_modeled_step(cpu, bus);
+    }
+    if let Some(trap) = cpu.check_interrupts() {
+        return ModeledStepOutcome {
+            outcome: StepOutcome {
+                pc,
+                next_pc: cpu.pc,
+                bytes: None,
+                length: 0,
+                kind: StepKind::TrapBefore(trap),
+                control: None,
+            },
+            applied_cycles: 0,
+            execution: ModeledExecution::Interpreter,
+        };
+    }
+    if cpu.waiting {
+        cpu.advance_ccount(1);
+        return ModeledStepOutcome {
+            outcome: StepOutcome {
+                pc,
+                next_pc: pc,
+                bytes: None,
+                length: 0,
+                kind: StepKind::Idle,
+                control: None,
+            },
+            applied_cycles: 1,
+            execution: ModeledExecution::Interpreter,
+        };
+    }
+    let bytes = match bus.fetch(pc) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            let trap = cpu.raise_mem(crate::state::exc::IFETCH_ERROR, pc);
+            return ModeledStepOutcome {
+                outcome: StepOutcome {
+                    pc,
+                    next_pc: cpu.pc,
+                    bytes: None,
+                    length: 0,
+                    kind: StepKind::TrapBefore(trap),
+                    control: None,
+                },
+                applied_cycles: 0,
+                execution: ModeledExecution::Interpreter,
+            };
+        }
+    };
+    let instruction = decode(pc, bytes);
+    let loop_back_edge = cpu.lcount != 0
+        && pc.wrapping_add(u32::from(instruction.len)) == cpu.lend;
+    if loop_back_edge || crate::measured::compiled_internal_cost(&instruction).is_none() {
+        return interpreted_modeled_step(cpu, bus);
+    }
+    if let Some(trap) = cpu.check_overflow(max_ar(&instruction)) {
+        return ModeledStepOutcome {
+            outcome: StepOutcome {
+                pc,
+                next_pc: cpu.pc,
+                bytes: Some(bytes),
+                length: instruction.len,
+                kind: StepKind::TrapBefore(trap),
+                control: None,
+            },
+            applied_cycles: 0,
+            execution: ModeledExecution::Interpreter,
+        };
+    }
+
+    let Some((used, trap, cycle_charge)) = run_costed_native_one(cpu, bus) else {
+        return interpreted_modeled_step(cpu, bus);
+    };
+    debug_assert_eq!(used, 1);
+    let kind = trap.map_or(StepKind::Retired, StepKind::TrapDuring);
+    ModeledStepOutcome {
+        outcome: StepOutcome {
+            pc,
+            next_pc: cpu.pc,
+            bytes: Some(bytes),
+            length: instruction.len,
+            kind,
+            control: None,
+        },
+        applied_cycles: cycle_charge,
+        execution: ModeledExecution::Compiled,
+    }
+}
+
+fn run_costed_native_one<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Option<(u32, Option<Trap>, u32)> {
+    let pc = cpu.pc;
+    let (ei, k, end) = {
+        let (resume_entry, resume_index, resume_pc) = cpu.blocks.resume;
+        let resumed = cpu.blocks.entries[resume_entry as usize];
+        if resume_pc == pc
+            && resumed.pc != 1
+            && BlockCache::valid(&resumed, bus.page_versions())
+            && resume_index >= resumed.start
+            && resume_index < resumed.start + u32::from(resumed.n)
+        {
+            (resume_entry, resume_index, resumed.start + u32::from(resumed.n))
+        } else {
+            let entry_index = BlockCache::index(pc);
+            let entry = cpu.blocks.entries[entry_index];
+            if entry.pc == pc && BlockCache::valid(&entry, bus.page_versions()) {
+                (entry_index as u32, entry.start, entry.start + u32::from(entry.n))
+            } else {
+                let (entry_index, start, len) = build(cpu, bus, pc).ok()?;
+                (entry_index, start, start + u32::from(len))
+            }
+        }
+    };
+    cpu.blocks.resume.2 = 1;
+    let code = cpu.blocks.entries[ei as usize].code;
+    if code == crate::jit::NONE || !cpu.blocks.jit_enabled {
+        return None;
+    }
+    if cpu.blocks.helpers.is_none() {
+        cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>());
+    }
+    let entry = cpu.blocks.arena[k as usize].off;
+    let blocks = std::ptr::addr_of!(cpu.blocks);
+    // SAFETY: Generated code reads the cache but cannot reach it through the mutable CPU pointer.
+    let cache = unsafe { &*blocks };
+    let fast_memory = bus.fast_mem();
+    let code_cache = cache.code.as_ref().expect("active JIT must have a code cache");
+    let helpers = cache.helpers.as_ref().expect("active JIT must have helpers");
+    // SAFETY: The live entry was compiled in costed mode for `B`; the fast-memory description
+    // belongs to this exclusive bus borrow.
+    let (result, cycle_charge) = unsafe {
+        crate::jit::run_costed(
+            code_cache,
+            code,
+            cpu,
+            bus,
+            helpers,
+            1,
+            entry,
+            fast_memory,
+        )
+    };
+    let (done, exit) = (result & 0xffff, result >> 16);
+    cpu.insn_count += u64::from(done);
+    cpu.advance_ccount(cycle_charge);
+    Some(match exit {
+        crate::jit::CODE_TRAP => (done, cpu.jit_trap.take(), cycle_charge),
+        crate::jit::CODE_TRAP_PRE => (done + 1, cpu.jit_trap.take(), cycle_charge),
+        crate::jit::CODE_CUT => {
+            if k + done < end {
+                cpu.blocks.resume = (ei, k + done, cpu.pc);
+            }
+            (done, None, cycle_charge)
+        }
+        _ => (done, None, cycle_charge),
+    })
+}
+
+fn interpreted_modeled_step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> ModeledStepOutcome {
+    let outcome = crate::exec::step_outcome(cpu, bus);
+    let applied_cycles = match outcome.kind {
+        StepKind::Retired | StepKind::Idle | StepKind::TrapDuring(_) => 1,
+        StepKind::TrapBefore(_) => 0,
+    };
+    ModeledStepOutcome {
+        outcome,
+        applied_cycles,
+        execution: ModeledExecution::Interpreter,
+    }
 }

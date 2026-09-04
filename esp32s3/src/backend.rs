@@ -95,6 +95,19 @@ impl Esp32CostModel {
             .map(|model| model.config)
             .map_err(|_| "CostModelState: model is already borrowed".to_string())
     }
+
+    /// Canonical ledger bytes committed by the attached product model.
+    pub fn canonical_ledger(&self) -> Result<Vec<u8>, String> {
+        let model = self
+            .inner
+            .try_borrow()
+            .map_err(|_| "CostModelState: model is already borrowed".to_string())?;
+        let mut engine = model.engine.clone();
+        engine
+            .run_trace(&[])
+            .map(|report| report.canonical_ledger)
+            .map_err(format_timing_refusal)
+    }
 }
 
 impl CostModel for Esp32CostModel {
@@ -1646,6 +1659,71 @@ mod tests {
             assert_eq!(machine.cores[0].ccount, expected as u32);
             assert_eq!(machine.bus.cycles, expected);
         }
+    }
+
+    #[test]
+    fn costed_native_jit_matches_measured_interpreter_jump_ledger() {
+        if !xtensa_lx7::jit::AVAILABLE {
+            return;
+        }
+        let instruction = [0x06, 0xff, 0xff];
+        assert_eq!(xtensa_lx7::decode(RESET_PC, [0x06, 0xff, 0xff, 0]).op, Op::J);
+
+        let mut reference_machine = instruction_machine(&instruction);
+        let mut reference_backend = Esp32Backend::default();
+        for _ in 0..2 {
+            assert_eq!(
+                reference_machine.step_measured(&mut reference_backend, CoreId::Core0),
+                Ok(MeasuredStep::Instruction)
+            );
+        }
+        let reference_ledger = reference_backend
+            .run_trace(&[])
+            .expect("measured interpreter ledger")
+            .canonical_ledger;
+
+        let mut jit_machine = instruction_machine(&instruction);
+        let model = Esp32CostModel::default();
+        let report = model.clone();
+        jit_machine
+            .set_cost_model(Box::new(model))
+            .expect("pristine machine accepts product timing");
+        assert!(matches!(jit_machine.run(2), esp_soc::Stop::MaxInsns));
+
+        let (_, _, compiled, _) = emu_core::Core::code_cache_stats(&jit_machine.cores[0])
+            .expect("LX7 exposes native code statistics");
+        assert_eq!(compiled, 1);
+        assert_eq!(jit_machine.cores[0].ccount, 6);
+        assert_eq!(report.core_cycles(), Ok([6, 0]));
+        assert_eq!(report.canonical_ledger(), Ok(reference_ledger));
+    }
+
+    #[test]
+    fn costed_native_jit_defers_dynamic_loop_edge_to_interpreter() {
+        if !xtensa_lx7::jit::AVAILABLE {
+            return;
+        }
+        let instruction = [0x22, 0xa0, 0x00];
+        assert_eq!(xtensa_lx7::decode(RESET_PC, [0x22, 0xa0, 0, 0]).op, Op::Movi);
+
+        let mut machine = instruction_machine(&instruction);
+        machine.cores[0].lbeg = RESET_PC - 1;
+        machine.cores[0].lend = RESET_PC + 3;
+        machine.cores[0].lcount = 1;
+        let model = Esp32CostModel::default();
+        let report = model.clone();
+        machine
+            .set_cost_model(Box::new(model))
+            .expect("pristine machine accepts product timing");
+        assert!(matches!(machine.run(1), esp_soc::Stop::MaxInsns));
+
+        let (_, _, compiled, _) = emu_core::Core::code_cache_stats(&machine.cores[0])
+            .expect("LX7 exposes native code statistics");
+        assert_eq!(compiled, 0);
+        assert_eq!(machine.cores[0].pc, RESET_PC - 1);
+        assert_eq!(machine.cores[0].lcount, 0);
+        assert_eq!(machine.cores[0].ccount, 2);
+        assert_eq!(report.core_cycles(), Ok([2, 0]));
     }
 
     #[test]

@@ -73,6 +73,24 @@ pub struct StepOutcome {
     pub control: Option<ControlEvent>,
 }
 
+/// One modeled execution event and the cycles already applied by its execution engine.
+///
+/// The slow interpreter applies one architectural cycle when an instruction retires. A costed
+/// JIT may apply the complete compiled cost before returning. The machine checks this value
+/// against the receipt-backed model and applies only any remaining cycles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModeledExecution {
+    Interpreter,
+    Compiled,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModeledStepOutcome {
+    pub outcome: StepOutcome,
+    pub applied_cycles: u32,
+    pub execution: ModeledExecution,
+}
+
 impl StepOutcome {
     #[inline]
     pub fn result(self) -> Result<(), Trap> {
@@ -119,6 +137,19 @@ pub trait Core {
     fn cycles_until_wake(&self) -> Option<u64> { None }
     /// Execute one slow-path event and return the facts needed by a machine-level timing model.
     fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome;
+    /// Execute one event for the modeled scheduler. Cores without a costed JIT use `step`.
+    fn step_modeled<B: Bus>(&mut self, bus: &mut B) -> ModeledStepOutcome {
+        let outcome = self.step(bus);
+        let applied_cycles = match outcome.kind {
+            StepKind::Retired | StepKind::Idle | StepKind::TrapDuring(_) => 1,
+            StepKind::TrapBefore(_) => 0,
+        };
+        ModeledStepOutcome {
+            outcome,
+            applied_cycles,
+            execution: ModeledExecution::Interpreter,
+        }
+    }
     /// Execute up to `budget` instructions the fast way (blocks, JIT). Returns the iterations a
     /// loop over `step` would have consumed — executed instructions, plus one for a trap taken
     /// before an instruction ran — and the trap that ended the run, if any.
@@ -133,6 +164,8 @@ pub trait Core {
     fn flush_caches(&mut self) {}
     /// Enable/disable native code generation, if the core has it (`--no-jit`: the interpreter is the oracle).
     fn set_jit(&mut self, _on: bool) {}
+    /// Enable JIT code carrying receipt-backed cycle charges for modeled execution.
+    fn set_costed_jit(&mut self, _on: bool) {}
     /// (blocks built, cache flushes, blocks compiled, native code bytes) for the end-of-run report.
     fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> { None }
     /// Registers worth printing in a trace line, in the core's conventional order.

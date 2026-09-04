@@ -177,7 +177,8 @@ mod native {
 
     const CPU: Reg = 19; const BUS: Reg = 20; const AR: Reg = 21; const WB4: Reg = 22; const LEFT: Reg = 23;
     const TLB: Reg = 24; const HELP: Reg = 25; const LEND: Reg = 26; const PVER: Reg = 27; const LOFF: Reg = 28;
-    const FRAME: i32 = 112; const BUDGET_SLOT: u32 = 96;
+    const FRAME: i32 = 112; const BUDGET_SLOT: u32 = 96; const COST_SLOT: u32 = 100;
+    const COST_OUT_SLOT: u32 = 104;
     const IDX: Reg = 17;
     const EXIT_END: u32 = 0; const EXIT_LEFT: u32 = 1; const EXIT_TRAP: u32 = 2; const EXIT_CUT: u32 = 3; const EXIT_TRAP_PRE: u32 = 4;
     /// Most code one block can need, with slack; the cache is flushed when less than this is free.
@@ -230,7 +231,13 @@ mod native {
 
     /// Compile one block. Fills `insns[i].off` with each instruction's byte offset from the body
     /// start (the entry-point argument of `run`) and returns the code's offset in the cache.
-    pub fn compile(cc: &mut CodeCache, insns: &mut [BlockInsn], pc0: u32, fast: bool) -> Option<u32> {
+    pub fn compile(
+        cc: &mut CodeCache,
+        insns: &mut [BlockInsn],
+        pc0: u32,
+        fast: bool,
+        costed: bool,
+    ) -> Option<u32> {
         if cc.remaining() < MAX_BLOCK_CODE { return None; }
         let mut a = Asm::new();
         let (exit, exit_trap, exit_trap_pre, exit_left) = (a.label(), a.label(), a.label(), a.label());
@@ -239,6 +246,9 @@ mod native {
         a.stp_pre(29, 30, SP, -FRAME);
         a.stp(19, 20, SP, 16); a.stp(21, 22, SP, 32); a.stp(23, 24, SP, 48); a.stp(25, 26, SP, 64); a.stp(27, 28, SP, 80);
         a.mov_x(CPU, 0); a.mov_x(BUS, 1); a.mov_x(HELP, 2); a.mov(LEFT, 3); a.str(3, SP, BUDGET_SLOT);
+        if costed {
+            a.movz(9, 0, 0); a.str(9, SP, COST_SLOT); a.str_x(7, SP, COST_OUT_SLOT);
+        }
         a.mov_x(TLB, 5); a.mov_x(PVER, 6);
         a.add_imm_x(AR, CPU, OFF_AR);
         a.ldr(WB4, CPU, OFF_WB); a.lsl_imm(WB4, WB4, 2);
@@ -280,6 +290,15 @@ mod native {
                 }));
             }
             g.a.sub_imm(LEFT, LEFT, 1);
+
+            if costed {
+                if let Some(component) = crate::measured::compiled_internal_cost(&i) {
+                    let cycles = u32::try_from(component.cycles()?).ok()?;
+                    g.a.ldr(9, SP, COST_SLOT);
+                    g.a.add_imm32(9, 9, cycles, 10);
+                    g.a.str(9, SP, COST_SLOT);
+                }
+            }
 
             // the instruction; `flag` = register holding "bus wants the block to end" (bit 0), if any
             let (r, s, t, imm, imm2) = (i.r, i.s, i.t, i.imm, i.imm2);
@@ -487,6 +506,9 @@ mod native {
         g.a.bind(cut_w9); g.a.str(9, CPU, OFF_PC); g.a.movz(0, EXIT_CUT, 0); g.a.b(exit);
         g.a.bind(exit);
         g.a.ldr(9, SP, BUDGET_SLOT); g.a.sub(9, 9, LEFT); g.a.orr_lsl(0, 9, 0, 16);
+        if costed {
+            g.a.ldr(9, SP, COST_SLOT); g.a.ldr_x(10, SP, COST_OUT_SLOT); g.a.str(9, 10, 0);
+        }
         g.a.ldp(27, 28, SP, 80); g.a.ldp(25, 26, SP, 64); g.a.ldp(23, 24, SP, 48); g.a.ldp(21, 22, SP, 32); g.a.ldp(19, 20, SP, 16);
         g.a.ldp_post(29, 30, SP, FRAME);
         g.a.ret();
@@ -511,6 +533,20 @@ mod native {
         let (tlb, pv) = match fm { Some(m) => (m.tlb, m.page_ver), None => (std::ptr::null(), std::ptr::null_mut()) };
         f(cpu, bus, h, budget, entry, tlb, pv)
     }
+
+    /// Run code compiled with receipt-backed cycle charges.
+    ///
+    /// # Safety
+    /// The requirements are the same as `run`, and `code` must have been compiled with
+    /// `costed = true`.
+    pub unsafe fn run_costed<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: &mut B, h: &Helpers, budget: u32, entry: u32, fm: Option<FastMem>) -> (u32, u32) {
+        // SAFETY: The caller guarantees a costed block with the declared ABI.
+        let f: extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32, *const crate::bus::TlbEntry, *mut u32, *mut u32) -> u32 = unsafe { std::mem::transmute(cc.ptr(code)) };
+        let (tlb, pv) = match fm { Some(m) => (m.tlb, m.page_ver), None => (std::ptr::null(), std::ptr::null_mut()) };
+        let mut cycle_charge = 0;
+        let result = f(cpu, bus, h, budget, entry, tlb, pv, &raw mut cycle_charge);
+        (result, cycle_charge)
+    }
     pub const CODE_END: u32 = EXIT_END; pub const CODE_LEFT: u32 = EXIT_LEFT; pub const CODE_TRAP: u32 = EXIT_TRAP;
     pub const CODE_CUT: u32 = EXIT_CUT; pub const CODE_TRAP_PRE: u32 = EXIT_TRAP_PRE;
     #[allow(dead_code)] fn _uses(_: Label, _: Trap) {}
@@ -528,12 +564,23 @@ mod native {
     impl CodeCache { pub fn new(_: usize) -> Option<CodeCache> { None } pub fn remaining(&self) -> usize { 0 } pub fn used(&self) -> usize { 0 } pub fn reset(&mut self) {} }
     pub struct Helpers;
     impl Helpers { pub fn new<B: Bus>() -> Helpers { Helpers } }
-    pub fn compile(_: &mut CodeCache, _: &mut [BlockInsn], _: u32, _: bool) -> Option<u32> { None }
+    pub fn compile(
+        _: &mut CodeCache,
+        _: &mut [BlockInsn],
+        _: u32,
+        _: bool,
+        _: bool,
+    ) -> Option<u32> { None }
     /// The non-native implementation does not execute code.
     ///
     /// # Safety
     /// This signature matches the native implementation; no additional requirements apply here.
     pub unsafe fn run<B: Bus>(_: &CodeCache, _: u32, _: &mut Cpu, _: &mut B, _: &Helpers, _: u32, _: u32, _: Option<crate::bus::FastMem>) -> u32 { 0 }
+    /// The non-native implementation does not execute costed code.
+    ///
+    /// # Safety
+    /// This signature matches the native implementation; no additional requirements apply here.
+    pub unsafe fn run_costed<B: Bus>(_: &CodeCache, _: u32, _: &mut Cpu, _: &mut B, _: &Helpers, _: u32, _: u32, _: Option<crate::bus::FastMem>) -> (u32, u32) { (0, 0) }
     pub const CODE_END: u32 = 0; pub const CODE_LEFT: u32 = 1; pub const CODE_TRAP: u32 = 2; pub const CODE_CUT: u32 = 3; pub const CODE_TRAP_PRE: u32 = 4;
 }
 

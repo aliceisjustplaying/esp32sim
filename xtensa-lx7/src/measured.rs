@@ -4,7 +4,29 @@ use crate::bus::{Bus, Fault, FlatRam};
 use crate::decode::{decode, Insn};
 use crate::exec::{exec_insn, max_ar, Trap};
 use crate::state::Cpu;
-use backend_api::{CoreId, CostComponent, TimingMutation, TimingRefusal, VirtualCycle};
+use backend_api::{
+    price_operation, ChipConfig, CoreId, CostComponent, InstructionCost, Operation,
+    TimingMutation, TimingRefusal, VirtualCycle,
+};
+
+/// A complete receipt-backed cost that can be compiled without runtime memory or dependency
+/// state. Other instructions stay on the measured interpreter path.
+pub fn compiled_internal_cost(instruction: &Insn) -> Option<CostComponent> {
+    let kind = match instruction.op {
+        crate::Op::Nop | crate::Op::NopN | crate::Op::Movi | crate::Op::MoviN => {
+            InstructionCost::Issue
+        }
+        crate::Op::J => InstructionCost::Jump,
+        _ => return None,
+    };
+    price_operation(
+        ChipConfig::RECEIPT_SCOPE,
+        CoreId::Core0,
+        Operation::Instruction(kind),
+    )
+    .ok()
+    .map(|(component, _)| component)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AccessKind {
