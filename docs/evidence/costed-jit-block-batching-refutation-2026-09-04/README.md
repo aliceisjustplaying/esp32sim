@@ -1,6 +1,6 @@
 # Costed JIT block-batching refutation
 
-This exploratory prototype grouped a dual-core, 32-instruction IRAM workload into one model call and one compact ledger transaction per pair of native blocks. It cached the validated price template and coalesced repeated compact ledger records.
+This exploratory prototype grouped a dual-core, 32-instruction IRAM workload into one batched model transaction and one compact ledger transaction per pair of native blocks. It cached the validated price template and coalesced repeated compact ledger records.
 
 The median was 16.238929 aggregate MIPS on an Apple M1 Pro. That is 3.70256 times the 4.385869 MIPS single-instruction baseline, but remains 96.616890 percent below the 480 MIPS dual-core budget. Meeting the budget would require another 29.5586 times speedup. The prototype added 1,003 lines and removed 20 lines, so this direction was stopped and was not accepted as product code.
 
