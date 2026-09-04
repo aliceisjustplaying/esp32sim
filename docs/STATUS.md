@@ -46,6 +46,12 @@ what is adopted, and what the hardware queue holds. The goal is
   MIPS and accounting-on is 4,478.24 MIPS, a 57.30 percent accounting cost.
   The accounting-on ceiling clears 480 MIPS by 3,998.24 MIPS (832.97
   percent). This is a ceiling measurement, not product-JIT throughput.
+- The first native product costed-JIT SRAM slice is measured at
+  [`evidence/costed-jit-sram-speed-2026-09-04/result.json`](evidence/costed-jit-sram-speed-2026-09-04/result.json).
+  Its two-core median is 4.385869 aggregate MIPS on the target M1 Pro, so the
+  one-instruction modeled dispatch misses the 480 MIPS budget by 99.086277
+  percent. Milestone 3 now requires priced block execution bounded by the
+  shared scheduler's next event deadline.
 - Branch `main`: clean upstream mirror.
 - Branches `salvage/*`: frozen earlier work, inventoried below.
 - The TinyDraw checkout is read-only from this repository. Current product

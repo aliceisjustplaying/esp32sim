@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "status": "measured",
+  "measuredAtUtc": "2026-09-04T09:37:44Z",
+  "implementationHead": "97198c381725973b3c89543c8c1dc82e080042fc",
+  "host": {
+    "cpu": "Apple M1 Pro",
+    "architecture": "aarch64",
+    "macOS": "27.0"
+  },
+  "toolchain": {
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "llvm": "22.1.8"
+  },
+  "harness": {
+    "path": "esp32s3/examples/costed_jit_speed.rs",
+    "sha256": "747296968b7645e3fd164f2713a0bcc8d6842e6bda67094128a2324b359d4e4f",
+    "command": "cargo run --release -p esp32s3 --example costed_jit_speed --locked"
+  },
+  "workload": {
+    "memory": "IRAM",
+    "cores": 2,
+    "blockInstructions": 32,
+    "issueInstructions": 31,
+    "jumpInstructions": 1,
+    "warmupEvents": 20000,
+    "sampleEvents": 200000,
+    "samples": 5
+  },
+  "raw": [
+    {
+      "core0Events": 100000,
+      "core1Events": 100000,
+      "elapsedSeconds": 0.046839583,
+      "mips": 4.269893
+    },
+    {
+      "core0Events": 100000,
+      "core1Events": 100000,
+      "elapsedSeconds": 0.045783834,
+      "mips": 4.368354
+    },
+    {
+      "core0Events": 100000,
+      "core1Events": 100000,
+      "elapsedSeconds": 0.044941500,
+      "mips": 4.450230
+    },
+    {
+      "core0Events": 100000,
+      "core1Events": 100000,
+      "elapsedSeconds": 0.045601000,
+      "mips": 4.385869
+    },
+    {
+      "core0Events": 100000,
+      "core1Events": 100000,
+      "elapsedSeconds": 0.045452375,
+      "mips": 4.400210
+    }
+  ],
+  "derived": {
+    "medianMips": 4.385869,
+    "dualCoreBudgetMips": 480.0,
+    "clearsBudget": false,
+    "marginMips": -475.614131,
+    "marginPercent": -99.086277,
+    "requiredSpeedup": 109.442393
+  },
+  "scope": "First product costed-JIT SRAM slice with one instruction per modeled scheduler dispatch. This is not a block-batched product-JIT result."
+}
