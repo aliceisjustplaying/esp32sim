@@ -192,6 +192,7 @@ def verify_manifest(path: Path) -> dict[str, object]:
         "ccountHz": 240000000,
         "samplesPerCell": 100,
         "maxAttemptsPerCell": 200,
+        "recursionDepth": 1,
         "probe": "exception-rank-followup",
         "emulatorChipRevision": 0,
     }
