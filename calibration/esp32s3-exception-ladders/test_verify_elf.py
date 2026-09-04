@@ -355,12 +355,17 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
         build / "bootloader" / "bootloader.bin": b"boot",
         build / "partition_table" / "partition-table.bin": b"partitions",
         build / "sdkconfig": b"config",
-        build / "flash_args": b"generated arguments",
         tmp_path / "probe-cells.json": b"manifest",
         tmp_path / "esp32s3_rev0_rom.elf": b"rom",
     }
     for path, contents in paths.items():
         path.write_bytes(contents)
+    (build / "flash_args").write_text(
+        "--flash-mode dio\n"
+        "0x0 bootloader/bootloader.bin\n"
+        "0x8000 partition_table/partition-table.bin\n"
+        "0x10000 probe.bin\n"
+    )
     (build / "flasher_args.json").write_text(
         json.dumps(
             {
@@ -369,6 +374,7 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
                     "0x0": "bootloader/bootloader.bin",
                     "0x8000": "partition_table/partition-table.bin",
                 },
+                "write_flash_args": ["--flash-mode", "dio"],
                 "flash_settings": {"flash_mode": "dio"},
                 "extra_esptool_args": {"chip": "esp32s3"},
             }
@@ -410,6 +416,19 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
     ]
     assert result["flashSettings"] == {"flash_mode": "dio"}
     assert result["esptoolArguments"] == {"chip": "esp32s3"}
+
+    (build / "flash_args").write_text(
+        "--flash-mode dio\n"
+        "0x0 bootloader/bootloader.bin\n"
+        "0x8000 partition_table/partition-table.bin\n"
+        "0x20000 probe.bin\n"
+    )
+    with pytest.raises(MODULE.VerificationError, match="layout does not match"):
+        MODULE.verify_artifacts(
+            build / "probe.elf",
+            tmp_path / "probe-cells.json",
+            tmp_path / "esp32s3_rev0_rom.elf",
+        )
 
 
 def test_capture_objdump_argument_is_accepted(tmp_path: Path) -> None:
