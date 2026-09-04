@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-09-03. This file is the current truth: what exists,
+Last updated 2026-09-04. This file is the current truth: what exists,
 what is adopted, and what the hardware queue holds. The goal is
 [`GOAL.md`](GOAL.md); the working rules are [`../AGENTS.md`](../AGENTS.md).
 
@@ -312,22 +312,25 @@ active work. Hardware resumes only when a milestone 2 through 4 cost class
 lacks a receipt. Display-path and DMA decomposition are parked until milestone
 4 is complete.
 
-H1. Capture the IDF 6.1 `esp32s3-exception-ladders` image: 100 samples each
-for non-tail `call4`, `call8`, and `call12` recursion past the register-file
-knee, `syscall` with a level-1 handler that reads EPC1, advances it by the
-three-byte syscall width with wide `addi`, writes EPC1, executes `rsync`, and
-returns with `rfe`; `rfe` alone with EPC1 set to the next instruction; and
-`rfi 3` alone with EPC3 set to the next instruction. The corrected seven-cell
-exception image builds, verifies, and completes its emulator dry-run with
-700 of 700 samples and zero refusals. Its straight-line mask-ROM
-instruction-fetch cell invokes the verified five-byte `xtos_p_none` body at
-`0x400559a4`, exactly `entry; retw.n`, with zero cache-counter deltas required.
-The two existing ROM
-`memset` paths produce different, noninteger residuals and cannot adopt a ROM
-fetch price under R8; receipt:
-[`evidence/timing/derived-rom-fetch-idf61/`](evidence/timing/derived-rom-fetch-idf61/README.md).
-The estimated board time is about two seconds. Nothing is flashed
-until the maintainer starts the next capture session.
+H1 completed on branch `codex/h1-hardware-batch-prep` at `c6c0d5af`. Its two
+IDF 6.1 boots produced constant direct totals and the exact 35-cycle real
+window-handler correlation, but no independently validated exception prices.
+
+H2 is closed with no adoption. The complete probe and compact negative receipt
+are preserved on pushed branch `codex/h2-exception-rom-rank` at `42b8d81f`.
+The raw archive is
+`~/Archives/esp32s3/esp32s3-exception-rank-followup-20260904-114902`.
+Both boots accepted all 900 samples with zero refusals; direct totals were
+`5, 5, 19`, versus the declared H1 gate's `6, 5, 18`, and the H2 window excess
+was 9 versus H1's declared residual 17.
+
+The H2 gate was invalid. It compared differently synchronized and placed code,
+omitted an executed vector jump, and undercounted real window-handler work.
+The abandoned H3 branch and worktree were deleted. A future attempt must first
+derive its equations from the exact executed instruction list and pass an
+independent attempt to disprove them. Only then may the smallest necessary
+probe be implemented and reviewed once; another contradiction ends this track.
+Until then, all affected exception and mask-ROM costs remain refused.
 
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
 capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
