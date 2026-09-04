@@ -1,7 +1,7 @@
 //! A CPU core as the machine sees it. The machine schedules cores, delivers interrupt state,
 //! counts traps and drives tracing through this trait; everything architectural (register
 //! windows, CSRs, vectors) stays inside the core crate.
-use crate::bus::Bus;
+use crate::bus::{Bus, Fault};
 
 /// Why `step`/`run` returned early. Architectural traps have already been taken (the pc points
 /// at the handler); the emulator-level ones are reported so the machine can stop.
@@ -163,14 +163,44 @@ pub trait Core {
     fn return_address(&self) -> u32;
 }
 
-/// How many cycles a run of instructions costs. The emulator's own accounting is 1 instruction
-/// = 1 cycle; a model calibrated on silicon adds the difference to the core's cycle counter
-/// after each block (`Machine::set_cost_model`), which is what `esp_cpu_get_cycle_count` and
-/// the core's timer interrupts see. Device time stays instruction-paced: that is the
-/// scheduler's clock, not the core's, and the cores stay untouched.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemoryAccessKind { Fetch, Read, Write }
+
+/// One CPU-originated bus access. Faulting accesses keep the attempted address, width and value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MemoryAccess {
+    pub kind: MemoryAccessKind,
+    pub address: u32,
+    pub width: u8,
+    pub value: u32,
+    pub fault: Option<Fault>,
+}
+
+/// The complete facts for one slow-path execution event. Accesses are in program order and
+/// begin with one conceptual fetch whenever `outcome.bytes` is present.
+pub struct ExecutionFacts<'a> {
+    pub core: usize,
+    pub outcome: StepOutcome,
+    pub accesses: &'a [MemoryAccess],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LifecycleKind { Attach, ChipReset, CoreReset(usize) }
+
+/// Facts that do not belong to an instruction. Initial attachment is supported only before
+/// execution, reset or synthetic app boot. The model owns the defaults for each chip configuration
+/// it accepts; configuration changes made by guest code arrive as bus accesses.
+pub struct LifecycleFacts {
+    pub kind: LifecycleKind,
+    pub chip: &'static str,
+    pub cores: usize,
+    pub cpu_hz: u64,
+}
+
+/// Prices slow-path execution events for the shared-time machine scheduler.
 pub trait CostModel {
-    /// Cycles for `insns` instructions starting at `pc` (the block start, or a single instruction).
-    fn cycles(&self, pc: u32, insns: u32) -> u32;
+    fn lifecycle(&mut self, facts: &LifecycleFacts) -> Result<(), String>;
+    fn cycles(&mut self, facts: &ExecutionFacts<'_>) -> Result<u32, String>;
 }
 
 /// Bloom bit for a pc; the machine's stub/probe tables and the cores' block boundaries agree on it.

@@ -133,12 +133,13 @@ are the full-speed analyses: `--profile-blocks` (time per function, no JIT penal
 change), `--coverage[-file]` (block starts per function), `--irq-latency` (raised → taken per
 line), `--vcd` (GPIO edges and interrupt lines as a waveform). Only `INSN` observers force the
 slow path, and only those that say `NO_IDLE_SKIP` change emulated timing — `--profile` does,
-`--break` does not, exactly as before. A `CostModel` (`Machine::set_cost_model`) charges the
-cores' cycle counters per a silicon-calibrated model after each block, outside the cores.
+`--break` does not, exactly as before. A `CostModel` (`Machine::set_cost_model`) switches the
+machine to a per-event path that records the conceptual fetch, CPU bus accesses, control event,
+trap timing and next pc. The model may refuse any event it cannot price.
 
 ## Scheduling and time
 
-`Machine::run` interleaves the cores in quanta of 64 instructions. A core sitting in `waiti`
+Without a cost model, `Machine::run` interleaves the cores in quanta of 64 instructions. A core sitting in `waiti`
 with nothing pending costs nothing; when both cores are idle time advances in 512-cycle
 chunks. Device models see time lazily: cycles accumulate in the bus and are delivered in one
 batch when a timer alarm is due, when a peripheral register is accessed (so registers always
@@ -148,6 +149,16 @@ With `--web` the machine is paced to wall time (sleeping when ahead, resynchroni
 than bursting if it falls > 0.5 s behind). Work that costs host syscalls — reading the NAT's
 sockets — runs on its own emulated-time cadence rather than every round, because at 240 MHz a
 per-round syscall costs more than the instructions it interleaves with.
+
+With a cost model, each core has a next-ready timestamp in the one shared device timeline. The
+machine runs the ready core with the lowest timestamp, breaking ties by core index, and advances
+devices to exact core, timer and script frontiers. Architectural and bus effects occur at the
+event's start. A refused event keeps those effects and adds no modeled cycles or device time.
+Synthetic app boot (`--boot app`) is unsupported because the model has no configuration snapshot;
+modeled runs must boot from the reset vector (`--boot rom`). Modeled execution also refuses a
+function stub when it reaches one, so C6 802.15.4 firmware that needs `--stub bb_init=0` cannot run
+with a cost model yet. If every core is idle and no device reports a deadline, modeled execution
+stops with `Halted` instead of waiting for host input.
 
 ## Networking
 

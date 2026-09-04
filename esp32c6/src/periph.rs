@@ -611,6 +611,8 @@ impl Peripherals {
     /// timers, the RTC slow clock), with delivered-tick accounting so a slow clock never drifts.
     pub fn tick(&mut self, cycles: u64) { Dispatch::tick(self, cycles); }
 
+    pub fn cycles_until_timer(&self) -> u32 { Dispatch::cycles_until_deadline(self) }
+
     /// Which interrupt sources are asserted right now.
     pub fn source_status(&self) -> [u32; 4] { Dispatch::source_status(self) }
 
