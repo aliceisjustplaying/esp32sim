@@ -1,0 +1,244 @@
+{
+  "adoption": {
+    "adopted": false,
+    "engine_changed": false,
+    "reason": "R8(b) is unmet: no unused committed receipt validates the directly derived return and syscall-entry candidates through the measured engine. Window returns and mask-ROM fetch are not independently identifiable."
+  },
+  "boots": [
+    {
+      "cells": {
+        "call12_window_pair": {
+          "count": 100,
+          "frequencies": {
+            "862": 100
+          },
+          "max": 862,
+          "median": 862.0,
+          "min": 862,
+          "p90_nearest_rank": 862
+        },
+        "call4_window_pair": {
+          "count": 100,
+          "frequencies": {
+            "352": 96,
+            "360": 1,
+            "362": 1,
+            "374": 1,
+            "382": 1
+          },
+          "max": 382,
+          "median": 352.0,
+          "min": 352,
+          "p90_nearest_rank": 352
+        },
+        "call8_window_pair": {
+          "count": 100,
+          "frequencies": {
+            "674": 100
+          },
+          "max": 674,
+          "median": 674.0,
+          "min": 674,
+          "p90_nearest_rank": 674
+        },
+        "mask_rom_fetch_straight_line": {
+          "count": 100,
+          "frequencies": {
+            "15": 100
+          },
+          "max": 15,
+          "median": 15.0,
+          "min": 15,
+          "p90_nearest_rank": 15
+        },
+        "rfe_alone": {
+          "count": 100,
+          "frequencies": {
+            "6": 100
+          },
+          "max": 6,
+          "median": 6.0,
+          "min": 6,
+          "p90_nearest_rank": 6
+        },
+        "rfi3_alone": {
+          "count": 100,
+          "frequencies": {
+            "5": 100
+          },
+          "max": 5,
+          "median": 5.0,
+          "min": 5,
+          "p90_nearest_rank": 5
+        },
+        "syscall_rfe_pair": {
+          "count": 100,
+          "frequencies": {
+            "18": 100
+          },
+          "max": 18,
+          "median": 18.0,
+          "min": 18,
+          "p90_nearest_rank": 18
+        }
+      },
+      "raw_path": "h1-exception-ladders/boot-1.log",
+      "raw_sha256": "f62755e99638581bdaaa84e9f34075a629dae160326e50a6135ee274edd68e3d"
+    },
+    {
+      "cells": {
+        "call12_window_pair": {
+          "count": 100,
+          "frequencies": {
+            "862": 100
+          },
+          "max": 862,
+          "median": 862.0,
+          "min": 862,
+          "p90_nearest_rank": 862
+        },
+        "call4_window_pair": {
+          "count": 100,
+          "frequencies": {
+            "352": 96,
+            "358": 1,
+            "366": 1,
+            "373": 1,
+            "399": 1
+          },
+          "max": 399,
+          "median": 352.0,
+          "min": 352,
+          "p90_nearest_rank": 352
+        },
+        "call8_window_pair": {
+          "count": 100,
+          "frequencies": {
+            "674": 100
+          },
+          "max": 674,
+          "median": 674.0,
+          "min": 674,
+          "p90_nearest_rank": 674
+        },
+        "mask_rom_fetch_straight_line": {
+          "count": 100,
+          "frequencies": {
+            "15": 100
+          },
+          "max": 15,
+          "median": 15.0,
+          "min": 15,
+          "p90_nearest_rank": 15
+        },
+        "rfe_alone": {
+          "count": 100,
+          "frequencies": {
+            "6": 100
+          },
+          "max": 6,
+          "median": 6.0,
+          "min": 6,
+          "p90_nearest_rank": 6
+        },
+        "rfi3_alone": {
+          "count": 100,
+          "frequencies": {
+            "5": 100
+          },
+          "max": 5,
+          "median": 5.0,
+          "min": 5,
+          "p90_nearest_rank": 5
+        },
+        "syscall_rfe_pair": {
+          "count": 100,
+          "frequencies": {
+            "18": 100
+          },
+          "max": 18,
+          "median": 18.0,
+          "min": 18,
+          "p90_nearest_rank": 18
+        }
+      },
+      "raw_path": "h1-exception-ladders/boot-2.log",
+      "raw_sha256": "656a578dbebab79af605fc40e21475f7e142a40ce387beee2f69151b1d6be71d"
+    }
+  ],
+  "candidates": {
+    "conditional_rfwo_plus_rfwu_cycles": {
+      "condition": "E_window_overflow8 = E_window_underflow8 = E_syscall = 7; H1 and the pinned sources do not prove this",
+      "equation": "17 window unknown sum - 2 * 7 assumed window entries",
+      "tier_candidate": "unexplained",
+      "value_if_condition_holds": 3
+    },
+    "mask_rom_fetch_cycles": {
+      "callx8_entry_retw_interval": [
+        7,
+        8
+      ],
+      "equation": "15 - 8 fixed non-ROM cycles - [7,8] call sequence, divided by 2 fetches",
+      "fixed_non_rom_terms": [
+        "rsr.ccount issue",
+        "depth l32i issue",
+        "memw issue after return",
+        "benchmark sink l32i issue",
+        "add issue",
+        "l32i-to-add load-use delay",
+        "memw issue before sink store",
+        "benchmark sink s32i issue"
+      ],
+      "interval": [
+        -0.5,
+        0.0
+      ],
+      "tier_candidate": "interval",
+      "value": null
+    },
+    "rfe_instruction_cycles": {
+      "equation": "6 - 1 leading rsr.ccount",
+      "tier_candidate": "exact",
+      "value": 5
+    },
+    "rfi3_instruction_cycles": {
+      "equation": "5 - 1 leading rsr.ccount",
+      "tier_candidate": "exact",
+      "value": 4
+    },
+    "syscall_exception_entry_cycles": {
+      "equation": "18 - 6 matched rfe cell - 1 syscall issue - 4 handler issues",
+      "tier_candidate": "exact",
+      "value": 7
+    },
+    "window_entry_and_return_sum_cycles": {
+      "equation": "35 window pair - 18 handler prefixes = E_window_overflow8 + E_window_underflow8 + rfwo + rfwu",
+      "rank": 1,
+      "tier_candidate": "exact correlation target",
+      "value": 17
+    }
+  },
+  "inputs": {
+    "application_elf_sha256": "8aa04ba020fcabcada76c6f31899ff8f90a6506c3b91e0eaaa4aa991853aa095",
+    "archive_index_entries_verified": 22,
+    "archive_index_path": "/Users/sarah/Archives/esp32s3/hardware-batch-2026-09-04-20260904-102500/SHA256SUMS",
+    "archive_index_sha256": "77073c188c671e43d2ef96a7da59a9f17817f9dba570165c9806072700abce6a",
+    "bundle_manifest_path": "/Users/sarah/Archives/esp32s3/pinned-builds/esp32sim-h1-75778a4c/MANIFEST.json",
+    "bundle_manifest_sha256": "7d4f95cef83208211f3eceb4e62ab3415fde2271948422f27a809c377379cabc",
+    "derived_exception_summary_sha256": "7e97a179219bdaf2435a3536633a0d01ceb9e9d4764a1f56cc43e797fb221f52",
+    "opcode_summary_sha256": "db29ec42ccccc958c96153340497592ecc76203166a5a98c696bdd81496c6515",
+    "source_commit": "75778a4cfef4332b09b7e0595d36fde188d0c118",
+    "source_files": {
+      "calibration/esp32s3-exception-ladders/main/exception_ladders.S": "353c3a4eddb8d47668a03b2920b80a7faba62393180442fb5a834ac5188188f7",
+      "calibration/esp32s3-exception-ladders/main/exception_ladders.c": "93ee09d99829045b71b54b2752699503c2229c6bbeaa41ad33a3d9695f70d777",
+      "calibration/esp32s3-exception-ladders/probe-cells.json": "8e5e7e333c3d15d643a121c7f01cf8500503bd35169a6da18b0f69905402118b",
+      "calibration/esp32s3-exception-ladders/verify_elf.py": "f0b845e4b4f863d201b6a43b721401cac5b91118a30bb0babbe08bbac8a294fd"
+    },
+    "toolchain_delta_sha256": "d4a4d3547598ede01573b94b5da3fdd1258d3f4e8161778acb4fd0423ac8a654"
+  },
+  "rank_findings": {
+    "mask_rom": "The cell has no matched IRAM control and contains an interval-priced callx8/entry/retw sequence, so it cannot identify an exact fetch price.",
+    "window": "The exact window equation has four unknowns: class-specific overflow and underflow entry delays plus rfwo and rfwu. Every completed recursion also pairs overflow and underflow, so the return columns are identical. Equating either window entry delay with the syscall entry candidate is unsupported."
+  },
+  "schema_version": 1
+}
