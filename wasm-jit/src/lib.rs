@@ -213,6 +213,7 @@ fn emit_sram_instruction(
     match instruction.op {
         Op::L32i | Op::L32iN => {
             emit_i32_const(body, i32::from(instruction.t) * 4);
+            emit_sram_alignment_guard(body, instruction);
             emit_sram_bounds_guard(body, instruction, sram_base, sram_len);
             emit_sram_address(body, instruction, sram_base);
             body.extend_from_slice(&[0x28, 0x02, 0x00]);
@@ -238,6 +239,15 @@ fn emit_sram_instruction(
         op => return Err(CompileError::UnsupportedInstruction { pc, op }),
     }
     Ok(())
+}
+
+fn emit_sram_alignment_guard(body: &mut Vec<u8>, instruction: &Insn) {
+    emit_register_load(body, instruction.s);
+    emit_i32_const(body, instruction.imm);
+    body.push(0x6a);
+    emit_i32_const(body, 3);
+    body.push(0x71);
+    emit_trap_if_true(body);
 }
 
 fn emit_sram_bounds_guard(body: &mut Vec<u8>, instruction: &Insn, sram_base: u32, sram_len: usize) {

@@ -70,21 +70,16 @@ fn traps_a_runtime_load_outside_the_supplied_sram_image() {
     registers[2] = SRAM_BASE + SRAM_LEN as u32;
     let compiled = compile_sram_block(KERNEL_START, &KERNEL[..2], registers, SRAM_BASE, &[0; 4])
         .expect("the load encoding and SRAM class are valid");
-    const SCRIPT: &str = r#"
-const fs = require('fs');
-WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
-  instance.exports.run();
-  process.exit(2);
-}).catch(() => process.exit(0));
-"#;
-    let path = write_module(&compiled.bytes, "bounds");
-    let output = Command::new("node")
-        .args(["-e", SCRIPT])
-        .arg(&path)
-        .output()
-        .expect("run emitted module under Node");
-    std::fs::remove_file(path).expect("remove wasm module");
-    assert!(output.status.success(), "out-of-image load did not trap");
+    assert!(emitted_module_traps(&compiled.bytes, "bounds"), "out-of-image load did not trap");
+}
+
+#[test]
+fn traps_a_runtime_unaligned_load_that_the_cost_model_refuses() {
+    let mut registers = [0; REGISTER_COUNT];
+    registers[2] = SRAM_BASE + 1;
+    let compiled = compile_sram_block(KERNEL_START, &KERNEL[..2], registers, SRAM_BASE, &[0; 16])
+        .expect("the load encoding is valid and guarded at runtime");
+    assert!(emitted_module_traps(&compiled.bytes, "alignment"), "unaligned SRAM load did not trap");
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -162,6 +157,24 @@ WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
         cycles: lines.next().expect("cycle line").parse().unwrap(),
         sram: decode_hex(lines.next().expect("SRAM line")),
     }
+}
+
+fn emitted_module_traps(module: &[u8], label: &str) -> bool {
+    const SCRIPT: &str = r#"
+const fs = require('fs');
+WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
+  instance.exports.run();
+  process.exit(2);
+}).catch(() => process.exit(0));
+"#;
+    let path = write_module(module, label);
+    let output = Command::new("node")
+        .args(["-e", SCRIPT])
+        .arg(&path)
+        .output()
+        .expect("run emitted module under Node");
+    std::fs::remove_file(path).expect("remove wasm module");
+    output.status.success()
 }
 
 fn write_module(module: &[u8], label: &str) -> std::path::PathBuf {
