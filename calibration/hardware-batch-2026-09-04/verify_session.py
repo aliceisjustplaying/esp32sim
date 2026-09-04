@@ -155,6 +155,20 @@ def verify_session(contract_path: Path) -> dict:
         {"imageHeaderAndWrite": "dio", "runtimeAfterBootloader": "qio"},
         "flash-mode contract",
     )
+    require_equal(
+        contract.get("offlineTools"),
+        {
+            "esp32sim": {
+                "path": "/Users/sarah/src/a/esp32sim/target/release/esp32sim",
+                "sha256": "7011f188df79bcff294a8544026f73156342058f15203d1a6e63684f7b7475f9",
+            },
+            "frameCorrelation": {
+                "sourceCommit": "28970f6d8fd1ddb49ef02087931ab64e88fe34cd",
+                "sha256": "3db294f4c22f38f076c40efbe1b1e204d999bba71a81dba5febf50e6a93500d7",
+            },
+        },
+        "offline tool pins",
+    )
     require_equal(contract.get("restoreImage"), None, "restore image")
     images = contract.get("captureOrder")
     if not isinstance(images, list):
