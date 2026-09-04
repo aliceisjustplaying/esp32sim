@@ -489,17 +489,15 @@ impl<S: Soc> Machine<S> {
         self.browser_external_block_budget_result(requested).ok()
     }
 
-    /// The external quantum budget together with a stable diagnostic refusal reason.
+    /// The external quantum budget, or every concurrent refusal bit. Admission depends on
+    /// the full mask, including any future reason not yet listed in diagnostic tables.
     pub fn browser_external_block_budget_result(
         &self,
         requested: u32,
-    ) -> Result<u32, BrowserExternalBlockRefusal> {
+    ) -> Result<u32, u16> {
         let refusals = self.browser_external_block_refusal_mask(requested);
-        if let Some(reason) = BrowserExternalBlockRefusal::ALL
-            .into_iter()
-            .find(|reason| refusals & reason.bit() != 0)
-        {
-            return Err(reason);
+        if refusals != 0 {
+            return Err(refusals);
         }
         Ok(QUANTUM as u32)
     }

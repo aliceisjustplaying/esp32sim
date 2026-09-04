@@ -63,7 +63,7 @@ fn browser_external_blocks_are_single_core_scheduler_transactions() {
     assert_eq!(m.browser_external_block_budget(7), None, "core 1 is running");
     assert_eq!(
         m.browser_external_block_budget_result(7),
-        Err(BrowserExternalBlockRefusal::OtherCoreActive)
+        Err(BrowserExternalBlockRefusal::OtherCoreActive.bit() | BrowserExternalBlockRefusal::BusBreak.bit())
     );
     let refusals = m.browser_external_block_refusal_mask(7);
     assert_ne!(

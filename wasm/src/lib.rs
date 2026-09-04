@@ -558,11 +558,7 @@ fn prepare_browser_jit(
     let cpu = &machine.cores[0];
     let limit = match machine.browser_external_block_budget_result(requested) {
         Ok(limit) => limit,
-        Err(_) => {
-            return Err(BrowserJitReject::Scheduler(
-                machine.browser_external_block_refusal_mask(requested),
-            ));
-        }
+        Err(mask) => return Err(BrowserJitReject::Scheduler(mask)),
     };
     for compare in cpu.ccompare {
         let distance = compare.wrapping_sub(cpu.ccount);
