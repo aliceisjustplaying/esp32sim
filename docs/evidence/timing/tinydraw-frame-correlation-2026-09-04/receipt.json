@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "status": "candidate",
+  "source": {
+    "archivePath": "/Users/sarah/Archives/esp32s3/hardware-batch-2026-09-04-20260904-102500",
+    "archiveIndexSha256": "77073c188c671e43d2ef96a7da59a9f17817f9dba570165c9806072700abce6a",
+    "captureToolSha256": "7436bb8ae4018de2e8475463b0282240d135ba72a40f944dce23a2542e7bf091",
+    "verificationToolSha256": "8897548fa2790f3bd5f670a06e660da29058e8ea241b2e63f6b6c623d3141110"
+  },
+  "tool": {
+    "path": "tools/frame_correlation.py",
+    "sourceCommit": "28970f6d8fd1ddb49ef02087931ab64e88fe34cd",
+    "sha256": "3db294f4c22f38f076c40efbe1b1e204d999bba71a81dba5febf50e6a93500d7"
+  },
+  "target": {
+    "board": "waveshare-esp32-s3-touch-amoled-1.8-v2",
+    "chip": "ESP32-S3 QFN56 revision v0.2",
+    "idf": "v6.1",
+    "cpuHz": 240000000,
+    "flashMode": "qio",
+    "flashHz": 80000000,
+    "psramMode": "octal-dtr",
+    "workload": "tinydraw-v2-fixed-stroke-v1",
+    "sourceCommit": "13725930e666270043b53dc9c4a6bfc4e7ed2f82"
+  },
+  "bundles": {
+    "40MHz": {
+      "id": "tinydraw-frame-v1-40-13725930e666",
+      "manifestSha256": "cb164f6a177a0dea7f6470f552b2489ddec35027465d9a06a77f450e2f1fc01a"
+    },
+    "80MHz": {
+      "id": "tinydraw-frame-v1-80-13725930e666",
+      "manifestSha256": "e617e66cac021616433cd8799d7f2ada2208e9cc4cf4dbaf5881aefa69321fb2"
+    }
+  },
+  "captures": [
+    {
+      "psramMHz": 40,
+      "boot": 1,
+      "rawSha256": "0c6e073e903073c35711aa9abe7cf41d381d7bef8b0acc669373ca4324cf17b3",
+      "normalizedSha256": "c3b451954c3548dd5aeb4805dde8030f321e26b341bbd0019cab14439c600ba8"
+    },
+    {
+      "psramMHz": 40,
+      "boot": 2,
+      "rawSha256": "8282c891d4578333adb272ab131e1ca778ee81a32650470c9bfa4e36b342e418",
+      "normalizedSha256": "53a5044d8e3d5eefa2989d969fdecc232bd7d2b33ec5cf009181cead06285e00"
+    },
+    {
+      "psramMHz": 80,
+      "boot": 1,
+      "rawSha256": "b8557d71e2080493f1a29b72eeea96151eb64f96482618a05aebceccf1d5bb98",
+      "normalizedSha256": "d20efd24ce1cd08fa2a94b4e7874f21c237763f95de27f78c1ba23f5bd051468"
+    },
+    {
+      "psramMHz": 80,
+      "boot": 2,
+      "rawSha256": "f35ae697e821586b106801c8ed9505de93ec6ca88e9b92c8ab5683836591eb0a",
+      "normalizedSha256": "23799a79d998d46d7068b23c30847affbf971edce8c149a3bde56b178f97d215"
+    }
+  ],
+  "captureCaveats": {
+    "cleanBootClaim": "refused",
+    "acceptedAnalysisWindow": "unique trace header through replay terminal",
+    "stalePartialSerialBeforeReset": [
+      {"psramMHz": 40, "boot": 1},
+      {"psramMHz": 80, "boot": 1}
+    ],
+    "recoveredPanelConfigurationFailure": {
+      "psramMHz": 80,
+      "boot": 2,
+      "attempts": 2,
+      "busResets": 1,
+      "stage": "configure",
+      "error": "ESP_ERR_INVALID_RESPONSE"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "tinydraw-frame-build-v1",
+  "bundleId": "tinydraw-frame-v1-80-13725930e666",
+  "sourceCommit": "13725930e666270043b53dc9c4a6bfc4e7ed2f82",
+  "baseCommit": "7a157d44a9da3312b1ecda2b45b116af2de28e63",
+  "buildDate": "2026-09-04",
+  "board": "waveshare-esp32-s3-touch-amoled-1.8-v2",
+  "toolchain": {
+    "espIdf": "v6.1",
+    "compiler": "xtensa-esp-elf 15.2.0"
+  },
+  "configuration": {
+    "variant": "frame-trace-80",
+    "cpuHz": 240000000,
+    "flashMode": "qio",
+    "flashHz": 80000000,
+    "psramMode": "octal-dtr",
+    "psramHz": 80000000,
+    "psramCoreHz": 160000000,
+    "psramClockRegister": 65537,
+    "psramCoreClockRegister": 2,
+    "credentials": "empty"
+  },
+  "workload": {
+    "id": "tinydraw-v2-fixed-stroke-v1",
+    "inputEvents": 20,
+    "expectedFrameKeys": 21,
+    "core1TouchStoppedDuringReplay": true
+  },
+  "markerSchemas": [
+    "TINYDRAW_TRACE_V1",
+    "TINYDRAW_FRAME_WORKLOAD_V1",
+    "TINYDRAW_INPUT_V1",
+    "TINYDRAW_FRAME_V1",
+    "TINYDRAW_FRAME_TELEMETRY_V1"
+  ],
+  "tierCandidate": "distribution_or_affine",
+  "unknownComponents": ["psram"],
+  "emulatorDryRun": {
+    "esp32simSourceCommit": "1e214e8cc7a0afcaed00623b3834b7e9f91b79a3",
+    "esp32simExecutableSha256": "7011f188df79bcff294a8544026f73156342058f15203d1a6e63684f7b7475f9",
+    "ready": true,
+    "psramClockReadbackVerified": true,
+    "replayComplete": true,
+    "frameKeysContiguous": true
+  },
+  "artifacts": {
+    "bootloader/bootloader.bin": "e0a16f9a1f8085495569259ce3562109c9e87f4670cb1262af8e946931789612",
+    "partition_table/partition-table.bin": "f53268312c8caffe6c7f4e6c66d4092aeca3435c142db3116466f84a6a608d2d",
+    "rom/esp32s3_rev0_rom.elf": "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd",
+    "tinydraw_esp32.bin": "4fa838e5b49ecb77b1ca098a315069d80b79d2940ddfe34b63b5b836926b1da1",
+    "tinydraw_esp32.elf": "ca61d95a451990e445dd7d7aba06a06f0564db74d0876231d6d0245668886ede",
+    "sdkconfig": "9d7af17178759879b55aa8ad2e4802eb44cc5833d7bc9a4fd1d5f25dfe79484e",
+    "flasher_args.json": "14fc0eded10ef86cd1a404dc44f737452e1304c7e217ffba589ec4ea640d57a1",
+    "project_description.json": "1067140cc5184700c90172c2540525ea542eaeb87b720faac96cb76f65e831f9"
+  }
+}

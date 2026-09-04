@@ -1,0 +1,209 @@
+{
+  "completedAt": "2026-09-04T09:25:51.546328+00:00",
+  "contractVerification": {
+    "capturedBoots": 6,
+    "flashes": 3,
+    "images": 3,
+    "ok": true
+  },
+  "flashInProgress": null,
+  "framePairReports": [
+    {
+      "boot": 1,
+      "path": "frame-pair-boot-1.json",
+      "sha256": "0de96cabc8a111e7fccb8dc418b9d3befe252798bb61f3d5b116a597e511a259"
+    },
+    {
+      "boot": 2,
+      "path": "frame-pair-boot-2.json",
+      "sha256": "366af8df3147eef6d78f45622d36935eb1b22af101af708a289848e9eb329dd1"
+    }
+  ],
+  "images": [
+    {
+      "boots": [
+        {
+          "boot": 1,
+          "raw": "boot-1.log",
+          "rawSha256": "f62755e99638581bdaaa84e9f34075a629dae160326e50a6135ee274edd68e3d",
+          "status": "complete",
+          "validation": {
+            "capturedSamples": 700,
+            "complete": true,
+            "completedCells": 7,
+            "consoleLines": 19,
+            "dryRun": false,
+            "expectedCells": 7,
+            "expectedSamples": 700,
+            "ok": true,
+            "refusals": 0,
+            "terminalSeen": true
+          }
+        },
+        {
+          "boot": 2,
+          "raw": "boot-2.log",
+          "rawSha256": "656a578dbebab79af605fc40e21475f7e142a40ce387beee2f69151b1d6be71d",
+          "status": "complete",
+          "validation": {
+            "capturedSamples": 700,
+            "complete": true,
+            "completedCells": 7,
+            "consoleLines": 19,
+            "dryRun": false,
+            "expectedCells": 7,
+            "expectedSamples": 700,
+            "ok": true,
+            "refusals": 0,
+            "terminalSeen": true
+          }
+        }
+      ],
+      "bundlePath": "/Users/sarah/Archives/esp32s3/pinned-builds/esp32sim-h1-75778a4c",
+      "flashCommand": [
+        "/Users/sarah/.espressif/tools/python/v6.1/venv/bin/python",
+        "-m",
+        "esptool",
+        "--chip",
+        "esp32s3",
+        "--port",
+        "/dev/cu.usbmodem101",
+        "--before",
+        "default-reset",
+        "--after",
+        "hard-reset",
+        "write-flash",
+        "--flash-mode",
+        "dio",
+        "--flash-size",
+        "16MB",
+        "--flash-freq",
+        "80m",
+        "0x0",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/esp32sim-h1-75778a4c/bootloader/bootloader.bin",
+        "0x8000",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/esp32sim-h1-75778a4c/partition_table/partition-table.bin",
+        "0x10000",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/esp32sim-h1-75778a4c/esp32s3_exception_ladders_calibration.bin"
+      ],
+      "flashLogSha256": "7e9bacb329f6145c2a05ea85c7a56c22767a04e2553e099bea111c1370dd197e",
+      "id": "h1-exception-ladders",
+      "manifestSha256": "7d4f95cef83208211f3eceb4e62ab3415fde2271948422f27a809c377379cabc",
+      "status": "complete"
+    },
+    {
+      "boots": [
+        {
+          "boot": 1,
+          "normalized": "boot-1.normalized.ndjson",
+          "normalizedSha256": "d20efd24ce1cd08fa2a94b4e7874f21c237763f95de27f78c1ba23f5bd051468",
+          "raw": "boot-1.log",
+          "rawSha256": "b8557d71e2080493f1a29b72eeea96151eb64f96482618a05aebceccf1d5bb98",
+          "status": "complete"
+        },
+        {
+          "boot": 2,
+          "normalized": "boot-2.normalized.ndjson",
+          "normalizedSha256": "23799a79d998d46d7068b23c30847affbf971edce8c149a3bde56b178f97d215",
+          "raw": "boot-2.log",
+          "rawSha256": "f35ae697e821586b106801c8ed9505de93ec6ca88e9b92c8ab5683836591eb0a",
+          "status": "complete"
+        }
+      ],
+      "bundlePath": "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-80-13725930e666",
+      "flashCommand": [
+        "/Users/sarah/.espressif/tools/python/v6.1/venv/bin/python",
+        "-m",
+        "esptool",
+        "--chip",
+        "esp32s3",
+        "--port",
+        "/dev/cu.usbmodem101",
+        "--before",
+        "default-reset",
+        "--after",
+        "hard-reset",
+        "write-flash",
+        "--flash-mode",
+        "dio",
+        "--flash-size",
+        "16MB",
+        "--flash-freq",
+        "80m",
+        "0x0",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-80-13725930e666/bootloader/bootloader.bin",
+        "0x8000",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-80-13725930e666/partition_table/partition-table.bin",
+        "0x10000",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-80-13725930e666/tinydraw_esp32.bin"
+      ],
+      "flashLogSha256": "4175faa7fc6bcadea9db129c7d187bffeafc538ea4e4ec3723daaf6aae13ca8e",
+      "id": "tinydraw-frame-80mhz",
+      "manifestSha256": "e617e66cac021616433cd8799d7f2ada2208e9cc4cf4dbaf5881aefa69321fb2",
+      "status": "complete"
+    },
+    {
+      "boots": [
+        {
+          "boot": 1,
+          "normalized": "boot-1.normalized.ndjson",
+          "normalizedSha256": "c3b451954c3548dd5aeb4805dde8030f321e26b341bbd0019cab14439c600ba8",
+          "raw": "boot-1.log",
+          "rawSha256": "0c6e073e903073c35711aa9abe7cf41d381d7bef8b0acc669373ca4324cf17b3",
+          "status": "complete"
+        },
+        {
+          "boot": 2,
+          "normalized": "boot-2.normalized.ndjson",
+          "normalizedSha256": "53a5044d8e3d5eefa2989d969fdecc232bd7d2b33ec5cf009181cead06285e00",
+          "raw": "boot-2.log",
+          "rawSha256": "8282c891d4578333adb272ab131e1ca778ee81a32650470c9bfa4e36b342e418",
+          "status": "complete"
+        }
+      ],
+      "bundlePath": "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-40-13725930e666",
+      "flashCommand": [
+        "/Users/sarah/.espressif/tools/python/v6.1/venv/bin/python",
+        "-m",
+        "esptool",
+        "--chip",
+        "esp32s3",
+        "--port",
+        "/dev/cu.usbmodem101",
+        "--before",
+        "default-reset",
+        "--after",
+        "hard-reset",
+        "write-flash",
+        "--flash-mode",
+        "dio",
+        "--flash-size",
+        "16MB",
+        "--flash-freq",
+        "80m",
+        "0x0",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-40-13725930e666/bootloader/bootloader.bin",
+        "0x8000",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-40-13725930e666/partition_table/partition-table.bin",
+        "0x10000",
+        "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-40-13725930e666/tinydraw_esp32.bin"
+      ],
+      "flashLogSha256": "d4f4b4ed95f337da2e0cdc3a78201ef38e3816cf5862e407507669e401aa3c1b",
+      "id": "tinydraw-frame-40mhz",
+      "manifestSha256": "cb164f6a177a0dea7f6470f552b2489ddec35027465d9a06a77f450e2f1fc01a",
+      "status": "complete"
+    }
+  ],
+  "installedImage": "tinydraw-frame-40mhz",
+  "port": "/dev/cu.usbmodem101",
+  "schemaVersion": 1,
+  "startedAt": "2026-09-04T09:25:00.621415+00:00",
+  "status": "complete",
+  "tools": {
+    "captureSessionSha256": "7436bb8ae4018de2e8475463b0282240d135ba72a40f944dce23a2542e7bf091",
+    "esptoolVersion": "esptool v5.3.1\n5.3.1",
+    "frameCorrelationSha256": "3db294f4c22f38f076c40efbe1b1e204d999bba71a81dba5febf50e6a93500d7",
+    "idfPython": "/Users/sarah/.espressif/tools/python/v6.1/venv/bin/python",
+    "verifySessionSha256": "8897548fa2790f3bd5f670a06e660da29058e8ea241b2e63f6b6c623d3141110"
+  }
+}

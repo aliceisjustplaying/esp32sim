@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-09-03. This file is the current truth: what exists,
+Last updated 2026-09-04. This file is the current truth: what exists,
 what is adopted, and what the hardware queue holds. The goal is
 [`GOAL.md`](GOAL.md); the working rules are [`../AGENTS.md`](../AGENTS.md).
 
@@ -306,6 +306,16 @@ Tier B dispositions:
     at 20 MHz, and exact at 48 cycles per byte at 40 MHz only from 4 KiB through
     32 KiB. Phased totals do not replace the prior blocking receipt, and no
     product transaction adopts these candidates.
+16. TinyDraw frame correlation complete as candidate evidence: two boots each
+    at 40 and 80 MHz PSRAM completed the same 21 frame keys. The paired
+    40-minus-80 MHz medians are -9,840 and -12,096 cycles, but transfer-wait
+    deltas have the same sign as all 42 total-cycle deltas. PSRAM remains an
+    unknown component, so no scalar PSRAM price or non-PSRAM partition is
+    adopted, distribution agreement is not established, and the frame-scale
+    1 percent claim remains refused. Both boot-1 logs contain a stale partial
+    pre-reset serial line, and 80 MHz boot 2 recovered from a panel configure
+    failure before its accepted trace. Receipt:
+    [`evidence/timing/tinydraw-frame-correlation-2026-09-04/`](evidence/timing/tinydraw-frame-correlation-2026-09-04/README.md).
 
 No further board sessions are scheduled. The hardware queue is a queue, not
 active work. Hardware resumes only when a milestone 2 through 4 cost class
@@ -405,7 +415,8 @@ mode (needs GOAL milestone 2).
 2. Proposal: authoritatively pin every external gate-harness binary input,
    restore the exact immutable bytes, verify them all, and rerun after the
    fast-mode small SPI2 DMA completion fix. The native-speed rerun is complete.
-3. Proposal: add per-frame firmware counters to the next maintainer capture so
-   frame-scale correlation can begin after measured boot reaches READY.
+3. Complete as candidate evidence: paired per-frame hardware counters now
+   establish total-cycle and cache-counter distributions. A defensible
+   non-PSRAM partition is still required before testing the 1 percent target.
 4. Proposal: begin milestone 5 contention pricing only after the measured boot
    findings identify the first shared-cache or MSPI arbitration boundary.

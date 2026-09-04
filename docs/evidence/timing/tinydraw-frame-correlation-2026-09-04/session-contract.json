@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "board": "waveshare-esp32-s3-touch-amoled-1.8-v2",
+  "idf": "v6.1",
+  "flashModeContract": {
+    "imageHeaderAndWrite": "dio",
+    "runtimeAfterBootloader": "qio"
+  },
+  "offlineTools": {
+    "esp32sim": {
+      "path": "/Users/sarah/src/a/esp32sim/target/release/esp32sim",
+      "sha256": "7011f188df79bcff294a8544026f73156342058f15203d1a6e63684f7b7475f9"
+    },
+    "frameCorrelation": {
+      "sourceCommit": "28970f6d8fd1ddb49ef02087931ab64e88fe34cd",
+      "sha256": "3db294f4c22f38f076c40efbe1b1e204d999bba71a81dba5febf50e6a93500d7"
+    }
+  },
+  "captureOrder": [
+    {
+      "id": "h1-exception-ladders",
+      "bundlePath": "/Users/sarah/Archives/esp32s3/pinned-builds/esp32sim-h1-75778a4c",
+      "manifestSha256": "7d4f95cef83208211f3eceb4e62ab3415fde2271948422f27a809c377379cabc",
+      "boots": 2,
+      "terminal": "CALIBRATION_DONE"
+    },
+    {
+      "id": "tinydraw-frame-80mhz",
+      "bundlePath": "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-80-13725930e666",
+      "manifestSha256": "e617e66cac021616433cd8799d7f2ada2208e9cc4cf4dbaf5881aefa69321fb2",
+      "boots": 2,
+      "terminal": "TINYDRAW_DEMO_REPLAY_END"
+    },
+    {
+      "id": "tinydraw-frame-40mhz",
+      "bundlePath": "/Users/sarah/Archives/esp32s3/pinned-builds/tinydraw-frame-v1-40-13725930e666",
+      "manifestSha256": "cb164f6a177a0dea7f6470f552b2489ddec35027465d9a06a77f450e2f1fc01a",
+      "boots": 2,
+      "terminal": "TINYDRAW_DEMO_REPLAY_END"
+    }
+  ],
+  "restoreImage": null
+}
