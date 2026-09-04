@@ -18,6 +18,7 @@
 #include "modules/display/st7735_tft.h"
 #include "modules/input/rotary_encoder.h"
 #include "modules/input/button.h"
+#include "modules/led/neopixel.h"
 // EMBEDDED_SOUNDS_FP: none
 #include <ArduinoJson.h>
 
@@ -41,6 +42,11 @@ RotaryEncoder rotary_encoder_1(5, 4, 9, 8);
 ButtonModule button_1(17, true);
 // Button
 ButtonModule button_2(16, true);
+// Light Grid V1.1 (NeoPixel 3x3): port 7 is the isolated top-middle slot, port 11 the right
+// column. Each takes two data lines — Line A (WS2812B, RGB) and Line B (SK6812, RGBW) — and the
+// SDK driver writes both every frame, so one instance covers either module revision.
+NeoPixelGrid light_grid_7(6, 7);
+NeoPixelGrid light_grid_11(43, 44);
 
 
 // User behavior variables and helper functions
@@ -113,6 +119,8 @@ void gateVoice(int v, float freq, int durationMs) {
   sid_set_pulse_width(&sid, v, sidVoices[v].pulseWidth / 100.0f);
   sid_set_control(&sid, v, sidWaveBits(sidVoices[v].waveform) | SID_CTRL_GATE);
 }
+static void gridsUpdate();            // the light grids follow the voices; defined with the player below
+
 void renderVoices() {
   // SID: render until every gate is closed and every envelope has died out (max 3 s)
   int16_t buf[256];
@@ -128,6 +136,7 @@ void renderVoices() {
       } else if (sid.voice[v].envelope != 0) { active = true; } else { sv.stage = 0; }
     }
     if (!active) break;
+    gridsUpdate();                    // this loop owns the task while a note sounds, so refresh here too
     sid_render(&sid, buf, 256);
     for (int i = 0; i < 256; i++) buf[i] = (int16_t)(buf[i] / 2);   // headroom; Speaker::writeSamples applies the volume
     speaker_1.writeSamples(buf, 256);
@@ -264,6 +273,42 @@ static void tunePump() {
   static int16_t buf[TUNE_CHUNK];
   cRSID_generateBuffer(tuneC64, buf, TUNE_CHUNK);
   speaker_1.writeSamples(buf, TUNE_CHUNK);
+}
+
+// ---- Light grids: one column per SID voice ----------------------------------------------------
+// Three columns, three voices; the bar height is that voice's envelope, filling from the bottom
+// row up with the topmost lit row fading in. Both grids show the same meter. The levels come from
+// the emulated C64's SID while a tune plays and from the SID chip model the keys drive otherwise,
+// so a column means the same thing in both modes. Muting does not stop the meters: the tune is
+// still running, which is what they report.
+#define GRID_FRAME_MS 50               // 20 Hz — a refresh clocks out four strips, the I2S DMA absorbs it
+#define GRID_FULL_SCALE 200            // envelope counted as a full bar; a SID voice rarely sustains above this
+
+static const uint8_t VOICE_COLOUR[3][3] = { {0, 190, 255}, {255, 0, 170}, {255, 130, 0} };
+
+static void gridsSetVoice(uint8_t voice, uint8_t level) {
+  for (uint8_t row = 0; row < 3; row++) {
+    float lit = ((float)level / GRID_FULL_SCALE - (float)(2 - row) / 3.0f) * 3.0f;   // row 2 lights first
+    if (lit < 0.0f) lit = 0.0f;
+    if (lit > 1.0f) lit = 1.0f;
+    const uint8_t* c = VOICE_COLOUR[voice];
+    uint8_t r = (uint8_t)(c[0] * lit), g = (uint8_t)(c[1] * lit), b = (uint8_t)(c[2] * lit);
+    light_grid_7.setPixelXY(row, voice, r, g, b);
+    light_grid_11.setPixelXY(row, voice, r, g, b);
+  }
+}
+
+static void gridsUpdate() {
+  static uint32_t lastMs = 0;
+  if (millis() - lastMs < GRID_FRAME_MS) return;
+  lastMs = millis();
+  for (uint8_t v = 0; v < 3; v++) {
+    uint8_t level = tunePlaying ? (tuneC64 ? tuneC64->SID[1].EnvelopeCounter[v * 7] : 0)
+                                : sid.voice[v].envelope;
+    gridsSetVoice(v, level);
+  }
+  light_grid_7.show();
+  light_grid_11.show();
 }
 
 void drawNoteUI() {
@@ -595,6 +640,7 @@ void mainTask(void* parameter) {
           if (btn2Fire) tuneNextSubtune();
           button_1.wasPressed(); button_1.wasReleased(); button_2.wasPressed(); button_2.wasReleased();   // edges handled above
           if (!tunePlaying) continue;                        // stopped just now: let the synth redraw its screen
+          gridsUpdate();
           if (needsRedraw && (millis() - lastFrameMs >= 30)) {
             lastFrameMs = millis();
             needsRedraw = false;
@@ -651,6 +697,8 @@ void mainTask(void* parameter) {
         if (button_2.wasReleased()) {
         wifi.postButtonEvent("button_release", 0);
         }
+
+        gridsUpdate();
 
         if (needsRedraw && (millis() - lastFrameMs >= 30)) {
         lastFrameMs = millis();
@@ -713,6 +761,8 @@ void setup() {
   st7735_tft_1.begin();
   delay(150);  // Allow display to stabilize
   rotary_encoder_1.begin();
+  light_grid_7.begin();
+  light_grid_11.begin();
   button_1.begin();
   button_2.begin();
 

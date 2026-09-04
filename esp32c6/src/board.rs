@@ -131,7 +131,7 @@ impl BoardModel for WaveshareC6Lcd147 {
         }
     }
     /// One WS2812: 24 bits, G then R then B, MSB first.
-    fn rmt_frame(&mut self, _ch: usize, bits: &[bool]) {
+    fn rmt_frame(&mut self, _pin: u8, bits: &[bool]) {
         if bits.len() < 24 { return; }
         let byte = |i: usize| bits[i..i + 8].iter().fold(0u8, |v, &b| (v << 1) | b as u8);
         self.led[0] = [byte(8), byte(0), byte(16)];
