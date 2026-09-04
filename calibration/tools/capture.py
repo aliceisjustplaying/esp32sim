@@ -388,7 +388,12 @@ def _capture_boot(
 ) -> list[str]:
     import serial
 
-    device = serial.Serial(port, 115200, timeout=0.25)
+    capture = output.open("w")
+    try:
+        device = serial.Serial(port, 115200, timeout=0.25)
+    except BaseException:
+        capture.close()
+        raise
     lines: list[str] = []
     buffer = b""
     done_at: float | None = None
@@ -410,17 +415,22 @@ def _capture_boot(
                 raw, buffer = buffer.split(b"\n", 1)
                 line = raw.decode(errors="strict").rstrip("\r")
                 lines.append(line)
+                capture.write(f"{line}\n")
+                capture.flush()
                 if failure_marker(raw) is not None:
                     raise ValidationError(f"hardware failure marker: {line}")
                 if terminal_line in line:
                     done_at = time.monotonic()
         if buffer.strip():
-            lines.append(buffer.decode(errors="strict").rstrip("\r"))
+            line = buffer.decode(errors="strict").rstrip("\r")
+            lines.append(line)
+            capture.write(f"{line}\n")
+            capture.flush()
     except UnicodeDecodeError as error:
         raise ValidationError("serial capture is not valid UTF-8") from error
     finally:
         device.close()
-    output.write_text("".join(f"{line}\n" for line in lines))
+        capture.close()
     return lines
 
 
