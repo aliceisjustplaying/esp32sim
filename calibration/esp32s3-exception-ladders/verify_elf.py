@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -92,6 +93,18 @@ def verify_artifacts(
         "partition_table/partition-table.bin": "partitionTableBinary",
         app_bin.name: "applicationBinary",
     }
+    flash_lines = [
+        shlex.split(line)
+        for line in flash_args.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not flash_lines or flash_lines[0] != flasher.get("write_flash_args"):
+        raise VerificationError("flash_args settings do not match flasher_args.json")
+    if any(len(line) != 2 for line in flash_lines[1:]):
+        raise VerificationError("flash_args has an invalid flash layout")
+    actual_flash_files = dict(flash_lines[1:])
+    if actual_flash_files != flasher["flash_files"]:
+        raise VerificationError("flash_args layout does not match flasher_args.json")
     try:
         flash_layout = sorted(
             (
@@ -100,7 +113,7 @@ def verify_artifacts(
                     "artifact": roles_by_path[path],
                     "path": path,
                 }
-                for offset, path in flasher["flash_files"].items()
+                for offset, path in actual_flash_files.items()
             ),
             key=lambda item: int(item["offset"], 16),
         )

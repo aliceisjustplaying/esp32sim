@@ -23,8 +23,9 @@ absolute mask-ROM address, and verifies the target's `.text` placement and
 both instruction encodings. Its JSON pins the application ELF and binary,
 bootloader, partition table, sdkconfig, generated flasher arguments, probe
 manifest, mask ROM ELF, and the exact flash layout parsed from those generated
-arguments. The result also pins the IDF, compiler, and objdump versions. It
-does not derive or adopt a timing price.
+arguments. It requires the JSON and command-file layouts to agree. The result
+also pins the IDF, compiler, and objdump versions. It does not derive or adopt
+a timing price.
 Strict capture requires the manifest-pinned IDF, harness, target, revision,
 core count, clocks, sample and attempt counts, and recursion depth. The dry-run
 path alone accepts emulator-reported chip revision 0; hardware capture requires
