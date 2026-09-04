@@ -13,11 +13,12 @@ import capture
 
 
 class FakeSerial:
-    def __init__(self) -> None:
+    def __init__(self, fresh: bytes = b"first post-reset\r\nTERMINAL\r\n") -> None:
         self.dtr = True
         self._rts = False
         self.events: list[str] = []
         self.chunks = [b"stale partial line\n"]
+        self.fresh = fresh
 
     @property
     def rts(self) -> bool:
@@ -28,7 +29,7 @@ class FakeSerial:
         self._rts = value
         self.events.append(f"rts={value}")
         if not value:
-            self.chunks.append(b"first post-reset\r\nTERMINAL\r\n")
+            self.chunks.append(self.fresh)
 
     def reset_input_buffer(self) -> None:
         if not self.rts:
@@ -62,6 +63,26 @@ class CaptureBootTests(unittest.TestCase):
             self.assertEqual(output.read_text(), "first post-reset\nTERMINAL\n")
             self.assertEqual(
                 device.events[:3], ["rts=True", "reset_input_buffer", "rts=False"]
+            )
+
+    def test_hardware_failure_lines_are_flushed_before_the_error(self) -> None:
+        device = FakeSerial(b"first post-reset\nGuru Meditation Error: fault\n")
+        serial_module = types.SimpleNamespace(Serial=lambda *_args, **_kwargs: device)
+        clock = iter(index * 0.25 for index in range(100))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "boot.log"
+            with (
+                mock.patch.dict(sys.modules, {"serial": serial_module}),
+                mock.patch.object(capture.time, "sleep"),
+                mock.patch.object(capture.time, "monotonic", side_effect=lambda: next(clock)),
+            ):
+                with self.assertRaisesRegex(capture.ValidationError, "hardware failure"):
+                    capture._capture_boot("fake-port", output, 10.0, "TERMINAL")
+
+            self.assertEqual(
+                output.read_text(),
+                "first post-reset\nGuru Meditation Error: fault\n",
             )
 
 
