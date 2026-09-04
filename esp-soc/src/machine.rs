@@ -705,11 +705,13 @@ impl<S: Soc> Machine<S> {
     }
     /// Run core 0 until device time reaches `target` (a cycle count of `bus.cycles()`), exactly:
     /// the round is cut short at the target, so time never overshoots by a quantum, and cut
-    /// short at the instruction that raises a host event (`SocBus::take_host_event`), so a
-    /// transmission the host must forward is seen at the cycle it started. A core asleep in
-    /// `wfi` with nothing pending lets time jump to the target or to the bus's next device
-    /// deadline (`SocBus::next_deadline`), whichever is first — the deadline is conservative, so
-    /// an interrupt is never delivered late by the skip. Single-core chips only (the S3's second
+    /// short at the instruction — or the device tick — that raises a host event
+    /// (`SocBus::take_host_event`), so a transmission the host must forward is seen at the cycle
+    /// it started. Every round is also bounded by the bus's next device deadline
+    /// (`SocBus::next_deadline`), so a device event lands at its own cycle rather than at the end
+    /// of a 64-instruction quantum; a core asleep in `wfi` with nothing pending lets time jump to
+    /// the target or to that deadline, whichever is first — the deadline is conservative, so an
+    /// interrupt is never delivered late by the skip. Single-core chips only (the S3's second
     /// core is not scheduled here), and the unmodeled path only: a cost model is not consulted.
     /// Nothing else about a run changes: stubs, probes, observers, scripts and the console work
     /// as in `run`; `max_cycles` is not consulted.
@@ -723,14 +725,15 @@ impl<S: Soc> Machine<S> {
             let now = self.bus.cycles();
             if now >= target { return RunUntil::Reached; }
             let left = target - now;
+            let deadline = self.bus.next_deadline().unwrap_or(u64::MAX).max(1);
             let core = &self.cores[0];
             if core.waiting() && !core.irq_pending() && !no_skip {
-                let deadline = self.bus.next_deadline().unwrap_or(u64::MAX).max(1);
                 let chunk = left.min(deadline).min(u32::MAX as u64 >> 1);
                 self.cores[0].idle_advance(chunk as u32);
                 self.after_round(chunk);
+                if self.bus.take_host_event() { return RunUntil::Yield; }
             } else {
-                let mut budget = left.min(QUANTUM) as u32;
+                let mut budget = left.min(QUANTUM).min(deadline) as u32;
                 let (mut used_total, mut yielded, mut stop) = (0u64, false, None);
                 while budget > 0 {
                     let (used, s) = if blocks { self.step_blocks(0, budget) } else { (1, self.step_core(0)) };
@@ -742,7 +745,7 @@ impl<S: Soc> Machine<S> {
                 }
                 self.after_round(used_total);
                 if let Some(s) = stop { self.drain_console(); return RunUntil::Stop(s); }
-                if yielded { return RunUntil::Yield; }
+                if yielded || self.bus.take_host_event() { return RunUntil::Yield; }
             }
             if self.bus.sw_reset() { self.drain_console(); return RunUntil::Stop(Stop::SwReset); }
         }

@@ -147,31 +147,55 @@ RISCV_DIS_FILES=/tmp/rom.dis:/tmp/app.dis cargo test -p riscv-rv32 --release -- 
 
 The `IEEE802154` block at `0x600A3000`, with the register layout of IDF's
 `soc/ieee802154_struct.h`, modelled as far as `esp_ieee802154` (IDF 5.5) drives it. What the
-driver does — read from `esp_ieee802154_dev.c` and confirmed with a register trace of Contiki-NG's
+driver does — read from `esp_ieee802154_dev.c` and confirmed with register traces of Contiki-NG's
 radio driver on this model:
 
 - **transmit**: `STOP`, `TIMER0_STOP`, `TIMER1_STOP`, read and clear `EVENT_STATUS` (the previous
   operation is torn down), the PIB if it changed (`CHANNEL` = `3 + 5·(ch−11)`, `TXPOWER`,
   `ED_CFG`, `CONF`), `DMA_TX_ADDR` = the frame buffer — `buf[0]` the PSDU length *including* the
-  2-byte FCS, `buf[1..]` the MAC frame without it — then `TX_START` (`0x41`). The ISR then expects
-  `TX_SFD_DONE` and `TX_DONE`; a frame with the AR bit and auto-ack on moves it to `RX_ACK`.
-- **receive**: the same teardown, `DMA_RX_ADDR` = a free 129-byte buffer, `RX_START` (`0x42`). A
-  frame raises `RX_SFD_DONE` (the ISR stamps it with `esp_timer_get_time`) and then `RX_DONE`
-  with the buffer holding `[len incl. FCS][frame][RSSI][LQI]` — the FCS positions carry RSSI and
-  LQI. The ISR hands the frame up and re-arms RX (`RX_START` again) when `rx_when_idle` is set.
-  Before a TX the driver reads `RX_STATUS.rx_state`; `> 1` means a frame is coming in and the TX
-  is refused.
-- **stop** mid-frame raises `RX_ABORT` (reason `RX_STOP`), which the driver clears at once.
+  2-byte FCS, `buf[1..]` the MAC frame without it. For a frame with the AR bit the driver also
+  points `DMA_RX_ADDR` at a free buffer: that is where the acknowledgement lands. Then `TX_START`
+  (or `CCA_TX_START`). The ISR expects `TX_SFD_DONE` and `TX_DONE`; for an AR frame with
+  `CONF.auto_ack_rx` it then enters `RX_ACK`, arms TIMER0 for 200 ms with a NO_ACK callback and
+  waits for `ACK_RX_DONE`, on which it reads the ACK from the RX buffer — the usual
+  `[len incl. FCS][frame][RSSI][LQI]`, so `[5][02 xx seq][RSSI][LQI]` — and reports
+  `transmit_done(frame, ack, ack_info)`. Hardware has its own `ACK_TIMEOUT` register (0x5c,
+  units of 16 µs, `TX_ABORT` reason `RX_ACK_TIMEOUT`); the driver never programs it, so the
+  200 ms timer is what fires without an ACK.
+- **receive**: the same teardown, `DMA_RX_ADDR` = a free 129-byte buffer, `RX_START`. A frame
+  that passes the address filter raises `RX_SFD_DONE` and then `RX_DONE`; one that does not is
+  dropped by hardware (`RX_ABORT` reason `FILTER_FAIL`, an event the driver leaves disabled). A
+  frame with the AR bit (frame version 0/1, `CONF.auto_ack_tx`) is acknowledged by hardware: the
+  driver moves to `TX_ACK` on `RX_DONE` and only hands the frame up and re-arms RX on
+  `ACK_TX_DONE`. Before a TX the driver reads `RX_STATUS.rx_state`; `> 1` means a frame is
+  coming in and the TX is refused.
+- **stop** mid-frame raises `RX_ABORT` (reason `RX_STOP`); abort events fire only for the
+  reasons the driver enabled in `RX_ABORT_EVENT_EN` / `TX_ABORT_EVENT_EN`.
+- **CCA**: `CCA_TX_START` transmits unless the channel is busy, which here means a frame is
+  being received: `TX_ABORT` reason `CCA_BUSY`, `TX_ERR_CCA_BUSY` to the caller.
 
 The model: `TX_START` asks the bus for the frame (the device cannot see SRAM), stamps the start
 for the host, and raises `TX_SFD_DONE` after 5 bytes and `TX_DONE` after `6 + len + 2` bytes of
-air (32 µs each). A frame offered while listening raises `RX_SFD_DONE` at once and `RX_DONE`
-after `1 + len + 2` bytes, the buffer written by the bus as the driver reads it. The two radio
-timers count microseconds to their thresholds. ED keeps the synthetic scene from before. **Not
-modelled** (stage 2 of the lock-step plan): auto-ACK either way, CCA (`CCA_TX_START` sends as
-if clear), address filtering (every frame is delivered, promiscuous or not), pending bits,
-security, enhanced ACKs. `--debug ieee802154` narrates commands, events and DMA; `--log-periph`
-reports the first touch of an offset the model does not interpret.
+air (32 µs each); an AR frame then waits for its ACK (`RxAck`), taking only an ACK frame with
+its sequence number. A frame offered while listening goes through the filter — a destination
+PAN of ours or 0xffff and a destination address of ours or the short broadcast, per multipan
+entry the driver enabled; no destination only for a coordinator on its PAN or a beacon; `CONF.
+promiscuous` takes everything — raises `RX_SFD_DONE` at once and `RX_DONE` after `1 + len + 2`
+bytes, the buffer written by the bus as the driver reads it; an AR frame is acknowledged from
+there: the ACK (`02 <version> seq`, pending bit 0) starts 192 µs (12 symbols) after the frame's
+end and takes 11 bytes of air, 352 µs, then `ACK_TX_DONE`. The ACK leaves through the same host
+path as a data frame — the round is cut at its first cycle — so a lock-stepped medium sees it
+in time for the sender's ACK wait. The two radio timers count microseconds to their thresholds.
+ED keeps the synthetic scene from before. **Not modelled**: enhanced ACKs (frame version 2),
+security, the frame-pending table, CCA against energy that is not a frame. `--debug ieee802154`
+narrates commands, events and DMA; `--log-periph` reports the first touch of an offset the
+model does not interpret.
+
+Why the filter and the ACK matter to the driver: without them, a frame with the AR bit that was
+*not* addressed to the C6 (another node's unicast) still raised `RX_DONE`, the driver went to
+`TX_ACK` for an `ACK_TX_DONE` that never came, and from then on refused every transmit before
+touching hardware (`TX_ERR_ABORT`) and never re-armed RX — the way stage 1 died in an RPL
+network.
 
 ## Cooja-NG lock-step: `--cooja`
 
@@ -199,9 +223,9 @@ Exactness is the point, not "within a slice":
   end of the slice — the same lateness an emulated mote's radio has — so the busy-slice `wake`
   (`--cooja-slice-us`, default 100 µs) bounds it. The rest of the slice runs when csim steps again;
 - an `rx` inside a slice is injected at its own time: the guest runs to `rx.t` and the frame goes
-  to the radio complete (SFD and `RX_DONE` together: csim reports a frame at its end;
-  `--cooja-rx-timing start` makes `t` the start instead, `RX_DONE` after the air time), and the
-  run continues;
+  to the radio as csim reports it, at its start — SFD then, `RX_DONE` after the air time, and
+  the acknowledgement 192 µs after that, which is when the sender's CC2420 expects it
+  (`--cooja-rx-timing end` takes `t` as the frame's end instead) — and the run continues;
 - a guest in `wfi` costs nothing: time jumps to the bus's next device deadline (systimer, TIMG,
   the radio's countdowns, a running RMT channel) or the slice end, whichever is first, so the
   FreeRTOS idle loop is free and `wake` is the deadline;
@@ -272,7 +296,7 @@ machine wants to see, as the Xtensa block interpreter always did.
   registers the bootloader would have set up are not preset; ROM boot is the tested path.
 - **Watchdogs.** The LP_WDT and the TIMG watchdogs are register RAM: they never fire.
 - **WiFi 6, BLE, the LP core** — nothing of those radios or the second core is modelled. The
-  802.15.4 MAC sends and receives whole frames (above) but has no auto-ACK, CCA or address filter yet.
+  802.15.4 MAC sends, receives, acknowledges and filters (above); enhanced ACKs and security are not there.
 - **Peripherals on demand**: GDMA, I2C, SPI2, LEDC, RMT, ADC, TWAI, PARL_IO. Each shows up as an
   unknown register with `--log-periph` the moment a firmware wants it. The registers hello_world
   still touches without a model are PMU, IO_MUX, HP_SYSTEM, APB_SARADC and a few LP blocks —

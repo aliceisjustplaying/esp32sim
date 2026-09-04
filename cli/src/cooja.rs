@@ -13,9 +13,9 @@
 //!   transmission (`SocBus::take_host_event`), so a `tx` event carries the time of the
 //!   `TX_START` write and the reply goes out before the slice ends;
 //! - an `rx` inside a slice is injected at its own time: the guest runs to `rx.t` and the frame is
-//!   handed to the radio — complete, SFD and `RX_DONE` together, because csim reports a frame at
-//!   its end (`rx_on_air` makes it the start instead: SFD now, `RX_DONE` after the air time) —
-//!   and the run continues;
+//!   handed to the radio as csim reports it, at its start — SFD now, `RX_DONE` after the air
+//!   time, and the acknowledgement 192 µs after that (`rx_on_air: false` takes `rx.t` as the
+//!   frame's end instead: complete at once) — and the run continues;
 //! - a guest in `wfi` costs nothing: time jumps to the next device deadline or the slice end.
 //!
 //! `wake` is what we ask csim for next: the next device deadline when the guest sleeps, `t +
@@ -151,14 +151,15 @@ pub struct Config {
     /// which guest consoles become `log` events: bit0 USB-Serial/JTAG, bit1 UART0, bit2 UART1
     pub console_mask: u32,
     /// an `rx` at `t` is the start of the frame on the air (SFD at `t`, RX_DONE after the air
-    /// time) rather than, as csim delivers it, its end (the frame complete at `t`)
+    /// time), which is when csim hands a frame-consuming mote a frame; `false` takes `t` as the
+    /// frame's end (complete at once)
     pub rx_on_air: bool,
     /// narrate the exchange on stderr
     pub verbose: bool,
 }
 /// 100 µs busy slices: a transmission reaches csim's medium at the end of the slice it started
 /// in, so the slice bounds how late it is. ~5000 exchanges per busy second at ~20 µs each.
-impl Default for Config { fn default() -> Self { Config { slice_ns: 100_000, console_mask: 2, rx_on_air: false, verbose: false } } }
+impl Default for Config { fn default() -> Self { Config { slice_ns: 100_000, console_mask: 2, rx_on_air: true, verbose: false } } }
 
 /// End-of-run figures for the report.
 #[derive(Clone, Debug, Default)]
@@ -209,7 +210,7 @@ impl<'a> Peer<'a> {
     fn now_ns(&self) -> u64 { ns_of_cycle(self.now_cycles()) }
 
     fn radio_state_name(&self) -> &'static str {
-        match self.m.bus.periph.radio.state { RadioState::Idle => "on", RadioState::Rx | RadioState::RxFrame | RadioState::Ed => "rx", RadioState::Tx => "tx" }
+        match self.m.bus.periph.radio.state { RadioState::Idle => "on", RadioState::Rx | RadioState::RxFrame | RadioState::RxAck | RadioState::Ed => "rx", RadioState::Tx | RadioState::TxAck => "tx" }
     }
     /// A `radio` event when the state changed since the last one, stamped now.
     fn report_radio(&mut self) {
@@ -296,7 +297,11 @@ impl<'a> Peer<'a> {
     fn apply(&mut self, input: Input) {
         match input {
             Input::Rx { t, frame, rssi, lqi } => {
-                let taken = self.m.bus.radio_receive(&frame, rssi, lqi, self.cfg.rx_on_air);
+                // csim stamps a frame with its start on the air, which may be before the guest's
+                // time when the sender is an emulated mote that lags the kernel: the frame then
+                // started that long ago, and RX_DONE lands at its true end
+                let ago = self.now_cycles().saturating_sub(cycle_of_ns(t));
+                let taken = self.m.bus.radio_receive(&frame, rssi, lqi, if self.cfg.rx_on_air { Some(ago) } else { None });
                 self.m.sync_irq();
                 self.summary.rx += 1;
                 if !taken { self.summary.rx_dropped += 1; }
@@ -337,7 +342,7 @@ impl<'a> Peer<'a> {
             let next_t = self.pending.first().map(|i| i.t()).filter(|&it| it <= t);
             let target = next_t.unwrap_or(t);
             let late = target < self.now_ns();
-            if late && self.cfg.verbose { eprintln!("[cooja] input for t={} arrives with the guest at t={}: injected now", target, self.now_ns()); }
+            if late && self.cfg.verbose { eprintln!("[cooja] input for t={} arrives with the guest at t={}: taken as started {} ns ago", target, self.now_ns(), self.now_ns() - target); }
             if let Some(tx_t) = self.run_to(target.max(self.now_ns())) {
                 let wake = self.wake(tx_t);
                 self.summary.sim_ns = tx_t;
