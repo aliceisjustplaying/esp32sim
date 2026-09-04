@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-04",
+  "sourceTree": "e11ddcb8c78c52970a83bae868124ca09527800e",
+  "stackBaseTree": "dad895b6b3901ea3404a194dfc3b2d7e3db1586f",
+  "wasmSha256": "6f44b006fcc69d6d8711cc2195e41daff5a694ee1a1f5c5fec207976f33deeda",
+  "runtime": "Node v24.16.0",
+  "host": "Apple arm64, macOS 27.0",
+  "command": "ESP32SIM_WASM_JIT_STATS=1 node tools/wasm-test.mjs hello atech atech-sid panel panel-sid",
+  "emulatedSecondsPerManifest": 3,
+  "attemptsPerManifest": 360,
+  "results": {
+    "hello": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "OtherCoreIdle": 358, "Waiting": 358, "OtherCoreActive": 1 },
+      "unsupported": { "J": 1 }
+    },
+    "atech": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Script": 360, "Waiting": 357, "OtherCoreIdle": 261, "OtherCoreActive": 97 },
+      "unsupported": {}
+    },
+    "atech-sid": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Script": 360, "Waiting": 354, "OtherCoreIdle": 308, "OtherCoreActive": 50, "Interrupt": 1 },
+      "unsupported": {}
+    },
+    "panel": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "OtherCoreIdle": 344, "Waiting": 304, "OtherCoreActive": 10, "Interrupt": 6 },
+      "unsupported": { "Addi": 2, "AddiN": 1, "Bbci": 1, "BnezN": 1, "J": 1 }
+    },
+    "panel-sid": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Script": 360, "OtherCoreIdle": 344, "Waiting": 304, "OtherCoreActive": 10, "Interrupt": 6 },
+      "unsupported": {}
+    }
+  },
+  "scope": "Coverage diagnostic at Node driver boundaries; refusal reasons are concurrent. This is not a throughput or browser wall-clock benchmark."
+}

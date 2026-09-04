@@ -120,6 +120,12 @@ One block IR, two backends — the native one exists; for the browser build:
   sequence. CI executes the real wasm ABI under Node. This is integration coverage, not a
   whole-firmware speed result.
 
+- **measured next constraint**: five S3 manifests attempted the handoff 360 times each and
+  committed zero quanta. A provably idle released second core blocked 261–358 attempts per
+  workload; scripts also blocked every attempt in `atech`, `atech-sid`, and `panel-sid`. The next
+  layer must admit that idle core and bound scripts by their next deadline before opcode coverage
+  is representative (`docs/evidence/wasm-jit-coverage-2026-09-04/`).
+
 - **wasm backend**: emit a wasm module per batch of hot blocks. Measured with a spike:
   compile+instantiate costs **~0.3 µs per block** when batched (64+ blocks/module) and
   **2.5 ns per call** into a generated function under V8 — so translation pays for itself
