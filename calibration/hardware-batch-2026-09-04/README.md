@@ -33,3 +33,17 @@ port. Flash H1 first, then 80 MHz, then 40 MHz, directly from the bound bundles
 with esptool under IDF 6.1. Capture two reset-to-terminal boots after each
 flash. Retain the complete logs and normalized TinyDraw NDJSON in a new
 `~/Archives/esp32s3/` session directory before analyzing or changing images.
+
+Run the complete physical session once the frame-correlation tool is merged:
+
+```sh
+/Users/sarah/.espressif/tools/python/v6.1/venv/bin/python \
+  calibration/hardware-batch-2026-09-04/capture_session.py \
+  --port /dev/cu.usbmodem101
+```
+
+Until then, pass its isolated worktree path with `--frame-tool`. The runner
+verifies every pin before creating an archive, then flashes exact bytes without
+rebuilding. It writes each raw serial chunk directly to disk, validates both
+boots before changing images, normalizes all four TinyDraw logs, produces two
+paired candidate reports, and records failure state without continuing.
