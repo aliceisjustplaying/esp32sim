@@ -39,6 +39,8 @@ impl esp_soc::SocBus for SocBus {
     }
     fn irq_dirty(&mut self) -> &mut bool { &mut self.irq_dirty }
     fn refresh_irq(&mut self) -> bool { self.periph.refresh_lines(); true }
+    fn cycles_until_deadline(&self) -> u32 { self.periph.cycles_until_deadline() }
+    fn take_host_event(&mut self) -> bool { self.periph.radio.take_tx_started() }
     fn misc(&mut self) -> &mut Misc { &mut self.periph.misc }
     fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String> { SocBus::load_bytes(self, addr, data) }
     fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String> { SocBus::write_flash(self, offset, data) }

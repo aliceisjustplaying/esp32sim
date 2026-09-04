@@ -6,6 +6,7 @@
 //! front-ends, the L1 cache controller, the always-on LP blocks (reset cause, software reset,
 //! RTC timer, store registers, watchdog), PCR, PMU and the RNG.
 
+use crate::radio::Ieee802154;
 use emu_core::{ClockDomain, ClockTree};
 use esp_periph::{device_set, mmio, Device, DeviceSet, Dispatch, Misc, RegRam, WriteEffect, NO_SOURCE};
 use esp_periph::{Aes, Efuse, Gdma, Gpio, GpSpi, Rmt, Rsa, Sha, SpiMem, Systimer, TimerGroup, Uart, UsbSerialJtag};
@@ -303,6 +304,11 @@ impl Device for RmtC6 {
     fn irq_sources(&self) -> u64 { self.rmt.irq() as u64 }
     fn clock(&self) -> Option<ClockDomain> { Some(ClockDomain::Cpu) }
     fn tick(&mut self, cycles: u64) { self.rmt.tick(cycles) }
+    /// A channel mid-transmission raises TX_END/TX_THR from its own symbol clock: while one
+    /// runs, time may only be skipped one symbol at a time (the shortest WS2812 symbol is
+    /// 0.4 µs; 32 cycles is under that at any RMT divider the led_strip driver uses).
+    fn has_deadline(&self) -> bool { true }
+    fn next_deadline(&self) -> Option<u64> { Some(if self.rmt.ch.iter().any(|c| c.running) { 32 } else { u64::MAX }) }
 }
 
 /// The C6's GDMA: three channels with the S3's per-channel registers but the interrupt registers
@@ -333,98 +339,6 @@ impl Device for GdmaC6 {
     fn write(&mut self, off: u32, v: u32) -> WriteEffect { match Self::map(off) { Some(o) => self.gdma.write(o, v), None => self.ram.write(off, v) } WriteEffect::NONE }
     fn irq_sources(&self) -> u64 { Device::irq_sources(&self.gdma) }
     fn debug(&mut self, on: bool) { self.gdma.dbg = on; }
-}
-
-/// The IEEE 802.15.4 MAC, as far as an energy scan needs it: `ED_START` samples the channel for
-/// the programmed number of symbols and raises `ED_DONE` with an RSSI in ED_SCAN_CFG. Nothing is
-/// on the air, so the reading is a synthetic 2.4 GHz picture: a quiet floor with the three
-/// non-overlapping WiFi channels sitting on top of it, plus noise. The picture moves the way a
-/// real one does — every few seconds a network changes level, a short burst lands on some
-/// channel and fades — deterministically, from the same xorshift as the noise. The board or a
-/// script can set a level outright (`set_channel_dbm`).
-pub struct Ieee802154 {
-    ram: RegRam,
-    pub events: u32, pub event_en: u32, pub freq: u32, pub duration: u32,
-    pub ed_rss: i8, pub ed_left: Option<u64>, pub scans: u64,
-    /// dBm per 802.15.4 channel 11..26, before noise
-    pub level_dbm: [i8; 16],
-    /// where each channel is drifting to, 1 dB per 100 ms
-    pub target_dbm: [i8; 16],
-    noise: u32, scene_acc: u64, scene_ticks: u64,
-}
-impl Default for Ieee802154 { fn default() -> Self { Self::new() } }
-impl Ieee802154 {
-    pub const CMD_ED_START: u32 = 0x44; pub const CMD_STOP: u32 = 0x45; pub const EVENT_ED_DONE: u32 = 1 << 6;
-    pub fn new() -> Self {
-        // WiFi channels 1, 6 and 11 overlap 802.15.4 channels 11-14, 16-19 and 21-24
-        let mut level_dbm = [-93i8; 16];
-        for (i, l) in [(0, -68), (1, -52), (2, -49), (3, -66), (5, -63), (6, -47), (7, -45), (8, -60), (10, -74), (11, -56), (12, -58), (13, -71), (15, -90)] { level_dbm[i] = l; }
-        Ieee802154 { ram: RegRam::new(), events: 0, event_en: 0, freq: 3, duration: 0, ed_rss: -92, ed_left: None, scans: 0, level_dbm, target_dbm: level_dbm, noise: 0x9e37_79b9, scene_acc: 0, scene_ticks: 0 }
-    }
-    pub fn set_channel_dbm(&mut self, channel: u8, dbm: i8) { if (11..=26).contains(&channel) { let i = (channel - 11) as usize; self.level_dbm[i] = dbm; self.target_dbm[i] = dbm; } }
-    fn rand(&mut self) -> u32 { self.noise ^= self.noise << 13; self.noise ^= self.noise >> 17; self.noise ^= self.noise << 5; self.noise }
-    /// One 100 ms step of the scene: levels drift toward their targets; every 2.5 s something
-    /// happens — a WiFi network moves (channel 1, 6 or 11: 802.15.4 channels 11-14, 16-19, 21-24)
-    /// or a burst lands on one channel and is left to fade back to the floor.
-    fn scene_step(&mut self) {
-        self.scene_ticks += 1;
-        if self.scene_ticks.is_multiple_of(25) {
-            let r = self.rand();
-            if r.is_multiple_of(4) {
-                let ch = (self.rand() % 16) as usize; self.target_dbm[ch] = self.target_dbm[ch].max(-50 - (self.rand() % 12) as i8); self.level_dbm[ch] = self.target_dbm[ch];
-            } else {
-                let base = [0usize, 5, 10][(r / 4 % 3) as usize];
-                let peak = -44 - (self.rand() % 28) as i8;
-                for (k, drop) in [(0, 6), (1, 0), (2, 2), (3, 9)] { self.target_dbm[base + k] = peak - drop; }
-            }
-        }
-        for i in 0..16 {
-            let wifi = matches!(i, 0..=3 | 5..=8 | 10..=13);
-            if !wifi && self.target_dbm[i] > -93 && self.scene_ticks.is_multiple_of(5) { self.target_dbm[i] -= 1; }   // a burst fades
-            let (l, t) = (self.level_dbm[i], self.target_dbm[i]);
-            self.level_dbm[i] = if l < t { l + 1 } else if l > t { l - 1 } else { l };
-        }
-    }
-    /// the channel the frequency register selects: freq = 3 + 5 * (channel - 11)
-    pub fn channel(&self) -> u8 { (11 + ((self.freq.saturating_sub(3)) / 5) as u8).clamp(11, 26) }
-    fn sample(&mut self) -> i8 {
-        let jitter = (self.rand() % 7) as i8 - 3;
-        (self.level_dbm[(self.channel() - 11) as usize] as i16 + jitter as i16).clamp(-127, 0) as i8
-    }
-}
-impl Device for Ieee802154 {
-    fn read(&mut self, off: u32) -> u32 {
-        match off {
-            0x48 => self.freq, 0x50 => self.duration,
-            0x54 => (self.ram.read(off) & !0x00ff_0000) | ((self.ed_rss as u8 as u32) << 16),   // ED_SCAN_CFG.ED_RSS
-            0x60 => self.event_en, 0x64 => self.events,
-            _ => self.ram.read(off),
-        }
-    }
-    fn write(&mut self, off: u32, v: u32) -> WriteEffect {
-        match off {
-            0x00 => match v & 0xff {
-                Self::CMD_ED_START => { self.ed_left = Some((self.duration.max(1) as u64) * 16 * (CPU_HZ / 1_000_000)); }   // symbols of 16 µs
-                Self::CMD_STOP => self.ed_left = None,
-                _ => {}
-            },
-            0x48 => self.freq = v & 0x7f, 0x50 => self.duration = v & 0xff_ffff,
-            0x60 => self.event_en = v & 0x1fff, 0x64 => self.events &= !v,               // EVENT_STATUS: write 1 to clear
-            _ => self.ram.write(off, v),
-        }
-        WriteEffect::NONE
-    }
-    fn irq_sources(&self) -> u64 { (self.events & self.event_en != 0) as u64 }
-    fn clock(&self) -> Option<ClockDomain> { Some(ClockDomain::Cpu) }
-    fn tick(&mut self, cycles: u64) {
-        self.scene_acc += cycles;
-        while self.scene_acc >= CPU_HZ / 10 { self.scene_acc -= CPU_HZ / 10; self.scene_step(); }
-        if let Some(left) = self.ed_left {
-            if cycles >= left { self.ed_left = None; self.ed_rss = self.sample(); self.scans += 1; self.events |= Self::EVENT_ED_DONE; } else { self.ed_left = Some(left - cycles); }
-        }
-    }
-    fn has_deadline(&self) -> bool { true }
-    fn next_deadline(&self) -> Option<u64> { Some(self.ed_left.unwrap_or(u64::MAX).min(CPU_HZ / 10 - self.scene_acc)) }
 }
 
 /// PCR: peripheral clock and reset control. Configuration reads back; the hardware-fixed clock
@@ -556,6 +470,7 @@ impl DeviceSet for Peripherals {
     fn misc_mut(&mut self) -> &mut Misc { &mut self.misc }
     fn pre_access(&mut self, block: u32, _off: u32, _write: bool) {
         if block == 0xb2 { self.rng.now = self.clock.cycles() as u32; }
+        if block == 0xa3 { self.radio.log_unknown = self.misc.log_unknown; }
     }
 }
 
@@ -611,6 +526,9 @@ impl Peripherals {
     /// timers, the RTC slow clock), with delivered-tick accounting so a slow clock never drifts.
     pub fn tick(&mut self, cycles: u64) { Dispatch::tick(self, cycles); }
 
+    /// CPU cycles until the earliest device deadline (systimer, TIMG, the radio's air-time and
+    /// timer countdowns, a running RMT channel), conservative by one device tick;
+    /// `u32::MAX` when nothing is armed. What a host that skips idle time may skip.
     pub fn cycles_until_timer(&self) -> u32 { Dispatch::cycles_until_deadline(self) }
 
     /// Which interrupt sources are asserted right now.
