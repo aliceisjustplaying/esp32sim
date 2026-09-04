@@ -157,9 +157,9 @@ pub trait Core {
         for i in 0..budget { if let Some(t) = self.step(bus).trap() { return (i + 1, Some(t)); } }
         (budget, None)
     }
-    /// pcs the machine intercepts (stubs, probes) as a bloom over `pc_bit`: a fast path must
-    /// stop at every one of them so the machine can look.
-    fn set_boundaries(&mut self, _bloom: u64) {}
+    /// Configure a run before its mandatory cache flush. `boundaries` names pcs that must return
+    /// to the machine; `costed_jit` selects the generated-code ABI for modeled execution.
+    fn set_run_context(&mut self, _boundaries: u64, _costed_jit: bool) {}
     /// Throw away decoded/compiled code (after loading an image or changing boundaries).
     fn flush_caches(&mut self) {}
     /// Enable/disable native code generation, if the core has it (`--no-jit`: the interpreter is the oracle).
