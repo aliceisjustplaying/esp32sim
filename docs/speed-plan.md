@@ -126,6 +126,13 @@ One block IR, two backends — the native one exists; for the browser build:
   layer must admit that idle core and bound scripts by their next deadline before opcode coverage
   is representative (`docs/evidence/wasm-jit-coverage-2026-09-04/`).
 
+- **scheduler eligibility checkpoint**: the external quantum now accepts a released secondary
+  core only when it is already waiting without a pending interrupt, advances that core by the
+  same 64 cycles on commit, and delivers scripts at the existing end-of-quantum boundary. The
+  same five manifests no longer report idle-core or script refusals; their eligible points now
+  expose the instruction coverage needed next
+  (`docs/evidence/wasm-jit-scheduler-eligibility-2026-09-04/`).
+
 - **wasm backend**: emit a wasm module per batch of hot blocks. Measured with a spike:
   compile+instantiate costs **~0.3 µs per block** when batched (64+ blocks/module) and
   **2.5 ns per call** into a generated function under V8 — so translation pays for itself

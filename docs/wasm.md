@@ -83,7 +83,9 @@ the tab falls half a second behind. `Date.now()` is passed in for the emulated S
 The browser uses the basic-block interpreter for general code. Its first WebAssembly JIT slice
 can hand a complete 64-instruction, receipt-priced, side-effect-free LX7 SRAM quantum to a
 generated module that shares the emulator's memory. The dispatcher falls back unless core 1 is
-held and the sequence fits every timer, observer and register-window boundary. The supported
+held or already waiting without a pending interrupt, and the sequence fits every timer, observer
+and register-window boundary. A waiting released core receives the same timing-only advance when
+the quantum commits; scripts are delivered at the normal end-of-quantum boundary. The supported
 opcode slice is still too small for a whole-firmware speed claim; PIE-heavy code (the autopling
 detector) remains behind.
 

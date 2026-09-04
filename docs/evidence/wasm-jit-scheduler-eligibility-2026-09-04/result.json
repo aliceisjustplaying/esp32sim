@@ -1,0 +1,56 @@
+{
+  "date": "2026-09-04",
+  "sourceTree": "8a072f6344c491de4b46a09b4ca7439ac160d53f",
+  "stackBaseTree": "5f1b241813374f515677988b0676ca1bffea8bcf",
+  "wasmSha256": "af3d2d7ca2a3264a8243cbabf944a0fd9de9784b919c4ec2d5823aa32dbaadc4",
+  "runtime": "Node v24.16.0",
+  "host": "Apple arm64, macOS 27.0",
+  "command": "ESP32SIM_WASM_JIT_STATS=1 node tools/wasm-test.mjs hello atech atech-sid panel panel-sid",
+  "emulatedSecondsPerManifest": 3,
+  "attemptsPerManifest": 360,
+  "results": {
+    "hello": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Waiting": 358, "OtherCoreActive": 1 },
+      "unsupported": { "J": 1 }
+    },
+    "atech": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Waiting": 357, "OtherCoreActive": 97 },
+      "unsupported": { "AddiN": 1, "J": 1 }
+    },
+    "atech-sid": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Waiting": 354, "OtherCoreActive": 50, "Interrupt": 1 },
+      "unsupported": { "AddiN": 1, "J": 1, "Moveqz": 1, "Movi": 1, "S32iN": 1 }
+    },
+    "panel": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Waiting": 304, "OtherCoreActive": 10, "Interrupt": 6 },
+      "unsupported": {
+        "S32iN": 19, "Addi": 8, "AddiN": 2, "Addx4": 2, "Bbci": 2,
+        "Extui": 2, "L32r": 2, "Rsil": 2, "AddN": 1, "Bgei": 1,
+        "Bgeu": 1, "Bgeui": 1, "Blt": 1, "Bnei": 1, "BnezN": 1,
+        "Bnone": 1, "Call8": 1, "J": 1, "MovN": 1, "Or": 1,
+        "RetwN": 1, "Rsr": 1, "S32e": 1
+      }
+    },
+    "panel-sid": {
+      "prepared": 0,
+      "committed": 0,
+      "scheduler": { "Waiting": 304, "OtherCoreActive": 10, "Interrupt": 6 },
+      "unsupported": {
+        "S32iN": 19, "Addi": 8, "AddiN": 2, "Addx4": 2, "Bbci": 2,
+        "Extui": 2, "L32r": 2, "Rsil": 2, "AddN": 1, "Bgei": 1,
+        "Bgeu": 1, "Bgeui": 1, "Blt": 1, "Bnei": 1, "BnezN": 1,
+        "Bnone": 1, "Call8": 1, "J": 1, "MovN": 1, "Or": 1,
+        "RetwN": 1, "Rsr": 1, "S32e": 1
+      }
+    }
+  },
+  "scope": "Post-scheduler-gate coverage diagnostic at Node driver boundaries; refusal reasons are concurrent. This is not a throughput or browser wall-clock benchmark."
+}
