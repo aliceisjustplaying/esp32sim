@@ -11,6 +11,6 @@ pub mod crypto { pub use esp_periph::crypto::*; }
 pub use esp_soc::{elf, host, image, picture, web, Stop};
 pub use soc::{machine, Machine, S3};
 pub use timing::{
-    CostClass, CostComponent, CostTier, Esp32S3SramCostModel, LedgerEntry, MmioReadTier,
-    ReceiptId,
+    CostClass, CostComponent, CostTier, Esp32S3SramCostModel, InstructionCost, LedgerEntry,
+    MmioReadTier, ReceiptId,
 };

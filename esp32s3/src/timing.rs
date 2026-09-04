@@ -27,6 +27,9 @@ pub enum ReceiptId {
     /// IDF 6.1 register-block measurement summarized in
     /// `tests/fixtures/mmio-read-receipt.json`.
     Idf61RegisterBlockRead,
+    /// IDF 6.1 opcode-ladder measurement summarized in
+    /// `tests/fixtures/opcode-cost-receipt.json`.
+    Idf61OpcodeLadders,
 }
 
 impl ReceiptId {
@@ -36,6 +39,7 @@ impl ReceiptId {
                 "esp32s3/tests/fixtures/sram-cost-receipt.json"
             }
             Self::Idf61RegisterBlockRead => "esp32s3/tests/fixtures/mmio-read-receipt.json",
+            Self::Idf61OpcodeLadders => "esp32s3/tests/fixtures/opcode-cost-receipt.json",
         }
     }
 }
@@ -48,10 +52,22 @@ pub enum MmioReadTier {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstructionCost {
+    Branch { taken: bool },
+    Jump,
+    JumpRegister,
+    LoopSetup,
+    Quotient,
+    Remainder,
+    LoadUse,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CostClass {
     InstructionIssue,
     IndependentSramAccess,
     MmioRead(MmioReadTier),
+    Instruction(InstructionCost),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,28 +171,32 @@ impl CostModel for Esp32S3SramCostModel {
                 instruction.op, instruction.len, facts.outcome.length
             ));
         }
+        let (load_destination, read_registers, expects_load, instruction_timing) =
+            classify(instruction.op, instruction.s, instruction.t)?;
         let sequential_pc = facts.outcome.pc.wrapping_add(u32::from(instruction.len));
-        if facts.outcome.next_pc != sequential_pc {
+        let control_flow = facts.outcome.next_pc != sequential_pc;
+        if control_flow
+            && !matches!(
+                instruction_timing,
+                InstructionTiming::Branch
+                    | InstructionTiming::Jump
+                    | InstructionTiming::JumpRegister
+            )
+        {
             return Err(format!(
                 "ControlFlow({:?}): cost not adopted (unexplained tier)",
                 instruction.op
             ));
         }
-
-        let (load_destination, read_registers, expects_load) =
-            classify(instruction.op, instruction.s, instruction.t)?;
-        let instruction_issue = CostComponent {
-            class: CostClass::InstructionIssue,
-            tier: CostTier::Exact,
-            cycles: 1,
-            receipt: ReceiptId::Idf61StraightLineIssue,
-        };
+        let instruction_component = price_instruction(instruction_timing, control_flow);
         let mut components = Vec::new();
+        let mut next_previous_load = None;
         if expects_load {
             let access = exactly_one_load(data_accesses, instruction.op)?;
             match classify_load(access, instruction.op)? {
                 LoadClass::Sram => {
-                    components.push(instruction_issue);
+                    next_previous_load = load_destination;
+                    components.push(instruction_component);
                     components.push(CostComponent {
                         class: CostClass::IndependentSramAccess,
                         tier: CostTier::Exact,
@@ -201,16 +221,18 @@ impl CostModel for Esp32S3SramCostModel {
                 instruction.op
             ));
         } else {
-            components.push(instruction_issue);
+            components.push(instruction_component);
         }
 
         let mut state = self.state.borrow_mut();
         if let Some(previous) = state.previous_load[facts.core] {
             if read_registers & (1 << previous) != 0 {
-                return Err(format!(
-                    "LoadUse({:?}): additive cost not in this receipt slice (exact tier candidate)",
-                    instruction.op
-                ));
+                components.push(CostComponent {
+                    class: CostClass::Instruction(InstructionCost::LoadUse),
+                    tier: CostTier::Exact,
+                    cycles: 1,
+                    receipt: ReceiptId::Idf61OpcodeLadders,
+                });
             }
         }
         let cycles = components.iter().map(|component| component.cycles).sum();
@@ -220,7 +242,7 @@ impl CostModel for Esp32S3SramCostModel {
             cycles,
             components,
         });
-        state.previous_load[facts.core] = load_destination;
+        state.previous_load[facts.core] = next_previous_load;
         Ok(cycles)
     }
 }
@@ -252,15 +274,91 @@ fn validate_fetch<'a>(
     Ok(data_accesses)
 }
 
-fn classify(op: Op, s: u8, t: u8) -> Result<(Option<u8>, u16, bool), String> {
+#[derive(Clone, Copy)]
+enum InstructionTiming {
+    Issue,
+    Branch,
+    Jump,
+    JumpRegister,
+    LoopSetup,
+    Quotient,
+    Remainder,
+}
+
+fn classify(op: Op, s: u8, t: u8) -> Result<(Option<u8>, u16, bool, InstructionTiming), String> {
     use Op::*;
+    let bit = |register| 1u16 << register;
     match op {
-        L32i | L32iN => Ok((Some(t), 1 << s, true)),
-        MoviN | Memw => Ok((None, 0, false)),
-        Sub | Saltu => Ok((None, (1 << s) | (1 << t), false)),
+        L32i | L32iN => Ok((Some(t), bit(s), true, InstructionTiming::Issue)),
+        MoviN | Memw => Ok((None, 0, false, InstructionTiming::Issue)),
+        Sub | Saltu => Ok((None, bit(s) | bit(t), false, InstructionTiming::Issue)),
+        Beqz | Bnez | Bltz | Bgez | BeqzN | BnezN | Beqi | Bnei | Blti | Bgei | Bltui | Bgeui
+        | Bbci | Bbsi => Ok((None, bit(s), false, InstructionTiming::Branch)),
+        Bnone | Bany | Ball | Bnall | Beq | Bne | Blt | Bge | Bltu | Bgeu | Bbc | Bbs => {
+            Ok((None, bit(s) | bit(t), false, InstructionTiming::Branch))
+        }
+        J => Ok((None, 0, false, InstructionTiming::Jump)),
+        Jx => Ok((None, bit(s), false, InstructionTiming::JumpRegister)),
+        Loop | Loopnez | Loopgtz => Ok((None, bit(s), false, InstructionTiming::LoopSetup)),
+        Quos | Quou => Ok((None, bit(s) | bit(t), false, InstructionTiming::Quotient)),
+        Rems | Remu => Ok((None, bit(s) | bit(t), false, InstructionTiming::Remainder)),
+        Extw | Rsr | Rsync => Ok((None, 0, false, InstructionTiming::Issue)),
+        Movsp | Nsa | Nsau | Sext => Ok((None, bit(s), false, InstructionTiming::Issue)),
+        Wsr | Xsr => Ok((None, bit(t), false, InstructionTiming::Issue)),
+        Max | Maxu | Min | Minu | Mull | Mulsh | Muluh => {
+            Ok((None, bit(s) | bit(t), false, InstructionTiming::Issue))
+        }
         _ => Err(format!(
             "Instruction::{op:?}: cost not adopted (unexplained tier)"
         )),
+    }
+}
+
+fn price_instruction(timing: InstructionTiming, branch_taken: bool) -> CostComponent {
+    let (class, cycles, receipt) = match timing {
+        InstructionTiming::Issue => (
+            CostClass::InstructionIssue,
+            1,
+            ReceiptId::Idf61StraightLineIssue,
+        ),
+        InstructionTiming::Branch => (
+            CostClass::Instruction(InstructionCost::Branch {
+                taken: branch_taken,
+            }),
+            if branch_taken { 3 } else { 1 },
+            ReceiptId::Idf61OpcodeLadders,
+        ),
+        InstructionTiming::Jump => (
+            CostClass::Instruction(InstructionCost::Jump),
+            3,
+            ReceiptId::Idf61OpcodeLadders,
+        ),
+        InstructionTiming::JumpRegister => (
+            CostClass::Instruction(InstructionCost::JumpRegister),
+            6,
+            ReceiptId::Idf61OpcodeLadders,
+        ),
+        InstructionTiming::LoopSetup => (
+            CostClass::Instruction(InstructionCost::LoopSetup),
+            5,
+            ReceiptId::Idf61OpcodeLadders,
+        ),
+        InstructionTiming::Quotient => (
+            CostClass::Instruction(InstructionCost::Quotient),
+            4,
+            ReceiptId::Idf61OpcodeLadders,
+        ),
+        InstructionTiming::Remainder => (
+            CostClass::Instruction(InstructionCost::Remainder),
+            5,
+            ReceiptId::Idf61OpcodeLadders,
+        ),
+    };
+    CostComponent {
+        class,
+        tier: CostTier::Exact,
+        cycles,
+        receipt,
     }
 }
 

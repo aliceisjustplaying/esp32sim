@@ -1,5 +1,5 @@
 use emu_core::{Bus, Core};
-use esp32s3::{CostClass, Esp32S3SramCostModel, MmioReadTier, ReceiptId};
+use esp32s3::{CostClass, Esp32S3SramCostModel, InstructionCost, MmioReadTier, ReceiptId};
 use esp_soc::Stop;
 
 const PC: u32 = 0x4038_645b;
@@ -8,6 +8,7 @@ const POINTER: u32 = 0x3fc8_9100;
 const PROGRAM: &[u8] = include_bytes!("fixtures/tinydraw-sram-kernel.bin");
 const RECEIPT: &str = include_str!("fixtures/sram-cost-receipt.json");
 const MMIO_RECEIPT: &str = include_str!("fixtures/mmio-read-receipt.json");
+const OPCODE_RECEIPT: &str = include_str!("fixtures/opcode-cost-receipt.json");
 
 fn configured_machine() -> (esp32s3::Machine, Esp32S3SramCostModel) {
     let mut machine = esp32s3::machine([0; 6]);
@@ -55,16 +56,15 @@ fn prices_the_receipted_tinydraw_sram_sequence_deterministically() {
     assert!(matches!(second_machine.run(7), Stop::MaxInsns));
     assert_eq!(second_model.ledger(), first);
 
-    let stop = first_machine.run(1);
-    assert!(
-        matches!(
-        stop,
-        Stop::CostModel { core: 0, pc, ref reason }
-            if pc == PC + 19 && reason.contains("ControlFlow(Bltu)")
-        ),
-        "{stop:?}"
-    );
-    assert_eq!(first_model.ledger(), first);
+    assert!(matches!(first_machine.run(1), Stop::MaxInsns));
+    let extended = first_model.ledger();
+    assert_eq!(extended.len(), 8);
+    assert_eq!(extended[7].pc, PC + 19);
+    let CostClass::Instruction(InstructionCost::Branch { taken }) = extended[7].components[0].class
+    else {
+        panic!("expected the receipted BLTU branch component");
+    };
+    assert_eq!(extended[7].cycles, if taken { 3 } else { 1 });
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn refuses_unreceipted_mmio_without_committing_a_ledger_entry() {
 }
 
 #[test]
-fn refuses_an_unpriced_load_use_dependency() {
+fn prices_the_receipted_load_use_dependency() {
     const DEPENDENT_PC: u32 = 0x4037_1000;
     const DEPENDENT_PROGRAM: &[u8] = &[0xa8, 0x12, 0xa0, 0x88, 0xc0];
     let mut machine = esp32s3::machine([0; 6]);
@@ -96,12 +96,95 @@ fn refuses_an_unpriced_load_use_dependency() {
     machine.set_cost_model(Box::new(model.clone())).unwrap();
 
     assert!(matches!(machine.run(1), Stop::MaxInsns));
-    let stop = machine.run(1);
-    assert!(
-        matches!(stop, Stop::CostModel { ref reason, .. } if reason.contains("LoadUse(Sub)")),
-        "{stop:?}"
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    let ledger = model.ledger();
+    assert_eq!(ledger.len(), 2);
+    assert_eq!(ledger[1].cycles, 2);
+    assert_eq!(
+        ledger[1].components[1].class,
+        CostClass::Instruction(InstructionCost::LoadUse)
     );
-    assert_eq!(model.ledger().len(), 1);
+    assert_eq!(
+        ledger[1].components[1].receipt,
+        ReceiptId::Idf61OpcodeLadders
+    );
+}
+
+#[test]
+fn ignores_special_register_encoding_fields_for_load_use() {
+    const HAZARD_PC: u32 = 0x4037_1800;
+    // l32i.n a10, a2, 4; rsr.ccount a4
+    const PROGRAM: &[u8] = &[0xa8, 0x12, 0x40, 0xea, 0x03];
+    let mut machine = esp32s3::machine([0; 6]);
+    esp_soc::SocBus::load_bytes(&mut machine.bus, HAZARD_PC, PROGRAM).unwrap();
+    machine.bus.write32(BASE + 4, 0x1234_5678).unwrap();
+    machine.cores[0].set_pc(HAZARD_PC);
+    machine.cores[0].set_ar(2, BASE);
+    let model = Esp32S3SramCostModel::new();
+    machine.set_cost_model(Box::new(model.clone())).unwrap();
+
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    let ledger = model.ledger();
+    assert_eq!(ledger[1].cycles, 1);
+    assert!(ledger[1]
+        .components
+        .iter()
+        .all(|component| component.class != CostClass::Instruction(InstructionCost::LoadUse)));
+}
+
+#[test]
+fn ignores_jx_fixed_t_field_for_load_use() {
+    const HAZARD_PC: u32 = 0x4037_1900;
+    // l32i.n a10, a2, 4; jx a3 (whose fixed t field is 10)
+    const PROGRAM: &[u8] = &[0xa8, 0x12, 0xa0, 0x03, 0x00];
+    let mut machine = esp32s3::machine([0; 6]);
+    esp_soc::SocBus::load_bytes(&mut machine.bus, HAZARD_PC, PROGRAM).unwrap();
+    machine.bus.write32(BASE + 4, 0x1234_5678).unwrap();
+    machine.cores[0].set_pc(HAZARD_PC);
+    machine.cores[0].set_ar(2, BASE);
+    machine.cores[0].set_ar(3, HAZARD_PC + 5);
+    let model = Esp32S3SramCostModel::new();
+    machine.set_cost_model(Box::new(model.clone())).unwrap();
+
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    let ledger = model.ledger();
+    assert_eq!(ledger[1].cycles, 6);
+    assert!(ledger[1]
+        .components
+        .iter()
+        .all(|component| component.class != CostClass::Instruction(InstructionCost::LoadUse)));
+}
+
+#[test]
+fn prices_taken_and_fallthrough_branches() {
+    assert!(
+        OPCODE_RECEIPT.contains("db29ec42ccccc958c96153340497592ecc76203166a5a98c696bdd81496c6515")
+    );
+    const BRANCH_PC: u32 = 0x4037_2000;
+    const BNEZ_A8: &[u8] = &[0x56, 0x78, 0xfe];
+
+    for (value, taken, cycles) in [(0, false, 1), (1, true, 3)] {
+        let mut machine = esp32s3::machine([0; 6]);
+        esp_soc::SocBus::load_bytes(&mut machine.bus, BRANCH_PC, BNEZ_A8).unwrap();
+        machine.cores[0].set_pc(BRANCH_PC);
+        machine.cores[0].set_ar(8, value);
+        let model = Esp32S3SramCostModel::new();
+        machine.set_cost_model(Box::new(model.clone())).unwrap();
+
+        assert!(matches!(machine.run(1), Stop::MaxInsns));
+        let ledger = model.ledger();
+        assert_eq!(ledger[0].cycles, cycles);
+        assert_eq!(
+            ledger[0].components[0].class,
+            CostClass::Instruction(InstructionCost::Branch { taken })
+        );
+        assert_eq!(
+            ledger[0].components[0].receipt,
+            ReceiptId::Idf61OpcodeLadders
+        );
+    }
 }
 
 #[test]
@@ -149,4 +232,20 @@ fn refuses_mmio_reads_without_an_exact_receipt() {
         "{stop:?}"
     );
     assert!(model.ledger().is_empty());
+}
+
+#[test]
+fn does_not_apply_the_sram_load_use_cost_after_mmio() {
+    let (mut machine, model) = configured_machine();
+    machine.cores[0].set_ar(2, 0x6000_001c - 4);
+
+    assert!(matches!(machine.run(2), Stop::MaxInsns));
+    let ledger = model.ledger();
+    assert_eq!(ledger.len(), 2);
+    assert_eq!(ledger[0].cycles, 15);
+    assert_eq!(ledger[1].cycles, 1);
+    assert!(ledger[1]
+        .components
+        .iter()
+        .all(|component| component.class != CostClass::Instruction(InstructionCost::LoadUse)));
 }
