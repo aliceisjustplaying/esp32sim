@@ -56,8 +56,11 @@ run_frame() {
     --no-dump \
     --max-seconds 2 \
     >"$output/raw-$label.log" 2>&1
+  grep -q 'mode:DIO, clock div:1' "$output/raw-$label.log"
   grep -q 'qio_mode: Enabling default flash chip QIO' "$output/raw-$label.log"
+  grep -q 'Boot SPI Speed : 80MHz' "$output/raw-$label.log"
   grep -q 'SPI Mode       : QIO' "$output/raw-$label.log"
+  grep -q 'spi_flash: flash io: qio' "$output/raw-$label.log"
   python3 "$frame_tool" normalize "$bundle/MANIFEST.json" \
     "$output/raw-$label.log" --source emulator >"$output/normalized-$label.ndjson"
 }
