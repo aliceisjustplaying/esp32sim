@@ -141,6 +141,39 @@ pub struct Cpu {
     pub jit_trap: Option<crate::exec::Trap>,
 }
 
+macro_rules! architectural_state {
+    ($($field:ident: $ty:ty),+ $(,)?) => {
+        /// Fixed-size CPU state used to undo a verified native block. Code and decode caches stay live.
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        pub(crate) struct ArchitecturalState { $(pub(crate) $field: $ty),+ }
+
+        impl Cpu {
+            pub(crate) fn architectural_state(&self) -> ArchitecturalState {
+                ArchitecturalState { $($field: self.$field),+ }
+            }
+
+            pub(crate) fn restore_architectural_state(&mut self, state: ArchitecturalState) {
+                $(self.$field = state.$field;)+
+            }
+        }
+    };
+}
+
+architectural_state! {
+    pc: u32, ar: [u32; NUM_AREGS], windowbase: u32, windowstart: u32, ps: u32,
+    sar: u32, lbeg: u32, lend: u32, lcount: u32, br: u32, scompare1: u32,
+    acclo: u32, acchi: u32, m: [u32; 4], epc: [u32; 8], eps: [u32; 8],
+    excsave: [u32; 8], depc: u32, vecbase: u32, exccause: u32, excvaddr: u32,
+    debugcause: u32, interrupt: u32, intenable: u32, ccount: u32,
+    ccompare: [u32; 3], cpenable: u32, prid: u32, threadptr: u32, misc: [u32; 4],
+    icount: u32, icountlevel: u32, ibreakenable: u32, ibreaka: [u32; 2],
+    dbreaka: [u32; 2], dbreakc: [u32; 2], memctl: u32, atomctl: u32, ddr: u32,
+    configid: [u32; 2], fr: [u32; 16], fcr: u32, fsr: u32, qr: [u128; 8],
+    accx: [u32; 2], qacc_h: [u32; 5], qacc_l: [u32; 5], sar_byte: u32,
+    fft_bit_width: u32, ua_state: [u32; 4], gpio_out: u32, waiting: bool,
+    ext_level_lines: u32, insn_count: u64, jit_trap: Option<crate::exec::Trap>,
+}
+
 impl Default for Cpu {
     fn default() -> Self { Self::new(0) }
 }

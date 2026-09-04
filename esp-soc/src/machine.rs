@@ -9,7 +9,7 @@ use crate::{elf, png};
 use emu_core::core::pc_bit;
 use emu_core::{
     Bus, Core, CostModel, ExecutionFacts, Fault, LifecycleFacts, LifecycleKind,
-    MemoryAccess, MemoryAccessKind, ModeledExecution, StepKind, Trap,
+    MemoryAccess, MemoryAccessKind, ModeledBlockEvent, ModeledExecution, StepKind, Trap,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -528,6 +528,30 @@ impl<S: Soc> Machine<S> {
             }
 
             let now = self.bus.cycles();
+            if let Some((completed, stop)) = self.try_modeled_blocks(
+                max_insns - events,
+                &on,
+                force_idle,
+            ) {
+                events += completed;
+                if let Some(stop) = stop {
+                    if matches!(stop, Stop::CostModel { .. } | Stop::CostModelLifecycle { .. }) {
+                        self.model_stop = Some(stop.clone());
+                    }
+                    self.drain_console();
+                    return stop;
+                }
+                if let Err(stop) = self.settle_modeled_time(&mut on, trace, force_idle) {
+                    if matches!(stop, Stop::CostModelLifecycle { .. }) {
+                        self.model_stop = Some(stop.clone());
+                    }
+                    self.drain_console();
+                    return stop;
+                }
+                if events & 0xffff == 0 { self.drain_console(); }
+                continue;
+            }
+
             let Some(core) = (0..S::CORES)
                 .filter(|&i| on[i] && (force_idle || !self.cores[i].waiting() || self.cores[i].irq_pending()))
                 .filter(|&i| self.model_ready_at[i] <= now)
@@ -561,6 +585,206 @@ impl<S: Soc> Machine<S> {
             }
             if events & 0xffff == 0 { self.drain_console(); }
         }
+    }
+
+    /// Execute receipt-static native blocks while preserving the single-event scheduler order.
+    /// The model is called in that order before each independently executable core prefix runs.
+    fn try_modeled_blocks(
+        &mut self,
+        remaining_events: u64,
+        on: &[bool; 4],
+        force_idle: bool,
+    ) -> Option<(u64, Option<Stop>)> {
+        if force_idle || self.probes.0 != 0 || remaining_events < 2 {
+            return None;
+        }
+        let now = self.bus.cycles();
+        let budget = remaining_events.min(u64::from(u32::MAX)) as u32;
+        let mut plans = (0..S::CORES).map(|_| None).collect::<Vec<_>>();
+        let mut participants = Vec::new();
+        let mut deadline = self.max_cycles;
+
+        for core in 0..S::CORES {
+            if !on[core]
+                || (self.cores[core].waiting() && !self.cores[core].irq_pending())
+            {
+                continue;
+            }
+            if self.model_ready_at[core] > now {
+                deadline = deadline.min(self.model_ready_at[core]);
+                continue;
+            }
+            let pc = self.cores[core].pc();
+            if (self.stub_bloom | self.probe_bloom) & pc_bit(pc) != 0 {
+                return None;
+            }
+            plans[core] = self.cores[core].plan_modeled_block(&mut self.bus, budget);
+            plans[core].as_ref()?;
+            participants.push(core);
+        }
+        if participants.is_empty() {
+            return None;
+        }
+
+        if let Some(delta) = self.bus.next_deadline() {
+            let event = now.saturating_add(delta.max(1));
+            deadline = deadline.min(event);
+        }
+        if let Some(&(event, _)) = self.script.events.get(self.script.pos) {
+            let event = event.max(now.saturating_add(1));
+            deadline = deadline.min(event);
+        }
+        for (core, &enabled) in on.iter().enumerate().take(S::CORES) {
+            if enabled && self.cores[core].waiting() && !self.cores[core].irq_pending() {
+                if let Some(delta) = self.cores[core].cycles_until_wake() {
+                    let event = self.model_ready_at[core]
+                        .max(now)
+                        .saturating_add(delta.max(1));
+                    deadline = deadline.min(event);
+                }
+            }
+        }
+
+        let mut ready = self.model_ready_at.clone();
+        let mut selected = vec![0usize; S::CORES];
+        let mut accepted = Vec::new();
+        while (accepted.len() as u64) < remaining_events {
+            let core = *participants
+                .iter()
+                .min_by_key(|&&core| (ready[core], core))?;
+            let plan = plans[core].as_ref().expect("participant has a native block plan");
+            if selected[core] == plan.outcomes.len()
+                || ready[core] >= deadline
+            {
+                break;
+            }
+            let modeled = plan.outcomes[selected[core]];
+            let Some(completion) = ready[core].checked_add(u64::from(modeled.applied_cycles)) else {
+                return Some((0, Some(Stop::CostModel {
+                    core,
+                    pc: modeled.outcome.pc,
+                    reason: "cost model cycle frontier overflow".into(),
+                })));
+            };
+            ready[core] = completion;
+            selected[core] += 1;
+            accepted.push(ModeledBlockEvent {
+                core,
+                outcome: modeled.outcome,
+                applied_cycles: modeled.applied_cycles,
+            });
+        }
+
+        if accepted.is_empty() {
+            return None;
+        }
+        let checkpoint = self.cost.as_mut()?.begin_batch()?;
+        match self.cost.as_mut()?.commit_modeled_block(&accepted) {
+            Some(Ok(())) => {}
+            None => {
+                if let Err(reason) = self.cost.as_mut()?.rollback_batch(checkpoint) {
+                    let core = accepted[0].core;
+                    return Some((0, Some(Stop::CostModel {
+                        core,
+                        pc: accepted[0].outcome.pc,
+                        reason: format!("CostedJitRollback: {reason}"),
+                    })));
+                }
+                return None;
+            }
+            Some(Err(reason)) => {
+                let rollback = self.cost.as_mut()?.rollback_batch(checkpoint);
+                let core = accepted[0].core;
+                return Some((0, Some(Stop::CostModel {
+                    core,
+                    pc: accepted[0].outcome.pc,
+                    reason: rollback.err().map_or(reason, |error| format!("CostedJitRollback: {error}")),
+                })));
+            }
+        }
+
+        let mut core_checkpoints = (0..S::CORES).map(|_| None).collect::<Vec<_>>();
+        for &core in &participants {
+            if selected[core] != 0 {
+                core_checkpoints[core] = self.cores[core].checkpoint_modeled_block();
+                if core_checkpoints[core].is_none() {
+                    let rollback = self.cost.as_mut()?.rollback_batch(checkpoint);
+                    let reason = rollback.err().map_or_else(
+                        || "CostedJitCheckpoint: core does not support rollback".to_string(),
+                        |reason| format!("CostedJitRollback: {reason}"),
+                    );
+                    return Some((0, Some(Stop::CostModel {
+                        core,
+                        pc: self.cores[core].pc(),
+                        reason,
+                    })));
+                }
+            }
+        }
+
+        let mut stop = None;
+        for &core in &participants {
+            let events = selected[core] as u32;
+            if events == 0 {
+                continue;
+            }
+            let expected_cycles = plans[core]
+                .as_ref()
+                .expect("participant has a native block plan")
+                .outcomes[..selected[core]]
+                .iter()
+                .map(|outcome| outcome.applied_cycles)
+                .sum::<u32>();
+            let expected_pc = plans[core]
+                .as_ref()
+                .expect("participant has a native block plan")
+                .outcomes[selected[core] - 1]
+                .outcome
+                .next_pc;
+            match self.cores[core].run_modeled_block(&mut self.bus, events) {
+                Some(run)
+                    if run.events == events
+                        && run.applied_cycles == expected_cycles
+                        && self.cores[core].pc() == expected_pc => {}
+                _ => {
+                    stop = Some(Stop::CostModel {
+                        core,
+                        pc: self.cores[core].pc(),
+                        reason: "CostedJitMismatch: planned native block did not execute exactly"
+                            .into(),
+                    });
+                    break;
+                }
+            }
+        }
+        if stop.is_some() {
+            let mut rollback_error = None;
+            for (core, saved) in core_checkpoints.into_iter().enumerate() {
+                if let Some(saved) = saved {
+                    if let Err(reason) = self.cores[core].rollback_modeled_block(saved) {
+                        rollback_error.get_or_insert((core, reason));
+                    }
+                }
+            }
+            if let Err(reason) = self.cost
+                .as_mut()
+                .expect("modeled path has a cost model")
+                .rollback_batch(checkpoint)
+            {
+                rollback_error.get_or_insert((participants[0], reason));
+            }
+            if let Some((core, reason)) = rollback_error {
+                stop = Some(Stop::CostModel {
+                    core,
+                    pc: self.cores[core].pc(),
+                    reason: format!("CostedJitRollback: {reason}"),
+                });
+            }
+        } else {
+            self.model_ready_at = ready;
+            self.refresh_irq();
+        }
+        Some((accepted.len() as u64, stop))
     }
 
     fn refresh_modeled_core_states(&mut self, on: &mut [bool; 4], trace: bool) -> Option<Stop> {

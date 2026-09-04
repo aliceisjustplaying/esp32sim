@@ -2,6 +2,7 @@
 //! counts traps and drives tracing through this trait; everything architectural (register
 //! windows, CSRs, vectors) stays inside the core crate.
 use crate::bus::{Bus, Fault};
+use std::any::Any;
 
 /// Why `step`/`run` returned early. Architectural traps have already been taken (the pc points
 /// at the handler); the emulator-level ones are reported so the machine can stop.
@@ -91,6 +92,25 @@ pub struct ModeledStepOutcome {
     pub execution: ModeledExecution,
 }
 
+/// A straight-line sequence whose complete receipt-backed costs are compiled into native code.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModeledBlockPlan {
+    pub outcomes: Vec<ModeledStepOutcome>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModeledBlockRun {
+    pub events: u32,
+    pub applied_cycles: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModeledBlockEvent {
+    pub core: usize,
+    pub outcome: StepOutcome,
+    pub applied_cycles: u32,
+}
+
 impl StepOutcome {
     #[inline]
     pub fn result(self) -> Result<(), Trap> {
@@ -149,6 +169,16 @@ pub trait Core {
             applied_cycles,
             execution: ModeledExecution::Interpreter,
         }
+    }
+    /// Plan a native receipt-costed straight-line block without changing architectural state.
+    fn plan_modeled_block<B: Bus>(&mut self, _bus: &mut B, _budget: u32) -> Option<ModeledBlockPlan> { None }
+    /// Execute a prefix returned by `plan_modeled_block`.
+    fn run_modeled_block<B: Bus>(&mut self, _bus: &mut B, _events: u32) -> Option<ModeledBlockRun> { None }
+    /// Capture architectural state before a planned native block executes.
+    fn checkpoint_modeled_block(&self) -> Option<Box<dyn Any>> { None }
+    /// Restore architectural state after a planned native block fails verification.
+    fn rollback_modeled_block(&mut self, _checkpoint: Box<dyn Any>) -> Result<(), String> {
+        Err("core does not support modeled block rollback".into())
     }
     /// Execute up to `budget` instructions the fast way (blocks, JIT). Returns the iterations a
     /// loop over `step` would have consumed — executed instructions, plus one for a trap taken
@@ -234,6 +264,16 @@ pub struct LifecycleFacts {
 pub trait CostModel {
     fn lifecycle(&mut self, facts: &LifecycleFacts) -> Result<(), String>;
     fn cycles(&mut self, facts: &ExecutionFacts<'_>) -> Result<u32, String>;
+    /// Validate and commit one receipt-static native block transaction.
+    fn commit_modeled_block(&mut self, _events: &[ModeledBlockEvent]) -> Option<Result<(), String>> {
+        None
+    }
+    /// Start a rollback-capable batch. Models without transactional state return `None`.
+    fn begin_batch(&mut self) -> Option<Box<dyn Any>> { None }
+    /// Restore the state captured by `begin_batch`.
+    fn rollback_batch(&mut self, _checkpoint: Box<dyn Any>) -> Result<(), String> {
+        Err("cost model does not support transactional batches".into())
+    }
 }
 
 /// Bloom bit for a pc; the machine's stub/probe tables and the cores' block boundaries agree on it.

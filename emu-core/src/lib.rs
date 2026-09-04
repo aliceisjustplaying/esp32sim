@@ -12,6 +12,7 @@ pub use bus::{Bus, Fault, FlatRam};
 pub use clock::{ClockDomain, ClockTree, Dividers};
 pub use core::{
     CacheOperation, ControlEvent, ControlEventKind, Core, CostModel, ExecutionFacts,
-    LifecycleFacts, LifecycleKind, MemoryAccess, MemoryAccessKind, ModeledExecution,
-    ModeledStepOutcome, StepKind, StepOutcome, TlbOperation, Trap,
+    LifecycleFacts, LifecycleKind, MemoryAccess, MemoryAccessKind, ModeledBlockEvent,
+    ModeledBlockPlan, ModeledBlockRun, ModeledExecution, ModeledStepOutcome, StepKind,
+    StepOutcome, TlbOperation, Trap,
 };

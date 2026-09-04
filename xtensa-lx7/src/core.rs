@@ -4,9 +4,14 @@
 use crate::bus::Bus;
 use crate::exec::Trap;
 use crate::state::{Cpu, EXCM_LEVEL, INT_ABOVE, INTTYPE_LEVEL, TIMER_INTERRUPT};
-use emu_core::{ModeledStepOutcome, StepOutcome};
+use emu_core::{ModeledBlockPlan, ModeledBlockRun, ModeledStepOutcome, StepOutcome};
 
 const AR: [&str; 16] = ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15"];
+
+struct ModeledBlockCheckpoint {
+    architecture: crate::state::ArchitecturalState,
+    block: ((u32, u32, u32), u64, u64),
+}
 
 impl emu_core::Core for Cpu {
     /// The 32 interrupt lines after the interrupt matrix; only the level-triggered ones are the
@@ -34,6 +39,29 @@ impl emu_core::Core for Cpu {
     fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome { crate::exec::step_outcome(self, bus) }
     fn step_modeled<B: Bus>(&mut self, bus: &mut B) -> ModeledStepOutcome {
         crate::block::run_costed_step(self, bus)
+    }
+    fn plan_modeled_block<B: Bus>(&mut self, bus: &mut B, budget: u32) -> Option<ModeledBlockPlan> {
+        crate::block::plan_costed_block(self, bus, budget)
+    }
+    fn run_modeled_block<B: Bus>(&mut self, bus: &mut B, events: u32) -> Option<ModeledBlockRun> {
+        crate::block::run_costed_block(self, bus, events)
+    }
+    fn checkpoint_modeled_block(&self) -> Option<Box<dyn std::any::Any>> {
+        Some(Box::new(ModeledBlockCheckpoint {
+            architecture: self.architectural_state(),
+            block: self.blocks.modeled_checkpoint(),
+        }))
+    }
+    fn rollback_modeled_block(
+        &mut self,
+        checkpoint: Box<dyn std::any::Any>,
+    ) -> Result<(), String> {
+        let checkpoint = *checkpoint
+            .downcast::<ModeledBlockCheckpoint>()
+            .map_err(|_| "Xtensa modeled block checkpoint type mismatch".to_string())?;
+        self.restore_architectural_state(checkpoint.architecture);
+        self.blocks.restore_modeled_checkpoint(checkpoint.block);
+        Ok(())
     }
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }
     fn set_run_context(&mut self, boundaries: u64, costed_jit: bool) {
