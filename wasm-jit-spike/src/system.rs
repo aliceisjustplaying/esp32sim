@@ -753,7 +753,42 @@ fn sram_costs(instructions: &[(u32, Insn)]) -> Result<Vec<u64>, CompileError> {
             let dependency = previous_load
                 .is_some_and(|register| read_registers(instruction) & (1u16 << register) != 0);
             previous_load = load_destination(instruction);
-            Ok(1 + u64::from(dependency))
+            let issue = xtensa_lx7::measured::compiled_internal_cost(instruction)
+                .or_else(|| {
+                    price_operation(
+                        backend_api::ChipConfig::RECEIPT_SCOPE,
+                        CoreId::Core0,
+                        Operation::Instruction(InstructionCost::Issue),
+                    )
+                    .ok()
+                    .map(|(component, _)| component)
+                })
+                .and_then(|component| component.cycles())
+                .ok_or(CompileError::UnsupportedInstruction {
+                    pc: *pc,
+                    op: instruction.op,
+                })?;
+            let load_use = if dependency {
+                price_operation(
+                    backend_api::ChipConfig::RECEIPT_SCOPE,
+                    CoreId::Core0,
+                    Operation::Instruction(InstructionCost::LoadUse),
+                )
+                .ok()
+                .and_then(|(component, _)| component.cycles())
+                .ok_or(CompileError::UnsupportedInstruction {
+                    pc: *pc,
+                    op: instruction.op,
+                })?
+            } else {
+                0
+            };
+            issue
+                .checked_add(load_use)
+                .ok_or(CompileError::UnsupportedInstruction {
+                    pc: *pc,
+                    op: instruction.op,
+                })
         })
         .collect()
 }

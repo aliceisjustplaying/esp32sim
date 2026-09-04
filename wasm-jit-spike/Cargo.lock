@@ -7,10 +7,33 @@ name = "backend-api"
 version = "0.1.0"
 
 [[package]]
+name = "emu-core"
+version = "0.1.0"
+
+[[package]]
+name = "esp-periph"
+version = "0.1.0"
+dependencies = [
+ "emu-core",
+]
+
+[[package]]
+name = "esp-soc"
+version = "0.1.0"
+dependencies = [
+ "backend-api",
+ "emu-core",
+ "esp-periph",
+]
+
+[[package]]
 name = "esp32s3"
 version = "0.1.0"
 dependencies = [
  "backend-api",
+ "emu-core",
+ "esp-periph",
+ "esp-soc",
  "xtensa-lx7",
 ]
 
@@ -28,4 +51,5 @@ name = "xtensa-lx7"
 version = "0.1.0"
 dependencies = [
  "backend-api",
+ "emu-core",
 ]
