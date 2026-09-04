@@ -396,6 +396,7 @@ def _capture_boot(
         device.dtr = False
         device.rts = True
         time.sleep(0.2)
+        device.reset_input_buffer()
         device.rts = False
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
