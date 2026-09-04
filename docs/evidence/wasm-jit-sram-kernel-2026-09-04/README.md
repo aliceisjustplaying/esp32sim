@@ -1,14 +1,15 @@
 # WebAssembly JIT SRAM kernel checkpoint
 
 This receipt measures the first upstream-focused WebAssembly JIT slice at
-commit `90243953749c00d7e9d6f8dce4b2d345b41e23b6`. The compiler emits the first
+commit `0af02e81d57373a56f6a34ebcc88c23142b3dd05`. The compiler emits the first
 seven instructions of the committed TinyDraw SRAM kernel and obtains their
-cycle prices from `Esp32S3SramCostModel`.
+cycle prices from `Esp32S3SramCostModel`. Runtime guards enforce both the SRAM
+range and the word alignment required by that model.
 
 The benchmark instantiates one module under Node, warms it for 100,000 runs,
 then measures five groups of 1,000,000 runs on an Apple M1 Pro. Each run
 executes seven guest instructions and accumulates seven receipt-backed cycles.
-The measured median is 386.757255 million guest instructions per second.
+The measured median is 380.929059 million guest instructions per second.
 
 Run from the repository root:
 

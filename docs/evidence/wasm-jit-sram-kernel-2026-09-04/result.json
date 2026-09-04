@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "status": "measured",
-  "measuredAtUtc": "2026-09-04T17:50:26Z",
-  "implementationHead": "90243953749c00d7e9d6f8dce4b2d345b41e23b6",
+  "measuredAtUtc": "2026-09-04T18:10:51Z",
+  "implementationHead": "0af02e81d57373a56f6a34ebcc88c23142b3dd05",
   "sources": {
     "harness": {
       "path": "wasm-jit/examples/sram_kernel_speed.rs",
@@ -24,19 +24,19 @@
   "workload": {
     "guestInstructionsPerRun": 7,
     "receiptCyclesPerRun": 7,
-    "moduleBytes": 5706,
+    "moduleBytes": 5737,
     "warmupRuns": 100000,
     "sampleRuns": 1000000,
     "samples": 5
   },
-  "elapsedNanoseconds": [21276916, 19088875, 17938959, 18099208, 18006125],
+  "elapsedNanoseconds": [19220791, 19735042, 18376125, 18242000, 18100042],
   "rankedMips": [
-    328.995047966538,
-    366.70573828997254,
-    386.7572547925854,
-    388.7566036557005,
-    390.21216337023793
+    354.6990171087551,
+    364.1889660004107,
+    380.92905876510963,
+    383.7298541826554,
+    386.73943408529107
   ],
-  "medianMips": 386.757255,
+  "medianMips": 380.929059,
   "scope": "Compiler microbenchmark for the seven-instruction receipt-priced SRAM kernel with one JavaScript-to-WebAssembly call per run; excludes browser-emulator dispatch and shared-time scheduling."
 }
