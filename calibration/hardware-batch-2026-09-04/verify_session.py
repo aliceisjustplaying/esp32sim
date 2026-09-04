@@ -177,7 +177,7 @@ def verify_session(contract_path: Path) -> dict:
     require_equal([item.get("boots") for item in images], [2, 2, 2], "boot counts")
     require_equal(
         [item.get("terminal") for item in images],
-        ["CAL_DONE", "TINYDRAW_DEMO_REPLAY_END", "TINYDRAW_DEMO_REPLAY_END"],
+        ["CALIBRATION_DONE", "TINYDRAW_DEMO_REPLAY_END", "TINYDRAW_DEMO_REPLAY_END"],
         "capture terminals",
     )
     manifests = []
