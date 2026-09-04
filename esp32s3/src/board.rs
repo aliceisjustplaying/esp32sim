@@ -29,6 +29,11 @@ pub const PIN_TFT_CS: u8 = 41;
 pub const PIN_TFT_MOSI: u8 = 1;
 pub const PIN_TFT_DC: u8 = 40;
 pub const PIN_RING: u8 = 8;
+/// Light Grid V1.1 (NeoPixel 3x3) data lines: port 7 top-middle, port 11 right column. Each module
+/// has a Line A (WS2812B, RGB) and a Line B (SK6812, RGBW) and the driver writes both; these are
+/// the RGB revision, so only Line A carries a strip we can decode.
+pub const PIN_GRID7_A: u8 = 6;
+pub const PIN_GRID11_A: u8 = 43;
 pub const PIN_ENC_CLK: u8 = 5;
 pub const PIN_ENC_DT: u8 = 4;
 pub const PIN_ENC_SW: u8 = 9;
@@ -196,13 +201,16 @@ impl Ring {
 pub struct Atech14 {
     pub tft: St7735,
     pub ring: Ring,
+    /// the two 3x3 Light Grids, as 9-LED strips
+    pub grid_7: Ring,
+    pub grid_11: Ring,
     pub gpio_events: u64,
 }
 
 impl Default for Atech14 { fn default() -> Self { Self::new() } }
 
 impl Atech14 {
-    pub fn new() -> Self { Atech14 { tft: St7735::new(), ring: Ring::new(12), gpio_events: 0 } }
+    pub fn new() -> Self { Atech14 { tft: St7735::new(), ring: Ring::new(12), grid_7: Ring::new(9), grid_11: Ring::new(9), gpio_events: 0 } }
 }
 
 impl BoardModel for Atech14 {
@@ -210,7 +218,14 @@ impl BoardModel for Atech14 {
     fn gpio_changes(&mut self, changes: &[(u8, bool)]) {
         for &(pin, level) in changes { self.gpio_events += 1; self.tft.gpio(pin, level); }
     }
-    fn rmt_frame(&mut self, _ch: usize, bits: &[bool]) { self.ring.from_bits(bits); }
+    fn rmt_frame(&mut self, pin: u8, bits: &[bool]) {
+        match pin {
+            PIN_RING => self.ring.from_bits(bits),
+            PIN_GRID7_A => self.grid_7.from_bits(bits),
+            PIN_GRID11_A => self.grid_11.from_bits(bits),
+            _ => {}                       // Line B (RGBW) on 7 and 44: not populated on this revision
+        }
+    }
     fn spi_tx(&mut self, host: u8, data: &[u8]) { if host == 2 { for &b in data { self.tft.spi_byte(b); } } }
     fn gpio_events(&self) -> u64 { self.gpio_events }
     fn display(&self) -> Option<(u32, u32, Vec<u16>, u64)> { Some((160, 80, self.tft.frame_160x80(), self.tft.pixels_written)) }
@@ -219,12 +234,17 @@ impl BoardModel for Atech14 {
     fn display_frames(&self) -> u64 { self.tft.frames }
     fn gram(&self) -> Option<(Vec<u16>, usize, usize)> { Some((self.tft.gram.clone(), St7735::COLS, St7735::ROWS)) }
     fn leds(&self) -> Option<(&[[u8; 3]], u64)> { Some((&self.ring.leds, self.ring.updates)) }
+    fn led_grids(&self) -> Vec<(&'static str, &[[u8; 3]], u64)> {
+        vec![("7", &self.grid_7.leds, self.grid_7.updates), ("11", &self.grid_11.leds, self.grid_11.updates)]
+    }
     fn named_pin(&self, name: &str) -> Option<u8> { match name { "btn1" => Some(PIN_BTN1), "btn2" => Some(PIN_BTN2), "sw" | "knob" => Some(PIN_ENC_SW), _ => None } }
     fn encoder(&self) -> Option<(u8, u8)> { Some((PIN_ENC_CLK, PIN_ENC_DT)) }
     fn report(&self) -> String {
         let t = &self.tft;
         format!("[emu] tft: {} RAMWR, {} pixels, madctl={:#x} inverted={} on={} bbox={:?} top colours {:x?}; gpio events {}\n[emu] ring: {} updates, leds {:?}",
                 t.frames, t.pixels_written, t.madctl, t.inverted, t.on, t.bbox(), t.histogram(5), self.gpio_events, self.ring.updates, &self.ring.leds[..4])
+            + &format!("\n[emu] light grids: port 7 {} updates, leds {:?}; port 11 {} updates, leds {:?}",
+                       self.grid_7.updates, &self.grid_7.leds[..], self.grid_11.updates, &self.grid_11.leds[..])
     }
 }
 

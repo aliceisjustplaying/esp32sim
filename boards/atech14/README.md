@@ -20,6 +20,7 @@ make test       # the emulator's golden tests for this firmware (console, audio,
 | ST7735 TFT 160×80 | ports 9+10 → SCLK 2, CS 41, MOSI 1, DC 40 |
 | Rotary encoder + 12-LED ring | ports 1+2 → CLK 5, DT 4, SW 9, ring 8 |
 | Button 1 (play) / Button 2 (waveform) | port 3 → GPIO 17 / port 4 → GPIO 16 (active low) |
+| Light Grid V1.1 (NeoPixel 3×3) ×2 | port 7 → lines 6+7, port 11 → lines 43+44 (line A WS2812B RGB, line B SK6812 RGBW, both driven) |
 
 ## Layout
 
@@ -90,7 +91,12 @@ titles and authors on screen are read from each file's PSID header at run time.
 | serial JSON | `{"action":"play_sid","value":"0"}`, `{"action":"next_sid"}`, `{"action":"sid_subtune","value":"3"}` (empty = next), `{"action":"set_volume","value":"0.5"}`, `{"action":"mute","value":"1"}` (empty = toggle), `{"action":"stop_sid"}`; diagnostics: `{"action":"pin_probe","value":"9"}` samples a GPIO 2000× over 100 ms and reports the lows |
 
 The screen shows title and author from the PSID header, `tune/count  sub n/m`, and the volume bar
-(or a MUTE badge). The header reads SID PLAYER while a tune plays. Changes are posted as state events
+(or a MUTE badge). The header reads SID PLAYER while a tune plays.
+
+Both Light Grids are a three-channel VU meter: one column per SID voice, blue, magenta and orange,
+the bar growing upward with that voice's envelope. In the player the envelope comes from cRSID's
+own ADSR counters, in the synth from the SID engine's, so the same three columns follow whichever
+source is making the sound. Both grids show the same picture, at 20 Hz. Changes are posted as state events
 (`sid_tune`, `volume`, `mute`) on the serial protocol, so the emulator's console shows them.
 
 Try it in the emulator (the script drives the serial protocol, so no clicking):

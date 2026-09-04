@@ -9,6 +9,8 @@ use crate::periph::{Peripherals, CPU_SUB_BASE, CPU_SUB_END, PERIPH_BASE, PERIPH_
 use esp_periph::read_desc;
 use riscv_rv32::bus::{Bus, Fault};
 
+/// GPIO matrix output signal of RMT TX channel 0 (soc/gpio_sig_map.h); channel n is this + n.
+pub const RMT_SIG_OUT0: u32 = 71;
 pub const ROM_LOW: u32 = 0x4000_0000;
 pub const ROM_HIGH: u32 = 0x4005_0000;
 pub const SRAM_LOW: u32 = 0x4080_0000;
@@ -214,7 +216,7 @@ impl SocBus {
             let rx = self.board.spi_transfer(2, &transfer.tx, transfer.rx_len);
             self.periph.spi2.finish_transfer(transfer, &rx);
         }
-        if !self.periph.rmt.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
+        if !self.periph.rmt.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.rmt.done) { let pin = self.periph.gpio.pin_for_signal(RMT_SIG_OUT0 + ch as u32).unwrap_or(u8::MAX); self.board.rmt_frame(pin, &bits); } self.irq_dirty = true; }
     }
 
     /// Execute a pending SPI1 command against the flash image.

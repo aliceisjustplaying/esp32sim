@@ -13,6 +13,11 @@ use emu_core::{
 };
 use std::collections::{BTreeMap, HashMap};
 
+/// `[[r,g,b],…]` for the web protocol.
+fn leds_json(leds: &[[u8; 3]]) -> String {
+    leds.iter().map(|c| format!("[{},{},{}]", c[0], c[1], c[2])).collect::<Vec<_>>().join(",")
+}
+
 #[derive(Clone, Debug)]
 pub enum ScriptAction { Gpio(u8, bool), Serial(String), Stop, Touch(u16, u16, bool), Poke(u32, u32) }
 
@@ -46,7 +51,7 @@ pub struct Realtime {
     log_insns: (u64, u64),
 }
 
-struct WebState { last_push_cycles: u64, audio_sent: usize, ring_updates: u64, px_pending: u64, px_sent: u64, cam_pushed: u64, cam_sent: bool }
+struct WebState { last_push_cycles: u64, audio_sent: usize, ring_updates: u64, grid_updates: Vec<u64>, px_pending: u64, px_sent: u64, cam_pushed: u64, cam_sent: bool }
 
 pub struct Machine<S: Soc> {
     pub mac: [u8; 6],
@@ -165,7 +170,7 @@ impl<S: Soc> Machine<S> {
             exceptions: 0, interrupts: 0, irq_hist: vec![[0; 32]; S::CORES],
             script: Script { events: Vec::new(), pos: 0, log: true, knob_next: 0 }, max_cycles: u64::MAX,
             console: Console { all: Vec::new(), usb: Vec::new(), uart0: Vec::new(), mask: 3, prefix: false, capture: false },
-            web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, px_pending: 0, px_sent: 0, cam_pushed: u64::MAX, cam_sent: false },
+            web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, grid_updates: Vec::new(), px_pending: 0, px_sent: 0, cam_pushed: u64::MAX, cam_sent: false },
             rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: false, log_last: None, log_insns: (0, 0) },
             debug_rom: false, cost: None, model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
         }
@@ -847,6 +852,15 @@ impl<S: Soc> Machine<S> {
             self.ws.audio_sent = pcm.len();
         }
         let board = self.bus.board_ref();
+        let grids: Vec<(&'static str, Vec<[u8; 3]>, u64)> =
+            board.led_grids().into_iter().map(|(id, leds, updates)| (id, leds.to_vec(), updates)).collect();
+        self.ws.grid_updates.resize(grids.len(), u64::MAX);
+        for (i, (id, leds, updates)) in grids.iter().enumerate() {
+            if self.ws.grid_updates[i] == *updates { continue; }
+            self.ws.grid_updates[i] = *updates;
+            w.send_text(&format!("{{\"t\":\"grid\",\"id\":\"{}\",\"leds\":[{}]}}", id, leds_json(leds)));
+        }
+        let board = self.bus.board_ref();
         if let Some((leds, updates)) = board.leds() { if updates != self.ws.ring_updates {
             self.ws.ring_updates = updates;
             let leds: Vec<String> = leds.iter().map(|c| format!("[{},{},{}]", c[0], c[1], c[2])).collect();
@@ -865,6 +879,7 @@ impl<S: Soc> Machine<S> {
             if let Some(rgb) = board.camera_preview(320, 240) { let mut b = vec![4u8, (320u16 & 255) as u8, (320u16 >> 8) as u8, (240u16 & 255) as u8, (240u16 >> 8) as u8]; b.extend_from_slice(&rgb); hello.push(mkb(&b)); }
             if let Some((leds, _)) = board.leds() { let leds: Vec<String> = leds.iter().map(|c| format!("[{},{},{}]", c[0], c[1], c[2])).collect();
             hello.push(mk(&format!("{{\"t\":\"ring\",\"leds\":[{}]}}", leds.join(",")))); }
+            for (id, leds, _) in board.led_grids() { hello.push(mk(&format!("{{\"t\":\"grid\",\"id\":\"{}\",\"leds\":[{}]}}", id, leds_json(leds)))); }
             w.set_hello(hello);
         }
         w.send_text(&format!("{{\"t\":\"stat\",\"time\":{:.2},\"insns\":{},\"frames\":{},\"behind\":{:.2},\"resyncs\":{},\"cam\":{},\"gpio_in\":\"{:x}\"}}", self.seconds(), self.insns(), board.display_frames(), self.rt.behind, self.rt.resyncs, self.bus.camera_frames(), self.bus.gpio_input()));

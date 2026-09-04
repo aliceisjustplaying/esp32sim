@@ -17,8 +17,10 @@ pub trait BoardModel {
     fn name(&self) -> &'static str;
     /// GPIO output level changes, in order.
     fn gpio_changes(&mut self, _changes: &[(u8, bool)]) {}
-    /// A completed RMT transmission on channel `ch`, decoded to bits by the peripheral model.
-    fn rmt_frame(&mut self, _ch: usize, _bits: &[bool]) {}
+    /// A completed RMT transmission, decoded to bits by the peripheral model, with the pin the
+    /// GPIO matrix has that channel routed to. Drivers that take a fresh channel per refresh
+    /// (the Arduino NeoPixel one does) make the channel meaningless; the pin names the strip.
+    fn rmt_frame(&mut self, _pin: u8, _bits: &[bool]) {}
     /// Bytes a GP-SPI master (`host` = 2 or 3) shifted out on MOSI.
     fn spi_tx(&mut self, _host: u8, _data: &[u8]) {}
     /// One complete GP-SPI transaction. The default preserves transmit-only boards and models an
@@ -51,6 +53,9 @@ pub trait BoardModel {
     fn gram(&self) -> Option<(Vec<u16>, usize, usize)> { None }
     /// LED ring / strip: colours and a change counter.
     fn leds(&self) -> Option<(&[[u8; 3]], u64)> { None }
+    /// Addressable LED modules besides `leds()`, each with the port it sits in and a change
+    /// counter: (id, colours, updates). The UI draws one square grid per entry.
+    fn led_grids(&self) -> Vec<(&'static str, &[[u8; 3]], u64)> { Vec::new() }
     /// Touch input from the UI (panel coordinates).
     fn touch(&mut self, _x: u16, _y: u16, _down: bool) {}
     /// Touch input observed at a specific bus horizon. Untimed boards use the ordinary input path.

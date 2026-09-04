@@ -22,6 +22,8 @@ pub const DBUS_LOW: u32 = 0x3C00_0000;
 pub const DBUS_HIGH: u32 = 0x3E00_0000;
 pub const IBUS_LOW: u32 = 0x4200_0000;
 pub const IBUS_HIGH: u32 = 0x4400_0000;
+/// GPIO matrix output signal of RMT TX channel 0 (soc/gpio_sig_map.h); channel n is this + n.
+pub const RMT_SIG_OUT0: u32 = 81;
 pub const MMU_TABLE: u32 = 0x600C_5000;
 pub const MMU_ENTRIES: usize = 512;
 pub const MMU_INVALID: u32 = 1 << 14;
@@ -910,7 +912,13 @@ impl SocBus {
             self.board.gpio_changes(&ch);
         }
         self.deliver_spi2_transfer();
-        if !self.periph.rmt.done.is_empty() { for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) { self.board.rmt_frame(ch, &bits); } self.irq_dirty = true; }
+        if !self.periph.rmt.done.is_empty() {
+            for (ch, bits) in std::mem::take(&mut self.periph.rmt.done) {
+                let pin = self.periph.gpio.pin_for_signal(RMT_SIG_OUT0 + ch as u32).unwrap_or(u8::MAX);
+                self.board.rmt_frame(pin, &bits);
+            }
+            self.irq_dirty = true;
+        }
         0
     }
 }
