@@ -1,4 +1,4 @@
-use emu_core::{Bus, CacheOperation, ControlEvent, ControlEventKind, Core, CostModel, ExecutionFacts, Fault, LifecycleFacts, LifecycleKind, MemoryAccess, MemoryAccessKind, StepKind, StepOutcome, Trap};
+use emu_core::{Bus, CacheOperation, ControlEvent, ControlEventKind, Core, CostModel, ExecutionFacts, Fault, LifecycleFacts, LifecycleKind, MemoryAccess, MemoryAccessKind, ModeledBlockEvent, ModeledBlockPlan, ModeledBlockRun, ModeledExecution, ModeledStepOutcome, StepKind, StepOutcome, Trap};
 use esp_periph::Misc;
 use esp_soc::{BoardModel, CoreState, Ctx, DebugFlags, Machine, NoBoard, Observer, Soc, SocBus, Stop, Wants};
 use std::sync::{Arc, Mutex};
@@ -10,7 +10,7 @@ struct OwnedFacts {
     accesses: Vec<MemoryAccess>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct ModelState {
     facts: Vec<OwnedFacts>,
     lifecycle: Vec<LifecycleKind>,
@@ -39,6 +39,22 @@ impl CostModel for TestModel {
             Ok(state.costs[facts.core])
         }
     }
+    fn commit_modeled_block(&mut self, events: &[ModeledBlockEvent]) -> Option<Result<(), String>> {
+        for event in events {
+            let fetch = [MemoryAccess { kind: MemoryAccessKind::Fetch, address: event.outcome.pc, width: 4, value: u32::from_le_bytes(event.outcome.bytes?), fault: None }];
+            let facts = ExecutionFacts { core: event.core, outcome: event.outcome, accesses: &fetch };
+            if self.cycles(&facts).ok()? != event.applied_cycles { return None; }
+        }
+        Some(Ok(()))
+    }
+    fn begin_batch(&mut self) -> Option<Box<dyn std::any::Any>> {
+        Some(Box::new(self.0.lock().expect("model state mutex poisoned").clone()))
+    }
+    fn rollback_batch(&mut self, checkpoint: Box<dyn std::any::Any>) -> Result<(), String> {
+        let checkpoint = checkpoint.downcast::<ModelState>().map_err(|_| "bad test model checkpoint".to_string())?;
+        *self.0.lock().map_err(|_| "model state mutex poisoned".to_string())? = *checkpoint;
+        Ok(())
+    }
 }
 
 fn new_model(costs: [u32; 2]) -> (Box<dyn CostModel>, Arc<Mutex<ModelState>>) {
@@ -46,6 +62,7 @@ fn new_model(costs: [u32; 2]) -> (Box<dyn CostModel>, Arc<Mutex<ModelState>>) {
     (Box::new(TestModel(state.clone())), state)
 }
 
+#[derive(Clone)]
 struct TestCore {
     id: usize,
     pc: u32,
@@ -143,6 +160,30 @@ impl Core for TestCore {
         };
         self.pc = if matches!(bytes[0], 2 | 4) { pc } else { pc + 4 };
         StepOutcome { pc, next_pc: self.pc, bytes: Some(bytes), length: 1, kind, control }
+    }
+    fn plan_modeled_block<B: Bus>(&mut self, bus: &mut B, budget: u32) -> Option<ModeledBlockPlan> {
+        if budget < 2 || !matches!(bus.fetch(self.pc).ok()?[0], 20 | 21) { return None; }
+        let outcomes = (0..2).map(|index| {
+            let pc = self.pc + index * 4;
+            ModeledStepOutcome {
+                outcome: StepOutcome { pc, next_pc: pc + 4, bytes: Some(bus.fetch(pc).expect("planned test fetch")), length: 1, kind: StepKind::Retired, control: None },
+                applied_cycles: 1,
+                execution: ModeledExecution::Compiled,
+            }
+        }).collect();
+        Some(ModeledBlockPlan { outcomes })
+    }
+    fn run_modeled_block<B: Bus>(&mut self, bus: &mut B, events: u32) -> Option<ModeledBlockRun> {
+        let fail = bus.fetch(self.pc).ok()?[0] == 21;
+        self.pc += events * 4;
+        self.insns += u64::from(events);
+        self.cycles += u64::from(events);
+        Some(ModeledBlockRun { events: events - u32::from(fail), applied_cycles: events })
+    }
+    fn checkpoint_modeled_block(&self) -> Option<Box<dyn std::any::Any>> { Some(Box::new(self.clone())) }
+    fn rollback_modeled_block(&mut self, checkpoint: Box<dyn std::any::Any>) -> Result<(), String> {
+        *self = *checkpoint.downcast::<Self>().map_err(|_| "bad test core checkpoint".to_string())?;
+        Ok(())
     }
     fn regs(&self, _out: &mut Vec<(&'static str, u32)>) {}
     fn arg(&self, _n: usize) -> u32 { 0 }
@@ -340,6 +381,22 @@ fn new_machine(op0: u8, op1: u8) -> Machine<TestSoc> {
     bus.memory[0x20] = op1;
     bus.memory[0x100..0x104].copy_from_slice(&0x1234_5678u32.to_le_bytes());
     Machine::new([0; 6], bus)
+}
+
+#[test]
+fn native_batch_mismatch_rolls_back_model_and_architectural_state() {
+    let mut machine = new_machine(21, 0);
+    let (model, state) = new_model([1, 1]);
+    machine.set_cost_model(model).expect("pristine machine should accept model");
+
+    assert!(matches!(
+        machine.run(2),
+        Stop::CostModel { core: 0, pc: 8, ref reason }
+            if reason == "CostedJitMismatch: planned native block did not execute exactly"
+    ));
+    assert_eq!((machine.cores[0].pc, machine.cores[0].insns, machine.cores[0].cycles), (0, 0, 0));
+    assert!(state.lock().expect("model state mutex poisoned").facts.is_empty());
+    assert_eq!(machine.bus.cycles, 0);
 }
 
 #[test]

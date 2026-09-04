@@ -202,7 +202,34 @@ pub struct TraceReport {
 #[derive(Clone, Debug)]
 pub struct TransactionEngine {
     state: SchedulerState,
-    ledger: Vec<LedgerEntry>,
+    ledger: Vec<LedgerRecord>,
+    config: ChipConfig,
+}
+
+#[derive(Clone, Debug)]
+enum LedgerRecord {
+    Entry(LedgerEntry),
+    StaticSramBatch {
+        entries: Vec<CompactLedgerEntry>,
+        delta: [u64; 2],
+        repetitions: u64,
+    },
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CompactLedgerEntry {
+    core: CoreId,
+    pc: u32,
+    start: VirtualCycle,
+    completion: VirtualCycle,
+    component: CostComponent,
+}
+
+#[derive(Clone, Debug)]
+pub struct TransactionCheckpoint {
+    state: SchedulerState,
+    ledger_len: usize,
+    tail_repetitions: Option<u64>,
     config: ChipConfig,
 }
 
@@ -217,12 +244,35 @@ impl Default for TransactionEngine {
 }
 
 impl TransactionEngine {
+    pub fn checkpoint(&self) -> TransactionCheckpoint {
+        TransactionCheckpoint {
+            state: self.state.clone(),
+            ledger_len: self.ledger.len(),
+            tail_repetitions: match self.ledger.last() {
+                Some(LedgerRecord::StaticSramBatch { repetitions, .. }) => Some(*repetitions),
+                _ => None,
+            },
+            config: self.config,
+        }
+    }
+
+    pub fn rollback(&mut self, checkpoint: TransactionCheckpoint) {
+        self.state = checkpoint.state;
+        self.ledger.truncate(checkpoint.ledger_len);
+        if let (Some(repetitions), Some(LedgerRecord::StaticSramBatch { repetitions: tail, .. })) =
+            (checkpoint.tail_repetitions, self.ledger.last_mut())
+        {
+            *tail = repetitions;
+        }
+        self.config = checkpoint.config;
+    }
+
     pub fn state(&self) -> &SchedulerState {
         &self.state
     }
 
-    pub fn ledger(&self) -> &[LedgerEntry] {
-        &self.ledger
+    pub fn ledger(&self) -> Vec<LedgerEntry> {
+        self.expanded_ledger()
     }
 
     pub fn execute(&mut self, event: TraceEvent) -> Result<TransactionReceipt, TimingRefusal> {
@@ -286,8 +336,87 @@ impl TransactionEngine {
             completion,
             components,
         };
-        self.ledger.push(entry.clone());
+        self.ledger.push(LedgerRecord::Entry(entry.clone()));
         Ok(TransactionReceipt { entry: Some(entry) })
+    }
+
+    /// Commit a validated receipt-static SRAM batch without allocating per-event components.
+    pub fn execute_static_sram_batch(
+        &mut self,
+        events: &[(CoreId, u32, CostComponent)],
+    ) -> Result<(), TimingRefusal> {
+        let mut cycles = self.state.cores.map(|core| core.cycle);
+        let base = cycles;
+        if let Some(LedgerRecord::StaticSramBatch { entries, delta, repetitions }) = self.ledger.last_mut() {
+            let same = entries.len() == events.len() && entries.iter().zip(events).all(|(entry, event)| {
+                entry.core == event.0 && entry.pc == event.1 && entry.component == event.2
+            });
+            let expected = [
+                entries.iter().find(|entry| entry.core == CoreId::Core0).map_or(base[0], |entry| entry.start)
+                    .checked_add(delta[0].saturating_mul(*repetitions)),
+                entries.iter().find(|entry| entry.core == CoreId::Core1).map_or(base[1], |entry| entry.start)
+                    .checked_add(delta[1].saturating_mul(*repetitions)),
+            ];
+            if same && expected == [Some(base[0]), Some(base[1])] {
+                for &(core, _, component) in events {
+                    let index = core.index();
+                    cycles[index] = cycles[index].checked_add(component.cycles().ok_or(TimingRefusal {
+                        class: component.class,
+                        tier_candidate: crate::CostTier::Unexplained,
+                        reason: crate::RefusalReason::CycleOverflow,
+                        configuration: None,
+                    })?).ok_or(TimingRefusal {
+                        class: component.class,
+                        tier_candidate: crate::CostTier::Unexplained,
+                        reason: crate::RefusalReason::CycleOverflow,
+                        configuration: None,
+                    })?;
+                }
+                *repetitions = repetitions.checked_add(1).ok_or(TimingRefusal {
+                    class: crate::CostClass::UnadoptedInstruction,
+                    tier_candidate: crate::CostTier::Unexplained,
+                    reason: crate::RefusalReason::CycleOverflow,
+                    configuration: None,
+                })?;
+                for core in CoreId::ALL { self.state.cores[core.index()].cycle = cycles[core.index()]; }
+                for &(core, _, _) in events {
+                    self.state.cores[core.index()].committed_instructions = self.state.cores[core.index()].committed_instructions.saturating_add(1);
+                }
+                return Ok(());
+            }
+        }
+        let mut compact = Vec::with_capacity(events.len());
+        for &(core, pc, component) in events {
+            let index = core.index();
+            let start = cycles[index];
+            let completion = start.checked_add(component.cycles().ok_or(TimingRefusal {
+                class: component.class,
+                tier_candidate: crate::CostTier::Unexplained,
+                reason: crate::RefusalReason::CycleOverflow,
+                configuration: None,
+            })?).ok_or(TimingRefusal {
+                class: component.class,
+                tier_candidate: crate::CostTier::Unexplained,
+                reason: crate::RefusalReason::CycleOverflow,
+                configuration: None,
+            })?;
+            cycles[index] = completion;
+            compact.push(CompactLedgerEntry { core, pc, start, completion, component });
+        }
+        for core in CoreId::ALL {
+            let state = &mut self.state.cores[core.index()];
+            state.cycle = cycles[core.index()];
+        }
+        for &(core, _, _) in events {
+            let state = &mut self.state.cores[core.index()];
+            state.committed_instructions = state.committed_instructions.saturating_add(1);
+        }
+        self.ledger.push(LedgerRecord::StaticSramBatch {
+            entries: compact,
+            delta: [cycles[0] - base[0], cycles[1] - base[1]],
+            repetitions: 1,
+        });
+        Ok(())
     }
 
     fn commit_mutation(&mut self, mutation: Option<TimingMutation>) {
@@ -324,13 +453,68 @@ impl TransactionEngine {
             })?;
         Ok(TraceReport {
             total_cycles,
-            ledger: self.ledger.clone(),
-            canonical_ledger: canonical_ledger_bytes(&self.ledger),
+            ledger: self.expanded_ledger(),
+            canonical_ledger: self.canonical_ledger_bytes(),
         })
+    }
+
+
+    fn expanded_ledger(&self) -> Vec<LedgerEntry> {
+        let mut entries = Vec::new();
+        for record in &self.ledger {
+            match record {
+                LedgerRecord::Entry(entry) => entries.push(entry.clone()),
+                LedgerRecord::StaticSramBatch { entries: batch, delta, repetitions } => {
+                    for repetition in 0..*repetitions {
+                        entries.extend(batch.iter().map(|entry| {
+                            let shift = delta[entry.core.index()] * repetition;
+                            LedgerEntry {
+                                core: entry.core,
+                                pc: entry.pc,
+                                start: entry.start + shift,
+                                completion: entry.completion + shift,
+                                components: vec![entry.component],
+                            }
+                        }));
+                    }
+                }
+            }
+        }
+        entries
+    }
+
+    fn canonical_ledger_bytes(&self) -> Vec<u8> {
+        let entry_count = self.ledger.iter().map(|record| match record {
+            LedgerRecord::Entry(_) => 1usize,
+            LedgerRecord::StaticSramBatch { entries, repetitions, .. } => entries.len() * *repetitions as usize,
+        }).sum::<usize>();
+        let mut output = Vec::new();
+        output.extend_from_slice(&1u16.to_le_bytes());
+        output.extend_from_slice(&(entry_count as u64).to_le_bytes());
+        for record in &self.ledger {
+            match record {
+                LedgerRecord::Entry(entry) => entry.canonical_bytes(&mut output),
+                LedgerRecord::StaticSramBatch { entries, delta, repetitions } => {
+                    for repetition in 0..*repetitions {
+                        for entry in entries {
+                            let shift = delta[entry.core.index()] * repetition;
+                            output.push(entry.core.encoded());
+                            output.extend_from_slice(&entry.pc.to_le_bytes());
+                            output.extend_from_slice(&(entry.start + shift).to_le_bytes());
+                            output.extend_from_slice(&(entry.completion + shift).to_le_bytes());
+                            output.extend_from_slice(&1u32.to_le_bytes());
+                            encode_component(entry.component, &mut output);
+                        }
+                    }
+                }
+            }
+        }
+        output
     }
 }
 
-pub fn canonical_ledger_bytes(entries: &[LedgerEntry]) -> Vec<u8> {
+#[cfg(test)]
+fn canonical_ledger_bytes(entries: &[LedgerEntry]) -> Vec<u8> {
     let mut output = Vec::new();
     output.extend_from_slice(&1u16.to_le_bytes());
     output.extend_from_slice(&(entries.len() as u64).to_le_bytes());
@@ -350,5 +534,38 @@ pub trait Backend {
 
     fn run_trace(&mut self, trace: &[TraceEvent]) -> Result<TraceReport, TimingRefusal> {
         self.engine_mut().run_trace(trace)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_sram_batch_preserves_canonical_ledger() {
+        let mut engine = TransactionEngine::default();
+        engine.execute(TraceEvent {
+            core: CoreId::Core0,
+            pc: 0x4037_0000,
+            operation: crate::Operation::Instruction(crate::InstructionCost::Issue),
+            outcome: ExecutionOutcome::Committed,
+        }).unwrap();
+        let issue = price_operation(
+            ChipConfig::RECEIPT_SCOPE,
+            CoreId::Core0,
+            crate::Operation::Instruction(crate::InstructionCost::Issue),
+        ).unwrap().0;
+        let jump = price_operation(
+            ChipConfig::RECEIPT_SCOPE,
+            CoreId::Core1,
+            crate::Operation::Instruction(crate::InstructionCost::Jump),
+        ).unwrap().0;
+        engine.execute_static_sram_batch(&[
+            (CoreId::Core1, 0x4037_0100, jump),
+            (CoreId::Core0, 0x4037_0003, issue),
+        ]).unwrap();
+
+        let expanded = engine.expanded_ledger();
+        assert_eq!(engine.canonical_ledger_bytes(), canonical_ledger_bytes(&expanded));
     }
 }
