@@ -298,17 +298,16 @@ fn classify(op: Op, s: u8, t: u8) -> Result<(Option<u8>, u16, bool, InstructionT
             Ok((None, bit(s) | bit(t), false, InstructionTiming::Branch))
         }
         J => Ok((None, 0, false, InstructionTiming::Jump)),
-        Jx => Ok((
-            None,
-            bit(s) | bit(t),
-            false,
-            InstructionTiming::JumpRegister,
-        )),
+        Jx => Ok((None, bit(s), false, InstructionTiming::JumpRegister)),
         Loop | Loopnez | Loopgtz => Ok((None, bit(s), false, InstructionTiming::LoopSetup)),
         Quos | Quou => Ok((None, bit(s) | bit(t), false, InstructionTiming::Quotient)),
         Rems | Remu => Ok((None, bit(s) | bit(t), false, InstructionTiming::Remainder)),
-        Extw | Max | Maxu | Min | Minu | Movsp | Mull | Mulsh | Muluh | Nsa | Nsau | Rsr
-        | Rsync | Sext | Wsr | Xsr => Ok((None, bit(s) | bit(t), false, InstructionTiming::Issue)),
+        Extw | Rsr | Rsync => Ok((None, 0, false, InstructionTiming::Issue)),
+        Movsp | Nsa | Nsau | Sext => Ok((None, bit(s), false, InstructionTiming::Issue)),
+        Wsr | Xsr => Ok((None, bit(t), false, InstructionTiming::Issue)),
+        Max | Maxu | Min | Minu | Mull | Mulsh | Muluh => {
+            Ok((None, bit(s) | bit(t), false, InstructionTiming::Issue))
+        }
         _ => Err(format!(
             "Instruction::{op:?}: cost not adopted (unexplained tier)"
         )),

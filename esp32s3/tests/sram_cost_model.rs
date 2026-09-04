@@ -111,6 +111,53 @@ fn prices_the_receipted_load_use_dependency() {
 }
 
 #[test]
+fn ignores_special_register_encoding_fields_for_load_use() {
+    const HAZARD_PC: u32 = 0x4037_1800;
+    // l32i.n a10, a2, 4; rsr.ccount a4
+    const PROGRAM: &[u8] = &[0xa8, 0x12, 0x40, 0xea, 0x03];
+    let mut machine = esp32s3::machine([0; 6]);
+    esp_soc::SocBus::load_bytes(&mut machine.bus, HAZARD_PC, PROGRAM).unwrap();
+    machine.bus.write32(BASE + 4, 0x1234_5678).unwrap();
+    machine.cores[0].set_pc(HAZARD_PC);
+    machine.cores[0].set_ar(2, BASE);
+    let model = Esp32S3SramCostModel::new();
+    machine.set_cost_model(Box::new(model.clone())).unwrap();
+
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    let ledger = model.ledger();
+    assert_eq!(ledger[1].cycles, 1);
+    assert!(ledger[1]
+        .components
+        .iter()
+        .all(|component| component.class != CostClass::Instruction(InstructionCost::LoadUse)));
+}
+
+#[test]
+fn ignores_jx_fixed_t_field_for_load_use() {
+    const HAZARD_PC: u32 = 0x4037_1900;
+    // l32i.n a10, a2, 4; jx a3 (whose fixed t field is 10)
+    const PROGRAM: &[u8] = &[0xa8, 0x12, 0xa0, 0x03, 0x00];
+    let mut machine = esp32s3::machine([0; 6]);
+    esp_soc::SocBus::load_bytes(&mut machine.bus, HAZARD_PC, PROGRAM).unwrap();
+    machine.bus.write32(BASE + 4, 0x1234_5678).unwrap();
+    machine.cores[0].set_pc(HAZARD_PC);
+    machine.cores[0].set_ar(2, BASE);
+    machine.cores[0].set_ar(3, HAZARD_PC + 5);
+    let model = Esp32S3SramCostModel::new();
+    machine.set_cost_model(Box::new(model.clone())).unwrap();
+
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    assert!(matches!(machine.run(1), Stop::MaxInsns));
+    let ledger = model.ledger();
+    assert_eq!(ledger[1].cycles, 6);
+    assert!(ledger[1]
+        .components
+        .iter()
+        .all(|component| component.class != CostClass::Instruction(InstructionCost::LoadUse)));
+}
+
+#[test]
 fn prices_taken_and_fallthrough_branches() {
     assert!(
         OPCODE_RECEIPT.contains("db29ec42ccccc958c96153340497592ecc76203166a5a98c696bdd81496c6515")
