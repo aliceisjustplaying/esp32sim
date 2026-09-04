@@ -63,6 +63,15 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _tool_version(path: str) -> str:
+    result = subprocess.run(
+        [path, "--version"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    if not result:
+        raise VerificationError(f"tool {path} reported no version")
+    return result
+
+
 def verify_artifacts(
     elf_path: Path, manifest_path: Path, rom_elf_path: Path
 ) -> dict[str, object]:
@@ -506,7 +515,11 @@ def verify_disassembly(disassembly: str) -> dict[str, object]:
 
 
 def verify_elf(
-    elf_path: Path, manifest_path: Path, rom_elf_path: Path, objdump: str
+    elf_path: Path,
+    manifest_path: Path,
+    rom_elf_path: Path,
+    objdump: str,
+    compiler: str,
 ) -> dict[str, object]:
     manifest = verify_manifest(manifest_path)
     rom_bytes = rom_elf_path.read_bytes()
@@ -550,6 +563,13 @@ def verify_elf(
         "elfSha256": hashlib.sha256(elf_path.read_bytes()).hexdigest(),
         "romElfSha256": rom_sha256,
         "manifestSha256": _sha256(manifest_path),
+        "toolchain": {
+            "idfVersion": EXPECTED_RUNTIME_CONFIGURATION["idfVersion"],
+            "compiler": Path(compiler).name,
+            "compilerVersion": _tool_version(compiler),
+            "objdump": Path(objdump).name,
+            "objdumpVersion": _tool_version(objdump),
+        },
         **verify_artifacts(elf_path, manifest_path, rom_elf_path),
         "manifest": manifest,
         **disassembly,
@@ -573,6 +593,7 @@ def main() -> int:
     parser.add_argument("elf", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--objdump", default="xtensa-esp32s3-elf-objdump")
+    parser.add_argument("--compiler", default="xtensa-esp32s3-elf-gcc")
     parser.add_argument("--rom-elf", type=Path)
     args = parser.parse_args()
     if args.output.exists():
@@ -584,6 +605,7 @@ def main() -> int:
             Path(__file__).with_name("probe-cells.json"),
             resolve_rom_elf(args.rom_elf),
             args.objdump,
+            args.compiler,
         )
     except (
         OSError,
