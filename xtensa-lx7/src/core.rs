@@ -4,7 +4,7 @@
 use crate::bus::Bus;
 use crate::exec::Trap;
 use crate::state::{Cpu, EXCM_LEVEL, INT_ABOVE, INTTYPE_LEVEL, TIMER_INTERRUPT};
-use emu_core::StepOutcome;
+use emu_core::{ModeledStepOutcome, StepOutcome};
 
 const AR: [&str; 16] = ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15"];
 
@@ -32,10 +32,19 @@ impl emu_core::Core for Cpu {
         }).min()
     }
     fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome { crate::exec::step_outcome(self, bus) }
+    fn step_modeled<B: Bus>(&mut self, bus: &mut B) -> ModeledStepOutcome {
+        crate::block::run_costed_step(self, bus)
+    }
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }
     fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
     fn flush_caches(&mut self) { self.blocks.flush(); }
     fn set_jit(&mut self, on: bool) { self.blocks.jit_enabled = on; }
+    fn set_costed_jit(&mut self, on: bool) {
+        if self.blocks.costed_jit != on {
+            self.blocks.costed_jit = on;
+            self.blocks.flush();
+        }
+    }
     fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> { Some((self.blocks.builds, self.blocks.flushes, self.blocks.compiled, self.blocks.code_bytes())) }
     fn regs(&self, out: &mut Vec<(&'static str, u32)>) {
         for (i, n) in AR.iter().enumerate() { out.push((n, self.get_ar(i as u8))); }
