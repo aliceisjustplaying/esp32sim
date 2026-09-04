@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-09-03. This file is the current truth: what exists,
+Last updated 2026-09-04. This file is the current truth: what exists,
 what is adopted, and what the hardware queue holds. The goal is
 [`GOAL.md`](GOAL.md); the working rules are [`../AGENTS.md`](../AGENTS.md).
 
@@ -312,36 +312,19 @@ active work. Hardware resumes only when a milestone 2 through 4 cost class
 lacks a receipt. Display-path and DMA decomposition are parked until milestone
 4 is complete.
 
-H1. Capture the IDF 6.1 `esp32s3-exception-ladders` image: 100 samples each
-for non-tail `call4`, `call8`, and `call12` recursion past the register-file
-knee, `syscall` with a level-1 handler that reads EPC1, advances it by the
-three-byte syscall width with wide `addi`, writes EPC1, executes `rsync`, and
-returns with `rfe`; `rfe` alone with EPC1 set to the next instruction; and
-`rfi 3` alone with EPC3 set to the next instruction. The corrected seven-cell
-exception image builds, verifies, and completes its emulator dry-run with
-700 of 700 samples and zero refusals. Its straight-line mask-ROM
-instruction-fetch cell invokes the verified five-byte `xtos_p_none` body at
-`0x400559a4`, exactly `entry; retw.n`, with zero cache-counter deltas required.
-The two existing ROM
-`memset` paths produce different, noninteger residuals and cannot adopt a ROM
-fetch price under R8; receipt:
-[`evidence/timing/derived-rom-fetch-idf61/`](evidence/timing/derived-rom-fetch-idf61/README.md).
-The estimated board time is about two seconds. Nothing is flashed
-until the maintainer starts the next capture session.
+H1 is complete at receipt commit `c6c0d5af`. Its two IDF 6.1 boots produced
+constant direct totals and the exact 35-cycle real window-handler correlation,
+but did not identify independently validated exception prices. Nothing was
+adopted.
 
-H2. Capture the IDF 6.1 `esp32s3-exception-rank-followup` image in one
-batch: exactly two clean boots and 100 accepted samples for each of its nine
-exception cells, with zero refusals. The executable-derived seven-column
-matrix has rank seven and determinant one. Adoption additionally requires
-exact constant direct totals and matched differences across both boots, a
-receipt whose full source commit equals the verified clean checkout, committed
-archive hashes, measured-engine reproduction of unused H1 totals 6, 5, and 18,
-and WindowOverflow8 entry plus WindowUnderflow8 entry plus `rfwo` plus `rfwu`
-equal to 17. The reservation is exactly one flash plus 30 seconds of board
-capture, with no product-restore stage. The shared runner clears serial input
-while reset is held and preserves partial logs on failure. Mask-ROM fetch is
-not in this batch and remains an exact-tier refusal. Nothing is flashed until
-the maintainer starts the capture after independent review.
+H2 is complete with no adoption. Two IDF 6.1 boots each produced 900 accepted
+samples across nine cells with zero refusals. The observed direct totals were
+`5, 5, 19`; the declared H1 gate expected `6, 5, 18`. H2's observed window
+excess was 9 while the declared H1 residual was 17. A source audit found that
+the cross-build gate mixed different synchronization and instruction placement,
+omitted an executed vector jump, and undercounted real window-handler work.
+All exception prices remain refused. Receipt:
+[`evidence/timing/h2-exception-rank-followup-2026-09-04/`](evidence/timing/h2-exception-rank-followup-2026-09-04/README.md).
 
 Tier C, equipment-gated, deferred indefinitely: ten-signal electrical
 capture (QSPI chip select, clock, four data lines, GPIO 13 TE, I2C
