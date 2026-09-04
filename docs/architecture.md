@@ -154,6 +154,11 @@ With a cost model, each core has a next-ready timestamp in the one shared device
 machine runs the ready core with the lowest timestamp, breaking ties by core index, and advances
 devices to exact core, timer and script frontiers. Architectural and bus effects occur at the
 event's start. A refused event keeps those effects and adds no modeled cycles or device time.
+Synthetic app boot (`--boot app`) is unsupported because the model has no configuration snapshot;
+modeled runs must boot from the reset vector (`--boot rom`). Modeled execution also refuses a
+function stub when it reaches one, so C6 802.15.4 firmware that needs `--stub bb_init=0` cannot run
+with a cost model yet. If every core is idle and no device reports a deadline, modeled execution
+stops with `Halted` instead of waiting for host input.
 
 ## Networking
 
