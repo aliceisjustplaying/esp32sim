@@ -59,6 +59,48 @@ class VerificationError(ValueError):
     pass
 
 
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify_artifacts(
+    elf_path: Path, manifest_path: Path, rom_elf_path: Path
+) -> dict[str, object]:
+    build = elf_path.parent
+    app_bin = elf_path.with_suffix(".bin")
+    bootloader = build / "bootloader" / "bootloader.bin"
+    partition_table = build / "partition_table" / "partition-table.bin"
+    sdkconfig = build / "sdkconfig"
+    return {
+        "artifacts": {
+            "applicationElf": {"path": elf_path.name, "sha256": _sha256(elf_path)},
+            "applicationBinary": {"path": app_bin.name, "sha256": _sha256(app_bin)},
+            "bootloaderBinary": {
+                "path": "bootloader/bootloader.bin",
+                "sha256": _sha256(bootloader),
+            },
+            "partitionTableBinary": {
+                "path": "partition_table/partition-table.bin",
+                "sha256": _sha256(partition_table),
+            },
+            "sdkconfig": {"path": "sdkconfig", "sha256": _sha256(sdkconfig)},
+            "probeManifest": {
+                "path": manifest_path.name,
+                "sha256": _sha256(manifest_path),
+            },
+            "maskRomElf": {
+                "path": rom_elf_path.name,
+                "sha256": _sha256(rom_elf_path),
+            },
+        },
+        "flashLayout": [
+            {"offset": "0x0", "artifact": "bootloaderBinary"},
+            {"offset": "0x8000", "artifact": "partitionTableBinary"},
+            {"offset": "0x10000", "artifact": "applicationBinary"},
+        ],
+    }
+
+
 def verify_manifest(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -476,6 +518,8 @@ def verify_elf(
     return {
         "elfSha256": hashlib.sha256(elf_path.read_bytes()).hexdigest(),
         "romElfSha256": rom_sha256,
+        "manifestSha256": _sha256(manifest_path),
+        **verify_artifacts(elf_path, manifest_path, rom_elf_path),
         "manifest": manifest,
         **disassembly,
         "cells": verified_cells,

@@ -453,9 +453,10 @@ def session_main() -> int:
         verifier = image / "verify_elf.py"
         bootloader = build / "bootloader" / "bootloader.bin"
         partition_table = build / "partition_table" / "partition-table.bin"
+        sdkconfig = build / "sdkconfig"
         app_elf = _one_artifact(build, ".elf")
         app_bin = app_elf.with_suffix(".bin")
-        for path in (manifest, verifier, bootloader, partition_table, app_bin):
+        for path in (manifest, verifier, bootloader, partition_table, sdkconfig, app_bin):
             if not path.is_file():
                 raise ValidationError(f"missing capture input: {path}")
         contract = ManifestContract.load(manifest)
@@ -469,7 +470,7 @@ def session_main() -> int:
             '--objdump "$(command -v xtensa-esp32s3-elf-objdump)"'
         )
         subprocess.run(["eim", "run", verify_command, "v6.1"], check=True)
-        for path in (manifest, bootloader, partition_table, app_bin, app_elf):
+        for path in (manifest, bootloader, partition_table, sdkconfig, app_bin, app_elf):
             shutil.copy2(path, archive / path.name)
         external_build = any(cell.console_line is not None for cell in contract.cells)
         project_option = "" if external_build else f"-C {shlex.quote(str(image))} "
