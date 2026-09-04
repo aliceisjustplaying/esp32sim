@@ -161,7 +161,10 @@ radio driver on this model:
   `[len incl. FCS][frame][RSSI][LQI]`, so `[5][02 xx seq][RSSI][LQI]` — and reports
   `transmit_done(frame, ack, ack_info)`. Hardware has its own `ACK_TIMEOUT` register (0x5c,
   units of 16 µs, `TX_ABORT` reason `RX_ACK_TIMEOUT`); the driver never programs it, so the
-  200 ms timer is what fires without an ACK.
+  200 ms timer is what fires without an ACK. When it is programmed and fires, an acknowledgement
+  still on the air is discarded rather than delivered: a 3-byte ACK's `RX_DONE` lands 352 µs
+  after its first preamble byte, so one handed over more than 512 µs after `TX_DONE` would
+  otherwise complete with the state already back to `Idle` and be reported as a received frame.
 - **receive**: the same teardown, `DMA_RX_ADDR` = a free 129-byte buffer, `RX_START`. A frame
   that passes the address filter raises `RX_SFD_DONE` and then `RX_DONE`; one that does not is
   dropped by hardware (`RX_ABORT` reason `FILTER_FAIL`, an event the driver leaves disabled). A

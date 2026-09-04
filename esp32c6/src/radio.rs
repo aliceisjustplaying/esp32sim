@@ -117,7 +117,8 @@ pub enum RadioState {
     Idle,
     /// `RX_START`: listening
     Rx,
-    /// a frame is coming in (SFD seen, `RX_DONE` pending)
+    /// a frame is coming in (energy on the air from its first preamble byte, so CCA sees it;
+    /// `RX_SFD_DONE` and then `RX_DONE` still pending)
     RxFrame,
     /// `TX_START` / `CCA_TX_START`: a frame is going out
     Tx,
@@ -351,9 +352,10 @@ impl Ieee802154 {
 
     // ------------------------------------------------------------------ the medium's side
     /// A frame (MAC header + payload, no FCS) from the medium. `started_ago` = `Some(cycles)`:
-    /// the frame started on the air that many cycles ago (0: now) — its SFD is seen now and
-    /// `RX_DONE` follows when its air time is up, at once if it already is; `None`: the frame is
-    /// complete now, SFD and `RX_DONE` together. Listening: the address filter decides. Waiting
+    /// the frame started on the air that many cycles ago (0: now), first preamble byte first —
+    /// `RX_SFD_DONE` follows `SFD_BYTES` into it and `RX_DONE` when the whole PPDU is up, either
+    /// at once if it already is; `None`: the frame is complete now, SFD and `RX_DONE` together.
+    /// Listening: the address filter decides. Waiting
     /// for an ACK: only the ACK with our sequence number counts. Anything else is dropped, and
     /// counted. Returns whether the frame was taken.
     pub fn receive(&mut self, frame: &[u8], rssi: i8, lqi: u8, started_ago: Option<u64>) -> bool {
@@ -588,6 +590,13 @@ impl Device for Ieee802154 {
             }
         }
         if self.ack_timeout.tick(cycles).is_some() && self.state == RadioState::RxAck {
+            // The driver has given up. An acknowledgement still on the air is no longer ours to
+            // deliver: leaving it armed would let `finish_rx` run a moment later with the state
+            // already back to `Idle`, take the data-frame branch, and report the ACK as a
+            // received frame. Since the whole PPDU is charged, `RX_DONE` for an ACK lands
+            // 352 µs after its first preamble byte, so this is reachable whenever the medium
+            // delivers one more than 512 µs after `TX_DONE`.
+            self.abort_rx_silently();
             self.tx_abort(TX_ABORT_BY_RX_ACK_TIMEOUT);
             self.state = RadioState::Idle;
             if self.dbg { eprintln!("[802.15.4] no ACK for seq {}: RX_ACK_TIMEOUT", self.ack_wait_seq); }
@@ -861,6 +870,28 @@ mod tests {
         assert_eq!(r.state, RadioState::Idle);
         r.write(0x00, CMD_RX_START);
         assert!(r.receive(&BROADCAST, -60, 200, None), "listening again");
+    }
+
+    /// An acknowledgement still on the air when the hardware timeout fires is not ours to
+    /// deliver. `RX_DONE` for a 3-byte ACK lands 352 µs after its first preamble byte, so one
+    /// handed over more than 512 µs after `TX_DONE` completes when the timeout has already
+    /// dropped the state to `Idle` — and `finish_rx` would then take the data-frame branch and
+    /// report the ACK as a received frame, into the RX buffer, with `RX_DONE` raised.
+    #[test]
+    fn a_late_ack_is_dropped_rather_than_reported_as_a_frame() {
+        let mut r = configured(); r.write(0x5c, 54);          // 864 µs
+        r.write(0x00, CMD_TX_START); r.tx_loaded(UNICAST_AR.to_vec()); r.tick(1); r.tick(air_cycles(6 + 17 + 2));
+        assert_eq!(r.state, RadioState::RxAck);
+        r.tick(ns_cycles(600_000));                            // the medium starts the ACK 600 µs on
+        assert!(r.receive(&[0x02, 0x00, 0x2d], -70, 180, Some(0)));
+        assert_eq!(r.events & EVENT_ACK_RX_DONE, 0, "352 µs of air still to come");
+        r.tick(ns_cycles(264_000));                            // 864 µs after TX_DONE: the timeout
+        assert_eq!((r.events & EVENT_TX_ABORT, r.state), (EVENT_TX_ABORT, RadioState::Idle));
+        r.tick(ns_cycles(200_000));                            // past where the ACK would have landed
+        assert_eq!(r.events & (EVENT_RX_DONE | EVENT_ACK_RX_DONE), 0, "the ACK is gone, not received");
+        assert_eq!((r.rx_count, r.ack_rx_count, r.rx_dropped), (0, 0, 1));
+        assert!(r.rx_write.is_none(), "nothing reached the RX buffer");
+        assert_eq!(r.next_deadline(), Some(u64::MAX), "no countdown left armed");
     }
 
     /// CCA: a transmit while a frame is being received is refused with CCA_BUSY and the receive
