@@ -71,6 +71,34 @@ def verify_artifacts(
     bootloader = build / "bootloader" / "bootloader.bin"
     partition_table = build / "partition_table" / "partition-table.bin"
     sdkconfig = build / "sdkconfig"
+    flasher_args = build / "flasher_args.json"
+    flash_args = build / "flash_args"
+    flasher = json.loads(flasher_args.read_text(encoding="utf-8"))
+    if not isinstance(flasher, dict) or not isinstance(
+        flasher.get("flash_files"), dict
+    ):
+        raise VerificationError("flasher_args.json does not define flash_files")
+    roles_by_path = {
+        "bootloader/bootloader.bin": "bootloaderBinary",
+        "partition_table/partition-table.bin": "partitionTableBinary",
+        app_bin.name: "applicationBinary",
+    }
+    try:
+        flash_layout = sorted(
+            (
+                {
+                    "offset": offset,
+                    "artifact": roles_by_path[path],
+                    "path": path,
+                }
+                for offset, path in flasher["flash_files"].items()
+            ),
+            key=lambda item: int(item["offset"], 16),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise VerificationError("flasher_args.json has an invalid flash layout") from error
+    if {item["artifact"] for item in flash_layout} != set(roles_by_path.values()):
+        raise VerificationError("flasher_args.json does not flash every executable binary once")
     return {
         "artifacts": {
             "applicationElf": {"path": elf_path.name, "sha256": _sha256(elf_path)},
@@ -84,6 +112,11 @@ def verify_artifacts(
                 "sha256": _sha256(partition_table),
             },
             "sdkconfig": {"path": "sdkconfig", "sha256": _sha256(sdkconfig)},
+            "flasherArguments": {
+                "path": "flasher_args.json",
+                "sha256": _sha256(flasher_args),
+            },
+            "flashArguments": {"path": "flash_args", "sha256": _sha256(flash_args)},
             "probeManifest": {
                 "path": manifest_path.name,
                 "sha256": _sha256(manifest_path),
@@ -93,11 +126,9 @@ def verify_artifacts(
                 "sha256": _sha256(rom_elf_path),
             },
         },
-        "flashLayout": [
-            {"offset": "0x0", "artifact": "bootloaderBinary"},
-            {"offset": "0x8000", "artifact": "partitionTableBinary"},
-            {"offset": "0x10000", "artifact": "applicationBinary"},
-        ],
+        "flashLayout": flash_layout,
+        "flashSettings": flasher.get("flash_settings"),
+        "esptoolArguments": flasher.get("extra_esptool_args"),
     }
 
 
