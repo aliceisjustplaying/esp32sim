@@ -13,7 +13,7 @@ Build, verify, and dry-run:
 
 ```sh
 eim run "idf.py -C calibration/esp32s3-exception-ladders -B out/exception-ladders build" v6.1
-eim run "python3 calibration/esp32s3-exception-ladders/verify_elf.py out/exception-ladders/esp32s3_exception_ladders_calibration.elf out/exception-ladders/elf-verification.json --objdump \$(command -v xtensa-esp32s3-elf-objdump)" v6.1
+eim run "python3 calibration/esp32s3-exception-ladders/verify_elf.py out/exception-ladders/esp32s3_exception_ladders_calibration.elf out/exception-ladders/elf-verification.json --objdump \$(command -v xtensa-esp32s3-elf-objdump) --compiler \$(command -v xtensa-esp32s3-elf-gcc)" v6.1
 calibration/tools/dry-run.sh calibration/esp32s3-exception-ladders out/exception-ladders
 ```
 
@@ -23,7 +23,8 @@ absolute mask-ROM address, and verifies the target's `.text` placement and
 both instruction encodings. Its JSON pins the application ELF and binary,
 bootloader, partition table, sdkconfig, generated flasher arguments, probe
 manifest, mask ROM ELF, and the exact flash layout parsed from those generated
-arguments. It does not derive or adopt a timing price.
+arguments. The result also pins the IDF, compiler, and objdump versions. It
+does not derive or adopt a timing price.
 Strict capture requires the manifest-pinned IDF, harness, target, revision,
 core count, clocks, sample and attempt counts, and recursion depth. The dry-run
 path alone accepts emulator-reported chip revision 0; hardware capture requires

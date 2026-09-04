@@ -478,7 +478,8 @@ def session_main() -> int:
         verify_command = (
             f"python3 {shlex.quote(str(verifier))} {shlex.quote(str(app_elf))} "
             f"{shlex.quote(str(verification))} "
-            '--objdump "$(command -v xtensa-esp32s3-elf-objdump)"'
+            '--objdump "$(command -v xtensa-esp32s3-elf-objdump)" '
+            '--compiler "$(command -v xtensa-esp32s3-elf-gcc)"'
         )
         subprocess.run(["eim", "run", verify_command, "v6.1"], check=True)
         for path in (
