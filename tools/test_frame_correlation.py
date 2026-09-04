@@ -37,9 +37,10 @@ class FrameCorrelationTest(unittest.TestCase):
         self.assertEqual(report["classification"], "distribution")
         self.assertEqual(report["onePercentClaim"], "refused")
         self.assertIsNone(report["nonPsramPartition"])
+        self.assertEqual(report["cacheCounters"]["dbus_psram_misses"]["slowMinusFast"]["max"], 0)
 
         mismatch = copy.deepcopy(slow)
-        mismatch["frames"][0]["dbus_psram_misses"] += 1
+        mismatch["frames"][0]["kind"] = "wrong"
         with self.assertRaises(correlation.Refusal):
             correlation.psram_candidate(mismatch, fast)
 
