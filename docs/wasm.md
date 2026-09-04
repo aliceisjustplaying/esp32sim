@@ -76,12 +76,59 @@ the tab falls half a second behind. `Date.now()` is passed in for the emulated S
 | ESP32-C6 hello_world | real time | the newest chip: one RV32IMAC core, console only — pick board `esp32c6` |
 | ESP32-C6 802.15.4 energy scanner | real time | the Waveshare ESP32-C6-LCD-1.47: LVGL spectrum on the ST7789 over SPI2+GDMA, WS2812, energy detect from the MAC model's moving 2.4 GHz picture; BOOT on the page — board `waveshare-c6-lcd147` |
 
-The browser uses the basic-block interpreter for general code. Its first WebAssembly JIT slice
-can hand a complete 64-instruction, receipt-priced, side-effect-free LX7 SRAM quantum to a
-generated module that shares the emulator's memory. The dispatcher falls back unless core 1 is
-held and the sequence fits every timer, observer and register-window boundary. The supported
-opcode slice is still too small for a whole-firmware speed claim; PIE-heavy code (the autopling
-detector) remains behind.
+The browser's Xtensa block scheduler can compile hot integer/branch/memory blocks into
+additional WASM modules. After 32 executions, an eligible block is installed in the emulator's
+exported function table. Subsequent calls stay inside WASM; JavaScript compiles and retires
+modules but does not dispatch each block. Calls have generated WASM paths; window overflow
+and illegal calls retain the existing exception handling. A supported prefix ending in a
+return can also be compiled: the return uses the existing interpreter helper, preserving
+its window and exception semantics. Other unsupported operations keep their block interpreted.
+Unaligned, unmapped, read-only and peripheral accesses use the ordinary bus helper.
+
+Compiled WASM blocks can survive decoded-arena turnover. Reuse requires matching every decoded
+instruction, the block length and the fast-memory contract. At each arena flush, retention is
+limited to the two most recent decoder generations, 16,384 blocks and 64 MiB of emitted WASM
+per core. New code can grow beyond those retention limits between flushes; engine-generated
+machine code and other browser allocations are additional. The host reports peak live emitted
+bytes and module counts to make this tradeoff measurable.
+
+Whole-block calls use a separate path when entry checks prove there can be no register-window
+collision and no active loop end within the block. That path omits per-instruction entry,
+budget, overflow and loop-end tests. Generated code loads only the block's operand registers
+and computes register-window collision state once per entry. Budget cuts, resumptions and
+states that fail either guard keep their checked path.
+
+Compiled execution uses the same instruction-count timing as the default block interpreter.
+Timer budgets, interrupts, loop ends, code-page versions and observer boundaries still bound
+execution. This does **not** extend the receipt-based cycle model or establish cycle accuracy.
+The earlier `esp32sim_jit_prepare/commit` experiment remains available for its synthetic test;
+the page no longer uses it to run firmware.
+
+Custom WASM hosts must provide `host_jit_compile` and `host_jit_release` from
+`web/wasm/jit.mjs`, alongside `host_log`. The module exports `__indirect_function_table`.
+Append `&jit=0` to the page URL, or configure `esp32sim_set_jit(emu, 0)` before
+running, to compare with the interpreter;
+`esp32sim_block_jit_insns(emu)` counts retired instructions through compiled blocks, including
+memory helpers. `createJitHost` exposes compilation, failure, release and compile-time counters.
+`ESP32SIM_NO_WASM_JIT=1 node tools/wasm-test.mjs ...` exercises the interpreter on the same build.
+
+`tools/wasm-jit-test.sh` builds a separate test-enabled module and runs generated-code
+comparisons with the interpreter under Node, including budget/resume, timers, register windows,
+loops, memory faults and code invalidation. CI runs it alongside the firmware smoke tests.
+It does not overwrite `web/wasm/esp32sim.wasm`.
+
+An optional `jit-profile` feature adds statistical block profiling to the WASM build. Its
+host must supply `env.host_profile_now`, a monotonic millisecond clock (for example,
+`() => performance.now()`). Call `esp32sim_profile_report(emu)` to emit per-core TSV through
+`host_log`: sampled PCs, compiled/interpreted status, instruction counts, elapsed samples,
+unsupported operations and block operations. Blocks are sampled with probability 1/4096
+using a pseudorandom sequence. PC rows describe the first sampled decoded shape; profiles
+of self-modifying code may combine multiple shapes at the same PC. Counts include trap
+iterations and compiled helper execution, so they are estimates rather than exact opcode
+retirement counts. Elapsed samples include lookup and dispatch but exclude the outer SoC
+scheduler. Clock-call overhead and quantization can dominate these short intervals; do not
+convert their sum into a wall-time breakdown. Use uninstrumented runs to measure speed.
+Normal builds contain neither the sampling code nor the clock import.
 
 ## Limits
 

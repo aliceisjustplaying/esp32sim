@@ -16,3 +16,7 @@ esp32c3 = { path = "../esp32c3" }
 esp32c6 = { path = "../esp32c6" }
 esp32sim-wasm-jit = { path = "../wasm-jit" }
 xtensa-lx7 = { path = "../xtensa-lx7" }
+
+[features]
+jit-tests = ["xtensa-lx7/wasm-jit-tests"]
+jit-profile = ["xtensa-lx7/wasm-jit-profile"]

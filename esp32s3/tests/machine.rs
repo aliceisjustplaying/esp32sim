@@ -63,6 +63,21 @@ fn browser_external_blocks_are_single_core_scheduler_transactions() {
     assert_eq!(m.browser_external_block_budget(7), None, "core 1 is running");
 }
 
+#[test]
+fn browser_external_finish_honors_halt_and_drains_console() {
+    for halt in [false, true] {
+        let mut m = machine();
+        park(&mut m, 0, IRAM, &SPIN);
+        m.max_cycles = if halt { 64 } else { 128 };
+        m.bus.periph.usb.tx_out.extend_from_slice(b"finish-output");
+        assert_eq!(m.browser_external_block_budget(64), Some(64));
+        let stop = m.finish_browser_external_quantum();
+        assert_eq!(matches!(stop, Some(Stop::Halted)), halt);
+        assert!(m.bus.periph.usb.tx_out.is_empty());
+        assert_eq!(m.console.all, b"finish-output");
+    }
+}
+
 /// A chip reset re-creates the digital peripherals but keeps the efuses, the straps, the RTC
 /// domain and the captured audio, and publishes the cause where the ROM reads it.
 #[test]

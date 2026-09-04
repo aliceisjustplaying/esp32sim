@@ -15,6 +15,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { createJitHost } from '../web/wasm/jit.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const fwDir = join(root, 'web', 'wasm', 'fw');
@@ -56,7 +57,8 @@ function dispatchJit(w, emu, mem, cache, disabled, cycles) {
 
 async function testJitHandoff() {
   let w;
-  const { instance } = await WebAssembly.instantiate(wasmBytes, { env: { host_log() {} } });
+  const blockJit = createJitHost(() => w);
+  const { instance } = await WebAssembly.instantiate(wasmBytes, { env: { ...blockJit.imports, host_log() {} } });
   w = instance.exports;
   const mem = () => new Uint8Array(w.memory.buffer);
   const withBytes = (bytes, f) => { const p = w.esp32sim_alloc(bytes.length); mem().set(bytes, p); try { return f(p, bytes.length); } finally { w.esp32sim_free(p, bytes.length); } };
@@ -79,7 +81,8 @@ async function testJitHandoff() {
 async function runManifest(name) {
   const m = JSON.parse(readFileSync(join(fwDir, `${name}.json`), 'utf8'));
   const logs = [];
-  const { instance } = await WebAssembly.instantiate(wasmBytes, { env: { host_log: (p, n) => logs.push(dec.decode(mem().subarray(p, p + n))) } });
+  const blockJit = createJitHost(() => w);
+  const { instance } = await WebAssembly.instantiate(wasmBytes, { env: { ...blockJit.imports, host_log: (p, n) => logs.push(dec.decode(mem().subarray(p, p + n))) } });
   const w = instance.exports;
   const mem = () => new Uint8Array(w.memory.buffer);
   const withBytes = (bytes, f) => { const p = w.esp32sim_alloc(bytes.length); mem().set(bytes, p); try { return f(p, bytes.length); } finally { w.esp32sim_free(p, bytes.length); } };
@@ -98,10 +101,10 @@ async function runManifest(name) {
   for (const s of m.stubs || []) { const [sym, val] = s.split('='); const name = (m.symbols || {})[sym] || sym;   // as the page: a symbols map resolves a stub without the ELF
     withBytes(enc.encode(name), (p, n) => w.esp32sim_stub(emu, p, n, Number(val ?? 0) >>> 0)); }
   if (m.wifi) withBytes(enc.encode(m.wifi), (p, n) => w.esp32sim_wifi(emu, p, n));
+  w.esp32sim_set_jit(emu, process.env.ESP32SIM_NO_WASM_JIT ? 0 : 1);
   if (w.esp32sim_boot(emu, 0) !== 0) throw new Error(`boot failed: ${logs.join(' | ')}`);
 
   const hz = w.esp32sim_cpu_hz(emu);
-  const jitCache = new Map(), jitDisabled = new Set();
   let board = null, text = '', frames = 0;
   const drain = () => {
     const n = w.esp32sim_out_take(emu);
@@ -116,8 +119,7 @@ async function runManifest(name) {
   const target = hz * (m.seconds || EXPECT.seconds);
   const t0 = Date.now();
   while (w.esp32sim_cycles(emu) < target) {
-    const usedJit = !process.env.ESP32SIM_NO_WASM_JIT && dispatchJit(w, emu, mem, jitCache, jitDisabled, 2_000_000);
-    const rc = usedJit ? 0 : w.esp32sim_run(emu, 2_000_000, Date.now());
+    const rc = w.esp32sim_run(emu, 2_000_000, Date.now());
     if (rc !== 0) throw new Error(`esp32sim_run stopped with ${rc} at ${(w.esp32sim_cycles(emu) / hz).toFixed(3)} s: ${logs.slice(-3).join(' | ')}`);
     drain();
   }

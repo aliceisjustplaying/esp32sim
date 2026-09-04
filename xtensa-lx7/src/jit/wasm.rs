@@ -1,0 +1,267 @@
+//! WASM block backend for the ordinary scheduler. Hot blocks are installed once in the
+//! exported function table; execution then uses WASM call_indirect, with no JS dispatch.
+//! This preserves the interpreter's instruction-count timing, not the receipt cost model.
+use crate::block::BlockInsn;
+use crate::bus::{Bus, FastMem, TlbEntry};
+use crate::exec::exec_insn;
+use crate::state::{ps, Cpu};
+use std::cell::Cell;
+use std::collections::HashMap;
+use std::mem::{offset_of, size_of};
+
+pub const AVAILABLE: bool = true;
+pub const NONE: u32 = u32::MAX;
+pub const CODE_END: u32 = 0;
+pub const CODE_LEFT: u32 = 1;
+pub const CODE_TRAP: u32 = 2;
+pub const CODE_CUT: u32 = 3;
+pub const CODE_TRAP_PRE: u32 = 4;
+const HOT: u32 = 32;
+const RETAIN_BYTES: usize = 64 << 20;
+const RETAIN_BLOCKS: usize = 16_384;
+
+#[link(wasm_import_module = "env")]
+extern "C" {
+    fn host_jit_compile(bytes: *const u8, len: usize) -> u32;
+    fn host_jit_release(slot: u32);
+}
+
+struct Block {
+    instructions: Vec<BlockInsn>,
+    pc: u32,
+    pcs: Vec<u32>,
+    fast: bool,
+    generation: u64,
+    hits: Cell<u32>,
+    slot: Cell<u32>,
+    bytes: Cell<usize>,
+}
+// Compiled instructions own their backing storage, independently of the decoder arena.
+// A decoder flush invalidates every handle before reset may compact this cache.
+pub struct CodeCache {
+    blocks: Vec<Block>,
+    by_pc: HashMap<(u32, usize, bool), u32>,
+    generation: u64,
+}
+impl Block {
+    fn release(&self) {
+        if self.slot.get() != NONE && self.slot.get() != 0 {
+            // SAFETY: reset/drop happen only when no compiled block is executing.
+            unsafe {
+                host_jit_release(self.slot.get());
+            }
+        }
+    }
+}
+impl CodeCache {
+    pub fn new(_: usize) -> Option<Self> {
+        Some(Self {
+            blocks: Vec::new(),
+            by_pc: HashMap::new(),
+            generation: 0,
+        })
+    }
+    pub fn used(&self) -> usize {
+        self.blocks.iter().map(|b| b.bytes.get()).sum()
+    }
+    pub fn reset(&mut self) {
+        self.generation += 1;
+        // Keep recently decoded blocks across arena turnover. Prefer recent code under
+        // pressure; enforce these retention limits only after all decoder handles die.
+        self.blocks.sort_by_key(|b| std::cmp::Reverse(b.generation));
+        let (mut bytes, mut count) = (0, 0);
+        self.blocks.retain(|b| {
+            let keep = self.generation - b.generation <= 2
+                && count < RETAIN_BLOCKS
+                && bytes + b.bytes.get() <= RETAIN_BYTES;
+            if keep {
+                bytes += b.bytes.get();
+                count += 1;
+            } else {
+                b.release();
+            }
+            keep
+        });
+        self.by_pc.clear();
+        for (id, b) in self.blocks.iter().enumerate() {
+            self.by_pc
+                .insert((b.pc, b.instructions.len(), b.fast), id as u32);
+        }
+    }
+}
+impl Drop for CodeCache {
+    fn drop(&mut self) {
+        for b in &self.blocks {
+            b.release();
+        }
+    }
+}
+
+pub fn compile(
+    cc: &mut CodeCache,
+    instructions: &mut [BlockInsn],
+    pc: u32,
+    fast: bool,
+) -> Option<u32> {
+    if instructions.len() < 2
+        || !instructions.iter().enumerate().all(|(n, i)| {
+            let last = n + 1 == instructions.len();
+            (!emitter::terminal_helper(i.insn.op) || last)
+                && (emitter::supported(i.insn.op, fast)
+                    || (last && emitter::terminal_helper(i.insn.op)))
+        })
+    {
+        return None;
+    }
+    Some(queue(cc, instructions, pc, fast))
+}
+
+fn queue(cc: &mut CodeCache, instructions: &mut [BlockInsn], pc: u32, fast: bool) -> u32 {
+    for (i, instruction) in instructions.iter_mut().enumerate() {
+        instruction.off = i as u32;
+    }
+    let key = (pc, instructions.len(), fast);
+    if let Some(&id) = cc.by_pc.get(&key) {
+        let b = &mut cc.blocks[id as usize];
+        // PC alone is not identity: self-modifying code and new observer boundaries
+        // must never resurrect stale code. Compare every decoded field, including raw.
+        if b.instructions
+            .iter()
+            .zip(instructions.iter())
+            .all(|(a, b)| a.insn == b.insn && a.max_ar == b.max_ar)
+        {
+            b.generation = cc.generation;
+            return id;
+        }
+    }
+    let id = cc.blocks.len() as u32;
+    let mut at = pc;
+    let pcs = instructions
+        .iter()
+        .map(|i| {
+            let old = at;
+            at = at.wrapping_add(i.insn.len as u32);
+            old
+        })
+        .collect();
+    cc.blocks.push(Block {
+        pcs,
+        instructions: instructions.to_vec(),
+        pc,
+        fast,
+        generation: cc.generation,
+        hits: Cell::new(0),
+        slot: Cell::new(NONE),
+        bytes: Cell::new(0),
+    });
+    cc.by_pc.insert(key, id);
+    id
+}
+pub fn ready(cc: &CodeCache, code: u32) -> bool {
+    let b = &cc.blocks[code as usize];
+    if b.slot.get() == NONE {
+        let hits = b.hits.get() + 1;
+        b.hits.set(hits);
+        if hits < HOT {
+            return false;
+        }
+        let bytes = generate(b);
+        // SAFETY: The host synchronously copies these bytes, installs a module using the
+        // shared memory/table, and returns a correctly typed function slot or zero.
+        let slot = unsafe { host_jit_compile(bytes.as_ptr(), bytes.len()) };
+        b.slot.set(slot);
+        b.bytes.set(if slot == 0 { 0 } else { bytes.len() });
+    }
+    b.slot.get() != 0
+}
+
+#[repr(C)]
+pub struct Helpers {
+    exec: usize,
+    overflow: usize,
+}
+impl Helpers {
+    pub fn new<B: Bus>() -> Self {
+        Self {
+            exec: h_exec::<B> as *const () as usize,
+            overflow: h_overflow as *const () as usize,
+        }
+    }
+}
+extern "C" fn h_exec<B: Bus>(
+    cpu: *mut Cpu,
+    bus: *mut B,
+    instruction: *const BlockInsn,
+    pc: u32,
+) -> u32 {
+    // SAFETY: The compiled caller passes the exclusive live CPU/bus and an instruction
+    // owned by its live CodeCache. No Rust execution overlaps generated access.
+    let (cpu, bus, instruction) = unsafe { (&mut *cpu, &mut *bus, &*instruction) };
+    cpu.pc = pc;
+    bus.note_pc(pc);
+    match exec_insn(cpu, bus, &instruction.insn) {
+        Ok(()) => (bus.block_break() as u32) << 1,
+        Err(t) => {
+            cpu.jit_trap = Some(t);
+            1
+        }
+    }
+}
+extern "C" fn h_overflow(cpu: *mut Cpu, max_ar: u32, pc: u32) -> u32 {
+    // SAFETY: The generated caller has exclusive access to this CPU.
+    let cpu = unsafe { &mut *cpu };
+    cpu.pc = pc;
+    match cpu.check_overflow(max_ar as u8) {
+        Some(t) => {
+            cpu.jit_trap = Some(t);
+            1
+        }
+        None => 0,
+    }
+}
+
+/// Execute a published block against the exclusively borrowed machine state.
+///
+/// # Safety
+/// `code` must be ready in this cache; `entry` must be its recorded instruction index.
+/// `h` must have been created for B. FastMem must describe this bus and remain valid.
+pub unsafe fn run<B: Bus>(
+    cc: &CodeCache,
+    code: u32,
+    cpu: &mut Cpu,
+    bus: &mut B,
+    h: &Helpers,
+    budget: u32,
+    entry: u32,
+    fm: Option<FastMem>,
+) -> u32 {
+    type Run<B> =
+        extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32, *const TlbEntry, *mut u32) -> u32;
+    // SAFETY: host_jit_compile installs exactly this signature in the shared WASM table.
+    let f: Run<B> = unsafe { std::mem::transmute(cc.blocks[code as usize].slot.get() as usize) };
+    let (tlb, versions) = fm
+        .map(|m| (m.tlb, m.page_ver))
+        .unwrap_or((std::ptr::null(), std::ptr::null_mut()));
+    let result = f(cpu, bus, h, budget, entry, tlb, versions);
+    let done = result & 0xffff;
+    if done > 0 {
+        let b = &cc.blocks[code as usize];
+        let pc = b.pcs[(entry + done - 1) as usize];
+        bus.note_pc(pc);
+    }
+    // Direct memory accesses need no peripheral callbacks. Preserve the last instruction PC
+    // for subsequent bus diagnostics just as the interpreter does.
+    result
+}
+
+#[path = "wasm_emit.rs"]
+mod emitter;
+use emitter::generate;
+
+#[cfg(feature = "wasm-jit-profile")]
+#[path = "wasm_profile.rs"]
+pub mod profile;
+
+#[cfg(feature = "wasm-jit-tests")]
+#[path = "wasm_tests.rs"]
+pub mod tests;

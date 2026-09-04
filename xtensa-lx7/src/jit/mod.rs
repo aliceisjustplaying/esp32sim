@@ -1,10 +1,10 @@
-//! Native code generation for blocks (AArch64 today). A compiled block is the same straight-line
+//! Code generation for scheduled blocks (AArch64 and WASM). A compiled block is the same straight-line
 //! run `block.rs` interprets, with the same exit rules — cut by budget, timer bound handled by the
 //! caller, `lend` checked after every fall-through instruction, exceptions and interrupt-line
 //! changes leaving immediately — so the interpreter is the oracle and the two must produce
 //! bit-identical machine state.
 //!
-//! Register plan inside generated code (AAPCS64 callee-saved, so helpers may be called freely):
+//! The following register plan describes the AArch64 backend (AAPCS64 callee-saved, so helpers may be called freely):
 //!   x19 = &Cpu, x20 = &Bus, x21 = &cpu.ar[0], w22 = windowbase*4, w23 = instructions left,
 //!   x24 = TLB entries, x25 = &Helpers, w26 = cpu.lend, x27 = write-version counters,
 //!   w28 = lend − block start, so the loop-end test is a compare with an immediate. The initial
@@ -507,7 +507,7 @@ mod native {
     #[allow(dead_code)] fn _uses(_: Label, _: Trap) {}
 }
 
-#[cfg(not(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux"))))]
+#[cfg(not(any(target_arch = "wasm32", all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))))]
 mod native {
     use crate::block::BlockInsn;
     use crate::bus::Bus;
@@ -528,4 +528,11 @@ mod native {
     pub const CODE_END: u32 = 0; pub const CODE_LEFT: u32 = 1; pub const CODE_TRAP: u32 = 2; pub const CODE_CUT: u32 = 3; pub const CODE_TRAP_PRE: u32 = 4;
 }
 
+#[cfg(target_arch = "wasm32")]
+#[path = "wasm.rs"]
+mod native;
+
 pub use native::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn ready(_: &CodeCache, _: u32) -> bool { true }

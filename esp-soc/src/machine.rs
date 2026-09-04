@@ -471,13 +471,16 @@ impl<S: Soc> Machine<S> {
     /// quantum's result.
     pub fn finish_browser_external_quantum(&mut self) -> Option<Stop> {
         self.after_round(QUANTUM);
-        self.bus.sw_reset().then_some(Stop::SwReset)
+        if self.bus.sw_reset() { self.drain_console(); return Some(Stop::SwReset); }
+        if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Some(Stop::Halted); }
+        self.drain_console();
+        None
     }
 
     fn run_unmodeled(&mut self, max_insns: u64) -> Stop {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); c.flush_caches(); }
+        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); }
         // the fast path cannot honour per-instruction observers; those runs single-step
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
@@ -754,7 +757,7 @@ impl<S: Soc> Machine<S> {
     pub fn run_until_cycle(&mut self, target: u64) -> RunUntil {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); c.flush_caches(); }
+        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); }
         let blocks = !self.probes.contains(Wants::INSN);
         let no_skip = self.probes.contains(Wants::NO_IDLE_SKIP);
         loop {
