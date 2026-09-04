@@ -1,18 +1,7 @@
 #include "xtensa/coreasm.h"
 
-/* ESP32-S3 rev 0 ROM xtos_p_none implementation. */
-.global mask_rom_fetch_straight_line
-.set mask_rom_fetch_straight_line, 0x400559a4
-
 .section .iram1, "ax"
 .align 4
-
-.global iram_fetch_matched_control
-.type iram_fetch_matched_control, @function
-iram_fetch_matched_control:
-  entry a1, 16
-  retw.n
-  .size iram_fetch_matched_control, . - iram_fetch_matched_control
 
 /* Common state occupies 0 through 32, result occupies 36. */
 .macro save_level1_state
@@ -280,7 +269,8 @@ window_underflow8_entry:
   require_underflow_shape 5f
   movi a10, 1
   call8 h2_underflow_target
-  sub a2, a11, a10
+  rsr a3, excsave2
+  sub a2, a3, a10
   s32i a2, a1, 36
   restore_level1_state
   l32i a2, a1, 36

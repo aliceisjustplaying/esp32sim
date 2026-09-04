@@ -1,9 +1,9 @@
 # ESP32-S3 H2 exception rank follow-up
 
-This IDF 6.1 image emits eleven 100-sample cells. Two matched window controls
+This IDF 6.1 image emits nine 100-sample cells. Two matched window controls
 separate WindowOverflow8 and WindowUnderflow8 trigger-to-vector residuals,
-direct cells separate `rfwo` and `rfwu`, and one IRAM control matches the ROM
-`entry; retw.n` target. `DESIGN.md` defines the equations and adoption gates.
+and direct cells separate `rfwo` and `rfwu`. `DESIGN.md` defines the equations
+and adoption gates.
 
 ```sh
 eim run "idf.py -C calibration/esp32s3-exception-rank-followup -B out/h2-exception-rank build" v6.1
@@ -24,4 +24,5 @@ calibration/tools/capture.py --image calibration/esp32s3-exception-rank-followup
 
 No candidate is adopted by this image or by its emulator dry-run. Adoption
 requires a committed two-boot H2 receipt that passes the unused H1 validation
-targets pinned in `design-proof.json`.
+targets pinned in `design-proof.json`. Mask-ROM fetch remains refused because
+the minimal safe-window predicate failed closed in the emulator.

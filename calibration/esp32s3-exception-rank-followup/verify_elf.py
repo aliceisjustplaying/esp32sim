@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from prove_design import ROWS, proof
+from prove_design import COLUMNS, ROWS, proof
 
 
 CELL_IDS = (
@@ -25,11 +25,7 @@ CELL_IDS = (
     "window_underflow8_control",
     "rfwo_alone",
     "rfwu_alone",
-    "mask_rom_fetch_straight_line",
-    "iram_fetch_matched_control",
 )
-ROM_SHA256 = "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd"
-ROM_TARGET = 0x400559A4
 H1_RECEIPT_COMMIT = "c6c0d5af528f0988004b7f77427a9259d9d2db3a"
 H1_SOURCE_COMMIT = "75778a4cfef4332b09b7e0595d36fde188d0c118"
 H1_SUMMARY_PATH = "docs/evidence/timing/h1-exception-ladders-2026-09-04/summary.json"
@@ -42,6 +38,16 @@ GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 class VerificationError(ValueError):
     pass
+
+
+def coefficients(*columns: str) -> tuple[int, ...]:
+    row = [0] * len(COLUMNS)
+    for column in columns:
+        try:
+            row[COLUMNS.index(column)] += 1
+        except ValueError as error:
+            raise VerificationError(f"unknown timing column {column}") from error
+    return tuple(row)
 
 
 def sha256(path: Path) -> str:
@@ -240,24 +246,14 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
     derived_rows: dict[str, tuple[int, ...]] = {}
     equation_evidence: dict[str, object] = {}
 
-    iram = require_function(parsed, "iram_fetch_matched_control")
-    if tuple((item[1], item[2], item[3]) for item in iram[:2]) != (
-        ("002136", "entry", "a1, 16"),
-        ("f01d", "retw.n", ""),
-    ):
-        raise VerificationError("IRAM matched control is not exact entry; retw.n")
-    iram_address, iram_section, iram_size = symbol(symbols, "iram_fetch_matched_control")
-    if iram_address % 4 or iram_section != ".iram0.text" or iram_size != 5:
-        raise VerificationError("IRAM matched control placement changed")
-
     boundaries = {
-        "rfe_alone": (("rsr.ccount", "a2"), ("rfe", ""), ("rsr.ccount", "a3")),
-        "rfi3_alone": (("rsr.ccount", "a2"), ("rfi", "3"), ("rsr.ccount", "a3")),
-        "rfwo_alone": (("rsr.ccount", "a2"), ("rfwo", ""), ("rsr.ccount", "a3")),
-        "rfwu_alone": (("rsr.ccount", "a2"), ("rfwu", ""), ("rsr.ccount", "a3")),
-        "syscall_rfe_pair": (("rsr.ccount", "a10"), ("syscall", ""), ("rsr.ccount", "a2")),
+        "rfe_alone": (("rfe",), (("rsr.ccount", "a2"), ("rfe", ""), ("rsr.ccount", "a3"))),
+        "rfi3_alone": (("rfi3",), (("rsr.ccount", "a2"), ("rfi", "3"), ("rsr.ccount", "a3"))),
+        "rfwo_alone": (("rfwo",), (("rsr.ccount", "a2"), ("rfwo", ""), ("rsr.ccount", "a3"))),
+        "rfwu_alone": (("rfwu",), (("rsr.ccount", "a2"), ("rfwu", ""), ("rsr.ccount", "a3"))),
+        "syscall_rfe_pair": ((), (("rsr.ccount", "a10"), ("syscall", ""), ("rsr.ccount", "a2"))),
     }
-    for name, expected in boundaries.items():
+    for name, (columns, expected) in boundaries.items():
         body = require_function(parsed, name)
         actual = tuple((item[2], item[3].strip()) for item in body)
         matches = [
@@ -271,7 +267,8 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
             "addresses": [f"0x{item[0]:08x}" for item in body[index : index + 3]],
             "instructions": [f"{mnemonic} {operands}".strip() for mnemonic, operands in expected],
         }
-        derived_rows[name] = ROWS[name]
+        if columns:
+            derived_rows[name] = coefficients(*columns)
 
     if mnemonics(require_function(parsed, "h2_syscall_handler")) != (
         "rsr.epc1",
@@ -281,6 +278,7 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
         "rfe",
     ):
         raise VerificationError("syscall handler body changed")
+    derived_rows["syscall_rfe_pair"] = coefficients("syscall_entry", "rfe")
     overflow = require_function(parsed, "window_overflow8_entry")
     overflow_control = require_function(parsed, "window_overflow8_control")
     overflow_target = require_function(parsed, "h2_overflow_target")
@@ -323,7 +321,7 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
         (("rsr.ccount", "a2"), ("rsr.excsave2", "a3"), ("sub", "a2, a3, a2")),
         "window_overflow8_entry endpoint",
     )
-    derived_rows["window_overflow8_entry"] = ROWS["window_overflow8_entry"]
+    derived_rows["window_overflow8_entry"] = coefficients("window_overflow8_entry")
     equation_evidence["window_overflow8_entry"] = {
         "equation": "trigger raw minus matched no-overflow raw",
         "precondition": "WINDOWSTART[B+1..B+3] == 0",
@@ -362,7 +360,7 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
             raise VerificationError(f"{name} does not select the exact shared target path")
     require_ordered(
         require_function(parsed, "window_underflow8_entry"),
-        (("sub", "a2, a11, a10"),),
+        (("rsr.excsave2", "a3"), ("sub", "a2, a3, a10")),
         "window_underflow8_entry endpoint mapping",
     )
     require_ordered(
@@ -370,12 +368,12 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
         (("rsr.ccount", "a3"), ("sub", "a2, a3, a10")),
         "window_underflow8_control endpoint mapping",
     )
-    derived_rows["window_underflow8_entry"] = ROWS["window_underflow8_entry"]
+    derived_rows["window_underflow8_entry"] = coefficients("window_underflow8_entry")
     equation_evidence["window_underflow8_entry"] = {
         "equation": "trigger raw minus matched no-underflow raw",
         "precondition": "WINDOWSTART[B] == 1 and WINDOWSTART[B-1,B+1,B+2] == 0",
         "triggerMask": "target AND-clears bit(target WINDOWBASE-2), the caller B bit",
-        "endpointMapping": "target a2 to caller a10; vector a3 to caller a11",
+        "endpointMapping": "target a2 to caller a10; vector a3 copied through EXCSAVE2",
     }
 
     vector_base, vector_section, _ = symbol(symbols, "h2_window_vector_base")
@@ -421,43 +419,26 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
     for name, registers in restore_contracts.items():
         require_restore(parsed, name, registers)
 
-    for wrapper in ("measure_elapsed_samples", "measure_target_samples"):
-        body = require_function(parsed, wrapper)
-        dispatches = [item for item in body if item[2] == "callx8"]
-        if len(dispatches) != 2:
-            raise VerificationError(f"{wrapper} lacks one warmup and one measured callx8")
-        text = "\n".join(item[3].lower() for item in body)
-        if "600c40c4" not in text or any(
-            address not in text
-            for address in ("600c40c8", "600c40cc", "600c40d0", "600c40d4", "600c40d8")
-        ):
-            raise VerificationError(f"{wrapper} cache-counter gate changed")
-        if not any(item[2].startswith("bnez") for item in body):
-            raise VerificationError(f"{wrapper} lacks the cache-counter rejection branch")
-        same_state_address, _, _ = symbol(symbols, "same_state")
-        state_checks = [
-            item for item in body
-            if item[2] == "call8" and f"{same_state_address:x}" in item[3]
-        ]
-        if len(state_checks) != 2:
-            raise VerificationError(f"{wrapper} does not state-check warmup and every sample")
-
-    target_measure = require_function(parsed, "measure_target_samples")
-    target_mnemonics = mnemonics(target_measure)
-    woe_clear_count = sum(
-        target_mnemonics[index] == "rsr.ps"
-        and target_mnemonics[index + 1] in {"movi", "movi.n"}
-        and target_mnemonics[index + 2 : index + 7]
-        == ("slli", "or", "xor", "wsr.ps", "rsync")
-        for index in range(len(target_mnemonics) - 6)
-    )
-    if woe_clear_count != 2:
-        raise VerificationError("ROM wrapper does not clear PS.WOE for warmup and every sample")
-    equation_evidence["rom_minus_iram_control"] = {
-        "wrapper": "one measure_target_samples function pointer path",
-        "windowState": "PS.WOE clear with exact before/after state checks",
-        "cacheState": "all five cache counters folded into the rejection gate",
-    }
+    wrapper = "measure_elapsed_samples"
+    body = require_function(parsed, wrapper)
+    dispatches = [item for item in body if item[2] == "callx8"]
+    if len(dispatches) != 2:
+        raise VerificationError(f"{wrapper} lacks one warmup and one measured callx8")
+    text = "\n".join(item[3].lower() for item in body)
+    if "600c40c4" not in text or any(
+        address not in text
+        for address in ("600c40c8", "600c40cc", "600c40d0", "600c40d4", "600c40d8")
+    ):
+        raise VerificationError(f"{wrapper} cache-counter gate changed")
+    if not any(item[2].startswith("bnez") for item in body):
+        raise VerificationError(f"{wrapper} lacks the cache-counter rejection branch")
+    same_state_address, _, _ = symbol(symbols, "same_state")
+    state_checks = [
+        item for item in body
+        if item[2] == "call8" and f"{same_state_address:x}" in item[3]
+    ]
+    if len(state_checks) != 2:
+        raise VerificationError(f"{wrapper} does not state-check warmup and every sample")
 
     instruction_map = {item[0]: item for item in all_instructions}
     syscall_handler, _, _ = symbol(symbols, "h2_syscall_handler")
@@ -470,17 +451,6 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
             raise VerificationError(f"syscall vector +0x{offset:x} does not jump to handler")
 
     return {
-        "iramMatchedControl": {
-            "address": f"0x{iram_address:08x}",
-            "section": iram_section,
-            "sizeBytes": iram_size,
-            "instructions": [
-                {"address": f"0x{item[0]:08x}", "encoding": item[1],
-                 "mnemonic": item[2], "operands": item[3]}
-                for item in iram[:2]
-            ],
-            "windowContract": "same wrapper, PS.WOE=0, exact state equality before and after",
-        },
         "windowVectors": {
             "base": f"0x{vector_base:08x}",
             "overflow8": f"0x{overflow_vector:08x}",
@@ -496,38 +466,7 @@ def verify_disassembly(disassembly: str, symbols: str) -> dict[str, object]:
     }
 
 
-def verify_rom(app_symbols: str, rom_symbols: str, rom_disassembly: str) -> dict[str, object]:
-    alias_address, alias_section, _ = symbol(app_symbols, "mask_rom_fetch_straight_line")
-    target_address, target_section, target_size = symbol(rom_symbols, "xtos_p_none")
-    target = [
-        item
-        for item in require_function(functions(rom_disassembly), "xtos_p_none")
-        if item[0] < target_address + target_size
-    ]
-    if (
-        alias_address != ROM_TARGET
-        or alias_section != "*ABS*"
-        or target_address != ROM_TARGET
-        or target_section != ".text"
-        or target_size != 5
-        or tuple((item[1], item[2], item[3]) for item in target)
-        != (("002136", "entry", "a1, 16"), ("f01d", "retw.n", ""))
-    ):
-        raise VerificationError("mask-ROM target is not the exact aligned xtos_p_none pair")
-    return {
-        "address": f"0x{target_address:08x}",
-        "section": target_section,
-        "sizeBytes": target_size,
-        "sha256": ROM_SHA256,
-        "instructions": [
-            {"address": f"0x{item[0]:08x}", "encoding": item[1],
-             "mnemonic": item[2], "operands": item[3]}
-            for item in target
-        ],
-    }
-
-
-def artifact_map(build: Path, elf: Path, rom_elf: Path, image: Path) -> dict[str, dict[str, str]]:
+def artifact_map(build: Path, elf: Path, image: Path) -> dict[str, dict[str, str]]:
     paths = {
         "applicationElf": elf,
         "applicationBinary": elf.with_suffix(".bin"),
@@ -538,7 +477,6 @@ def artifact_map(build: Path, elf: Path, rom_elf: Path, image: Path) -> dict[str
         "flasherArguments": build / "flasher_args.json",
         "probeManifest": image / "probe-cells.json",
         "designProof": image / "design-proof.json",
-        "maskRomElf": rom_elf,
     }
     missing = [str(path) for path in paths.values() if not path.is_file()]
     if missing:
@@ -550,7 +488,7 @@ def artifact_map(build: Path, elf: Path, rom_elf: Path, image: Path) -> dict[str
 
 
 def verify(
-    elf: Path, build: Path, rom_elf: Path, objdump: str, compiler: str, repo: Path
+    elf: Path, build: Path, objdump: str, compiler: str, repo: Path
 ) -> dict[str, object]:
     image = Path(__file__).resolve().parent
     source_commit = run(["git", "rev-parse", "HEAD"], repo).strip()
@@ -563,18 +501,12 @@ def verify(
         [sys.executable, str(image / "prove_design.py"), "--check", str(image / "design-proof.json")],
         check=True,
     )
-    if sha256(rom_elf) != ROM_SHA256:
-        raise VerificationError("mask-ROM ELF hash changed")
     app_disassembly = run([objdump, "-d", str(elf)])
     app_symbols = run([objdump, "-t", str(elf)])
-    rom_symbols = run([objdump, "-t", str(rom_elf)])
-    rom_disassembly = run([objdump, "-d", str(rom_elf)])
     elf_contract = verify_disassembly(app_disassembly, app_symbols)
-    rom_contract = verify_rom(app_symbols, rom_symbols, rom_disassembly)
     reconstructed_rows = {
         name: tuple(row) for name, row in elf_contract.pop("reconstructedRows").items()
     }
-    reconstructed_rows["rom_minus_iram_control"] = ROWS["rom_minus_iram_control"]
     if set(reconstructed_rows) != set(ROWS):
         raise VerificationError("executable row names do not match the paper design")
     ordered_rows = {name: reconstructed_rows[name] for name in ROWS}
@@ -592,9 +524,8 @@ def verify(
         },
         "manifest": manifest,
         "h1Receipt": verify_h1_receipt(repo),
-        "artifacts": artifact_map(build, elf, rom_elf, image),
+        "artifacts": artifact_map(build, elf, image),
         "elfContract": elf_contract,
-        "romContract": rom_contract,
     }
 
 
@@ -603,24 +534,16 @@ def main() -> int:
     parser.add_argument("elf", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build", type=Path)
-    parser.add_argument("--rom-elf", type=Path)
     parser.add_argument("--objdump", default="xtensa-esp32s3-elf-objdump")
     parser.add_argument("--compiler", default="xtensa-esp32s3-elf-gcc")
     args = parser.parse_args()
     if args.output.exists():
         print(f"refusing to overwrite {args.output}", file=sys.stderr)
         return 2
-    rom_elf = args.rom_elf
-    if rom_elf is None:
-        directory = os.environ.get("ESP_ROM_ELF_DIR")
-        if not directory:
-            print("ESP_ROM_ELF_DIR is required", file=sys.stderr)
-            return 2
-        rom_elf = Path(directory) / "esp32s3_rev0_rom.elf"
     try:
         repo = Path(run(["git", "rev-parse", "--show-toplevel"]).strip())
         build = (args.build or args.elf.parent).resolve()
-        result = verify(args.elf.resolve(), build, rom_elf.resolve(), args.objdump, args.compiler, repo)
+        result = verify(args.elf.resolve(), build, args.objdump, args.compiler, repo)
     except (OSError, TypeError, json.JSONDecodeError, subprocess.CalledProcessError, VerificationError) as error:
         print(f"ELF verification failed: {error}", file=sys.stderr)
         return 2

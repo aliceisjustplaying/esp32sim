@@ -11,17 +11,16 @@ from pathlib import Path
 
 COLUMNS = (
     "rfe", "rfi3", "syscall_entry", "window_overflow8_entry",
-    "window_underflow8_entry", "rfwo", "rfwu", "rom_fetch_F",
+    "window_underflow8_entry", "rfwo", "rfwu",
 )
 ROWS = {
-    "rfe_alone": (1, 0, 0, 0, 0, 0, 0, 0),
-    "rfi3_alone": (0, 1, 0, 0, 0, 0, 0, 0),
-    "syscall_rfe_pair": (1, 0, 1, 0, 0, 0, 0, 0),
-    "window_overflow8_entry": (0, 0, 0, 1, 0, 0, 0, 0),
-    "window_underflow8_entry": (0, 0, 0, 0, 1, 0, 0, 0),
-    "rfwo_alone": (0, 0, 0, 0, 0, 1, 0, 0),
-    "rfwu_alone": (0, 0, 0, 0, 0, 0, 1, 0),
-    "rom_minus_iram_control": (0, 0, 0, 0, 0, 0, 0, 2),
+    "rfe_alone": (1, 0, 0, 0, 0, 0, 0),
+    "rfi3_alone": (0, 1, 0, 0, 0, 0, 0),
+    "syscall_rfe_pair": (1, 0, 1, 0, 0, 0, 0),
+    "window_overflow8_entry": (0, 0, 0, 1, 0, 0, 0),
+    "window_underflow8_entry": (0, 0, 0, 0, 1, 0, 0),
+    "rfwo_alone": (0, 0, 0, 0, 0, 1, 0),
+    "rfwu_alone": (0, 0, 0, 0, 0, 0, 1),
 }
 
 
@@ -80,7 +79,6 @@ def proof(rows: dict[str, tuple[int, ...]] = ROWS) -> dict[str, object]:
             "window_underflow8_entry": "underflow_raw - matched_no_underflow_raw = window_underflow8_entry",
             "rfwo_alone": "raw - rsr.ccount(1) = rfwo",
             "rfwu_alone": "raw - rsr.ccount(1) = rfwu",
-            "rom_minus_iram_control": "rom_raw - iram_raw = 2 * rom_fetch_F",
         },
         "independentValidation": {
             "receiptCommit": "c6c0d5af528f0988004b7f77427a9259d9d2db3a",
@@ -91,7 +89,6 @@ def proof(rows: dict[str, tuple[int, ...]] = ROWS) -> dict[str, object]:
                 "rfe_alone": 6,
                 "rfi3_alone": 5,
                 "syscall_rfe_pair": 18,
-                "mask_rom_fetch_straight_line": 15,
             },
             "windowCriterion": "window_overflow8_entry + window_underflow8_entry + rfwo + rfwu == 17",
             "windowKnownEighteenCycles": "two verified nine-cycle IDF 6.1 handler prefixes",
@@ -102,14 +99,10 @@ def proof(rows: dict[str, tuple[int, ...]] = ROWS) -> dict[str, object]:
             "description": "verify_elf.py reconstructs the rows after exact boundaries and all restoration exits pass",
         },
         "romBoundary": {
-            "equation": "rom_total - iram_control_total = 2 * rom_fetch_F",
-            "requirements": [
-                "both targets are exactly entry a1, 16; retw.n",
-                "both targets have address residue zero modulo four",
-                "both use the same callx8 measurement wrapper",
-                "PS.WOE is clear and WINDOWBASE/WINDOWSTART match for both calls",
-                "all accepted samples have zero cache-counter and state deltas",
-            ],
+            "h1CorrelationRawTotal": 15,
+            "status": "refused",
+            "tierCandidate": "exact",
+            "blocker": "the minimal WOE=1 safe-window predicate refused in emulator; a dedicated controlled-WINDOWSTART probe is outside this exception slice",
         },
     }
 

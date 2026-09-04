@@ -25,8 +25,6 @@ extern uint32_t window_underflow8_entry(uint32_t unused);
 extern uint32_t window_underflow8_control(uint32_t unused);
 extern uint32_t rfwo_alone(uint32_t unused);
 extern uint32_t rfwu_alone(uint32_t unused);
-extern uint32_t mask_rom_fetch_straight_line(uint32_t unused);
-extern uint32_t iram_fetch_matched_control(uint32_t unused);
 
 volatile uint32_t h2_vector_timestamp;
 static volatile uint32_t benchmark_sink;
@@ -73,8 +71,8 @@ static inline void IRAM_ATTR snapshot_state(probe_state_t *state) {
   READ_SPECIAL(sar, state->sar);
 }
 
-static bool IRAM_ATTR same_state(const probe_state_t *left,
-                                 const probe_state_t *right) {
+bool IRAM_ATTR __attribute__((noinline))
+same_state(const probe_state_t *left, const probe_state_t *right) {
   return left->ps == right->ps && left->windowbase == right->windowbase &&
          left->windowstart == right->windowstart && left->epc1 == right->epc1 &&
          left->epc3 == right->epc3 &&
@@ -82,27 +80,6 @@ static bool IRAM_ATTR same_state(const probe_state_t *left,
          left->excsave2 == right->excsave2 && left->excsave3 == right->excsave3 &&
          left->exccause == right->exccause && left->vecbase == right->vecbase &&
          left->sar == right->sar;
-}
-
-static inline void IRAM_ATTR disable_window_exceptions(void) {
-  uint32_t ps;
-  __asm__ __volatile__(
-      "rsr %0, ps\n"
-      "movi a3, 1\n"
-      "slli a3, a3, 18\n"
-      "or %0, %0, a3\n"
-      "xor %0, %0, a3\n"
-      "wsr %0, ps\n"
-      "rsync"
-      : "=&a"(ps)
-      :
-      : "a3");
-}
-
-static inline uint32_t IRAM_ATTR read_ccount(void) {
-  uint32_t value;
-  __asm__ __volatile__("rsr.ccount %0" : "=a"(value));
-  return value;
 }
 
 static inline uint32_t IRAM_ATTR mask_interrupts(void) {
@@ -190,59 +167,11 @@ measure_elapsed_samples(probe_fn_t function, uint32_t *samples) {
   return accepted;
 }
 
-static uint32_t IRAM_ATTR __attribute__((noinline))
-measure_target_samples(probe_fn_t function, uint32_t *samples) {
-  uint32_t accepted = 0;
-  probe_state_t before;
-  probe_state_t after;
-  uint32_t previous = mask_interrupts();
-  disable_window_exceptions();
-  snapshot_state(&before);
-  benchmark_sink += function(0);
-  snapshot_state(&after);
-  restore_interrupts(previous);
-  if (!same_state(&before, &after)) {
-    ++state_rejections;
-    return 0;
-  }
-  for (uint32_t attempt = 0;
-       attempt < MAX_ATTEMPTS && accepted < SAMPLES; ++attempt) {
-    clear_cache_counters();
-    previous = mask_interrupts();
-    disable_window_exceptions();
-    snapshot_state(&before);
-    const uint32_t start = read_ccount();
-    benchmark_sink += function(0);
-    const uint32_t end = read_ccount();
-    snapshot_state(&after);
-    restore_interrupts(previous);
-    const cache_counters_t counters = read_cache_counters();
-    const uint32_t elapsed = end - start;
-    const bool state_matches = same_state(&before, &after);
-    state_rejections += state_matches ? 0u : 1u;
-    if (elapsed != 0u && counters_zero(counters) && state_matches) {
-      samples[accepted++] = elapsed;
-    }
-  }
-  return accepted;
-}
-
 static void run_elapsed(const char *name, probe_fn_t function) {
   uint32_t samples[SAMPLES];
   const uint32_t accepted = measure_elapsed_samples(function, samples);
   if (accepted == SAMPLES) {
     emit_metric(name, "iram", "exception-rank", samples);
-  } else {
-    emit_refusal(name);
-  }
-}
-
-static void run_target(const char *name, const char *memory,
-                       probe_fn_t function) {
-  uint32_t samples[SAMPLES];
-  const uint32_t accepted = measure_target_samples(function, samples);
-  if (accepted == SAMPLES) {
-    emit_metric(name, memory, "matched-straight-line", samples);
   } else {
     emit_refusal(name);
   }
@@ -272,11 +201,6 @@ void app_main(void) {
   run_elapsed("window_underflow8_control", window_underflow8_control);
   run_elapsed("rfwo_alone", rfwo_alone);
   run_elapsed("rfwu_alone", rfwu_alone);
-  run_target("mask_rom_fetch_straight_line", "rom",
-             mask_rom_fetch_straight_line);
-  run_target("iram_fetch_matched_control", "iram",
-             iram_fetch_matched_control);
-
   printf("CALIBRATION_DONE sink=%" PRIu32 "\n", benchmark_sink);
   fflush(stdout);
   while (true) {
