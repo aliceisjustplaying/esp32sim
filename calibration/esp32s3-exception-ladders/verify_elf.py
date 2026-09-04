@@ -98,7 +98,21 @@ def verify_artifacts(
         for line in flash_args.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    if not flash_lines or flash_lines[0] != flasher.get("write_flash_args"):
+    generated_settings = flasher.get("write_flash_args")
+    if (
+        not flash_lines
+        or not isinstance(generated_settings, list)
+        or len(flash_lines[0]) % 2 != 0
+        or len(generated_settings) % 2 != 0
+    ):
+        raise VerificationError("flash arguments do not contain option pairs")
+    command_settings = dict(zip(flash_lines[0][::2], flash_lines[0][1::2]))
+    json_settings = dict(zip(generated_settings[::2], generated_settings[1::2]))
+    if (
+        len(command_settings) * 2 != len(flash_lines[0])
+        or len(json_settings) * 2 != len(generated_settings)
+        or command_settings != json_settings
+    ):
         raise VerificationError("flash_args settings do not match flasher_args.json")
     if any(len(line) != 2 for line in flash_lines[1:]):
         raise VerificationError("flash_args has an invalid flash layout")

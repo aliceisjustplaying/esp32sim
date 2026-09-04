@@ -361,7 +361,7 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
     for path, contents in paths.items():
         path.write_bytes(contents)
     (build / "flash_args").write_text(
-        "--flash-mode dio\n"
+        "--flash-mode dio --flash-size 16MB\n"
         "0x0 bootloader/bootloader.bin\n"
         "0x8000 partition_table/partition-table.bin\n"
         "0x10000 probe.bin\n"
@@ -374,7 +374,7 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
                     "0x0": "bootloader/bootloader.bin",
                     "0x8000": "partition_table/partition-table.bin",
                 },
-                "write_flash_args": ["--flash-mode", "dio"],
+                "write_flash_args": ["--flash-size", "16MB", "--flash-mode", "dio"],
                 "flash_settings": {"flash_mode": "dio"},
                 "extra_esptool_args": {"chip": "esp32s3"},
             }
@@ -418,7 +418,7 @@ def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
     assert result["esptoolArguments"] == {"chip": "esp32s3"}
 
     (build / "flash_args").write_text(
-        "--flash-mode dio\n"
+        "--flash-mode dio --flash-size 16MB\n"
         "0x0 bootloader/bootloader.bin\n"
         "0x8000 partition_table/partition-table.bin\n"
         "0x20000 probe.bin\n"
