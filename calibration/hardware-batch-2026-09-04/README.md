@@ -17,6 +17,9 @@ The rehearsal verifies H1, boots both archived TinyDraw images in esp32sim,
 normalizes their complete console logs with `tools/frame_correlation.py`, and
 runs the paired candidate analysis. `FRAME_CORRELATION_TOOL` may point at the
 frame-correlation feature worktree until that tool is merged.
+The image headers and esptool write arguments use DIO. The TinyDraw bootloader
+then enables the configured QIO runtime mode. Verification requires both sides
+of that transition and the rehearsal requires the runtime QIO boot messages.
 
 The session is three flashes and six captured boots. The clean path is 15 to
 20 minutes; reserve 30 minutes for USB re-enumeration, receipt checks, and one
