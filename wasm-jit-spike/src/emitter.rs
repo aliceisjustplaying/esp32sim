@@ -77,10 +77,17 @@ pub struct EmitOptions {
 }
 
 pub fn price_table_cost(instruction: &Insn) -> Result<u64, CompileError> {
+    if let Some(component) = xtensa_lx7::measured::compiled_internal_cost(instruction) {
+        return component
+            .cycles()
+            .ok_or(CompileError::UnsupportedInstruction {
+                pc: 0,
+                op: instruction.op,
+            });
+    }
     match instruction.op {
-        Op::Movi | Op::Addi | Op::Add | Op::Sub | Op::And | Op::Or | Op::Xor => Ok(1),
+        Op::Addi | Op::Add | Op::Sub | Op::And | Op::Or | Op::Xor => Ok(1),
         op if is_conditional_branch(op) => Ok(1),
-        Op::J => Ok(3),
         Op::Loop | Op::Loopnez | Op::Loopgtz => Ok(5),
         Op::L32r => Err(CompileError::IntervalCost {
             pc: 0,
