@@ -117,7 +117,8 @@ pub enum RadioState {
     Idle,
     /// `RX_START`: listening
     Rx,
-    /// a frame is coming in (SFD seen, `RX_DONE` pending)
+    /// a frame is coming in (energy on the air from its first preamble byte, so CCA sees it;
+    /// `RX_SFD_DONE` and then `RX_DONE` still pending)
     RxFrame,
     /// `TX_START` / `CCA_TX_START`: a frame is going out
     Tx,
@@ -234,7 +235,7 @@ pub struct Ieee802154 {
     pub ack_tx_count: u64,
     // ---- RX
     rx_in_flight: Option<RxFrame>,
-    rx_done: Countdown,
+    rx_sfd: Countdown, rx_done: Countdown,
     /// the completed frame's buffer, for the bus to store at `.0`
     pub rx_write: Option<(u32, Vec<u8>)>,
     pub rx_count: u64,
@@ -270,7 +271,7 @@ impl Ieee802154 {
             tx_request: None, tx_frame: Vec::new(), tx_sfd: Countdown::default(), tx_done: Countdown::default(), tx_started: false, tx_count: 0,
             ack_wait_seq: 0, ack_timeout: Countdown::default(), ack_rx_count: 0,
             ack_turnaround: Countdown::default(), ack_done: Countdown::default(), ack_frame: [0; 3], ack_tx_count: 0,
-            rx_in_flight: None, rx_done: Countdown::default(), rx_write: None, rx_count: 0, rx_dropped: 0, rx_filtered: 0,
+            rx_in_flight: None, rx_sfd: Countdown::default(), rx_done: Countdown::default(), rx_write: None, rx_count: 0, rx_dropped: 0, rx_filtered: 0,
             timer: [RadioTimer::default(); 2],
             ed_rss: -92, ed_left: None, scans: 0, level_dbm, target_dbm: level_dbm, noise: 0x9e37_79b9, scene_acc: 0, scene_ticks: 0,
             dbg: false, log_unknown: false, seen: HashSet::new(),
@@ -351,9 +352,10 @@ impl Ieee802154 {
 
     // ------------------------------------------------------------------ the medium's side
     /// A frame (MAC header + payload, no FCS) from the medium. `started_ago` = `Some(cycles)`:
-    /// the frame started on the air that many cycles ago (0: now) — its SFD is seen now and
-    /// `RX_DONE` follows when its air time is up, at once if it already is; `None`: the frame is
-    /// complete now, SFD and `RX_DONE` together. Listening: the address filter decides. Waiting
+    /// the frame started on the air that many cycles ago (0: now), first preamble byte first —
+    /// `RX_SFD_DONE` follows `SFD_BYTES` into it and `RX_DONE` when the whole PPDU is up, either
+    /// at once if it already is; `None`: the frame is complete now, SFD and `RX_DONE` together.
+    /// Listening: the address filter decides. Waiting
     /// for an ACK: only the ACK with our sequence number counts. Anything else is dropped, and
     /// counted. Returns whether the frame was taken.
     pub fn receive(&mut self, frame: &[u8], rssi: i8, lqi: u8, started_ago: Option<u64>) -> bool {
@@ -377,12 +379,26 @@ impl Ieee802154 {
         }
         if self.state == RadioState::Rx { self.state = RadioState::RxFrame; }
         self.rx_in_flight = Some(RxFrame { frame: frame.to_vec(), rssi, lqi });
-        self.events |= EVENT_RX_SFD_DONE;
-        // the PHY header and the SFD are before this point on the air: what is left is the length byte, the PSDU and the FCS
-        let left = started_ago.map(|ago| air_cycles(1 + frame.len() as u64 + 2).saturating_sub(ago));
+        // `started_ago` is measured from the frame's FIRST PREAMBLE BYTE, not from the SFD:
+        // that is what the host's `rx.t` names, and the frame handed over has both the 6-byte
+        // PHY header and the 2-byte FCS stripped.  So what is left is the whole thing on the
+        // air -- preamble + SFD + length + PSDU + FCS -- minus what has already gone by.
+        // Counting from the SFD instead lands RX_DONE five byte times (160 us) early, and with
+        // it every acknowledgement timed off RX_DONE.
+        //
+        // The SFD itself lands `SFD_BYTES` into the frame, exactly as the transmitter raises
+        // `TX_SFD_DONE`: the preamble is on the air first. IDF timestamps a frame by reading
+        // esp_timer in the `RX_SFD_DONE` handler, so this cycle is the received timestamp.
+        let sfd_in = started_ago.map_or(0, |ago| air_cycles(SFD_BYTES).saturating_sub(ago));
+        if sfd_in > 0 {
+            self.rx_sfd.arm(sfd_in, false);
+        } else {
+            self.events |= EVENT_RX_SFD_DONE;
+        }
+        let left = started_ago.map(|ago| air_cycles(PHY_OVERHEAD_BYTES + frame.len() as u64 + 2).saturating_sub(ago));
         if let Some(left) = left.filter(|&l| l > 0) {
             self.rx_done.arm(left, false);
-            if self.dbg { eprintln!("[802.15.4] rx {} bytes rssi {} lqi {}: SFD now, RX_DONE in {} cycles", frame.len(), rssi, lqi, left); }
+            if self.dbg { eprintln!("[802.15.4] rx {} bytes rssi {} lqi {}: SFD in {} cycles, RX_DONE in {} cycles", frame.len(), rssi, lqi, sfd_in, left); }
         } else {
             if self.dbg { eprintln!("[802.15.4] rx {} bytes rssi {} lqi {}: complete now", frame.len(), rssi, lqi); }
             self.finish_rx(None);
@@ -478,7 +494,7 @@ impl Ieee802154 {
     /// Leave `Rx`/`RxFrame`/`RxAck`/`TxAck` for another operation: whatever was in flight is lost.
     fn abort_rx_silently(&mut self) {
         if self.rx_in_flight.take().is_some() { self.rx_dropped += 1; }
-        self.rx_done.clear(); self.ack_timeout.clear(); self.ack_turnaround.clear(); self.ack_done.clear();
+        self.rx_sfd.clear(); self.rx_done.clear(); self.ack_timeout.clear(); self.ack_turnaround.clear(); self.ack_done.clear();
     }
     /// `RX_ABORT` with a reason, if the driver enabled that reason (`RX_ABORT_EVENT_EN`, bit reason-1).
     fn rx_abort(&mut self, reason: u32) {
@@ -555,6 +571,7 @@ impl Device for Ieee802154 {
             if cycles >= left { self.ed_left = None; self.ed_rss = self.sample(); self.scans += 1; self.events |= EVENT_ED_DONE; if self.state == RadioState::Ed { self.state = RadioState::Idle; } } else { self.ed_left = Some(left - cycles); }
         }
         if self.tx_sfd.tick(cycles).is_some() { self.events |= EVENT_TX_SFD_DONE; }
+        if self.rx_sfd.tick(cycles).is_some() { self.events |= EVENT_RX_SFD_DONE; }
         if let Some(over) = self.tx_done.tick(cycles) {
             self.events |= EVENT_TX_DONE;
             if self.state == RadioState::Tx {
@@ -573,6 +590,13 @@ impl Device for Ieee802154 {
             }
         }
         if self.ack_timeout.tick(cycles).is_some() && self.state == RadioState::RxAck {
+            // The driver has given up. An acknowledgement still on the air is no longer ours to
+            // deliver: leaving it armed would let `finish_rx` run a moment later with the state
+            // already back to `Idle`, take the data-frame branch, and report the ACK as a
+            // received frame. Since the whole PPDU is charged, `RX_DONE` for an ACK lands
+            // 352 µs after its first preamble byte, so this is reachable whenever the medium
+            // delivers one more than 512 µs after `TX_DONE`.
+            self.abort_rx_silently();
             self.tx_abort(TX_ABORT_BY_RX_ACK_TIMEOUT);
             self.state = RadioState::Idle;
             if self.dbg { eprintln!("[802.15.4] no ACK for seq {}: RX_ACK_TIMEOUT", self.ack_wait_seq); }
@@ -600,7 +624,7 @@ impl Device for Ieee802154 {
     fn next_deadline(&self) -> Option<u64> {
         let mut best = u64::MAX;
         if let Some(l) = self.ed_left { best = best.min(l).min(CPU_HZ / 10 - self.scene_acc); }
-        for c in [&self.tx_sfd, &self.tx_done, &self.rx_done, &self.ack_timeout, &self.ack_turnaround, &self.ack_done] { best = best.min(c.remaining()); }
+        for c in [&self.tx_sfd, &self.tx_done, &self.rx_sfd, &self.rx_done, &self.ack_timeout, &self.ack_turnaround, &self.ack_done] { best = best.min(c.remaining()); }
         for t in &self.timer { if let Some(d) = t.deadline() { best = best.min(d); } }
         Some(best)
     }
@@ -639,16 +663,47 @@ mod tests {
         assert!(parse_header(&[0x41, 0xd8, 0x01, 0xcd]).is_none(), "shorter than its header");
     }
 
-    /// A frame offered while listening: SFD at once, RX_DONE exactly one PSDU air time later,
-    /// the buffer laid out as the driver reads it (length incl. FCS, frame, RSSI, LQI).
+    /// The same frame must occupy the air for the same time whether this radio sends it or
+    /// receives it, and its SFD must sit at the same offset either way. Charging RX only one
+    /// byte of PHY overhead made a receiver's `RX_DONE` beat the sender's `TX_DONE` by the five
+    /// preamble-and-SFD bytes, which no medium can deliver.
+    #[test]
+    fn rx_and_tx_agree_on_the_air_time() {
+        let mac = BROADCAST.to_vec();   // a frame the filter admits, so both paths see the same one
+
+        let mut tx = Ieee802154::new();
+        tx.write(0x60, 0x1fff); tx.write(0xd0, 0x4081_6150); tx.write(0x00, CMD_TX_START);
+        tx.tx_request.take();
+        tx.tx_loaded(mac.clone());
+        tx.tick(40);
+        let (tx_air, tx_sfd) = (tx.tx_done.remaining(), tx.tx_sfd.remaining());
+
+        let mut rx = armed_rx();
+        assert!(rx.receive(&mac, -60, 200, Some(0)));
+        let (rx_air, rx_sfd) = (rx.rx_done.remaining(), rx.rx_sfd.remaining());
+
+        assert_eq!(rx_air, tx_air, "a received frame is on the air as long as a sent one");
+        assert_eq!(rx_sfd, tx_sfd, "the SFD sits at the same offset either way");
+        assert_eq!(tx_air, air_cycles(PHY_OVERHEAD_BYTES + BROADCAST.len() as u64 + 2));
+        assert_eq!(tx_sfd, air_cycles(SFD_BYTES));
+    }
+
+    /// A frame offered while listening: the preamble is on the air first, so `RX_SFD_DONE`
+    /// lands `SFD_BYTES` in and `RX_DONE` at the end of the whole PPDU, with the buffer laid
+    /// out as the driver reads it (length incl. FCS, frame, RSSI, LQI).
     #[test]
     fn rx_lands_after_its_air_time() {
         let mut r = armed_rx();
         assert!(r.receive(&BROADCAST, -60, 200, Some(0)));
-        assert_eq!(r.events & EVENT_RX_SFD_DONE, EVENT_RX_SFD_DONE);
+        assert_eq!(r.events & EVENT_RX_SFD_DONE, 0, "the SFD is still behind the preamble");
         assert_eq!(r.read(0x80) >> 16 & 7, 2, "rx_state says a frame is coming in");
-        let air = air_cycles(1 + 19 + 2);
-        r.tick(air - 1);
+        let sfd = air_cycles(SFD_BYTES);
+        r.tick(sfd - 1);
+        assert_eq!(r.events & EVENT_RX_SFD_DONE, 0);
+        r.tick(1);
+        assert_eq!(r.events & EVENT_RX_SFD_DONE, EVENT_RX_SFD_DONE, "SFD after the preamble");
+        let air = air_cycles(6 + 19 + 2);
+        r.tick(air - sfd - 1);
         assert_eq!(r.events & EVENT_RX_DONE, 0);
         r.tick(1);
         assert_eq!(r.events & EVENT_RX_DONE, EVENT_RX_DONE);
@@ -676,7 +731,7 @@ mod tests {
     /// of its air time, or at once if that is past too.
     #[test]
     fn rx_started_in_the_past_completes_at_its_true_end() {
-        let air = air_cycles(1 + 19 + 2);
+        let air = air_cycles(6 + 19 + 2);
         let mut r = armed_rx();
         assert!(r.receive(&BROADCAST, -60, 200, Some(air - 1000)));
         assert_eq!(r.next_deadline(), Some(1000));
@@ -817,6 +872,28 @@ mod tests {
         assert!(r.receive(&BROADCAST, -60, 200, None), "listening again");
     }
 
+    /// An acknowledgement still on the air when the hardware timeout fires is not ours to
+    /// deliver. `RX_DONE` for a 3-byte ACK lands 352 µs after its first preamble byte, so one
+    /// handed over more than 512 µs after `TX_DONE` completes when the timeout has already
+    /// dropped the state to `Idle` — and `finish_rx` would then take the data-frame branch and
+    /// report the ACK as a received frame, into the RX buffer, with `RX_DONE` raised.
+    #[test]
+    fn a_late_ack_is_dropped_rather_than_reported_as_a_frame() {
+        let mut r = configured(); r.write(0x5c, 54);          // 864 µs
+        r.write(0x00, CMD_TX_START); r.tx_loaded(UNICAST_AR.to_vec()); r.tick(1); r.tick(air_cycles(6 + 17 + 2));
+        assert_eq!(r.state, RadioState::RxAck);
+        r.tick(ns_cycles(600_000));                            // the medium starts the ACK 600 µs on
+        assert!(r.receive(&[0x02, 0x00, 0x2d], -70, 180, Some(0)));
+        assert_eq!(r.events & EVENT_ACK_RX_DONE, 0, "352 µs of air still to come");
+        r.tick(ns_cycles(264_000));                            // 864 µs after TX_DONE: the timeout
+        assert_eq!((r.events & EVENT_TX_ABORT, r.state), (EVENT_TX_ABORT, RadioState::Idle));
+        r.tick(ns_cycles(200_000));                            // past where the ACK would have landed
+        assert_eq!(r.events & (EVENT_RX_DONE | EVENT_ACK_RX_DONE), 0, "the ACK is gone, not received");
+        assert_eq!((r.rx_count, r.ack_rx_count, r.rx_dropped), (0, 0, 1));
+        assert!(r.rx_write.is_none(), "nothing reached the RX buffer");
+        assert_eq!(r.next_deadline(), Some(u64::MAX), "no countdown left armed");
+    }
+
     /// CCA: a transmit while a frame is being received is refused with CCA_BUSY and the receive
     /// goes on; on a quiet channel it transmits.
     #[test]
@@ -826,7 +903,7 @@ mod tests {
         r.write(0xd0, 0x4081_6150); r.write(0x00, CMD_CCA_TX_START);
         assert_eq!((r.events & EVENT_TX_ABORT, r.read(0x84) >> 4 & 0x1f, r.tx_request), (EVENT_TX_ABORT, TX_ABORT_BY_CCA_BUSY, None));
         assert_eq!(r.state, RadioState::RxFrame);
-        r.tick(air_cycles(1 + 19 + 2));
+        r.tick(air_cycles(6 + 19 + 2));
         assert_eq!(r.events & EVENT_RX_DONE, EVENT_RX_DONE);
         let mut r = armed_rx();
         r.write(0x00, CMD_CCA_TX_START);
