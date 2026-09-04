@@ -257,7 +257,8 @@ void app_main(void) {
          "\"idf_version\":\"%s\",\"target\":\"esp32s3\"," 
          "\"chip_revision\":%u,\"cores\":%u,\"cpu_hz\":%" PRIu32 ","
          "\"ccount_hz\":%" PRIu32 ",\"probe\":\"exception-rank-followup\"," 
-         "\"samples_per_cell\":%u,\"max_attempts_per_cell\":%u}\n",
+         "\"samples_per_cell\":%u,\"max_attempts_per_cell\":%u,"
+         "\"recursion_depth\":1}\n",
          esp_get_idf_version(), chip.revision, chip.cores, cpu_hz, cpu_hz,
          SAMPLES, MAX_ATTEMPTS);
   fflush(stdout);
