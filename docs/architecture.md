@@ -55,7 +55,8 @@ xtensa-lx7/   the core
   disasm.rs   objdump-compatible formatter (used by the differential decoder test)
 web/          index.html: board drawing, console, WebAudio, camera panel (no build step)
               emu.js + wasm/worker.js: the same page driving the WebAssembly build (docs/wasm.md)
-wasm/         esp32sim-wasm: C ABI over Machine for the browser; the JIT is absent there
+wasm/         esp32sim-wasm: C ABI over Machine plus the guarded browser-JIT handoff
+wasm-jit/     receipt-priced wasm emitter; first SRAM opcode slice, shared-memory sidecars
 ```
 
 ## CPU core (`xtensa-lx7`)

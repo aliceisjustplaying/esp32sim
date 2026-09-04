@@ -2,6 +2,8 @@
 // protocol (docs/web-ui.md) to the page as postMessage — text as strings, binary as ArrayBuffers.
 let CPU_HZ = 240e6;   // replaced from the module once an emulator exists: the C3 runs at 160 MHz
 let wasm = null, emu = 0, running = false, t0 = 0, resyncs = 0, lastStat = { wall: 0, insns: 0 };
+const jitModules = new Map();
+const jitDisabled = new Set();
 const enc = new TextEncoder(), dec = new TextDecoder();
 const mem = () => new Uint8Array(wasm.memory.buffer);
 function put(bytes) { const p = wasm.esp32sim_alloc(bytes.length); mem().set(bytes, p); return p; }
@@ -17,6 +19,31 @@ function drain() {
   }
 }
 
+function dispatchJit(cycles) {
+  if (!wasm.esp32sim_jit_prepare) return false;
+  const id = wasm.esp32sim_jit_prepare(emu, Math.max(1, Math.min(cycles, 0xffffffff)), Date.now());
+  if (id === 0) return false;
+  if (jitDisabled.has(id)) { wasm.esp32sim_jit_abort(emu); return false; }
+  try {
+    let instance = jitModules.get(id);
+    if (!instance) {
+      const p = wasm.esp32sim_jit_module_ptr(emu), len = wasm.esp32sim_jit_module_len(emu);
+      const module = new WebAssembly.Module(mem().slice(p, p + len));
+      instance = new WebAssembly.Instance(module, { env: { memory: wasm.memory } });
+      jitModules.set(id, instance);
+    }
+    instance.exports.run();
+    if (wasm.esp32sim_jit_commit(emu) === 1) return true;
+    jitDisabled.add(id);
+    return false;
+  } catch (error) {
+    wasm.esp32sim_jit_abort(emu);
+    jitDisabled.add(id);
+    postMessage({ log: '[jit] falling back: ' + (error && error.message || error) });
+    return false;
+  }
+}
+
 function loop() {
   if (!running) return;
   const now = performance.now();
@@ -24,7 +51,9 @@ function loop() {
   let target = (now - t0) / 1000 * CPU_HZ;
   if (target - cur > CPU_HZ * 0.5) { t0 = now - cur / CPU_HZ * 1000; target = cur + CPU_HZ * 0.02; resyncs++; }   // hopelessly behind: skip, don't burst
   while (cur < target) {
-    const rc = wasm.esp32sim_run(emu, Math.min(target - cur, 2_000_000), Date.now());
+    const remaining = Math.min(target - cur, 2_000_000);
+    const usedJit = dispatchJit(remaining);
+    const rc = usedJit ? 0 : wasm.esp32sim_run(emu, remaining, Date.now());
     cur = wasm.esp32sim_cycles(emu);
     drain();
     if (rc !== 0) { running = false; postMessage({ stopped: rc }); return; }
@@ -43,8 +72,9 @@ function loop() {
 onmessage = async (ev) => {
   const m = ev.data;
   try {
-    if (m.op === 'init') { const r = await WebAssembly.instantiate(m.wasm, imports); wasm = r.instance.exports; postMessage({ ready: true }); }
+    if (m.op === 'init') { const r = await WebAssembly.instantiate(m.wasm, imports); wasm = r.instance.exports; jitModules.clear(); jitDisabled.clear(); postMessage({ ready: true }); }
     else if (m.op === 'create') {
+      jitModules.clear(); jitDisabled.clear();
       emu = withBytes(enc.encode(m.board), (p, n) => wasm.esp32sim_new(p, n, m.flash_mb | 0, m.psram_mb | 0));
       if (emu !== 0 && wasm.esp32sim_cpu_hz) CPU_HZ = wasm.esp32sim_cpu_hz(emu);
       postMessage({ created: emu !== 0 });

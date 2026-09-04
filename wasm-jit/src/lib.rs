@@ -14,12 +14,37 @@ pub const PC_OFFSET: usize = 64;
 pub const CYCLE_OFFSET: usize = 72;
 pub const SRAM_IMAGE_OFFSET: usize = 4096;
 
+#[derive(Clone, Copy)]
+struct MemoryLayout {
+    registers: usize,
+    pc: usize,
+    cycles: usize,
+    sram_image: usize,
+}
+
+const PRIVATE_LAYOUT: MemoryLayout = MemoryLayout {
+    registers: 0,
+    pc: PC_OFFSET,
+    cycles: CYCLE_OFFSET,
+    sram_image: SRAM_IMAGE_OFFSET,
+};
+
+struct CompileTarget<'a> {
+    initial_registers: [u32; REGISTER_COUNT],
+    initial_sram: Option<&'a [u8]>,
+    sram_base: u32,
+    sram_len: usize,
+    layout: MemoryLayout,
+    shared_memory: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompileError {
     EmptyBlock,
     TruncatedInstruction { offset: usize, decoded_len: usize },
     UnsupportedInstruction { pc: u32, op: Op },
     InvalidSramRange { base: u32, len: usize },
+    InvalidSharedMemoryRange { offset: u32, len: usize },
     TimingRefusal { pc: u32, reason: String },
 }
 
@@ -43,6 +68,10 @@ impl fmt::Display for CompileError {
                     "SRAM image {base:#010x}+{len:#x} is outside internal DRAM"
                 )
             }
+            Self::InvalidSharedMemoryRange { offset, len } => write!(
+                f,
+                "shared WebAssembly memory range {offset:#010x}+{len:#x} exceeds 32-bit memory"
+            ),
             Self::TimingRefusal { pc, reason } => {
                 write!(f, "timing model refused {pc:#010x}: {reason}")
             }
@@ -73,38 +102,129 @@ pub fn compile_sram_block(
     sram_base: u32,
     sram: &[u8],
 ) -> Result<CompiledBlock, CompileError> {
-    validate_sram_range(sram_base, sram.len())?;
+    compile_sram_block_with_layout(
+        base_pc,
+        block,
+        CompileTarget {
+            initial_registers,
+            initial_sram: Some(sram),
+            sram_base,
+            sram_len: sram.len(),
+            layout: PRIVATE_LAYOUT,
+            shared_memory: false,
+        },
+    )
+}
+
+/// Compile a block that operates directly on the browser emulator's exported WebAssembly
+/// memory. `state_offset` addresses an 80-byte handoff record (16 ARs, PC at byte 64, and a
+/// u64 receipt-cycle counter at byte 72); `sram_offset` is the host-memory address corresponding
+/// to `sram_base`. The emitted module imports `env.memory`, so neither state nor SRAM is copied.
+pub fn compile_shared_sram_block(
+    base_pc: u32,
+    block: &[u8],
+    state_offset: u32,
+    sram_offset: u32,
+    sram_base: u32,
+    sram_len: usize,
+) -> Result<CompiledBlock, CompileError> {
+    validate_sram_range(sram_base, sram_len)?;
+    validate_shared_range(state_offset, CYCLE_OFFSET + 8)?;
+    validate_shared_range(sram_offset, sram_len)?;
+    let layout = MemoryLayout {
+        registers: state_offset as usize,
+        pc: state_offset as usize + PC_OFFSET,
+        cycles: state_offset as usize + CYCLE_OFFSET,
+        sram_image: sram_offset as usize,
+    };
+    compile_sram_block_with_layout(
+        base_pc,
+        block,
+        CompileTarget {
+            initial_registers: [0; REGISTER_COUNT],
+            initial_sram: None,
+            sram_base,
+            sram_len,
+            layout,
+            shared_memory: true,
+        },
+    )
+}
+
+fn validate_shared_range(offset: u32, len: usize) -> Result<(), CompileError> {
+    let valid = u32::try_from(len)
+        .ok()
+        .and_then(|len| offset.checked_add(len))
+        .is_some();
+    if valid {
+        Ok(())
+    } else {
+        Err(CompileError::InvalidSharedMemoryRange { offset, len })
+    }
+}
+
+fn compile_sram_block_with_layout(
+    base_pc: u32,
+    block: &[u8],
+    target: CompileTarget<'_>,
+) -> Result<CompiledBlock, CompileError> {
+    let CompileTarget {
+        initial_registers,
+        initial_sram,
+        sram_base,
+        sram_len,
+        layout,
+        shared_memory,
+    } = target;
+    validate_sram_range(sram_base, sram_len)?;
     let instructions = decode_block(base_pc, block)?;
     let costs = price_sram_block(&instructions)?;
-    let mut body = function_prefix();
+    let mut body = if shared_memory { Vec::new() } else { function_prefix() };
+    if shared_memory {
+        emit_entry_pc_guard(&mut body, base_pc, layout);
+    }
     for (decoded, cost) in instructions.iter().zip(&costs) {
-        emit_current_pc_guard(&mut body, decoded.pc);
+        if !shared_memory {
+            emit_current_pc_guard(&mut body, decoded.pc, layout);
+        }
         emit_sram_instruction(
             &mut body,
             decoded.pc,
             &decoded.instruction,
             sram_base,
-            sram.len(),
+            sram_len,
+            layout,
         )?;
         emit_state_store_const(
             &mut body,
-            PC_OFFSET,
+            layout.pc,
             decoded.pc.wrapping_add(u32::from(decoded.instruction.len)) as i32,
         );
-        emit_cycle_charge(&mut body, u64::from(*cost));
-        emit_continue(&mut body);
+        emit_cycle_charge(&mut body, u64::from(*cost), layout);
+        if !shared_memory {
+            emit_continue(&mut body);
+        }
     }
-    finish_function(&mut body);
-
-    let mut state = vec![0; SRAM_IMAGE_OFFSET + sram.len()];
-    for (index, value) in initial_registers.into_iter().enumerate() {
-        store_u32(&mut state, index * 4, value);
+    if shared_memory {
+        body.push(0x0b);
+    } else {
+        finish_function(&mut body);
     }
-    store_u32(&mut state, PC_OFFSET, base_pc);
-    state[SRAM_IMAGE_OFFSET..].copy_from_slice(sram);
 
     Ok(CompiledBlock {
-        bytes: wasm_module(body, &state),
+        bytes: if shared_memory {
+            wasm_shared_module(body)
+        } else {
+            let mut state = vec![0; SRAM_IMAGE_OFFSET + sram_len];
+            for (index, value) in initial_registers.into_iter().enumerate() {
+                store_u32(&mut state, index * 4, value);
+            }
+            store_u32(&mut state, PC_OFFSET, base_pc);
+            if let Some(sram) = initial_sram {
+                state[SRAM_IMAGE_OFFSET..].copy_from_slice(sram);
+            }
+            wasm_module(body, &state)
+        },
         instruction_count: instructions.len(),
         cycle_cost: costs.iter().map(|cost| u64::from(*cost)).sum(),
     })
@@ -209,25 +329,26 @@ fn emit_sram_instruction(
     instruction: &Insn,
     sram_base: u32,
     sram_len: usize,
+    layout: MemoryLayout,
 ) -> Result<(), CompileError> {
     match instruction.op {
         Op::L32i | Op::L32iN => {
-            emit_i32_const(body, i32::from(instruction.t) * 4);
-            emit_sram_alignment_guard(body, instruction);
-            emit_sram_bounds_guard(body, instruction, sram_base, sram_len);
-            emit_sram_address(body, instruction, sram_base);
+            emit_i32_const(body, (layout.registers + usize::from(instruction.t) * 4) as i32);
+            emit_sram_alignment_guard(body, instruction, layout);
+            emit_sram_bounds_guard(body, instruction, sram_base, sram_len, layout);
+            emit_sram_address(body, instruction, sram_base, layout);
             body.extend_from_slice(&[0x28, 0x02, 0x00]);
             emit_i32_store(body);
         }
         Op::MoviN => {
-            emit_i32_const(body, i32::from(instruction.s) * 4);
+            emit_i32_const(body, (layout.registers + usize::from(instruction.s) * 4) as i32);
             emit_i32_const(body, instruction.imm);
             emit_i32_store(body);
         }
         Op::Sub | Op::Saltu => {
-            emit_i32_const(body, i32::from(instruction.r) * 4);
-            emit_register_load(body, instruction.s);
-            emit_register_load(body, instruction.t);
+            emit_i32_const(body, (layout.registers + usize::from(instruction.r) * 4) as i32);
+            emit_register_load(body, instruction.s, layout);
+            emit_register_load(body, instruction.t, layout);
             body.push(match instruction.op {
                 Op::Sub => 0x6b,
                 Op::Saltu => 0x49,
@@ -241,8 +362,8 @@ fn emit_sram_instruction(
     Ok(())
 }
 
-fn emit_sram_alignment_guard(body: &mut Vec<u8>, instruction: &Insn) {
-    emit_register_load(body, instruction.s);
+fn emit_sram_alignment_guard(body: &mut Vec<u8>, instruction: &Insn, layout: MemoryLayout) {
+    emit_register_load(body, instruction.s, layout);
     emit_i32_const(body, instruction.imm);
     body.push(0x6a);
     emit_i32_const(body, 3);
@@ -250,14 +371,20 @@ fn emit_sram_alignment_guard(body: &mut Vec<u8>, instruction: &Insn) {
     emit_trap_if_true(body);
 }
 
-fn emit_sram_bounds_guard(body: &mut Vec<u8>, instruction: &Insn, sram_base: u32, sram_len: usize) {
-    emit_sram_address(body, instruction, sram_base);
-    emit_i32_const(body, SRAM_IMAGE_OFFSET as i32);
+fn emit_sram_bounds_guard(
+    body: &mut Vec<u8>,
+    instruction: &Insn,
+    sram_base: u32,
+    sram_len: usize,
+    layout: MemoryLayout,
+) {
+    emit_sram_address(body, instruction, sram_base, layout);
+    emit_i32_const(body, layout.sram_image as i32);
     body.push(0x49);
     emit_trap_if_true(body);
 
-    emit_sram_address(body, instruction, sram_base);
-    emit_i32_const(body, (SRAM_IMAGE_OFFSET + sram_len - 4) as i32);
+    emit_sram_address(body, instruction, sram_base, layout);
+    emit_i32_const(body, (layout.sram_image + sram_len - 4) as i32);
     body.push(0x4b);
     emit_trap_if_true(body);
 }
@@ -266,13 +393,18 @@ fn emit_trap_if_true(body: &mut Vec<u8>) {
     body.extend_from_slice(&[0x04, 0x40, 0x00, 0x0b]);
 }
 
-fn emit_sram_address(body: &mut Vec<u8>, instruction: &Insn, sram_base: u32) {
-    emit_register_load(body, instruction.s);
+fn emit_sram_address(
+    body: &mut Vec<u8>,
+    instruction: &Insn,
+    sram_base: u32,
+    layout: MemoryLayout,
+) {
+    emit_register_load(body, instruction.s, layout);
     emit_i32_const(body, instruction.imm);
     body.push(0x6a);
     emit_i32_const(body, sram_base as i32);
     body.push(0x6b);
-    emit_i32_const(body, SRAM_IMAGE_OFFSET as i32);
+    emit_i32_const(body, layout.sram_image as i32);
     body.push(0x6a);
 }
 
@@ -280,11 +412,18 @@ fn function_prefix() -> Vec<u8> {
     vec![0x02, 0x40, 0x03, 0x40]
 }
 
-fn emit_current_pc_guard(body: &mut Vec<u8>, pc: u32) {
-    emit_state_load(body, PC_OFFSET);
+fn emit_current_pc_guard(body: &mut Vec<u8>, pc: u32, layout: MemoryLayout) {
+    emit_state_load(body, layout.pc);
     emit_i32_const(body, pc as i32);
     body.push(0x46);
     body.extend_from_slice(&[0x04, 0x40]);
+}
+
+fn emit_entry_pc_guard(body: &mut Vec<u8>, pc: u32, layout: MemoryLayout) {
+    emit_state_load(body, layout.pc);
+    emit_i32_const(body, pc as i32);
+    body.push(0x47);
+    emit_trap_if_true(body);
 }
 
 fn emit_continue(body: &mut Vec<u8>) {
@@ -295,8 +434,8 @@ fn finish_function(body: &mut Vec<u8>) {
     body.extend_from_slice(&[0x0c, 0x01, 0x0b, 0x0b, 0x0b]);
 }
 
-fn emit_register_load(body: &mut Vec<u8>, register: u8) {
-    emit_i32_const(body, i32::from(register) * 4);
+fn emit_register_load(body: &mut Vec<u8>, register: u8, layout: MemoryLayout) {
+    emit_i32_const(body, (layout.registers + usize::from(register) * 4) as i32);
     body.extend_from_slice(&[0x28, 0x02, 0x00]);
 }
 
@@ -315,9 +454,9 @@ fn emit_i32_store(body: &mut Vec<u8>) {
     body.extend_from_slice(&[0x36, 0x02, 0x00]);
 }
 
-fn emit_cycle_charge(body: &mut Vec<u8>, cycles: u64) {
-    emit_i32_const(body, CYCLE_OFFSET as i32);
-    emit_i32_const(body, CYCLE_OFFSET as i32);
+fn emit_cycle_charge(body: &mut Vec<u8>, cycles: u64, layout: MemoryLayout) {
+    emit_i32_const(body, layout.cycles as i32);
+    emit_i32_const(body, layout.cycles as i32);
     body.extend_from_slice(&[0x29, 0x03, 0x00]);
     body.push(0x42);
     push_sleb(body, cycles as i64);
@@ -359,6 +498,30 @@ fn wasm_module(body: Vec<u8>, state: &[u8]) -> Vec<u8> {
     push_uleb(&mut data, state.len());
     data.extend_from_slice(state);
     append_section(&mut module, 11, &data);
+    module
+}
+
+fn wasm_shared_module(body: Vec<u8>) -> Vec<u8> {
+    let mut module = b"\0asm\x01\0\0\0".to_vec();
+    append_section(&mut module, 1, &[1, 0x60, 0, 0]);
+    let mut imports = Vec::new();
+    push_uleb(&mut imports, 1);
+    append_name(&mut imports, "env");
+    append_name(&mut imports, "memory");
+    imports.extend_from_slice(&[2, 0, 0]);
+    append_section(&mut module, 2, &imports);
+    append_section(&mut module, 3, &[1, 0]);
+    let mut exports = Vec::new();
+    push_uleb(&mut exports, 1);
+    append_name(&mut exports, "run");
+    exports.extend_from_slice(&[0, 0]);
+    append_section(&mut module, 7, &exports);
+    let mut code = Vec::new();
+    push_uleb(&mut code, 1);
+    push_uleb(&mut code, body.len() + 1);
+    code.push(0);
+    code.extend_from_slice(&body);
+    append_section(&mut module, 10, &code);
     module
 }
 

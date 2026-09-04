@@ -443,6 +443,37 @@ impl<S: Soc> Machine<S> {
         if self.cost.is_some() { self.run_modeled(max_insns) } else { self.run_unmodeled(max_insns) }
     }
 
+    /// The complete unmodelled core-0 quantum a browser-side straight-line block may retire at
+    /// the current scheduling boundary. External execution is deliberately limited to the
+    /// single-core, unobserved case; returning a partial quantum would move device events relative
+    /// to instructions. The caller still has to enforce architectural boundaries such as
+    /// CCOMPARE and register-window overflow for the block it proposes.
+    pub fn browser_external_block_budget(&self, requested: u32) -> Option<u32> {
+        if requested == 0
+            || self.cost.is_some()
+            || self.probes.0 != 0
+            || !self.stubs.is_empty()
+            || !self.fn_probes.is_empty()
+            || self.script.pos < self.script.events.len()
+            || self.bus.sw_reset()
+            || self.bus.block_break()
+            || self.cores[0].waiting()
+            || self.cores[0].irq_pending()
+            || (1..S::CORES).any(|core| S::core_state(&self.bus, core) == CoreState::Running)
+        {
+            return None;
+        }
+        Some(QUANTUM as u32)
+    }
+
+    /// Advance shared device time after a quantum accepted by
+    /// `browser_external_block_budget`. Architectural core state must already contain the full
+    /// quantum's result.
+    pub fn finish_browser_external_quantum(&mut self) -> Option<Stop> {
+        self.after_round(QUANTUM);
+        self.bus.sw_reset().then_some(Stop::SwReset)
+    }
+
     fn run_unmodeled(&mut self, max_insns: u64) -> Stop {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
