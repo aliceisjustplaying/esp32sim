@@ -36,7 +36,10 @@ impl emu_core::Core for Cpu {
         crate::block::run_costed_step(self, bus)
     }
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }
-    fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
+    fn set_run_context(&mut self, boundaries: u64, costed_jit: bool) {
+        self.boundary_bloom = boundaries;
+        self.blocks.costed_jit = costed_jit;
+    }
     fn flush_caches(&mut self) { self.blocks.flush(); }
     fn set_jit(&mut self, on: bool) { self.blocks.jit_enabled = on; }
     fn set_costed_jit(&mut self, on: bool) {

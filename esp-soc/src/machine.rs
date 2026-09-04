@@ -441,7 +441,10 @@ impl<S: Soc> Machine<S> {
     fn run_unmodeled(&mut self, max_insns: u64) -> Stop {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); c.flush_caches(); }
+        for c in &mut self.cores {
+            c.set_run_context(self.stub_bloom | self.probe_bloom, false);
+            c.flush_caches();
+        }
         // the fast path cannot honour per-instruction observers; those runs single-step
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
@@ -505,8 +508,7 @@ impl<S: Soc> Machine<S> {
         self.stub_bloom = self.stubs.keys().fold(0, |mask, &pc| mask | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |mask, &pc| mask | pc_bit(pc));
         for core in &mut self.cores {
-            core.set_boundaries(self.stub_bloom | self.probe_bloom);
-            core.set_costed_jit(true);
+            core.set_run_context(self.stub_bloom | self.probe_bloom, true);
             core.flush_caches();
         }
         for observer in &mut self.observers { observer.on_modeled_run(); }
