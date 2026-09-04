@@ -481,10 +481,11 @@ impl<S: Soc> Machine<S> {
     }
 
     /// The complete unmodelled core-0 quantum a browser-side straight-line block may retire at
-    /// the current scheduling boundary. External execution is deliberately limited to the
-    /// single-core, unobserved case; returning a partial quantum would move device events relative
-    /// to instructions. The caller still has to enforce architectural boundaries such as
-    /// CCOMPARE and register-window overflow for the block it proposes.
+    /// the current scheduling boundary. Released secondary cores are allowed only while already
+    /// waiting without an interrupt; `finish_browser_external_quantum` advances them by the same
+    /// idle quantum. Returning a partial quantum would move device events relative to instructions.
+    /// The caller still has to enforce architectural boundaries such as CCOMPARE and
+    /// register-window overflow for the block it proposes.
     pub fn browser_external_block_budget(&self, requested: u32) -> Option<u32> {
         self.browser_external_block_budget_result(requested).ok()
     }
@@ -514,17 +515,14 @@ impl<S: Soc> Machine<S> {
         if self.probes.0 != 0 { mask |= Refusal::Observer.bit(); }
         if !self.stubs.is_empty() { mask |= Refusal::Stub.bit(); }
         if !self.fn_probes.is_empty() { mask |= Refusal::FunctionProbe.bit(); }
-        if self.script.pos < self.script.events.len() { mask |= Refusal::Script.bit(); }
         for core in 1..S::CORES {
             if S::core_state(&self.bus, core) != CoreState::Running {
                 continue;
             }
-            if !self.core_held[core]
-                && self.cores[core].waiting()
-                && !self.cores[core].irq_pending()
+            if self.core_held[core]
+                || !self.cores[core].waiting()
+                || self.cores[core].irq_pending()
             {
-                mask |= Refusal::OtherCoreIdle.bit();
-            } else {
                 mask |= Refusal::OtherCoreActive.bit();
             }
         }
@@ -535,10 +533,17 @@ impl<S: Soc> Machine<S> {
         mask
     }
 
-    /// Advance shared device time after a quantum accepted by
-    /// `browser_external_block_budget`. Architectural core state must already contain the full
-    /// quantum's result.
+    /// Complete a quantum accepted by `browser_external_block_budget`. Architectural core-0 state
+    /// must already contain the full result; released secondary cores were proven idle by the
+    /// gate and receive the same timing-only advance before shared device time moves.
     pub fn finish_browser_external_quantum(&mut self) -> Option<Stop> {
+        for core in 1..S::CORES {
+            if S::core_state(&self.bus, core) == CoreState::Running {
+                debug_assert!(!self.core_held[core]);
+                debug_assert!(self.cores[core].waiting() && !self.cores[core].irq_pending());
+                self.cores[core].idle_advance(QUANTUM as u32);
+            }
+        }
         self.after_round(QUANTUM);
         self.bus.sw_reset().then_some(Stop::SwReset)
     }

@@ -73,6 +73,35 @@ fn browser_external_blocks_are_single_core_scheduler_transactions() {
     assert_ne!(refusals & BrowserExternalBlockRefusal::BusBreak.bit(), 0);
 }
 
+#[test]
+fn browser_external_blocks_advance_an_idle_released_core() {
+    let mut m = machine();
+    park(&mut m, 0, IRAM, &SPIN);
+    esp_soc::SocBus::load_bytes(&mut m.bus, RESET, &WAITI_LOOP).unwrap();
+    m.bus.write32(0x600c_0000, 0b010).unwrap();
+    m.max_cycles = 128;
+    assert!(matches!(m.run(u64::MAX), Stop::Halted));
+    assert!(m.cores[1].waiting());
+    assert_eq!(m.browser_external_block_budget(64), Some(64));
+
+    let before = m.cores[1].ccount;
+    assert!(m.finish_browser_external_quantum().is_none());
+    assert_eq!(m.cores[1].ccount.wrapping_sub(before), 64);
+}
+
+#[test]
+fn browser_external_blocks_deliver_scripts_after_the_quantum() {
+    let mut m = machine();
+    park(&mut m, 0, IRAM, &SPIN);
+    m.load_script("0.0000001 serial hello\n").unwrap();
+    assert_eq!(m.browser_external_block_budget(64), Some(64));
+    assert_eq!(m.script.pos, 0);
+
+    assert!(m.finish_browser_external_quantum().is_none());
+    assert_eq!(m.bus.cycles, 64);
+    assert_eq!(m.script.pos, 1);
+}
+
 /// A chip reset re-creates the digital peripherals but keeps the efuses, the straps, the RTC
 /// domain and the captured audio, and publishes the cause where the ROM reads it.
 #[test]
