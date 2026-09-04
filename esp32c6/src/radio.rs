@@ -231,10 +231,12 @@ impl Ieee802154 {
     }
 
     // ------------------------------------------------------------------ the medium's side
-    /// A frame (MAC header + payload, no FCS) starts arriving now: its SFD is seen at once and
-    /// `RX_DONE` follows after the air time of the PSDU. Dropped, and counted, unless the radio
-    /// is listening and between frames. Returns whether it was taken.
-    pub fn receive(&mut self, frame: &[u8], rssi: i8, lqi: u8) -> bool {
+    /// A frame (MAC header + payload, no FCS) from the medium. With `on_air` its SFD is seen now
+    /// and `RX_DONE` follows after the air time of the PSDU (the medium reported the start of
+    /// the frame); without, the frame is complete now — SFD and `RX_DONE` together, the buffer
+    /// written at once (the medium reported its end, as Cooja-NG's does). Dropped, and counted,
+    /// unless the radio is listening and between frames. Returns whether it was taken.
+    pub fn receive(&mut self, frame: &[u8], rssi: i8, lqi: u8, on_air: bool) -> bool {
         if self.state != RadioState::Rx || frame.is_empty() || frame.len() > 125 {
             self.rx_dropped += 1;
             if self.dbg { eprintln!("[802.15.4] rx of {} bytes dropped: state {:?}", frame.len(), self.state); }
@@ -242,11 +244,33 @@ impl Ieee802154 {
         }
         self.state = RadioState::RxFrame;
         self.rx_in_flight = Some(RxFrame { frame: frame.to_vec(), rssi, lqi });
-        // the PHY header and the SFD are before this point on the air: what is left is the length byte, the PSDU and the FCS
-        self.rx_done.arm(air_cycles(1 + frame.len() as u64 + 2), false);
         self.events |= EVENT_RX_SFD_DONE;
-        if self.dbg { eprintln!("[802.15.4] rx {} bytes rssi {} lqi {}: SFD now, RX_DONE in {} cycles", frame.len(), rssi, lqi, self.rx_done.remaining()); }
+        if on_air {
+            // the PHY header and the SFD are before this point on the air: what is left is the length byte, the PSDU and the FCS
+            self.rx_done.arm(air_cycles(1 + frame.len() as u64 + 2), false);
+            if self.dbg { eprintln!("[802.15.4] rx {} bytes rssi {} lqi {}: SFD now, RX_DONE in {} cycles", frame.len(), rssi, lqi, self.rx_done.remaining()); }
+        } else {
+            if self.dbg { eprintln!("[802.15.4] rx {} bytes rssi {} lqi {}: complete now", frame.len(), rssi, lqi); }
+            self.finish_rx();
+        }
         true
+    }
+
+    /// The frame in flight is complete: lay it out as the driver reads it, raise `RX_DONE`.
+    fn finish_rx(&mut self) {
+        if let Some(rx) = self.rx_in_flight.take() {
+            let mut buf = Vec::with_capacity(rx.frame.len() + 3);
+            buf.push((rx.frame.len() + 2) as u8);
+            buf.extend_from_slice(&rx.frame);
+            buf.push(rx.rssi as u8);
+            buf.push(rx.lqi);
+            self.rx_length = (rx.frame.len() + 2) as u32;
+            self.rx_write = Some((self.dma_rx_addr, buf));
+            self.rx_count += 1;
+            self.events |= EVENT_RX_DONE;
+            if self.dbg { eprintln!("[802.15.4] RX_DONE: {} bytes to {:#010x}", rx.frame.len(), self.dma_rx_addr); }
+        }
+        if self.state == RadioState::RxFrame { self.state = RadioState::Idle; }
     }
 
     /// The bus fetched the frame `TX_START` pointed at: `psdu` is the MAC frame without its
@@ -367,21 +391,7 @@ impl Device for Ieee802154 {
             if self.state == RadioState::Tx { self.state = RadioState::Idle; }
             if self.dbg { eprintln!("[802.15.4] TX_DONE"); }
         }
-        if self.rx_done.tick(cycles) {
-            if let Some(rx) = self.rx_in_flight.take() {
-                let mut buf = Vec::with_capacity(rx.frame.len() + 3);
-                buf.push((rx.frame.len() + 2) as u8);
-                buf.extend_from_slice(&rx.frame);
-                buf.push(rx.rssi as u8);
-                buf.push(rx.lqi);
-                self.rx_length = (rx.frame.len() + 2) as u32;
-                self.rx_write = Some((self.dma_rx_addr, buf));
-                self.rx_count += 1;
-                self.events |= EVENT_RX_DONE;
-                if self.dbg { eprintln!("[802.15.4] RX_DONE: {} bytes to {:#010x}", rx.frame.len(), self.dma_rx_addr); }
-            }
-            if self.state == RadioState::RxFrame { self.state = RadioState::Idle; }
-        }
+        if self.rx_done.tick(cycles) { self.finish_rx(); }
         if self.timer[0].tick(cycles) { self.events |= EVENT_TIMER0_OVERFLOW; }
         if self.timer[1].tick(cycles) { self.events |= EVENT_TIMER1_OVERFLOW; }
     }
@@ -413,7 +423,7 @@ mod tests {
     #[test]
     fn rx_lands_after_its_air_time() {
         let mut r = armed_rx();
-        assert!(r.receive(&[0x41, 0xc8, 0x05, 0xcd, 0xab], -60, 200));
+        assert!(r.receive(&[0x41, 0xc8, 0x05, 0xcd, 0xab], -60, 200, true));
         assert_eq!(r.events & EVENT_RX_SFD_DONE, EVENT_RX_SFD_DONE);
         assert_eq!(r.read(0x80) >> 16 & 7, 2, "rx_state says a frame is coming in");
         let air = air_cycles(1 + 5 + 2);
@@ -432,11 +442,11 @@ mod tests {
     #[test]
     fn rx_while_idle_is_dropped() {
         let mut r = Ieee802154::new();
-        assert!(!r.receive(&[1, 2, 3], -60, 200));
+        assert!(!r.receive(&[1, 2, 3], -60, 200, true));
         assert_eq!((r.rx_dropped, r.events), (1, 0));
         let mut r = armed_rx();
-        assert!(r.receive(&[1, 2, 3], -60, 200));
-        assert!(!r.receive(&[4, 5, 6], -60, 200), "a second frame collides with the one in flight");
+        assert!(r.receive(&[1, 2, 3], -60, 200, true));
+        assert!(!r.receive(&[4, 5, 6], -60, 200, true), "a second frame collides with the one in flight");
         assert_eq!(r.rx_dropped, 1);
     }
 
@@ -468,7 +478,7 @@ mod tests {
     #[test]
     fn stop_aborts_a_frame_in_flight() {
         let mut r = armed_rx();
-        r.receive(&[1, 2, 3], -60, 200);
+        r.receive(&[1, 2, 3], -60, 200, true);
         r.write(0x00, CMD_STOP);
         assert_eq!(r.events & EVENT_RX_ABORT, EVENT_RX_ABORT);
         assert_eq!(r.read(0x80) >> 4 & 0x1f, RX_ABORT_BY_RX_STOP);
@@ -488,6 +498,18 @@ mod tests {
         assert_eq!(r.read(0xac), 50);
         r.tick(50 * 160);
         assert_eq!(r.events & EVENT_TIMER0_OVERFLOW, EVENT_TIMER0_OVERFLOW);
+        assert_eq!(r.next_deadline(), Some(u64::MAX));
+    }
+
+    /// A frame the medium reports at its end (Cooja-NG's delivery): SFD and RX_DONE together,
+    /// the buffer ready at once, nothing left to count down.
+    #[test]
+    fn rx_reported_at_its_end_completes_at_once() {
+        let mut r = armed_rx();
+        assert!(r.receive(&[0x41, 0xc8, 0x05], -50, 255, false));
+        assert_eq!(r.events & (EVENT_RX_SFD_DONE | EVENT_RX_DONE), EVENT_RX_SFD_DONE | EVENT_RX_DONE);
+        assert_eq!(r.rx_write.take().unwrap().1, vec![5, 0x41, 0xc8, 0x05, (-50i8) as u8, 255]);
+        assert_eq!(r.state, RadioState::Idle);
         assert_eq!(r.next_deadline(), Some(u64::MAX));
     }
 

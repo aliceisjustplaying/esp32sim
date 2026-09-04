@@ -75,7 +75,9 @@ fn run_session() -> (String, cooja::Summary) {
     let input = session();
     let mut reader = std::io::Cursor::new(input.into_bytes());
     let mut out = Vec::new();
-    let s = cooja::run(&mut m, Config::default(), &hello, &mut reader, &mut out).unwrap();
+    // frames reported at their start, so the echo tests the air-time countdown too
+    let cfg = Config { rx_on_air: true, slice_ns: 1_000_000, ..Config::default() };
+    let s = cooja::run(&mut m, cfg, &hello, &mut reader, &mut out).unwrap();
     (String::from_utf8(out).unwrap(), s)
 }
 
@@ -131,7 +133,7 @@ fn echo_session_is_exact_and_reproducible() {
 /// ROM through the bootloader, FreeRTOS and the PHY blob (`bb_init` stubbed, as for the energy
 /// scanner) to Contiki's periodic broadcast: every 5 s the guest's frame must come out as a `tx`
 /// event stamped at its `TX_START`; a broadcast injected mid-slice must reach the driver (its
-/// `RX SFD` and `RX: 19 bytes` lines after the frame's air time) and Contiki's nullnet callback
+/// `RX SFD` and `RX: 19 bytes` lines right after it, csim reporting frames at their end) and Contiki's nullnet callback
 /// (`rx len 4 count 7 from …`); two sessions must be byte-identical; and the whole exchange is
 /// pinned as a golden.
 #[test] #[ignore = "set CONTIKI_C6_DIR=/path/to/esp32-contiki/build-nullnet (built with -DCONTIKI_NULLNET=ON for esp32c6); needs the ESP32-C6 mask ROM ELF"]
@@ -173,10 +175,10 @@ fn external_nullnet_c6() {
         let l = out.lines().flat_map(|l| l.split("{\"type\":\"log\",")).find(|l| l.contains(needle)).unwrap_or_else(|| panic!("no log line containing {:?}:\n{}", needle, err));
         l.split("\"t\":").nth(1).unwrap().split(',').next().unwrap().parse().unwrap()
     };
-    let air = (1 + FRAME.len() as u64 / 2 + 2) * 32_000;
+    // csim reports a frame at its end: the driver sees SFD and RX_DONE at rx.t, and prints within its ISR
     assert!(line_at("RX SFD received") >= 6_205_000_000);
     let rx_done = line_at("RX: 19 bytes, RSSI -65 dBm");
-    assert!(rx_done >= 6_205_000_000 + air && rx_done < 6_205_000_000 + air + 300_000, "the driver's RX_DONE line at {} should follow the air time ({})", rx_done, 6_205_000_000 + air);
+    assert!((6_205_000_000..6_205_300_000).contains(&rx_done), "the driver's RX_DONE line at {} should follow rx.t at once", rx_done);
     // Contiki's callback prints through newlib's stdout buffer while the port's putchar bypasses
     // it, so the line waits for the next printf with a newline in it: the 10 s broadcast
     assert!(line_at("rx len 4 count 7 from 0012740100010101") > rx_done);

@@ -34,11 +34,11 @@ pub struct Opts {
     pub regstat: Option<String>, pub regtrace: Option<String>, pub regtrace_max: u64, pub regtrace_from_pc: Option<u32>,
     pub stubs: Vec<String>, pub trace_fns: Vec<String>, pub stop_exc: u64, pub log_periph: bool, pub no_jit: bool, pub debug: Vec<String>,
     /// `--cooja`: run as a Cooja-NG external mote over NDJSON on stdin/stdout (ESP32-C6 only)
-    pub cooja: bool, pub cooja_slice_us: u64, pub cooja_verbose: bool,
+    pub cooja: bool, pub cooja_slice_us: u64, pub cooja_verbose: bool, pub cooja_rx_on_air: bool,
 }
 
 pub fn parse(args: &[String], default_chip: &str) -> Opts {
-    let mut o = Opts { chip: default_chip.to_string(), board: "atech14".into(), net: "nat".into(), cam_fps: 10.0, max_insns: u64::MAX, dump: true, regtrace_max: u64::MAX, stop_exc: u64::MAX, cooja_slice_us: 1000, ..Default::default() };
+    let mut o = Opts { chip: default_chip.to_string(), board: "atech14".into(), net: "nat".into(), cam_fps: 10.0, max_insns: u64::MAX, dump: true, regtrace_max: u64::MAX, stop_exc: u64::MAX, cooja_slice_us: 100, ..Default::default() };
     let mut i = 1;
     while i < args.len() {
         let a = args[i].as_str();
@@ -104,6 +104,7 @@ pub fn parse(args: &[String], default_chip: &str) -> Opts {
             "--cooja" => o.cooja = true,
             "--cooja-slice-us" => o.cooja_slice_us = next().parse().expect("slice-us"),
             "--cooja-verbose" => o.cooja_verbose = true,
+            "--cooja-rx-timing" => o.cooja_rx_on_air = match next().as_str() { "start" => true, "end" => false, x => { eprintln!("--cooja-rx-timing {}: start or end", x); std::process::exit(2) } },
             "-h" | "--help" => usage(default_chip),
             _ => { eprintln!("unknown arg {}", a); usage(default_chip) }
         }
@@ -148,6 +149,7 @@ fn run_cooja(o: &mut Opts) {
     let cfg = cooja::Config {
         slice_ns: o.cooja_slice_us.max(1) * 1000,
         console_mask: match o.console.as_deref().unwrap_or("uart0") { "usb" => 1, "uart0" | "uart" => 2, "both" => 3, "all" => 7, "none" => 0, _ => 2 },
+        rx_on_air: o.cooja_rx_on_air,
         verbose: o.cooja_verbose,
     };
     eprintln!("[cooja] node {} ({}), mac {}, slice {} µs", hello.id, boot, o.mac.map(|m| m.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":")).unwrap_or_default(), cfg.slice_ns / 1000);

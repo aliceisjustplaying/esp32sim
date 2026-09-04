@@ -194,10 +194,14 @@ Exactness is the point, not "within a slice":
 - a `step` runs the guest to the first cycle at or after `t` (`Machine::run_until_cycle`), not to
   the end of a 64-instruction quantum;
 - the round is cut at the instruction that writes `TX_START`: the `tx` event carries that time,
-  and the reply goes out before the slice ends (`SocBus::take_host_event`). The rest of the slice
-  is run when csim steps again (`wake` = `t + slice` while the guest is busy);
-- an `rx` inside a slice is injected at its own time: the guest runs to `rx.t`, the frame goes to
-  the radio (SFD then, `RX_DONE` after the air time), the run continues;
+  and the reply goes out before the slice ends (`SocBus::take_host_event`), with `done.t` = that
+  time so csim's clock for the node stops there. csim delivers the frame at its own clock, the
+  end of the slice — the same lateness an emulated mote's radio has — so the busy-slice `wake`
+  (`--cooja-slice-us`, default 100 µs) bounds it. The rest of the slice runs when csim steps again;
+- an `rx` inside a slice is injected at its own time: the guest runs to `rx.t` and the frame goes
+  to the radio complete (SFD and `RX_DONE` together: csim reports a frame at its end;
+  `--cooja-rx-timing start` makes `t` the start instead, `RX_DONE` after the air time), and the
+  run continues;
 - a guest in `wfi` costs nothing: time jumps to the bus's next device deadline (systimer, TIMG,
   the radio's countdowns, a running RMT channel) or the slice end, whichever is first, so the
   FreeRTOS idle loop is free and `wake` is the deadline;
@@ -210,9 +214,12 @@ of the newline. Radio state changes are `radio` events. Serial input (`serial` e
 USB-Serial/JTAG console. The end-of-run figures go to stderr.
 
 Measured with the esp32-contiki nullnet probe (ROM → bootloader → FreeRTOS → Contiki-NG, a
-broadcast every 5 s, one injected): 10.3 s of simulation in ~0.1 s wall with 10 ms steps — the
-guest is idle 99% of the time, and an idle second costs ~1 ms of wall time per systimer tick
-it wakes for. A busy second (boot) runs at ~160 M instructions/s.
+broadcast every 5 s, one injected): 10.3 s of simulation in ~0.1 s wall with 10 ms steps, and
+12 s in 0.33 s with a driver that follows `wake` (17825 exchanges, ~19 µs each) — the guest is
+idle 99% of the time, and an idle second costs one exchange per systimer tick it wakes for. A
+busy second (boot) runs at ~160 M instructions/s. Inside csim (`configs/test-ext-esp32c6-nullnet.json`
+there: a Sky node, the C6 and a sniffer exchanging nullnet broadcasts for 20 s) the C6's
+broadcasts reach the Sky and the Sky's reach Contiki on the C6.
 
 ## The board: `--board waveshare-c6-lcd147`
 

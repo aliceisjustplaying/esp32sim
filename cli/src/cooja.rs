@@ -12,8 +12,10 @@
 //! - `Machine::run_until_cycle` stops at the target cycle and at the instruction that starts a
 //!   transmission (`SocBus::take_host_event`), so a `tx` event carries the time of the
 //!   `TX_START` write and the reply goes out before the slice ends;
-//! - an `rx` inside a slice is injected at its own time: the guest runs to `rx.t`, the frame is
-//!   handed to the radio (SFD now, `RX_DONE` after the PSDU's air time), and the run continues;
+//! - an `rx` inside a slice is injected at its own time: the guest runs to `rx.t` and the frame is
+//!   handed to the radio — complete, SFD and `RX_DONE` together, because csim reports a frame at
+//!   its end (`rx_on_air` makes it the start instead: SFD now, `RX_DONE` after the air time) —
+//!   and the run continues;
 //! - a guest in `wfi` costs nothing: time jumps to the next device deadline or the slice end.
 //!
 //! `wake` is what we ask csim for next: the next device deadline when the guest sleeps, `t +
@@ -148,10 +150,15 @@ pub struct Config {
     pub slice_ns: u64,
     /// which guest consoles become `log` events: bit0 USB-Serial/JTAG, bit1 UART0, bit2 UART1
     pub console_mask: u32,
+    /// an `rx` at `t` is the start of the frame on the air (SFD at `t`, RX_DONE after the air
+    /// time) rather than, as csim delivers it, its end (the frame complete at `t`)
+    pub rx_on_air: bool,
     /// narrate the exchange on stderr
     pub verbose: bool,
 }
-impl Default for Config { fn default() -> Self { Config { slice_ns: 1_000_000, console_mask: 2, verbose: false } } }
+/// 100 µs busy slices: a transmission reaches csim's medium at the end of the slice it started
+/// in, so the slice bounds how late it is. ~5000 exchanges per busy second at ~20 µs each.
+impl Default for Config { fn default() -> Self { Config { slice_ns: 100_000, console_mask: 2, rx_on_air: false, verbose: false } } }
 
 /// End-of-run figures for the report.
 #[derive(Clone, Debug, Default)]
@@ -289,7 +296,7 @@ impl<'a> Peer<'a> {
     fn apply(&mut self, input: Input) {
         match input {
             Input::Rx { t, frame, rssi, lqi } => {
-                let taken = self.m.bus.radio_receive(&frame, rssi, lqi);
+                let taken = self.m.bus.radio_receive(&frame, rssi, lqi, self.cfg.rx_on_air);
                 self.m.sync_irq();
                 self.summary.rx += 1;
                 if !taken { self.summary.rx_dropped += 1; }

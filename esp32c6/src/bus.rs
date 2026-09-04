@@ -166,11 +166,13 @@ impl SocBus {
         else { eprintln!("[802.15.4] RX_DONE: DMA_RX_ADDR {:#010x} is not in SRAM, frame lost", addr); }
     }
 
-    /// A frame from the medium (MAC header + payload, no FCS) starts arriving now. Returns
-    /// whether the radio took it; the interrupt lines are re-derived before the next instruction
-    /// either way.
-    pub fn radio_receive(&mut self, frame: &[u8], rssi: i8, lqi: u8) -> bool {
-        let taken = self.periph.radio.receive(frame, rssi, lqi);
+    /// A frame from the medium (MAC header + payload, no FCS): arriving now (`on_air`, RX_DONE
+    /// after the air time) or complete now (the buffer is written before the next instruction).
+    /// Returns whether the radio took it; the interrupt lines are re-derived before the next
+    /// instruction either way.
+    pub fn radio_receive(&mut self, frame: &[u8], rssi: i8, lqi: u8, on_air: bool) -> bool {
+        let taken = self.periph.radio.receive(frame, rssi, lqi, on_air);
+        if self.periph.radio.rx_write.is_some() { self.radio_rx_store(); }
         self.irq_dirty = true;
         taken
     }
