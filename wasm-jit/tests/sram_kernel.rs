@@ -48,6 +48,45 @@ fn refuses_an_instruction_outside_the_receipted_slice() {
     assert!(error.to_string().contains("cost not adopted"), "{error}");
 }
 
+#[test]
+fn refuses_a_non_sram_data_image() {
+    let error = compile_sram_block(
+        KERNEL_START,
+        &KERNEL[..KERNEL_BYTES],
+        [0; REGISTER_COUNT],
+        0x6000_0000,
+        &[0; 4],
+    )
+    .expect_err("MMIO must not be priced as SRAM");
+    assert!(
+        error.to_string().contains("outside internal DRAM"),
+        "{error}"
+    );
+}
+
+#[test]
+fn traps_a_runtime_load_outside_the_supplied_sram_image() {
+    let mut registers = [0; REGISTER_COUNT];
+    registers[2] = SRAM_BASE + SRAM_LEN as u32;
+    let compiled = compile_sram_block(KERNEL_START, &KERNEL[..2], registers, SRAM_BASE, &[0; 4])
+        .expect("the load encoding and SRAM class are valid");
+    const SCRIPT: &str = r#"
+const fs = require('fs');
+WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
+  instance.exports.run();
+  process.exit(2);
+}).catch(() => process.exit(0));
+"#;
+    let path = write_module(&compiled.bytes, "bounds");
+    let output = Command::new("node")
+        .args(["-e", SCRIPT])
+        .arg(&path)
+        .output()
+        .expect("run emitted module under Node");
+    std::fs::remove_file(path).expect("remove wasm module");
+    assert!(output.status.success(), "out-of-image load did not trap");
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct ResultState {
     registers: [u32; REGISTER_COUNT],
@@ -97,11 +136,7 @@ WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
   process.stdout.write(`${registers.join(',')}\n${view.getUint32(64, true)}\n${view.getBigUint64(72, true)}\n${sram}`);
 }).catch(error => { console.error(error); process.exit(1); });
 "#;
-    let path = std::env::temp_dir().join(format!(
-        "esp32sim-wasm-jit-kernel-{}.wasm",
-        std::process::id()
-    ));
-    std::fs::write(&path, module).expect("write wasm module");
+    let path = write_module(module, "kernel");
     let output = Command::new("node")
         .args(["-e", SCRIPT])
         .arg(&path)
@@ -127,6 +162,15 @@ WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
         cycles: lines.next().expect("cycle line").parse().unwrap(),
         sram: decode_hex(lines.next().expect("SRAM line")),
     }
+}
+
+fn write_module(module: &[u8], label: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "esp32sim-wasm-jit-{label}-{}.wasm",
+        std::process::id()
+    ));
+    std::fs::write(&path, module).expect("write wasm module");
+    path
 }
 
 fn decode_hex(text: &str) -> Vec<u8> {

@@ -4,7 +4,7 @@ use emu_core::{
     CostModel, ExecutionFacts, LifecycleFacts, LifecycleKind, MemoryAccess, MemoryAccessKind,
     StepKind, StepOutcome,
 };
-use esp32s3::bus::DRAM_LOW;
+use esp32s3::bus::{DRAM_HIGH, DRAM_LOW};
 use esp32s3::Esp32S3SramCostModel;
 use std::fmt;
 use xtensa_lx7::{decode, Insn, Op};
@@ -19,6 +19,7 @@ pub enum CompileError {
     EmptyBlock,
     TruncatedInstruction { offset: usize, decoded_len: usize },
     UnsupportedInstruction { pc: u32, op: Op },
+    InvalidSramRange { base: u32, len: usize },
     TimingRefusal { pc: u32, reason: String },
 }
 
@@ -35,6 +36,12 @@ impl fmt::Display for CompileError {
             ),
             Self::UnsupportedInstruction { pc, op } => {
                 write!(f, "unsupported instruction {op:?} at {pc:#010x}")
+            }
+            Self::InvalidSramRange { base, len } => {
+                write!(
+                    f,
+                    "SRAM image {base:#010x}+{len:#x} is outside internal DRAM"
+                )
             }
             Self::TimingRefusal { pc, reason } => {
                 write!(f, "timing model refused {pc:#010x}: {reason}")
@@ -66,12 +73,19 @@ pub fn compile_sram_block(
     sram_base: u32,
     sram: &[u8],
 ) -> Result<CompiledBlock, CompileError> {
+    validate_sram_range(sram_base, sram.len())?;
     let instructions = decode_block(base_pc, block)?;
     let costs = price_sram_block(&instructions)?;
     let mut body = function_prefix();
     for (decoded, cost) in instructions.iter().zip(&costs) {
         emit_current_pc_guard(&mut body, decoded.pc);
-        emit_sram_instruction(&mut body, decoded.pc, &decoded.instruction, sram_base)?;
+        emit_sram_instruction(
+            &mut body,
+            decoded.pc,
+            &decoded.instruction,
+            sram_base,
+            sram.len(),
+        )?;
         emit_state_store_const(
             &mut body,
             PC_OFFSET,
@@ -94,6 +108,16 @@ pub fn compile_sram_block(
         instruction_count: instructions.len(),
         cycle_cost: costs.iter().map(|cost| u64::from(*cost)).sum(),
     })
+}
+
+fn validate_sram_range(base: u32, len: usize) -> Result<(), CompileError> {
+    let end = u32::try_from(len)
+        .ok()
+        .and_then(|len| base.checked_add(len));
+    if len < 4 || base < DRAM_LOW || end.is_none_or(|end| end > DRAM_HIGH) {
+        return Err(CompileError::InvalidSramRange { base, len });
+    }
+    Ok(())
 }
 
 fn decode_block(base_pc: u32, block: &[u8]) -> Result<Vec<DecodedInstruction>, CompileError> {
@@ -184,10 +208,12 @@ fn emit_sram_instruction(
     pc: u32,
     instruction: &Insn,
     sram_base: u32,
+    sram_len: usize,
 ) -> Result<(), CompileError> {
     match instruction.op {
         Op::L32i | Op::L32iN => {
             emit_i32_const(body, i32::from(instruction.t) * 4);
+            emit_sram_bounds_guard(body, instruction, sram_base, sram_len);
             emit_sram_address(body, instruction, sram_base);
             body.extend_from_slice(&[0x28, 0x02, 0x00]);
             emit_i32_store(body);
@@ -212,6 +238,22 @@ fn emit_sram_instruction(
         op => return Err(CompileError::UnsupportedInstruction { pc, op }),
     }
     Ok(())
+}
+
+fn emit_sram_bounds_guard(body: &mut Vec<u8>, instruction: &Insn, sram_base: u32, sram_len: usize) {
+    emit_sram_address(body, instruction, sram_base);
+    emit_i32_const(body, SRAM_IMAGE_OFFSET as i32);
+    body.push(0x49);
+    emit_trap_if_true(body);
+
+    emit_sram_address(body, instruction, sram_base);
+    emit_i32_const(body, (SRAM_IMAGE_OFFSET + sram_len - 4) as i32);
+    body.push(0x4b);
+    emit_trap_if_true(body);
+}
+
+fn emit_trap_if_true(body: &mut Vec<u8>) {
+    body.extend_from_slice(&[0x04, 0x40, 0x00, 0x0b]);
 }
 
 fn emit_sram_address(body: &mut Vec<u8>, instruction: &Insn, sram_base: u32) {
