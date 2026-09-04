@@ -114,8 +114,9 @@ fn echo_session_is_exact_and_reproducible() {
     let tx = tx_events(&out);
     assert_eq!(tx.len(), 2, "one echo per delivered frame:\n{}", out);
     assert_eq!((tx[0].1.as_str(), tx[1].1.as_str()), (FRAME, FRAME), "the echoes carry the received frames");
-    // RX_DONE at rx.t + (len byte + PSDU + FCS) air time, then a few instructions to TX_START
-    let air = (1 + FRAME.len() as u64 / 2 + 2) * 32_000;
+    // RX_DONE at rx.t + the whole on-air frame (preamble + SFD + len + PSDU + FCS), then a few
+    // instructions to TX_START.  rx.t is the first preamble byte, not the SFD.
+    let air = (6 + FRAME.len() as u64 / 2 + 2) * 32_000;
     for (i, (t, _)) in tx.iter().enumerate() {
         let rx_t = [2_000_000u64, 5_000_000][i];
         assert!((rx_t + air..rx_t + air + 200).contains(t), "tx {} at {} ns, expected just after {} ns", i, t, rx_t + air);
@@ -175,9 +176,13 @@ fn external_nullnet_c6() {
         let l = out.lines().flat_map(|l| l.split("{\"type\":\"log\",")).find(|l| l.contains(needle)).unwrap_or_else(|| panic!("no log line containing {:?}:\n{}", needle, err));
         l.split("\"t\":").nth(1).unwrap().split(',').next().unwrap().parse().unwrap()
     };
-    // csim reports a frame at its start: the driver sees the SFD at rx.t and RX_DONE after the air time
-    let air = (1 + FRAME.len() as u64 / 2 + 2) * 32_000;
-    assert!(line_at("RX SFD received") >= 6_205_000_000);
+    // csim reports a frame at its start -- rx.t is the first preamble byte, so the driver's
+    // SFD lands 5 byte times later and RX_DONE after the whole on-air frame
+    let air = (6 + FRAME.len() as u64 / 2 + 2) * 32_000;
+    let sfd = 5 * 32_000;
+    let sfd_at = line_at("RX SFD received");
+    assert!((6_205_000_000 + sfd..6_205_000_000 + sfd + 300_000).contains(&sfd_at),
+        "the driver's SFD line at {} should follow the preamble ({})", sfd_at, 6_205_000_000 + sfd);
     let rx_done = line_at("RX: 19 bytes, RSSI -65 dBm");
     assert!((6_205_000_000 + air..6_205_000_000 + air + 300_000).contains(&rx_done), "the driver's RX_DONE line at {} should follow the air time ({})", rx_done, 6_205_000_000 + air);
     // Contiki's callback prints through newlib's stdout buffer while the port's putchar bypasses
@@ -270,7 +275,7 @@ fn ack_session_is_exact_and_reproducible() {
     let tx = tx_events(&out);
     let frames: Vec<&str> = tx.iter().map(|(_, f)| f.as_str()).collect();
     assert_eq!(frames, [ACK_2D, UNICAST_AR, ACK_2D, UNICAST_AR, FRAME], "ACK, echo, ACK, echo, echo:\n{}", out);
-    let air = |mac: usize| (1 + mac as u64 + 2) * 32_000;
+    let air = |mac: usize| (6 + mac as u64 + 2) * 32_000;
     // the hardware ACK starts exactly 192 µs after the received frame ends, on the cycle
     assert_eq!(tx[0].0, 2_000_000 + air(17) + 192_000);
     assert_eq!(tx[2].0, 6_000_000 + air(17) + 192_000);

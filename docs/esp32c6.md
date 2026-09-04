@@ -180,8 +180,9 @@ air (32 µs each); an AR frame then waits for its ACK (`RxAck`), taking only an 
 its sequence number. A frame offered while listening goes through the filter — a destination
 PAN of ours or 0xffff and a destination address of ours or the short broadcast, per multipan
 entry the driver enabled; no destination only for a coordinator on its PAN or a beacon; `CONF.
-promiscuous` takes everything — raises `RX_SFD_DONE` at once and `RX_DONE` after `1 + len + 2`
-bytes, the buffer written by the bus as the driver reads it; an AR frame is acknowledged from
+promiscuous` takes everything — raises `RX_SFD_DONE` after 5 bytes and `RX_DONE` after
+`6 + len + 2` bytes, counted from the frame's first preamble byte, exactly as the transmitter
+counts them; the buffer is written by the bus as the driver reads it; an AR frame is acknowledged from
 there: the ACK (`02 <version> seq`, pending bit 0) starts 192 µs (12 symbols) after the frame's
 end and takes 11 bytes of air, 352 µs, then `ACK_TX_DONE`. The ACK leaves through the same host
 path as a data frame — the round is cut at its first cycle — so a lock-stepped medium sees it
@@ -223,9 +224,12 @@ Exactness is the point, not "within a slice":
   end of the slice — the same lateness an emulated mote's radio has — so the busy-slice `wake`
   (`--cooja-slice-us`, default 100 µs) bounds it. The rest of the slice runs when csim steps again;
 - an `rx` inside a slice is injected at its own time: the guest runs to `rx.t` and the frame goes
-  to the radio as csim reports it, at its start — SFD then, `RX_DONE` after the air time, and
-  the acknowledgement 192 µs after that, which is when the sender's CC2420 expects it
-  (`--cooja-rx-timing end` takes `t` as the frame's end instead) — and the run continues;
+  to the radio as csim reports it, at its start — `rx.t` is the frame's first preamble byte, so
+  `RX_SFD_DONE` follows 5 bytes (160 µs) later, `RX_DONE` at the end of the whole on-air frame,
+  and the acknowledgement 192 µs after that, which is when the sender's CC2420 expects it
+  (`--cooja-rx-timing end` takes `t` as the frame's end instead) — and the run continues.
+  IDF timestamps a received frame by reading `esp_timer` in its `RX_SFD_DONE` handler, so that
+  cycle is the timestamp the driver records;
 - a guest in `wfi` costs nothing: time jumps to the bus's next device deadline (systimer, TIMG,
   the radio's countdowns, a running RMT channel) or the slice end, whichever is first, so the
   FreeRTOS idle loop is free and `wake` is the deadline;
