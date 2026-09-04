@@ -9,7 +9,7 @@ use crate::{elf, png};
 use emu_core::core::pc_bit;
 use emu_core::{
     Bus, Core, CostModel, ExecutionFacts, Fault, LifecycleFacts, LifecycleKind,
-    MemoryAccess, MemoryAccessKind, StepKind, Trap,
+    MemoryAccess, MemoryAccessKind, ModeledExecution, StepKind, Trap,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -504,7 +504,11 @@ impl<S: Soc> Machine<S> {
         if let Some(stop) = &self.model_stop { return stop.clone(); }
         self.stub_bloom = self.stubs.keys().fold(0, |mask, &pc| mask | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |mask, &pc| mask | pc_bit(pc));
-        for core in &mut self.cores { core.set_boundaries(self.stub_bloom | self.probe_bloom); core.flush_caches(); }
+        for core in &mut self.cores {
+            core.set_boundaries(self.stub_bloom | self.probe_bloom);
+            core.set_costed_jit(true);
+            core.flush_caches();
+        }
         for observer in &mut self.observers { observer.on_modeled_run(); }
 
         let trace = self.has_observer("trace");
@@ -530,7 +534,7 @@ impl<S: Soc> Machine<S> {
 
             let start = now;
             let pc = self.cores[core].pc();
-            let cost = match self.step_core_modeled(core) {
+            let (cost, applied_cycles) = match self.step_core_modeled(core) {
                 Ok(cost) => cost,
                 Err(stop) => {
                     if matches!(stop, Stop::CostModel { .. } | Stop::CostModelLifecycle { .. }) { self.model_stop = Some(stop.clone()); }
@@ -543,7 +547,9 @@ impl<S: Soc> Machine<S> {
                 self.drain_console();
                 return stop;
             };
-            if cost > 1 { self.cores[core].advance_cycles(cost - 1); }
+            if cost > applied_cycles {
+                self.cores[core].advance_cycles(cost - applied_cycles);
+            }
             self.model_ready_at[core] = ready;
             events += 1;
 
@@ -635,7 +641,7 @@ impl<S: Soc> Machine<S> {
         }
     }
 
-    fn step_core_modeled(&mut self, core: usize) -> Result<u32, Stop> {
+    fn step_core_modeled(&mut self, core: usize) -> Result<(u32, u32), Stop> {
         let pc = self.cores[core].pc();
         if self.probe_bloom & pc_bit(pc) != 0 && !self.cores[core].waiting() {
             if let Some(name) = self.fn_probes.get(&pc) {
@@ -656,15 +662,18 @@ impl<S: Soc> Machine<S> {
         }
 
         self.bus.note_pc(pc);
-        let (outcome, accesses) = {
+        let (modeled, accesses) = {
             let mut bus = RecordingBus::new(&mut self.bus);
-            let mut outcome = self.cores[core].step(&mut bus);
+            let mut modeled = self.cores[core].step_modeled(&mut bus);
             // A control operation is an occurrence, not a decoded intention. Current cores can
             // report it before a privilege or execution failure, so only retirement commits it.
-            if !matches!(outcome.kind, StepKind::Retired) { outcome.control = None; }
-            let accesses = bus.finish(outcome.bytes, outcome.pc);
-            (outcome, accesses)
+            if !matches!(modeled.outcome.kind, StepKind::Retired) {
+                modeled.outcome.control = None;
+            }
+            let accesses = bus.finish(modeled.outcome.bytes, modeled.outcome.pc);
+            (modeled, accesses)
         };
+        let outcome = modeled.outcome;
         if let Some(trap) = outcome.trap() {
             if self.probes.contains(Wants::TRAP) {
                 let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
@@ -699,7 +708,28 @@ impl<S: Soc> Machine<S> {
         let result = self.cost.as_mut().expect("modeled path requires an attached model").cycles(&facts);
         match result {
             Ok(0) => Err(Stop::CostModel { core, pc, reason: "cost model returned zero cycles".into() }),
-            Ok(cycles) => Ok(cycles),
+            Ok(cycles)
+                if modeled.execution == ModeledExecution::Compiled
+                    && modeled.applied_cycles == cycles => Ok((cycles, modeled.applied_cycles)),
+            Ok(cycles) if modeled.execution == ModeledExecution::Compiled => {
+                Err(Stop::CostModel {
+                    core,
+                    pc,
+                    reason: format!(
+                        "CostedJitMismatch: compiled charge {} cycles, model priced {}",
+                        modeled.applied_cycles, cycles
+                    ),
+                })
+            }
+            Ok(cycles) if modeled.applied_cycles <= cycles => Ok((cycles, modeled.applied_cycles)),
+            Ok(cycles) => Err(Stop::CostModel {
+                core,
+                pc,
+                reason: format!(
+                    "CostedJitMismatch: engine applied {} cycles, model priced {}",
+                    modeled.applied_cycles, cycles
+                ),
+            }),
             Err(reason) => Err(Stop::CostModel { core, pc, reason }),
         }
     }
