@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -342,6 +343,47 @@ def test_rom_elf_resolves_from_capture_environment(
 ) -> None:
     monkeypatch.setenv("ESP_ROM_ELF_DIR", str(tmp_path))
     assert MODULE.resolve_rom_elf(None) == tmp_path / "esp32s3_rev0_rom.elf"
+
+
+def test_artifact_manifest_pins_every_executable_input(tmp_path: Path) -> None:
+    build = tmp_path / "build"
+    (build / "bootloader").mkdir(parents=True)
+    (build / "partition_table").mkdir()
+    paths = {
+        build / "probe.elf": b"elf",
+        build / "probe.bin": b"app",
+        build / "bootloader" / "bootloader.bin": b"boot",
+        build / "partition_table" / "partition-table.bin": b"partitions",
+        build / "sdkconfig": b"config",
+        tmp_path / "probe-cells.json": b"manifest",
+        tmp_path / "esp32s3_rev0_rom.elf": b"rom",
+    }
+    for path, contents in paths.items():
+        path.write_bytes(contents)
+
+    result = MODULE.verify_artifacts(
+        build / "probe.elf",
+        tmp_path / "probe-cells.json",
+        tmp_path / "esp32s3_rev0_rom.elf",
+    )
+
+    assert set(result["artifacts"]) == {
+        "applicationElf",
+        "applicationBinary",
+        "bootloaderBinary",
+        "partitionTableBinary",
+        "sdkconfig",
+        "probeManifest",
+        "maskRomElf",
+    }
+    assert result["artifacts"]["applicationBinary"]["sha256"] == hashlib.sha256(
+        b"app"
+    ).hexdigest()
+    assert result["flashLayout"] == [
+        {"offset": "0x0", "artifact": "bootloaderBinary"},
+        {"offset": "0x8000", "artifact": "partitionTableBinary"},
+        {"offset": "0x10000", "artifact": "applicationBinary"},
+    ]
 
 
 def test_capture_objdump_argument_is_accepted(tmp_path: Path) -> None:
