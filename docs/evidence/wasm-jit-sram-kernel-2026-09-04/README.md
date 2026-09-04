@@ -6,9 +6,9 @@ seven instructions of the committed TinyDraw SRAM kernel and obtains their
 cycle prices from `Esp32S3SramCostModel`.
 
 The benchmark instantiates one module under Node, warms it for 100,000 runs,
-then measures five groups of 1,000,000 runs. Each run executes seven guest
-instructions and accumulates seven receipt-backed cycles. The measured median
-is 386.757255 million guest instructions per second.
+then measures five groups of 1,000,000 runs on an Apple M1 Pro. Each run
+executes seven guest instructions and accumulates seven receipt-backed cycles.
+The measured median is 386.757255 million guest instructions per second.
 
 Run from the repository root:
 
