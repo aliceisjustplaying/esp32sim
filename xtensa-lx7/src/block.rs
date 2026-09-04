@@ -65,12 +65,15 @@ pub struct BlockCache {
     /// Generate receipt-backed cycle charges for modeled single-instruction dispatches.
     pub(crate) costed_jit: bool,
     pub compiled: u64,
+    /// Instructions retired by receipt-costed native code.
+    pub costed_native_insns: u64,
 }
 
 impl BlockCache {
     pub fn new() -> Self {
         BlockCache { entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
-                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, costed_jit: false, compiled: 0 }
+                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, costed_jit: false, compiled: 0,
+                     costed_native_insns: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
@@ -386,6 +389,7 @@ fn run_costed_native_one<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Option<(u32, Opt
     };
     let (done, exit) = (result & 0xffff, result >> 16);
     cpu.insn_count += u64::from(done);
+    cpu.blocks.costed_native_insns += u64::from(done);
     cpu.advance_ccount(cycle_charge);
     Some(match exit {
         crate::jit::CODE_TRAP => (done, cpu.jit_trap.take(), cycle_charge),
