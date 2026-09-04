@@ -27,7 +27,10 @@ use crate::bus::Bus;
 use crate::decode::{decode, Insn, Op};
 use crate::exec::{exec_insn, max_ar, Trap};
 use crate::state::{sr, Cpu};
-use emu_core::{ModeledExecution, ModeledStepOutcome, StepKind, StepOutcome};
+use emu_core::{
+    ModeledBlockPlan, ModeledBlockRun, ModeledExecution, ModeledStepOutcome, StepKind,
+    StepOutcome,
+};
 
 pub use emu_core::core::pc_bit;
 
@@ -67,13 +70,15 @@ pub struct BlockCache {
     pub compiled: u64,
     /// Instructions retired by receipt-costed native code.
     pub costed_native_insns: u64,
+    /// Calls into receipt-costed native code.
+    pub costed_native_runs: u64,
 }
 
 impl BlockCache {
     pub fn new() -> Self {
         BlockCache { entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
                      code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, costed_jit: false, compiled: 0,
-                     costed_native_insns: 0 }
+                     costed_native_insns: 0, costed_native_runs: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
@@ -83,6 +88,12 @@ impl BlockCache {
     /// Bytes of native code currently in use.
     pub fn code_bytes(&self) -> usize { self.code.as_ref().map(|c| c.used()).unwrap_or(0) }
     pub fn jit_active(&self) -> bool { self.jit_enabled && self.code.is_some() }
+    pub(crate) fn modeled_checkpoint(&self) -> ((u32, u32, u32), u64, u64) {
+        (self.resume, self.costed_native_insns, self.costed_native_runs)
+    }
+    pub(crate) fn restore_modeled_checkpoint(&mut self, state: ((u32, u32, u32), u64, u64)) {
+        (self.resume, self.costed_native_insns, self.costed_native_runs) = state;
+    }
     #[inline(always)]
     fn index(pc: u32) -> usize { ((pc >> 1) ^ (pc >> 16)) as usize & (ENTRIES - 1) }
     #[inline(always)]
@@ -335,7 +346,93 @@ pub fn run_costed_step<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> ModeledStepOutcome
     }
 }
 
+/// Plan at least two receipt-priced native instructions from the current straight-line block.
+/// Planning may populate decode and code caches but does not change architectural state.
+pub fn plan_costed_block<B: Bus>(
+    cpu: &mut Cpu,
+    bus: &mut B,
+    budget: u32,
+) -> Option<ModeledBlockPlan> {
+    if budget < 2
+        || !cpu.blocks.jit_active()
+        || !cpu.blocks.costed_jit
+        || cpu.waiting
+        || cpu.check_interrupts_pending() != 0
+    {
+        return None;
+    }
+    let (entry, start, end) = costed_block_range(cpu, bus)?;
+    if cpu.blocks.entries[entry as usize].code == crate::jit::NONE {
+        return None;
+    }
+
+    let mut outcomes = Vec::with_capacity((end - start).min(budget) as usize);
+    let mut pc = cpu.pc;
+    let mut cumulative_cycles = 0u32;
+    for index in start..end.min(start.saturating_add(budget)) {
+        let block_insn = cpu.blocks.arena[index as usize];
+        let instruction = block_insn.insn;
+        let next = pc.wrapping_add(u32::from(instruction.len));
+        if block_insn.max_ar >= 4
+            || (cpu.lcount != 0 && next == cpu.lend)
+        {
+            return None;
+        }
+        let component = crate::measured::compiled_internal_cost(&instruction)?;
+        let cycles = u32::try_from(component.cycles()?).ok()?;
+        cumulative_cycles = cumulative_cycles.checked_add(cycles)?;
+        let bytes = bus.fetch(pc).ok()?;
+        let next_pc = if instruction.op == Op::J {
+            instruction.imm as u32
+        } else {
+            next
+        };
+        outcomes.push(ModeledStepOutcome {
+            outcome: StepOutcome {
+                pc,
+                next_pc,
+                bytes: Some(bytes),
+                length: instruction.len,
+                kind: StepKind::Retired,
+                control: None,
+            },
+            applied_cycles: cycles,
+            execution: ModeledExecution::Compiled,
+        });
+        pc = next_pc;
+
+        let timer_due = cpu.ccompare.iter().any(|&compare| {
+            let distance = compare.wrapping_sub(cpu.ccount);
+            distance != 0 && distance <= cumulative_cycles
+        });
+        if timer_due || instruction.op == Op::J {
+            break;
+        }
+    }
+    (outcomes.len() >= 2).then_some(ModeledBlockPlan { outcomes })
+}
+
+/// Execute a prefix of the current receipt-priced native block.
+pub fn run_costed_block<B: Bus>(
+    cpu: &mut Cpu,
+    bus: &mut B,
+    events: u32,
+) -> Option<ModeledBlockRun> {
+    let (used, trap, applied_cycles) = run_costed_native(cpu, bus, events)?;
+    if trap.is_some() || used != events {
+        return None;
+    }
+    Some(ModeledBlockRun {
+        events: used,
+        applied_cycles,
+    })
+}
+
 fn run_costed_native_one<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Option<(u32, Option<Trap>, u32)> {
+    run_costed_native(cpu, bus, 1)
+}
+
+fn costed_block_range<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Option<(u32, u32, u32)> {
     let pc = cpu.pc;
     let (ei, k, end) = {
         let (resume_entry, resume_index, resume_pc) = cpu.blocks.resume;
@@ -358,6 +455,15 @@ fn run_costed_native_one<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Option<(u32, Opt
             }
         }
     };
+    Some((ei, k, end))
+}
+
+fn run_costed_native<B: Bus>(
+    cpu: &mut Cpu,
+    bus: &mut B,
+    budget: u32,
+) -> Option<(u32, Option<Trap>, u32)> {
+    let (ei, k, end) = costed_block_range(cpu, bus)?;
     cpu.blocks.resume.2 = 1;
     let code = cpu.blocks.entries[ei as usize].code;
     if code == crate::jit::NONE || !cpu.blocks.jit_enabled {
@@ -373,6 +479,7 @@ fn run_costed_native_one<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Option<(u32, Opt
     let fast_memory = bus.fast_mem();
     let code_cache = cache.code.as_ref().expect("active JIT must have a code cache");
     let helpers = cache.helpers.as_ref().expect("active JIT must have helpers");
+    cpu.blocks.costed_native_runs += 1;
     // SAFETY: The live entry was compiled in costed mode for `B`; the fast-memory description
     // belongs to this exclusive bus borrow.
     let (result, cycle_charge) = unsafe {
@@ -382,7 +489,7 @@ fn run_costed_native_one<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Option<(u32, Opt
             cpu,
             bus,
             helpers,
-            1,
+            budget,
             entry,
             fast_memory,
         )

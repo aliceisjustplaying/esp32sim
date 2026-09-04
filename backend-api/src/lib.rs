@@ -23,7 +23,7 @@ pub use timing::{
 };
 pub use transaction::{
     Backend, CoreId, CoreState, ExecutionOutcome, LedgerEntry, SchedulerState, TraceEvent,
-    TraceReport, TransactionEngine, TransactionReceipt,
+    TraceReport, TransactionCheckpoint, TransactionEngine, TransactionReceipt,
 };
 
 /// Cycle count in the emulator's virtual clock domain.

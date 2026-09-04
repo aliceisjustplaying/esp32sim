@@ -2,13 +2,13 @@
 
 use backend_api::{
     price_operation, Backend, CacheAccessKind, CacheAccessResult, CacheFillPosition, CacheKind,
-    CacheModel, CacheSource, ChipConfig, CoreId, CostComponent, ExecutionOutcome, FillPosition,
+    CacheModel, CacheSource, ChipConfig, CoreId, CostClass, CostComponent, ExecutionOutcome, FillPosition,
     FlashMode, InstructionCost, MmioTier, Operation, PsramMode, RefusalReason, TimingMutation,
-    TimingRefusal, TransactionEngine,
+    TimingRefusal, TransactionCheckpoint, TransactionEngine,
 };
 use emu_core::{
     ControlEventKind, CostModel, ExecutionFacts, LifecycleFacts, LifecycleKind, MemoryAccess,
-    MemoryAccessKind, StepKind,
+    MemoryAccessKind, ModeledBlockEvent, StepKind,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -33,6 +33,14 @@ pub struct Esp32Backend {
     config_registers: ConfigRegisters,
     mmu: [u32; crate::bus::MMU_ENTRIES],
     hook_cache_accessed: bool,
+    modeled_template: Option<ModeledTemplate>,
+}
+
+#[derive(Clone, Debug)]
+struct ModeledTemplate {
+    config: ChipConfig,
+    events: Vec<ModeledBlockEvent>,
+    priced: Vec<(CoreId, u32, CostComponent)>,
 }
 
 impl Default for Esp32Backend {
@@ -45,6 +53,7 @@ impl Default for Esp32Backend {
             config_registers: ConfigRegisters::default(),
             mmu: [crate::bus::MMU_INVALID; crate::bus::MMU_ENTRIES],
             hook_cache_accessed: false,
+            modeled_template: None,
         }
     }
 }
@@ -61,6 +70,12 @@ struct ConfigRegisters {
     spi1_clock: u32,
     extmem_dcache_ctrl: u32,
     extmem_icache_ctrl: u32,
+}
+
+#[derive(Clone, Debug)]
+struct Esp32BatchCheckpoint {
+    engine: TransactionCheckpoint,
+    previous_load: [Option<u8>; 2],
 }
 
 /// Shared handle for a machine-attached timing model and its deterministic report state.
@@ -126,9 +141,48 @@ impl CostModel for Esp32CostModel {
             .map_err(|_| "CostModelReentry: cycle callback reentered the model".to_string())?;
         CostModel::cycles(&mut *model, facts)
     }
+
+    fn commit_modeled_block(&mut self, events: &[ModeledBlockEvent]) -> Option<Result<(), String>> {
+        let mut model = self.inner.try_borrow_mut().ok()?;
+        CostModel::commit_modeled_block(&mut *model, events)
+    }
+
+    fn begin_batch(&mut self) -> Option<Box<dyn std::any::Any>> {
+        self.inner
+            .try_borrow()
+            .ok()
+            .map(|model| Box::new(model.batch_checkpoint()) as Box<dyn std::any::Any>)
+    }
+
+    fn rollback_batch(
+        &mut self,
+        checkpoint: Box<dyn std::any::Any>,
+    ) -> Result<(), String> {
+        let checkpoint = checkpoint
+            .downcast::<Esp32BatchCheckpoint>()
+            .map_err(|_| "CostModelBatch: incompatible checkpoint".to_string())?;
+        let mut model = self
+            .inner
+            .try_borrow_mut()
+            .map_err(|_| "CostModelReentry: batch rollback reentered the model".to_string())?;
+        model.rollback_batch(*checkpoint);
+        Ok(())
+    }
 }
 
 impl Esp32Backend {
+    fn batch_checkpoint(&self) -> Esp32BatchCheckpoint {
+        Esp32BatchCheckpoint {
+            engine: self.engine.checkpoint(),
+            previous_load: self.previous_load,
+        }
+    }
+
+    fn rollback_batch(&mut self, checkpoint: Esp32BatchCheckpoint) {
+        self.engine.rollback(checkpoint.engine);
+        self.previous_load = checkpoint.previous_load;
+    }
+
     fn instruction_operation(&self, observation: &InstructionObservation) -> Operation {
         use Op::*;
         let kind = match observation.instruction.op {
@@ -223,6 +277,7 @@ impl Esp32Backend {
         self.config_registers = ConfigRegisters::default();
         self.mmu.fill(crate::bus::MMU_INVALID);
         self.hook_cache_accessed = false;
+        self.modeled_template = None;
         self.update_config(self.config_registers.chip_config());
     }
 
@@ -683,6 +738,82 @@ impl CostModel for Esp32Backend {
             .map_err(format_timing_refusal)?;
         self.apply_hook_writes(facts.accesses);
         Ok(cycles)
+    }
+
+    fn commit_modeled_block(&mut self, events: &[ModeledBlockEvent]) -> Option<Result<(), String>> {
+        if let Some(template) = &self.modeled_template {
+            if template.config == self.config && template.events == events {
+                let result = self.engine.execute_static_sram_batch(&template.priced).map_err(format_timing_refusal);
+                if result.is_ok() {
+                    for event in events { self.previous_load[event.core] = None; }
+                }
+                return Some(result);
+            }
+        }
+        let mut priced = Vec::with_capacity(events.len());
+        for event in events {
+            if event.outcome.kind != StepKind::Retired
+                || event.outcome.control.is_some()
+                || self.memory_class(event.outcome.pc) != MemoryClass::InternalSram
+            {
+                return None;
+            }
+            let fetch = [MemoryAccess {
+                kind: MemoryAccessKind::Fetch,
+                address: event.outcome.pc,
+                width: 4,
+                value: u32::from_le_bytes(event.outcome.bytes?),
+                fault: None,
+            }];
+            let facts = ExecutionFacts { core: event.core, outcome: event.outcome, accesses: &fetch };
+            let observation = match self.observation_from_facts(&facts) {
+                Ok(observation) => observation,
+                Err(_) => return None,
+            };
+            let plan = match self.price(&observation) {
+                Ok(plan) => plan,
+                Err(_) => return None,
+            };
+            let [component] = plan.components.as_slice() else { return None; };
+            if !matches!(component.class, CostClass::Instruction(_))
+                || !plan.mutations.is_empty()
+                || component.cycles() != Some(u64::from(event.applied_cycles))
+            {
+                return None;
+            }
+            let core = match hook_core(event.core) {
+                Ok(core) => core,
+                Err(error) => return Some(Err(error)),
+            };
+            priced.push((core, event.outcome.pc, *component));
+        }
+        self.modeled_template = Some(ModeledTemplate {
+            config: self.config,
+            events: events.to_vec(),
+            priced,
+        });
+        let result = self.engine.execute_static_sram_batch(&self.modeled_template.as_ref().expect("template was stored").priced).map_err(format_timing_refusal);
+        if result.is_ok() {
+            for event in events {
+                self.previous_load[event.core] = None;
+            }
+        }
+        Some(result)
+    }
+
+    fn begin_batch(&mut self) -> Option<Box<dyn std::any::Any>> {
+        Some(Box::new(self.batch_checkpoint()))
+    }
+
+    fn rollback_batch(
+        &mut self,
+        checkpoint: Box<dyn std::any::Any>,
+    ) -> Result<(), String> {
+        let checkpoint = checkpoint
+            .downcast::<Esp32BatchCheckpoint>()
+            .map_err(|_| "CostModelBatch: incompatible checkpoint".to_string())?;
+        self.rollback_batch(*checkpoint);
+        Ok(())
     }
 }
 
@@ -1249,6 +1380,7 @@ mod tests {
     use crate::board::WaveshareAmoled18V2;
     use backend_api::contract_suite::{assert_backend_contract, assert_receipt_correlation};
     use backend_api::{CacheFillPosition, CacheKind, CostClass, ReceiptId};
+    use emu_core::{Bus as _, Core as _};
     use xtensa_lx7::measured::BlockCostPayload;
     use xtensa_lx7::state::ps;
 
@@ -1305,6 +1437,88 @@ mod tests {
             .expect("test instruction maps in IRAM");
         machine.cores[0].pc = RESET_PC;
         machine
+    }
+
+    fn static_loop_machine(jit: bool, deadline: Option<u64>) -> (crate::Machine, Esp32CostModel) {
+        let mut program = vec![0x22, 0xa0, 1, 0x32, 0xa0, 2];
+        let offset = RESET_PC.wrapping_sub(RESET_PC + 6 + 4) as i32;
+        let jump = ((offset as u32 & 0x3ffff) << 6) | 6;
+        program.extend_from_slice(&[jump as u8, (jump >> 8) as u8, (jump >> 16) as u8]);
+        let mut machine = instruction_machine(&program);
+        machine.cores[0].set_jit(jit);
+        machine.cores[1].set_jit(jit);
+        machine
+            .bus
+            .write32(0x600c_0000, 0b010)
+            .expect("release core 1");
+        if let Some(deadline) = deadline {
+            machine
+                .script
+                .events
+                .push((deadline, esp_soc::ScriptAction::Stop));
+        }
+        let model = Esp32CostModel::default();
+        machine
+            .set_cost_model(Box::new(model.clone()))
+            .expect("pristine machine accepts product timing");
+        assert!(matches!(machine.run(0), esp_soc::Stop::MaxInsns));
+        machine.cores[0].pc = RESET_PC;
+        machine.cores[1].pc = RESET_PC;
+        (machine, model)
+    }
+
+    struct RefusingBatchModel {
+        inner: Esp32CostModel,
+        calls: usize,
+        refuse_at: usize,
+    }
+
+    struct RefusingCheckpoint {
+        inner: Box<dyn std::any::Any>,
+        calls: usize,
+    }
+
+    impl CostModel for RefusingBatchModel {
+        fn lifecycle(&mut self, facts: &LifecycleFacts) -> Result<(), String> {
+            self.inner.lifecycle(facts)
+        }
+
+        fn cycles(&mut self, facts: &ExecutionFacts<'_>) -> Result<u32, String> {
+            if self.calls == self.refuse_at {
+                return Err("test refusal".into());
+            }
+            self.calls += 1;
+            self.inner.cycles(facts)
+        }
+
+        fn commit_modeled_block(&mut self, events: &[ModeledBlockEvent]) -> Option<Result<(), String>> {
+            if self.calls == self.refuse_at {
+                return None;
+            }
+            self.calls += events.len();
+            if self.calls > self.refuse_at {
+                return None;
+            }
+            self.inner.commit_modeled_block(events)
+        }
+
+        fn begin_batch(&mut self) -> Option<Box<dyn std::any::Any>> {
+            Some(Box::new(RefusingCheckpoint {
+                inner: self.inner.begin_batch()?,
+                calls: self.calls,
+            }))
+        }
+
+        fn rollback_batch(
+            &mut self,
+            checkpoint: Box<dyn std::any::Any>,
+        ) -> Result<(), String> {
+            let checkpoint = checkpoint
+                .downcast::<RefusingCheckpoint>()
+                .map_err(|_| "bad test checkpoint".to_string())?;
+            self.calls = checkpoint.calls;
+            self.inner.rollback_batch(checkpoint.inner)
+        }
     }
 
     fn branch_machine(register: u32) -> crate::Machine {
@@ -1696,6 +1910,68 @@ mod tests {
         assert_eq!(jit_machine.cores[0].ccount, 6);
         assert_eq!(report.core_cycles(), Ok([6, 0]));
         assert_eq!(report.canonical_ledger(), Ok(reference_ledger));
+    }
+
+    #[test]
+    fn costed_native_blocks_match_dual_core_scheduler_and_script_deadline() {
+        if !xtensa_lx7::jit::AVAILABLE {
+            return;
+        }
+        for deadline in [None, Some(4)] {
+            let (mut reference, reference_report) = static_loop_machine(false, deadline);
+            let (mut batched, batched_report) = static_loop_machine(true, deadline);
+            let reference_stop = reference.run(60);
+            let batched_stop = batched.run(60);
+            assert_eq!(
+                matches!(reference_stop, esp_soc::Stop::Halted),
+                matches!(batched_stop, esp_soc::Stop::Halted),
+            );
+            for core in 0..2 {
+                assert_eq!(batched.cores[core].ar, reference.cores[core].ar);
+                assert_eq!(batched.cores[core].pc, reference.cores[core].pc);
+                assert_eq!(batched.cores[core].ccount, reference.cores[core].ccount);
+                assert_eq!(batched.cores[core].insn_count, reference.cores[core].insn_count);
+                assert!(batched.cores[core].blocks.costed_native_insns > 1);
+                assert!(
+                    batched.cores[core].blocks.costed_native_insns
+                        > batched.cores[core].blocks.costed_native_runs
+                );
+            }
+            assert_eq!(batched.bus.cycles, reference.bus.cycles);
+            assert_eq!(
+                batched_report.canonical_ledger(),
+                reference_report.canonical_ledger(),
+            );
+        }
+    }
+
+    #[test]
+    fn costed_native_batch_rolls_back_before_later_refusal() {
+        if !xtensa_lx7::jit::AVAILABLE {
+            return;
+        }
+        let mut machine = instruction_machine(&[
+            0x22, 0xa0, 1, 0x32, 0xa0, 2, 0x06, 0xff, 0xff,
+        ]);
+        let report = Esp32CostModel::default();
+        machine
+            .set_cost_model(Box::new(RefusingBatchModel {
+                inner: report.clone(),
+                calls: 0,
+                refuse_at: 1,
+            }))
+            .expect("pristine machine accepts product timing");
+
+        let stop = machine.run(10);
+        assert!(matches!(
+            stop,
+            esp_soc::Stop::CostModel { core: 0, pc, ref reason }
+                if pc == RESET_PC + 3 && reason == "test refusal"
+        ));
+        assert_eq!(machine.cores[0].get_ar(2), 1);
+        assert_eq!(machine.cores[0].get_ar(3), 2);
+        assert_eq!(machine.cores[0].insn_count, 2);
+        assert_eq!(report.core_cycles(), Ok([1, 0]));
     }
 
     #[test]
