@@ -1727,6 +1727,49 @@ mod tests {
     }
 
     #[test]
+    fn modeled_then_fast_recompiles_for_the_normal_jit_abi() {
+        if !xtensa_lx7::jit::AVAILABLE {
+            return;
+        }
+        let mut machine = instruction_machine(&[0x06, 0xff, 0xff]);
+        emu_core::Core::set_costed_jit(&mut machine.cores[0], true);
+        let modeled = emu_core::Core::step_modeled(&mut machine.cores[0], &mut machine.bus);
+        assert_eq!(modeled.execution, emu_core::ModeledExecution::Compiled);
+        assert_eq!(modeled.applied_cycles, 3);
+
+        assert!(matches!(machine.run(1), esp_soc::Stop::MaxInsns));
+        let (_, _, compiled, _) = emu_core::Core::code_cache_stats(&machine.cores[0])
+            .expect("LX7 exposes native code statistics");
+        assert_eq!(compiled, 2);
+        assert_eq!(machine.cores[0].ccount, 67);
+    }
+
+    #[test]
+    fn fast_then_modeled_recompiles_for_the_costed_jit_abi() {
+        if !xtensa_lx7::jit::AVAILABLE {
+            return;
+        }
+        let mut machine = instruction_machine(&[0x06, 0xff, 0xff]);
+        let model = Esp32CostModel::default();
+        let report = model.clone();
+        machine
+            .set_cost_model(Box::new(model))
+            .expect("pristine machine accepts product timing");
+
+        assert_eq!(
+            emu_core::Core::run(&mut machine.cores[0], &mut machine.bus, 1),
+            (1, None)
+        );
+        assert!(matches!(machine.run(1), esp_soc::Stop::MaxInsns));
+
+        let (_, _, compiled, _) = emu_core::Core::code_cache_stats(&machine.cores[0])
+            .expect("LX7 exposes native code statistics");
+        assert_eq!(compiled, 2);
+        assert_eq!(machine.cores[0].ccount, 4);
+        assert_eq!(report.core_cycles(), Ok([3, 0]));
+    }
+
+    #[test]
     fn real_interpreter_ledger_is_byte_identical_twice() {
         assert_eq!(measured_branch_ledger(0), measured_branch_ledger(0));
     }

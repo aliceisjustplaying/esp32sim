@@ -22,7 +22,9 @@ impl emu_core::Core for Cpu {
     fn advance_cycles(&mut self, cycles: u32) { self.cycle_count += cycles as u64; }
     fn idle_advance(&mut self, cycles: u32) { self.insn_count += cycles as u64; self.cycle_count += cycles as u64; }
     fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome { crate::exec::step_outcome(self, bus) }
-    fn set_boundaries(&mut self, bloom: u64) { self.boundary_bloom = bloom; }
+    fn set_run_context(&mut self, boundaries: u64, _costed_jit: bool) {
+        self.boundary_bloom = boundaries;
+    }
     /// One instruction at a time, but like a block: stop when the bus reports that an interrupt
     /// line may have moved, so the machine re-derives the core's input before the next instruction,
     /// and at a pc the machine wants to see first (a stub or a probe), so it is exact there too.
