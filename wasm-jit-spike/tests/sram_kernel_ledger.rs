@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use backend_api::{Backend, CoreId};
-use esp32s3::{Esp32Backend, Machine, MeasuredStep};
+use esp32s3::{Esp32Backend, MeasuredMachine, MeasuredStep};
 use wasm_jit_spike::{emit_sram, REGISTER_COUNT};
 
 const KERNEL: &[u8] = include_bytes!("../../esp32s3/tests/fixtures/tinydraw-sram-kernel.bin");
@@ -13,7 +13,7 @@ const SRAM_LEN: usize = 0x400;
 
 #[test]
 fn sram_kernel_jit_ledger_is_byte_identical_to_measured_interpreter() {
-    let expected = measured_interpreter_ledger();
+    let (expected_ledger, expected_cycles) = measured_interpreter_result();
     let mut registers = [0; REGISTER_COUNT];
     registers[2] = SRAM_BASE;
     registers[3] = 7;
@@ -29,12 +29,14 @@ fn sram_kernel_jit_ledger_is_byte_identical_to_measured_interpreter() {
         &sram,
     )
     .expect("the committed SRAM kernel emits");
-    execute_node(&module.bytes);
-    assert_eq!(module.canonical_ledger, expected);
+    let runtime_cycles = execute_node(&module.bytes);
+    assert_eq!(runtime_cycles, expected_cycles);
+    assert_eq!(module.cycle_cost, expected_cycles);
+    assert_eq!(module.canonical_ledger, expected_ledger);
 }
 
-fn measured_interpreter_ledger() -> Vec<u8> {
-    let mut machine = Machine::new([0; 6]);
+fn measured_interpreter_result() -> (Vec<u8>, u64) {
+    let mut machine = esp32s3::machine([0; 6]);
     receipt_config(&mut machine);
     machine
         .bus
@@ -48,9 +50,9 @@ fn measured_interpreter_ledger() -> Vec<u8> {
         .bus
         .load_bytes(SRAM_BASE + 0x2c4, &0x1234_5678u32.to_le_bytes())
         .expect("load value");
-    machine.cpu.pc = KERNEL_START;
-    machine.cpu.set_ar(2, SRAM_BASE);
-    machine.cpu.set_ar(3, 7);
+    machine.cores[0].pc = KERNEL_START;
+    machine.cores[0].set_ar(2, SRAM_BASE);
+    machine.cores[0].set_ar(3, 7);
     let mut backend = Esp32Backend::default();
     for _ in 0..KERNEL_INSTRUCTIONS {
         assert_eq!(
@@ -58,13 +60,15 @@ fn measured_interpreter_ledger() -> Vec<u8> {
             Ok(MeasuredStep::Instruction)
         );
     }
-    backend
+    let cycles = backend.engine().state().cores[0].cycle;
+    let ledger = backend
         .run_trace(&[])
         .expect("scalar ledger")
-        .canonical_ledger
+        .canonical_ledger;
+    (ledger, cycles)
 }
 
-fn receipt_config(machine: &mut Machine) {
+fn receipt_config(machine: &mut esp32s3::Machine) {
     machine.bus.periph.system.ram.write(0x10, 6);
     machine.bus.periph.system.ram.write(0x60, 1 << 10);
     for spi in [&mut machine.bus.periph.spi0, &mut machine.bus.periph.spi1] {
@@ -82,13 +86,13 @@ fn receipt_config(machine: &mut Machine) {
         .write(0x60, (1 << 3) | (1 << 1));
 }
 
-fn execute_node(module: &[u8]) {
+fn execute_node(module: &[u8]) -> u64 {
     const SCRIPT: &str = r#"
 const fs = require('fs');
 WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
   instance.exports.run();
   const view = new DataView(instance.exports.memory.buffer);
-  if (view.getBigUint64(72, true) === 0n) process.exit(2);
+  process.stdout.write(view.getBigUint64(72, true).toString());
 }).catch(error => { console.error(error); process.exit(1); });
 "#;
     let path = std::path::Path::new("/tmp").join(format!(
@@ -107,4 +111,8 @@ WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    String::from_utf8(output.stdout)
+        .expect("wasm cycle output is UTF-8")
+        .parse()
+        .expect("wasm cycle output is an integer")
 }
