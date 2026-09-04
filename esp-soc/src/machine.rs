@@ -93,6 +93,19 @@ pub struct Machine<S: Soc> {
 
 const QUANTUM: u64 = 64;
 
+/// The secondary cores eligible for a timing-only advance at the start of an external quantum.
+/// Obtain this from the same machine immediately before execution and consume it at completion;
+/// intervening core-0 MMIO writes must not change which peers participate in this round.
+#[derive(Debug)]
+pub struct BrowserExternalQuantum {
+    idle_cores: Vec<usize>,
+    reset_cores: Vec<usize>,
+}
+
+impl BrowserExternalQuantum {
+    pub fn budget(&self) -> u32 { QUANTUM as u32 }
+}
+
 /// Why an external browser executor cannot take the current unmodelled scheduler quantum.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -490,19 +503,30 @@ impl<S: Soc> Machine<S> {
         self.browser_external_block_budget_result(requested).ok()
     }
 
-    /// The external quantum budget together with a stable diagnostic refusal reason.
+    /// The external quantum budget, or every concurrent refusal bit. Admission depends on
+    /// the full mask, including any future reason not yet listed in diagnostic tables.
     pub fn browser_external_block_budget_result(
         &self,
         requested: u32,
-    ) -> Result<u32, BrowserExternalBlockRefusal> {
+    ) -> Result<u32, u16> {
         let refusals = self.browser_external_block_refusal_mask(requested);
-        if let Some(reason) = BrowserExternalBlockRefusal::ALL
-            .into_iter()
-            .find(|reason| refusals & reason.bit() != 0)
-        {
-            return Err(reason);
+        if refusals != 0 {
+            return Err(refusals);
         }
         Ok(QUANTUM as u32)
+    }
+
+    /// Admit one external quantum and retain the ordinary scheduler's peer snapshot.
+    pub fn browser_external_quantum(&self, requested: u32) -> Result<BrowserExternalQuantum, u16> {
+        self.browser_external_block_budget_result(requested)?;
+        Ok(BrowserExternalQuantum {
+            idle_cores: (1..S::CORES)
+                .filter(|&core| S::core_state(&self.bus, core) == CoreState::Running)
+                .collect(),
+            reset_cores: (1..S::CORES)
+                .filter(|&core| S::core_state(&self.bus, core) == CoreState::Reset)
+                .collect(),
+        })
     }
 
     /// Every reason currently preventing an external quantum, as bits from
@@ -533,19 +557,21 @@ impl<S: Soc> Machine<S> {
         mask
     }
 
-    /// Complete a quantum accepted by `browser_external_block_budget`. Architectural core-0 state
-    /// must already contain the full result; released secondary cores were proven idle by the
-    /// gate and receive the same timing-only advance before shared device time moves.
-    pub fn finish_browser_external_quantum(&mut self) -> Option<Stop> {
-        for core in 1..S::CORES {
-            if S::core_state(&self.bus, core) == CoreState::Running {
-                debug_assert!(!self.core_held[core]);
-                debug_assert!(self.cores[core].waiting() && !self.cores[core].irq_pending());
-                self.cores[core].idle_advance(QUANTUM as u32);
-            }
+    /// Complete the same quantum accepted by `browser_external_quantum`. Architectural core-0
+    /// state must already contain the full result. Consume the gate's peer snapshot, even when
+    /// a core-0 store changed a peer's reset/clock state after the round began.
+    pub fn finish_browser_external_quantum(&mut self, quantum: BrowserExternalQuantum) -> Option<Stop> {
+        // Remember reset peers from the same starting snapshot. Deferring this bookkeeping
+        // until commit keeps failed preparations side-effect free.
+        for core in quantum.reset_cores { self.core_held[core] = true; }
+        for core in quantum.idle_cores {
+            self.cores[core].idle_advance(QUANTUM as u32);
         }
         self.after_round(QUANTUM);
-        self.bus.sw_reset().then_some(Stop::SwReset)
+        if self.bus.sw_reset() { self.drain_console(); return Some(Stop::SwReset); }
+        if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Some(Stop::Halted); }
+        self.drain_console();
+        None
     }
 
     fn run_unmodeled(&mut self, max_insns: u64) -> Stop {

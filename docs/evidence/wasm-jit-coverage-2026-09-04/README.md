@@ -16,9 +16,22 @@ core blocked 261–358 attempts per workload, while an active second core blocke
 was waiting at most boundaries; the few eligible instruction streams first encountered `J`,
 `Addi`, `AddiN`, `Bbci`, or `BnezN`.
 
-The next implementation boundary is therefore admitting a released second core only when it is
-provably idle, plus bounding scripts by their next deadline. Opcode expansion becomes meaningful
-after those permanent gates stop masking the hot code. Counts are concurrent, so refusal totals
-can exceed attempt totals.
+Core 0 waiting is the binding constraint at these sampling instants. Even removing every other
+refusal could admit at most 2, 3, 6, 56, and 56 of the 360 attempts for `hello`, `atech`,
+`atech-sid`, `panel`, and `panel-sid`, respectively: 123 of 1,800 attempts. Idle-peer and script
+admission can expose those remaining instruction streams, but cannot make a waiting core execute.
+The per-bit counts overlap, so they do not identify which gate is the sole blocker.
+
+The next performance step is dispatch inside the normal scheduler, where runnable work is
+actually selected, followed by profiling and compiling its hot blocks. This receipt measures
+eligibility at 360 sampling instants, not the fraction of workload instructions compiled. With
+one 64-instruction quantum per sampled boundary, even 100% admission at these 360 instants would
+cover only 23,040 instructions. The attempt count changes once commits cause the driver to retry
+without an interpreter slice. Counts are concurrent, so refusal totals can exceed attempt totals.
+
+The historical counters below are unchanged. Their original profiling run suppressed the
+fallback console assertion for manifests without `expect`; the corrected harness always checks
+console output, the two Atech manifests now name their expected transport line, and `panel-sid` expects the
+same application-start line as `panel`.
 
 Raw counters, source identity, runtime, host, and WebAssembly hash are in `result.json`.

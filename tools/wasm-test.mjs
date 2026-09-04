@@ -134,8 +134,8 @@ async function runManifest(name) {
   const problems = [];
   if (panics.length) problems.push(`panicked: ${panics[0]}`);
   if (!board) problems.push('no board message');
-  const expected = m.expect || (!process.env.ESP32SIM_WASM_JIT_STATS && EXPECT.console);
-  if (expected && !text.includes(expected)) problems.push(`console never showed ${JSON.stringify(expected)}; got ${text.length} bytes`);
+  const expected = m.expect || EXPECT.console;
+  if (!text.includes(expected)) problems.push(`console never showed ${JSON.stringify(expected)}; got ${text.length} bytes`);
   const insns = w.esp32sim_insns(emu);
   const stats = jitStats(w, emu, mem);
   w.esp32sim_delete(emu);

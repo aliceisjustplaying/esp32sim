@@ -269,6 +269,7 @@ struct CachedJitModule {
 
 #[cfg(target_arch = "wasm32")]
 struct JitTicket {
+    quantum: esp_soc::BrowserExternalQuantum,
     module_id: u32,
     pc: u32,
     next_pc: u32,
@@ -555,15 +556,10 @@ fn prepare_browser_jit(
     requested: u32,
 ) -> Result<u32, BrowserJitReject> {
     jit.ticket = None;
+    let quantum = machine.browser_external_quantum(requested)
+        .map_err(BrowserJitReject::Scheduler)?;
     let cpu = &machine.cores[0];
-    let limit = match machine.browser_external_block_budget_result(requested) {
-        Ok(limit) => limit,
-        Err(_) => {
-            return Err(BrowserJitReject::Scheduler(
-                machine.browser_external_block_refusal_mask(requested),
-            ));
-        }
-    };
+    let limit = quantum.budget();
     for compare in cpu.ccompare {
         let distance = compare.wrapping_sub(cpu.ccount);
         if distance != 0 && distance < limit {
@@ -665,6 +661,7 @@ fn prepare_browser_jit(
     write_jit_state(jit, cpu, start_pc);
     let module_id = module_index as u32 + 1;
     jit.ticket = Some(JitTicket {
+        quantum,
         module_id,
         pc: start_pc,
         next_pc: pc,
@@ -771,7 +768,7 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
     cpu.advance_ccount(ticket.instruction_count);
     machine.bus.note_pc(ticket.last_pc);
     if matches!(
-        machine.finish_browser_external_quantum(),
+        machine.finish_browser_external_quantum(ticket.quantum),
         Some(Stop::SwReset)
     ) {
         let cause = machine.bus.reset_cause();
