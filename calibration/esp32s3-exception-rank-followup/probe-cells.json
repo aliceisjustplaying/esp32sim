@@ -1,0 +1,43 @@
+{
+  "protocolVersion": 2,
+  "harnessVersion": "2.0.0",
+  "chipModel": "ESP32-S3",
+  "chipRevision": 2,
+  "runtimeConfiguration": {
+    "schemaVersion": "1.0.0",
+    "idfVersion": "v6.1",
+    "target": "esp32s3",
+    "cores": 2,
+    "cpuHz": 240000000,
+    "ccountHz": 240000000,
+    "samplesPerCell": 100,
+    "maxAttemptsPerCell": 200,
+    "probe": "exception-rank-followup",
+    "emulatorChipRevision": 0
+  },
+  "cells": [
+    {"id": "rfe_alone", "family": "exception-return", "samples": 100, "variants": ["normal"]},
+    {"id": "rfi3_alone", "family": "exception-return", "samples": 100, "variants": ["normal"]},
+    {"id": "syscall_rfe_pair", "family": "exception-entry", "samples": 100, "variants": ["normal"]},
+    {"id": "window_overflow8_entry", "family": "exception-entry", "samples": 100, "variants": ["normal"]},
+    {"id": "window_overflow8_control", "family": "exception-control", "samples": 100, "variants": ["normal"]},
+    {"id": "window_underflow8_entry", "family": "exception-entry", "samples": 100, "variants": ["normal"]},
+    {"id": "window_underflow8_control", "family": "exception-control", "samples": 100, "variants": ["normal"]},
+    {"id": "rfwo_alone", "family": "exception-return", "samples": 100, "variants": ["normal"]},
+    {"id": "rfwu_alone", "family": "exception-return", "samples": 100, "variants": ["normal"]},
+    {
+      "id": "mask_rom_fetch_straight_line",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": ["normal"],
+      "knownTerms": ["entry", "retw.n"]
+    },
+    {
+      "id": "iram_fetch_matched_control",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": ["normal"],
+      "knownTerms": ["entry", "retw.n"]
+    }
+  ]
+}
