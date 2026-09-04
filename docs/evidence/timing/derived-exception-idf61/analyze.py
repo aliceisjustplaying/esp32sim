@@ -64,6 +64,7 @@ def load_attempts() -> list[dict[str, object]]:
             "exception_derivation",
             "real_idf61_exception_paths_expose_the_incomplete_known_ledgers",
             "--",
+            "--ignored",
             "--nocapture",
         ],
         cwd=ROOT,
