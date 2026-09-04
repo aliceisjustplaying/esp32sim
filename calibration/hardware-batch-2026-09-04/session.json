@@ -2,6 +2,20 @@
   "schemaVersion": 1,
   "board": "waveshare-esp32-s3-touch-amoled-1.8-v2",
   "idf": "v6.1",
+  "flashModeContract": {
+    "imageHeaderAndWrite": "dio",
+    "runtimeAfterBootloader": "qio"
+  },
+  "offlineTools": {
+    "esp32sim": {
+      "path": "/Users/sarah/src/a/esp32sim/target/release/esp32sim",
+      "sha256": "7011f188df79bcff294a8544026f73156342058f15203d1a6e63684f7b7475f9"
+    },
+    "frameCorrelation": {
+      "sourceCommit": "28970f6d457219196e6307e579e1297ea9bddda2",
+      "sha256": "3db294f4c22f38f076c40efbe1b1e204d999bba71a81dba5febf50e6a93500d7"
+    }
+  },
   "captureOrder": [
     {
       "id": "h1-exception-ladders",

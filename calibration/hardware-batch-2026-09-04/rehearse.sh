@@ -4,9 +4,10 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(git -C "$script_dir" rev-parse --show-toplevel)
 session="$script_dir/session.json"
-simulator=${ESP32SIM:-/Users/sarah/src/a/esp32sim/target/release/esp32sim}
+simulator=${ESP32SIM:-$(jq -r '.offlineTools.esp32sim.path' "$session")}
 frame_tool=${FRAME_CORRELATION_TOOL:-"$repo_root/tools/frame_correlation.py"}
-expected_sim_sha=7011f188df79bcff294a8544026f73156342058f15203d1a6e63684f7b7475f9
+expected_sim_sha=$(jq -r '.offlineTools.esp32sim.sha256' "$session")
+expected_frame_tool_sha=$(jq -r '.offlineTools.frameCorrelation.sha256' "$session")
 
 python3 "$script_dir/verify_session.py" "$session"
 if [ ! -x "$simulator" ] || [ ! -f "$frame_tool" ]; then
@@ -16,6 +17,11 @@ fi
 actual_sim_sha=$(shasum -a 256 "$simulator" | cut -d ' ' -f 1)
 if [ "$actual_sim_sha" != "$expected_sim_sha" ]; then
   echo "esp32sim executable SHA-256 mismatch" >&2
+  exit 2
+fi
+actual_frame_tool_sha=$(shasum -a 256 "$frame_tool" | cut -d ' ' -f 1)
+if [ "$actual_frame_tool_sha" != "$expected_frame_tool_sha" ]; then
+  echo "frame-correlation tool SHA-256 mismatch" >&2
   exit 2
 fi
 
@@ -50,6 +56,8 @@ run_frame() {
     --no-dump \
     --max-seconds 2 \
     >"$output/raw-$label.log" 2>&1
+  grep -q 'qio_mode: Enabling default flash chip QIO' "$output/raw-$label.log"
+  grep -q 'SPI Mode       : QIO' "$output/raw-$label.log"
   python3 "$frame_tool" normalize "$bundle/MANIFEST.json" \
     "$output/raw-$label.log" --source emulator >"$output/normalized-$label.ndjson"
 }

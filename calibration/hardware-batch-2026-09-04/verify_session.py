@@ -78,6 +78,8 @@ def require_sdkconfig(bundle: Path, speed: int) -> None:
     required = {
         'CONFIG_IDF_TARGET="esp32s3"',
         "CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240",
+        'CONFIG_ESPTOOLPY_FLASHMODE="dio"',
+        "CONFIG_FLASHMODE_QIO=y",
         "CONFIG_SPIRAM_MODE_OCT=y",
         f"CONFIG_SPIRAM_SPEED_{speed}M=y",
     }
@@ -91,6 +93,7 @@ def verify_tinydraw(bundle: Path, manifest: dict, speed: int) -> None:
     require_equal(manifest.get("bundleId"), bundle.name, "TinyDraw bundle ID")
     require_equal(manifest.get("board"), "waveshare-esp32-s3-touch-amoled-1.8-v2", "board")
     require_equal(manifest.get("toolchain", {}).get("espIdf"), "v6.1", "TinyDraw IDF")
+    require_equal(manifest.get("configuration", {}).get("flashMode"), "qio", "runtime flash mode")
     require_equal(manifest.get("configuration", {}).get("psramHz"), speed * 1_000_000, "PSRAM clock")
     require_equal(manifest.get("workload", {}).get("inputEvents"), 20, "input count")
     require_equal(manifest.get("workload", {}).get("expectedFrameKeys"), 21, "frame count")
@@ -147,12 +150,22 @@ def verify_session(contract_path: Path) -> dict:
     require_equal(contract.get("schemaVersion"), 1, "session schema")
     require_equal(contract.get("board"), "waveshare-esp32-s3-touch-amoled-1.8-v2", "session board")
     require_equal(contract.get("idf"), "v6.1", "session IDF")
+    require_equal(
+        contract.get("flashModeContract"),
+        {"imageHeaderAndWrite": "dio", "runtimeAfterBootloader": "qio"},
+        "flash-mode contract",
+    )
     require_equal(contract.get("restoreImage"), None, "restore image")
     images = contract.get("captureOrder")
     if not isinstance(images, list):
         raise VerificationError("captureOrder must be an array")
     require_equal([item.get("id") for item in images], EXPECTED_IDS, "capture order")
     require_equal([item.get("boots") for item in images], [2, 2, 2], "boot counts")
+    require_equal(
+        [item.get("terminal") for item in images],
+        ["CAL_DONE", "TINYDRAW_DEMO_REPLAY_END", "TINYDRAW_DEMO_REPLAY_END"],
+        "capture terminals",
+    )
     manifests = []
     for item in images:
         bundle = Path(item["bundlePath"])
