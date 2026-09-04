@@ -1,11 +1,22 @@
 {
   "schemaVersion": 1,
   "date": "2026-09-04",
+  "measuredAtUtc": "2026-09-04T10:16:39Z",
   "status": "refuted",
   "baseCommit": "7f1893913d0e374bb3267df46e4c2ff8f8c145e4",
-  "uncommittedBinaryDiffSha256": "4eacf769b47eea037100bce2ddf4c1e6773417cb9e0c7a87b6bf0eba8b01bace",
+  "sourceCommit": "618c6bff69556aca46a2237b0e72990be8220c4e",
+  "sourceBranch": "codex/refuted-costed-jit-block-batching",
+  "harnessSha256": "747296968b7645e3fd164f2713a0bcc8d6842e6bda67094128a2324b359d4e4f",
   "diff": { "addedLines": 1003, "removedLines": 20 },
   "host": { "cpu": "Apple M1 Pro", "architecture": "aarch64", "macOS": "27.0" },
+  "toolchain": {
+    "rust": "1.98.0",
+    "rustCommit": "88d9e12ae178fab0fb5cc050a94da85685d449ea",
+    "cargo": "1.98.0",
+    "cargoCommit": "797e8a9bc",
+    "llvm": "22.1.8",
+    "host": "aarch64-apple-darwin"
+  },
   "workload": {
     "memory": "IRAM",
     "cores": 2,
@@ -17,18 +28,18 @@
     "samples": 5
   },
   "raw": [
-    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.013504167, "mips": 14.810243 },
-    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.012849583, "mips": 15.564707 },
-    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.012787875, "mips": 15.639815 },
-    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.012897459, "mips": 15.506930 },
-    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.012862750, "mips": 15.548775 }
+    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.016301125, "mips": 12.269092 },
+    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.013918792, "mips": 14.369063 },
+    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.012316083, "mips": 16.238929 },
+    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.012112500, "mips": 16.511868 },
+    { "core0Events": 100000, "core1Events": 100000, "elapsedSeconds": 0.012137208, "mips": 16.478254 }
   ],
-  "medianMips": 15.548775,
+  "medianMips": 16.238929,
   "singleInstructionBaselineMips": 4.385869,
-  "speedupOverBaseline": 3.5452,
+  "speedupOverBaseline": 3.70256,
   "dualCoreBudgetMips": 480.0,
   "clearsBudget": false,
-  "marginMips": -464.451225,
-  "marginPercent": -96.760672,
-  "requiredFurtherSpeedup": 30.8706
+  "marginMips": -463.761071,
+  "marginPercent": -96.616890,
+  "requiredFurtherSpeedup": 29.5586
 }
