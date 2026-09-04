@@ -7,6 +7,8 @@ use esp_soc::{Machine, Soc, SocBus, Stop};
 use emu_core::{Bus, Core};
 use std::path::PathBuf;
 
+pub mod cooja;
+
 fn usage(chip: &str) -> ! {
     eprintln!("usage: esp32sim [--chip s3|c3|c6] --boot rom|app --bootloader B.bin --ptable P.bin --app A.bin [--elf X.elf]... [options]");
     eprintln!("       see docs/cli.md for every flag (default chip here: {})", chip);
@@ -31,10 +33,12 @@ pub struct Opts {
     pub profile: bool, pub profile_blocks: bool, pub coverage: Option<Option<String>>, pub irq_latency: bool, pub vcd: Option<String>,
     pub regstat: Option<String>, pub regtrace: Option<String>, pub regtrace_max: u64, pub regtrace_from_pc: Option<u32>,
     pub stubs: Vec<String>, pub trace_fns: Vec<String>, pub stop_exc: u64, pub log_periph: bool, pub no_jit: bool, pub debug: Vec<String>,
+    /// `--cooja`: run as a Cooja-NG external mote over NDJSON on stdin/stdout (ESP32-C6 only)
+    pub cooja: bool, pub cooja_slice_us: u64, pub cooja_verbose: bool, pub cooja_rx_on_air: bool,
 }
 
 pub fn parse(args: &[String], default_chip: &str) -> Opts {
-    let mut o = Opts { chip: default_chip.to_string(), board: "atech14".into(), net: "nat".into(), cam_fps: 10.0, max_insns: u64::MAX, dump: true, regtrace_max: u64::MAX, stop_exc: u64::MAX, ..Default::default() };
+    let mut o = Opts { chip: default_chip.to_string(), board: "atech14".into(), net: "nat".into(), cam_fps: 10.0, max_insns: u64::MAX, dump: true, regtrace_max: u64::MAX, stop_exc: u64::MAX, cooja_slice_us: 100, ..Default::default() };
     let mut i = 1;
     while i < args.len() {
         let a = args[i].as_str();
@@ -97,6 +101,10 @@ pub fn parse(args: &[String], default_chip: &str) -> Opts {
             "--log-periph" => o.log_periph = true,
             "--no-jit" => o.no_jit = true,
             "--debug" => o.debug.push(next()),
+            "--cooja" => o.cooja = true,
+            "--cooja-slice-us" => o.cooja_slice_us = next().parse().expect("slice-us"),
+            "--cooja-verbose" => o.cooja_verbose = true,
+            "--cooja-rx-timing" => o.cooja_rx_on_air = match next().as_str() { "start" => true, "end" => false, x => { eprintln!("--cooja-rx-timing {}: start or end", x); std::process::exit(2) } },
             "-h" | "--help" => usage(default_chip),
             _ => { eprintln!("unknown arg {}", a); usage(default_chip) }
         }
@@ -115,13 +123,44 @@ fn find_rom(name: &str) -> Option<PathBuf> {
 
 pub fn run_cli(default_chip: &str) {
     let args: Vec<String> = std::env::args().collect();
-    let o = parse(&args, default_chip);
+    let mut o = parse(&args, default_chip);
+    if o.cooja { return run_cooja(&mut o); }
     match o.chip.as_str() {
         "s3" | "esp32s3" => { let m = setup_s3(&o); run(m, &o) }
         "c3" | "esp32c3" => { let m = setup_c3(&o); run(m, &o) }
         "c6" | "esp32c6" => { let m = setup_c6(&o); run(m, &o) }
         c => { eprintln!("--chip {}: s3, c3 or c6", c); std::process::exit(2) }
     }
+}
+
+/// `--cooja`: the C6 as a Cooja-NG external mote. csim's `hello` comes first — its node id names
+/// the MAC unless `--mac` did — then the machine is set up and booted exactly as for a normal
+/// run, and the NDJSON exchange takes the place of the run loop. The guest console never
+/// reaches stdout: it goes to csim as `log` events. The usual report goes to stderr at the end.
+fn run_cooja(o: &mut Opts) {
+    if !matches!(o.chip.as_str(), "c6" | "esp32c6") { eprintln!("--cooja: only the ESP32-C6 speaks the Cooja-NG lock-step protocol"); std::process::exit(2); }
+    let stdin = std::io::stdin();
+    let mut input = stdin.lock();
+    let hello = match cooja::read_hello(&mut input) { Ok(h) => h, Err(e) => { eprintln!("[cooja] {}", e); std::process::exit(2) } };
+    if o.mac.is_none() { o.mac = Some(cooja::mac_for_node(hello.id)); }
+    if o.console.is_none() { o.console = Some("uart0".into()); }
+    let mut m = setup_c6(o);
+    let boot = prepare(&mut m, o);
+    let cfg = cooja::Config {
+        slice_ns: o.cooja_slice_us.max(1) * 1000,
+        console_mask: match o.console.as_deref().unwrap_or("uart0") { "usb" => 1, "uart0" | "uart" => 2, "both" => 3, "all" => 7, "none" => 0, _ => 2 },
+        rx_on_air: o.cooja_rx_on_air,
+        verbose: o.cooja_verbose,
+    };
+    eprintln!("[cooja] node {} ({}), mac {}, slice {} µs", hello.id, boot, o.mac.map(|m| m.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":")).unwrap_or_default(), cfg.slice_ns / 1000);
+    let t0 = std::time::Instant::now();
+    let stdout = std::io::stdout();
+    let mut output = stdout.lock();
+    let summary = match cooja::run(&mut m, cfg, &hello, &mut input, &mut output) { Ok(s) => s, Err(e) => { eprintln!("[cooja] {}", e); std::process::exit(1) } };
+    let dt = t0.elapsed().as_secs_f64();
+    eprintln!("[cooja] {} steps, {} early yields, {} tx, {} rx ({} dropped), {} log lines; {:.3} s simulated in {:.1} s wall ({} cycles, {:.1} Mcycle/s)",
+              summary.steps, summary.yields, summary.tx, summary.rx, summary.rx_dropped, summary.logs, summary.sim_ns as f64 / 1e9, dt, m.bus.cycles(), m.bus.cycles() as f64 / dt / 1e6);
+    report(&mut m, o, match summary.stopped { Some(_) => Stop::Halted, None => Stop::MaxInsns }, dt);
 }
 
 fn setup_s3(o: &Opts) -> esp32s3::Machine {
@@ -204,6 +243,25 @@ fn setup_c6(o: &Opts) -> esp32c6::Machine {
 
 /// Everything after the chip is set up: images, boot, observers, the run, the reports.
 fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
+    let boot = prepare(&mut m, o);
+    let t0 = std::time::Instant::now();
+    let stop = loop {
+        let stop = m.run(o.max_insns);
+        if let Stop::SwReset = stop {
+            let cause = m.bus.reset_cause();
+            eprintln!("[emu] chip reset at t={:.3}s: cause {:#x} ({})", m.seconds(), cause, esp_periph::reset_cause_name(cause));
+            if o.no_reboot || boot != "rom" { break stop; }
+            m.reboot();
+            continue;
+        }
+        break stop;
+    };
+    let dt = t0.elapsed().as_secs_f64();
+    report(&mut m, o, stop, dt);
+}
+
+/// Images, boot, observers, scripts: everything before the first instruction. Returns the boot mode.
+fn prepare<S: Soc>(m: &mut Machine<S>, o: &Opts) -> String {
     let c3 = S::CORES == 1;
     let boot = o.boot.clone().unwrap_or_else(|| if c3 { "rom".into() } else { "app".into() });
     let console = o.console.clone().unwrap_or_else(|| if c3 { "uart0".into() } else { "both".into() });
@@ -269,19 +327,11 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     if let Some(p) = &o.vcd { m.add_observer(Box::new(Vcd::new(p, S::CPU_HZ))); }
     if let Some(p) = &o.script { m.load_script(&std::fs::read_to_string(p).expect("script")).expect("script"); }
     if let Some(sec) = o.max_seconds { m.max_cycles = (sec * S::CPU_HZ as f64) as u64; }
-    let t0 = std::time::Instant::now();
-    let stop = loop {
-        let stop = m.run(o.max_insns);
-        if let Stop::SwReset = stop {
-            let cause = m.bus.reset_cause();
-            eprintln!("[emu] chip reset at t={:.3}s: cause {:#x} ({})", m.seconds(), cause, esp_periph::reset_cause_name(cause));
-            if o.no_reboot || boot != "rom" { break stop; }
-            m.reboot();
-            continue;
-        }
-        break stop;
-    };
-    let dt = t0.elapsed().as_secs_f64();
+    boot
+}
+
+/// The end-of-run report on stderr: counts, faults, peeks, observer reports, captures, registers.
+fn report<S: Soc>(m: &mut Machine<S>, o: &Opts, stop: Stop, dt: f64) {
     let total = m.insns();
     let per: String = if S::CORES == 1 { format!("{}", total) } else { m.cores.iter().enumerate().map(|(i, c)| format!("core{} {}", i, c.insn_count())).collect::<Vec<_>>().join(" + ") };
     eprintln!("\n[emu] stop: {:?} — {} insns in {:.1}s wall = {:.1} Minsn/s; emulated {:.3}s ({} cycles); {} exceptions, {} interrupts",

@@ -10,6 +10,7 @@
 pub mod board;
 pub mod bus;
 pub mod periph;
+pub mod radio;
 pub mod soc;
 
 pub use esp_soc::Stop;

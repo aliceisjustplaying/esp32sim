@@ -26,6 +26,16 @@ pub enum Stop {
     CostModelLifecycle { kind: LifecycleKind, reason: String },
 }
 
+/// Why `Machine::run_until_cycle` returned.
+#[derive(Debug)]
+pub enum RunUntil {
+    /// device time is at (or, by the last instruction, just past) the target cycle
+    Reached,
+    /// the bus flagged a host event (`SocBus::take_host_event`): time stands at the instruction that caused it
+    Yield,
+    Stop(Stop),
+}
+
 /// A secondary core's state as its SoC registers say.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CoreState { Running, Held, Reset }
@@ -65,6 +75,10 @@ pub trait SocBus: Bus {
     fn refresh_irq(&mut self) -> bool;
     /// Deliver deferred device time now (a bus that defers it).
     fn flush_ticks(&mut self) {}
+    /// A device event the host must see at the instruction that caused it (a radio
+    /// transmission starting): `Machine::run_until_cycle` stops its round there and returns
+    /// `RunUntil::Yield`. Reading it clears it.
+    fn take_host_event(&mut self) -> bool { false }
     fn misc(&mut self) -> &mut Misc;
     fn load_bytes(&mut self, addr: u32, data: &[u8]) -> Result<(), String>;
     fn write_flash(&mut self, offset: usize, data: &[u8]) -> Result<(), String>;

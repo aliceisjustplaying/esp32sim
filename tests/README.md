@@ -47,6 +47,8 @@ output is left next to the golden as `*.actual` for diffing.
 | `hello-c3.*` | the same on the ESP32-C3 (RISC-V), with the MAC/reset cause/straps of the real module in `hw/c3-hello-world-real.txt`, through `esp32sim-c3` and `esp32sim --chip c3` |
 | `hello-c6.*` | the same on the ESP32-C6 (RISC-V, RV32IMAC), with the identity of the Waveshare ESP32-C6-LCD-1.47 in `hw/c6-hello-world-real.txt`; the reboot variant also pins the ROM's `Saved PC` |
 | `energy-scan-c6.*` (`external_`) | the 802.15.4 energy scanner on the Waveshare board — its owner's firmware, `ENERGY_SCAN_DIR` points at the build: PHY up, no panic, ≥50 scans, the board's report, console and count |
+| `cooja-echo.ndjson` (`cli/tests/cooja.rs`) | the Cooja-NG lock-step peer against a 32-instruction RV32 echo program: a hand-written NDJSON session with frames injected mid-slice; the echoes stamped at the `TX_START` cycle one air time after the frame went in, byte-identical twice over — no ROM, no toolchain |
+| `cooja-nullnet-c6.ndjson` (`external_`) | the same peer around Contiki-NG on ESP-IDF (`CONTIKI_C6_DIR` = esp32-contiki's `build-nullnet`): the periodic broadcasts as `tx` events at their `TX_START`, an injected broadcast reaching the driver after its air time and Contiki's nullnet callback, two sessions byte-identical |
 | `atech-script1` with observers | the same run with `--profile-blocks --coverage --irq-latency --vcd` attached must be byte-identical and produce every report |
 
 CI (`.github/workflows/ci.yml`) downloads the ROM ELFs from espressif/esp-rom-elfs and runs the

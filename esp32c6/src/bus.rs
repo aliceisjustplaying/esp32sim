@@ -126,6 +126,8 @@ impl SocBus {
         // A SPI flash command must complete before the guest reads its result (see the C3 notes:
         // running it at the quantum boundary loses the race and reads back zeros).
         if self.periph.spi_exec { self.run_spi(); }
+        // TX_START: the radio's DMA reads the frame now, at the instruction that started it
+        if self.periph.radio.tx_request.is_some() { self.radio_tx_fetch(); }
         // A GP-SPI transfer reaches the board now, after the GPIO edges that preceded it: the
         // display's D/C line is a GPIO the driver sets right before each transaction.
         if self.periph.spi2.dma_tx_pending.is_some() { self.spi2_dma_tx(); }
@@ -137,6 +139,42 @@ impl SocBus {
     fn sram32(&self, addr: u32) -> u32 {
         let o = addr.wrapping_sub(SRAM_LOW) as usize;
         if o + 4 <= self.sram.len() { u32::from_le_bytes(self.sram[o..o + 4].try_into().unwrap()) } else { 0 }
+    }
+
+    /// The 802.15.4 TX DMA: `buf[0]` is the PSDU length including the 2-byte FCS the hardware
+    /// appends, `buf[1..]` the MAC frame. A buffer outside SRAM or a length under 2 is a driver
+    /// bug on real silicon too; here it is reported and the transmission carries no bytes.
+    fn radio_tx_fetch(&mut self) {
+        let Some(addr) = self.periph.radio.tx_request.take() else { return };
+        let o = addr.wrapping_sub(SRAM_LOW) as usize;
+        let psdu = match self.sram.get(o) {
+            Some(&len) => {
+                let mac = (len & 0x7f).saturating_sub(2) as usize;
+                if o + 1 + mac <= self.sram.len() { self.sram[o + 1..o + 1 + mac].to_vec() } else { Vec::new() }
+            }
+            None => Vec::new(),
+        };
+        if psdu.is_empty() { eprintln!("[802.15.4] TX_START with an empty or unmapped frame at {:#010x}", addr); }
+        self.periph.radio.tx_loaded(psdu);
+    }
+
+    /// The 802.15.4 RX DMA: the completed frame, RSSI and LQI go where `DMA_RX_ADDR` points.
+    fn radio_rx_store(&mut self) {
+        let Some((addr, buf)) = self.periph.radio.rx_write.take() else { return };
+        let o = addr.wrapping_sub(SRAM_LOW) as usize;
+        if o + buf.len() <= self.sram.len() { self.sram[o..o + buf.len()].copy_from_slice(&buf); }
+        else { eprintln!("[802.15.4] RX_DONE: DMA_RX_ADDR {:#010x} is not in SRAM, frame lost", addr); }
+    }
+
+    /// A frame from the medium (MAC header + payload, no FCS): arriving now (`on_air`, RX_DONE
+    /// after the air time) or complete now (the buffer is written before the next instruction).
+    /// Returns whether the radio took it; the interrupt lines are re-derived before the next
+    /// instruction either way.
+    pub fn radio_receive(&mut self, frame: &[u8], rssi: i8, lqi: u8, on_air: bool) -> bool {
+        let taken = self.periph.radio.receive(frame, rssi, lqi, on_air);
+        if self.periph.radio.rx_write.is_some() { self.radio_rx_store(); }
+        self.irq_dirty = true;
+        taken
     }
 
     /// GP-SPI2's MOSI data phase through the GDMA out-channel bound to it (trigger 0): walk the
@@ -212,6 +250,7 @@ impl SocBus {
     fn devices(&mut self, cycles: u32) {
         if self.periph.spi_exec { self.run_spi(); }
         self.periph.tick(cycles as u64);
+        if self.periph.radio.rx_write.is_some() { self.radio_rx_store(); }
         if self.periph.spi2.dma_tx_pending.is_some() { self.spi2_dma_tx(); }
         self.deliver_board_events();
     }

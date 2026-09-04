@@ -121,7 +121,7 @@ so no ELF ships). See [wasm.md](wasm.md).
 | CPU | RV32IMAC, machine mode: the C3 core plus the A extension (`lr.w`/`sc.w`, the nine AMOs), `misa` says IMAC |
 | Interrupts | the interrupt matrix (77 sources → 31 lines) with its two front-ends: the PLIC at `0x20001000` that ESP-IDF drives and INTPRI at `0x600C5000` that the ROM uses, one state; the four `FROM_CPU` software interrupts |
 | Memory | 512 KB HP SRAM (one address space for code and data), 320 KB mask ROM, 16 KB LP SRAM, a 16 MB flash window through the 256-entry MMU programmed via SPI0's item index/content registers, page size from `MMU_POWER_CTRL` |
-| Peripherals | UART0/1, USB-Serial/JTAG, systimer, TIMG0/1, GPIO, efuse, SPI0/1 flash controller, SHA/AES/RSA, L1 cache controller, PCR, the LP blocks (LP_CLKRST reset cause, LP_AON store registers and software reset, LP_TIMER, LP_WDT registers), the analog I2C master (regi2c, with the RF block's status the PHY polls), ASSIST_DEBUG's saved PC, hardware RNG; for the board: RMT (the S3 transmitter on the C6's register map), GDMA (three channels, the S3 model behind the C6's layout), GP-SPI2 with its DMA data phase, and the 802.15.4 MAC's energy detect |
+| Peripherals | UART0/1, USB-Serial/JTAG, systimer, TIMG0/1, GPIO, efuse, SPI0/1 flash controller, SHA/AES/RSA, L1 cache controller, PCR, the LP blocks (LP_CLKRST reset cause, LP_AON store registers and software reset, LP_TIMER, LP_WDT registers), the analog I2C master (regi2c, with the RF block's status the PHY polls), ASSIST_DEBUG's saved PC, hardware RNG; for the board: RMT (the S3 transmitter on the C6's register map), GDMA (three channels, the S3 model behind the C6's layout), GP-SPI2 with its DMA data phase; the 802.15.4 MAC: energy detect, TX and RX of whole frames with the timing of the air, its two timers (below) |
 
 Peripheral models are **shared with the C3 and S3 through `esp-periph`** where the IP is the same:
 the register-offset comparison of the IDF headers shows UART (the registers the model uses; the
@@ -142,6 +142,84 @@ $OD -d ~/.espressif/tools/esp-rom-elfs/*/esp32c6_rev0_rom.elf > /tmp/rom.dis
 $OD -d examples/hello_world-c6/build/hello_world.elf > /tmp/app.dis
 RISCV_DIS_FILES=/tmp/rom.dis:/tmp/app.dis cargo test -p riscv-rv32 --release -- --ignored external_
 ```
+
+## The 802.15.4 MAC (`esp32c6/src/radio.rs`)
+
+The `IEEE802154` block at `0x600A3000`, with the register layout of IDF's
+`soc/ieee802154_struct.h`, modelled as far as `esp_ieee802154` (IDF 5.5) drives it. What the
+driver does — read from `esp_ieee802154_dev.c` and confirmed with a register trace of Contiki-NG's
+radio driver on this model:
+
+- **transmit**: `STOP`, `TIMER0_STOP`, `TIMER1_STOP`, read and clear `EVENT_STATUS` (the previous
+  operation is torn down), the PIB if it changed (`CHANNEL` = `3 + 5·(ch−11)`, `TXPOWER`,
+  `ED_CFG`, `CONF`), `DMA_TX_ADDR` = the frame buffer — `buf[0]` the PSDU length *including* the
+  2-byte FCS, `buf[1..]` the MAC frame without it — then `TX_START` (`0x41`). The ISR then expects
+  `TX_SFD_DONE` and `TX_DONE`; a frame with the AR bit and auto-ack on moves it to `RX_ACK`.
+- **receive**: the same teardown, `DMA_RX_ADDR` = a free 129-byte buffer, `RX_START` (`0x42`). A
+  frame raises `RX_SFD_DONE` (the ISR stamps it with `esp_timer_get_time`) and then `RX_DONE`
+  with the buffer holding `[len incl. FCS][frame][RSSI][LQI]` — the FCS positions carry RSSI and
+  LQI. The ISR hands the frame up and re-arms RX (`RX_START` again) when `rx_when_idle` is set.
+  Before a TX the driver reads `RX_STATUS.rx_state`; `> 1` means a frame is coming in and the TX
+  is refused.
+- **stop** mid-frame raises `RX_ABORT` (reason `RX_STOP`), which the driver clears at once.
+
+The model: `TX_START` asks the bus for the frame (the device cannot see SRAM), stamps the start
+for the host, and raises `TX_SFD_DONE` after 5 bytes and `TX_DONE` after `6 + len + 2` bytes of
+air (32 µs each). A frame offered while listening raises `RX_SFD_DONE` at once and `RX_DONE`
+after `1 + len + 2` bytes, the buffer written by the bus as the driver reads it. The two radio
+timers count microseconds to their thresholds. ED keeps the synthetic scene from before. **Not
+modelled** (stage 2 of the lock-step plan): auto-ACK either way, CCA (`CCA_TX_START` sends as
+if clear), address filtering (every frame is delivered, promiscuous or not), pending bits,
+security, enhanced ACKs. `--debug ieee802154` narrates commands, events and DMA; `--log-periph`
+reports the first touch of an offset the model does not interpret.
+
+## Cooja-NG lock-step: `--cooja`
+
+`esp32sim-c6 --cooja` makes the C6 an *external mote* of Cooja-NG (csim,
+`docs/design/external-nodes-plan.md` §4): csim owns the clock and drives the guest over NDJSON on
+stdin/stdout — `hello` once, `step {t, in}` per slice, `stop`; one `done {t, wake, out}` per
+message back. Times are nanoseconds; ours is the bus cycle counter at 6.25 ns per cycle, exact
+integer arithmetic both ways, monotonic across a chip reset.
+
+```sh
+# what csim runs (the config's "firmware" string); csim writes hello/step/stop on its stdin
+B=~/work/esp32/esp32-contiki/build-nullnet
+esp32sim-c6 --cooja --boot rom --flash-mb 2 --stub bb_init=0 \
+    --bootloader $B/bootloader/bootloader.bin --ptable $B/partition_table/partition-table.bin \
+    --app $B/esp32-blink.bin --elf $B/esp32-blink.elf
+```
+
+Exactness is the point, not "within a slice":
+
+- a `step` runs the guest to the first cycle at or after `t` (`Machine::run_until_cycle`), not to
+  the end of a 64-instruction quantum;
+- the round is cut at the instruction that writes `TX_START`: the `tx` event carries that time,
+  and the reply goes out before the slice ends (`SocBus::take_host_event`), with `done.t` = that
+  time so csim's clock for the node stops there. csim delivers the frame at its own clock, the
+  end of the slice — the same lateness an emulated mote's radio has — so the busy-slice `wake`
+  (`--cooja-slice-us`, default 100 µs) bounds it. The rest of the slice runs when csim steps again;
+- an `rx` inside a slice is injected at its own time: the guest runs to `rx.t` and the frame goes
+  to the radio complete (SFD and `RX_DONE` together: csim reports a frame at its end;
+  `--cooja-rx-timing start` makes `t` the start instead, `RX_DONE` after the air time), and the
+  run continues;
+- a guest in `wfi` costs nothing: time jumps to the bus's next device deadline (systimer, TIMG,
+  the radio's countdowns, a running RMT channel) or the slice end, whichever is first, so the
+  FreeRTOS idle loop is free and `wake` is the deadline;
+- nothing reads a host clock or host randomness — the MAC comes from the node id (`--mac` to
+  override), the RNG is the model's xorshift — so the same NDJSON in gives the same NDJSON out,
+  byte for byte (`cli/tests/cooja.rs` checks it twice over).
+
+Console lines go out as `log` events (UART0 by default, `--console` picks), stamped within 20 µs
+of the newline. Radio state changes are `radio` events. Serial input (`serial` events) reaches the
+USB-Serial/JTAG console. The end-of-run figures go to stderr.
+
+Measured with the esp32-contiki nullnet probe (ROM → bootloader → FreeRTOS → Contiki-NG, a
+broadcast every 5 s, one injected): 10.3 s of simulation in ~0.1 s wall with 10 ms steps, and
+12 s in 0.33 s with a driver that follows `wake` (17825 exchanges, ~19 µs each) — the guest is
+idle 99% of the time, and an idle second costs one exchange per systimer tick it wakes for. A
+busy second (boot) runs at ~160 M instructions/s. Inside csim (`configs/test-ext-esp32c6-nullnet.json`
+there: a Sky node, the C6 and a sniffer exchanging nullnet broadcasts for 20 s) the C6's
+broadcasts reach the Sky and the Sky's reach Contiki on the C6.
 
 ## The board: `--board waveshare-c6-lcd147`
 
@@ -193,7 +271,8 @@ machine wants to see, as the Xtensa block interpreter always did.
 - **`--boot app`** maps the image through the unified MMU and jumps to it, but the system
   registers the bootloader would have set up are not preset; ROM boot is the tested path.
 - **Watchdogs.** The LP_WDT and the TIMG watchdogs are register RAM: they never fire.
-- **WiFi 6, BLE, 802.15.4, the LP core** — nothing of the radios or the second core is modelled.
+- **WiFi 6, BLE, the LP core** — nothing of those radios or the second core is modelled. The
+  802.15.4 MAC sends and receives whole frames (above) but has no auto-ACK, CCA or address filter yet.
 - **Peripherals on demand**: GDMA, I2C, SPI2, LEDC, RMT, ADC, TWAI, PARL_IO. Each shows up as an
   unknown register with `--log-periph` the moment a firmware wants it. The registers hello_world
   still touches without a model are PMU, IO_MUX, HP_SYSTEM, APB_SARADC and a few LP blocks —

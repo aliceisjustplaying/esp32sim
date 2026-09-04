@@ -3,7 +3,7 @@
 //! function stubs and probes, tracing and watchpoints, the web UI protocol, real-time pacing,
 //! image loading, reboot.
 use crate::observe::{Ctx, Observer, Wants};
-use crate::soc::{CoreState, Soc, SocBus, Stop};
+use crate::soc::{CoreState, RunUntil, Soc, SocBus, Stop};
 use crate::web::WebServer;
 use crate::{elf, png};
 use emu_core::core::pc_bit;
@@ -703,6 +703,54 @@ impl<S: Soc> Machine<S> {
             Err(reason) => Err(Stop::CostModel { core, pc, reason }),
         }
     }
+    /// Run core 0 until device time reaches `target` (a cycle count of `bus.cycles()`), exactly:
+    /// the round is cut short at the target, so time never overshoots by a quantum, and cut
+    /// short at the instruction that raises a host event (`SocBus::take_host_event`), so a
+    /// transmission the host must forward is seen at the cycle it started. A core asleep in
+    /// `wfi` with nothing pending lets time jump to the target or to the bus's next device
+    /// deadline (`SocBus::next_deadline`), whichever is first — the deadline is conservative, so
+    /// an interrupt is never delivered late by the skip. Single-core chips only (the S3's second
+    /// core is not scheduled here), and the unmodeled path only: a cost model is not consulted.
+    /// Nothing else about a run changes: stubs, probes, observers, scripts and the console work
+    /// as in `run`; `max_cycles` is not consulted.
+    pub fn run_until_cycle(&mut self, target: u64) -> RunUntil {
+        self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
+        self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
+        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); c.flush_caches(); }
+        let blocks = !self.probes.contains(Wants::INSN);
+        let no_skip = self.probes.contains(Wants::NO_IDLE_SKIP);
+        loop {
+            let now = self.bus.cycles();
+            if now >= target { return RunUntil::Reached; }
+            let left = target - now;
+            let core = &self.cores[0];
+            if core.waiting() && !core.irq_pending() && !no_skip {
+                let deadline = self.bus.next_deadline().unwrap_or(u64::MAX).max(1);
+                let chunk = left.min(deadline).min(u32::MAX as u64 >> 1);
+                self.cores[0].idle_advance(chunk as u32);
+                self.after_round(chunk);
+            } else {
+                let mut budget = left.min(QUANTUM) as u32;
+                let (mut used_total, mut yielded, mut stop) = (0u64, false, None);
+                while budget > 0 {
+                    let (used, s) = if blocks { self.step_blocks(0, budget) } else { (1, self.step_core(0)) };
+                    used_total += used as u64;
+                    budget -= used.min(budget);
+                    if s.is_some() { stop = s; break; }
+                    if self.bus.sw_reset() { break; }
+                    if self.bus.take_host_event() { yielded = true; break; }
+                }
+                self.after_round(used_total);
+                if let Some(s) = stop { self.drain_console(); return RunUntil::Stop(s); }
+                if yielded { return RunUntil::Yield; }
+            }
+            if self.bus.sw_reset() { self.drain_console(); return RunUntil::Stop(Stop::SwReset); }
+        }
+    }
+
+    /// Re-derive the interrupt lines now, after the host changed a device (a frame injected
+    /// between rounds), so the next instruction sees them.
+    pub fn sync_irq(&mut self) { *self.bus.irq_dirty() = true; self.refresh_irq(); }
 
     /// Device time, interrupt lines, scripts, web, real-time pacing after a scheduling round.
     #[inline]
