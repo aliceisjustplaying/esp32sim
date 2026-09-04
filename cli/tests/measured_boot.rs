@@ -48,6 +48,7 @@ fn run_measured_boot() -> Result<Vec<u8>, String> {
 }
 
 #[test]
+#[ignore = "external receipt: run scripts/test-external-receipts.sh with the pinned build and ROM"]
 fn real_tinydraw_measured_boot_stops_deterministically_at_committed_outcome() -> Result<(), String>
 {
     let first = run_measured_boot()?;
