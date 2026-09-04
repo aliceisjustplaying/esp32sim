@@ -50,8 +50,8 @@ const ENTRY: u32 = 0x4081_0000;
 
 /// A nullnet broadcast as Contiki-NG's framer puts it on the air (no FCS): data frame, PAN
 /// compression, short broadcast destination, extended source, 4-byte payload.
-const FRAME: &str = "41d801cdabffff010101000174120007000000";
-const FRAME2: &str = "41d802cdabffff010101000174120008000000";
+const FRAME: &str = "41d801ffffffff010101000174120007000000";
+const FRAME2: &str = "41d802ffffffff010101000174120008000000";
 
 /// hello, then steps at fixed times regardless of `wake` (a recorded session, not a csim): a
 /// frame two-thirds into a slice, a re-step, a slice with two frames 100 ns apart (the second
@@ -175,15 +175,113 @@ fn external_nullnet_c6() {
         let l = out.lines().flat_map(|l| l.split("{\"type\":\"log\",")).find(|l| l.contains(needle)).unwrap_or_else(|| panic!("no log line containing {:?}:\n{}", needle, err));
         l.split("\"t\":").nth(1).unwrap().split(',').next().unwrap().parse().unwrap()
     };
-    // csim reports a frame at its end: the driver sees SFD and RX_DONE at rx.t, and prints within its ISR
+    // csim reports a frame at its start: the driver sees the SFD at rx.t and RX_DONE after the air time
+    let air = (1 + FRAME.len() as u64 / 2 + 2) * 32_000;
     assert!(line_at("RX SFD received") >= 6_205_000_000);
     let rx_done = line_at("RX: 19 bytes, RSSI -65 dBm");
-    assert!((6_205_000_000..6_205_300_000).contains(&rx_done), "the driver's RX_DONE line at {} should follow rx.t at once", rx_done);
+    assert!((6_205_000_000 + air..6_205_000_000 + air + 300_000).contains(&rx_done), "the driver's RX_DONE line at {} should follow the air time ({})", rx_done, 6_205_000_000 + air);
     // Contiki's callback prints through newlib's stdout buffer while the port's putchar bypasses
     // it, so the line waits for the next printf with a newline in it: the 10 s broadcast
     assert!(line_at("rx len 4 count 7 from 0012740100010101") > rx_done);
     assert!(out.contains("\"state\":\"tx\"") && out.contains("\"state\":\"rx\""), "radio state events");
     expect_text("cooja-nullnet-c6.ndjson", &out);
+}
+
+/// `ackecho.S`, the stage-2 program: the same shape as `ECHO`, with an address (PAN 0xabcd,
+/// short 0x0002), auto-ACK both ways, a hardware ACK timeout of 54 × 16 µs, and the events the
+/// ACK paths raise. Assembled and linked like `ECHO`.
+/// ```text
+/// _start: (interrupt setup as ECHO)
+///         lui a3,0x40818            # BUF
+///         li t0,0x10000009; sw t0,0x04(a0)   # CONF: auto-ack tx+rx, multipan entry 0
+///         li t0,2; sw t0,0x08(a0)   # short 0x0002
+///         li t0,0xabcd; sw t0,0x0c(a0)
+///         li t0,54; sw t0,0x5c(a0)  # ACK_TIMEOUT
+///         li t0,0x8000; sw t0,0x78(a0)   # TX abort events: RX_ACK_TIMEOUT
+///         li t0,0x2f; sw t0,0x60(a0)     # TX_DONE RX_DONE ACK_TX_DONE ACK_RX_DONE TX_ABORT
+///         sw a3,0xe0(a0); li t0,0x42; sw t0,0(a0)
+/// loop:   wfi
+///         lw t1,0x64(a0); sw t1,0x64(a0)      # read and clear the events
+///         lbu t3,1(a3); andi t3,t3,0x20       # the buffer's AR bit
+///         andi t2,t1,2; beqz t2,no_rx; bnez t3,no_rx; jal echo    # RX_DONE without AR: echo now
+/// no_rx:  andi t2,t1,4; beqz t2,no_acktx; jal echo                # ACK_TX_DONE: hardware acked, echo now
+/// no_acktx: andi t2,t1,1; beqz t2,no_txdone; bnez t3,no_txdone; jal listen   # TX_DONE of a frame without AR
+/// no_txdone: andi t2,t1,0x28; beqz t2,loop; jal listen; j loop    # ACK_RX_DONE | TX_ABORT
+/// echo:   sw a3,0xd0(a0); li t0,0x41; sw t0,0(a0); ret
+/// listen: li t0,0x42; sw t0,0(a0); ret
+/// ```
+const ACKECHO: [u8; 220] = [
+    0x37, 0x35, 0x0a, 0x60, 0xb7, 0x05, 0x01, 0x60, 0x93, 0x02, 0x10, 0x00, 0x23, 0xa8, 0x55, 0x02, 0x37, 0x16, 0x00, 0x20,
+    0x93, 0x02, 0x20, 0x00, 0x23, 0x20, 0x56, 0x00, 0x93, 0x02, 0x10, 0x00, 0x23, 0x2a, 0x56, 0x00, 0x23, 0x28, 0x06, 0x08,
+    0xb7, 0x86, 0x81, 0x40, 0xb7, 0x02, 0x00, 0x10, 0x93, 0x82, 0x92, 0x00, 0x23, 0x22, 0x55, 0x00, 0x93, 0x02, 0x20, 0x00,
+    0x23, 0x24, 0x55, 0x00, 0xb7, 0xb2, 0x00, 0x00, 0x93, 0x82, 0xd2, 0xbc, 0x23, 0x26, 0x55, 0x00, 0x93, 0x02, 0x60, 0x03,
+    0x23, 0x2e, 0x55, 0x04, 0xb7, 0x82, 0x00, 0x00, 0x23, 0x2c, 0x55, 0x06, 0x93, 0x02, 0xf0, 0x02, 0x23, 0x20, 0x55, 0x06,
+    0x23, 0x20, 0xd5, 0x0e, 0x93, 0x02, 0x20, 0x04, 0x23, 0x20, 0x55, 0x00, 0x73, 0x00, 0x50, 0x10, 0x03, 0x23, 0x45, 0x06,
+    0x23, 0x22, 0x65, 0x06, 0x03, 0xce, 0x16, 0x00, 0x13, 0x7e, 0x0e, 0x02, 0x93, 0x73, 0x23, 0x00, 0x63, 0x86, 0x03, 0x00,
+    0x63, 0x14, 0x0e, 0x00, 0xef, 0x00, 0x00, 0x03, 0x93, 0x73, 0x43, 0x00, 0x63, 0x84, 0x03, 0x00, 0xef, 0x00, 0x40, 0x02,
+    0x93, 0x73, 0x13, 0x00, 0x63, 0x86, 0x03, 0x00, 0x63, 0x14, 0x0e, 0x00, 0xef, 0x00, 0x40, 0x02, 0x93, 0x73, 0x83, 0x02,
+    0xe3, 0x8e, 0x03, 0xfa, 0xef, 0x00, 0x80, 0x01, 0x6f, 0xf0, 0x5f, 0xfb, 0x23, 0x28, 0xd5, 0x0c, 0x93, 0x02, 0x10, 0x04,
+    0x23, 0x20, 0x55, 0x00, 0x67, 0x80, 0x00, 0x00, 0x93, 0x02, 0x20, 0x04, 0x23, 0x20, 0x55, 0x00, 0x67, 0x80, 0x00, 0x00,
+];
+
+/// A data frame with AR to short 0x0002 on PAN 0xabcd (seq 0x2d), and the same to 0x0003.
+const UNICAST_AR: &str = "61d82dcdab02000101010001741200aabb";
+const UNICAST_OTHER: &str = "61d82ecdab03000101010001741200aabb";
+const ACK_2D: &str = "02102d";
+
+/// The four ACK-path goldens in one session, with frames reported at their start (`rx_on_air`):
+/// an AR frame to us — hardware ACK on the air 192 µs after the frame ends, the program echoes
+/// it (AR) on ACK_TX_DONE, the ACK we inject is taken; the same again with no ACK — the
+/// hardware timeout gives TX_ABORT; a frame to another address — nothing; a broadcast — echoed.
+const ACK_SESSION: &str = r#"{"type":"hello","proto":1,"id":2,"x":0,"y":0,"seed":1}
+{"type":"step","t":1000000,"in":[]}
+{"type":"step","t":3000000,"in":[{"type":"rx","t":2000000,"from":1,"ch":26,"rssi":-60,"frame":"UNICAST_AR"}]}
+{"type":"step","t":4000000,"in":[]}
+{"type":"step","t":4000000,"in":[]}
+{"type":"step","t":5000000,"in":[{"type":"rx","t":4200000,"from":1,"ch":26,"rssi":-60,"frame":"ACK_2D"}]}
+{"type":"step","t":7000000,"in":[{"type":"rx","t":6000000,"from":1,"ch":26,"rssi":-60,"frame":"UNICAST_AR"}]}
+{"type":"step","t":8000000,"in":[]}
+{"type":"step","t":9000000,"in":[]}
+{"type":"step","t":11000000,"in":[{"type":"rx","t":10000000,"from":1,"ch":26,"rssi":-60,"frame":"UNICAST_OTHER"}]}
+{"type":"step","t":13000000,"in":[{"type":"rx","t":12000000,"from":1,"ch":26,"rssi":-60,"frame":"FRAME"}]}
+{"type":"step","t":14000000,"in":[]}
+{"type":"stop","t":14000000,"reason":"end of session"}
+"#;
+
+fn run_ack_session() -> (String, cooja::Summary) {
+    let mut m = esp32c6::machine(cooja::mac_for_node(2), 4 << 20);
+    if std::env::var("COOJA_TEST_DUMP").is_ok() { m.bus.periph.radio.dbg = true; }
+    m.bus.load_bytes(ENTRY, &ACKECHO).unwrap();
+    m.cores[0].pc = ENTRY;
+    let hello = Hello { id: 2, ..Default::default() };
+    let input = ACK_SESSION.replace("UNICAST_AR", UNICAST_AR).replace("UNICAST_OTHER", UNICAST_OTHER).replace("ACK_2D", ACK_2D).replace("FRAME", FRAME);
+    let mut reader = std::io::Cursor::new(input.into_bytes());
+    let mut out = Vec::new();
+    let s = cooja::run(&mut m, Config { slice_ns: 1_000_000, ..Config::default() }, &hello, &mut reader, &mut out).unwrap();
+    (String::from_utf8(out).unwrap(), s)
+}
+
+#[test]
+fn ack_session_is_exact_and_reproducible() {
+    let (out, s) = run_ack_session();
+    let (out2, _) = run_ack_session();
+    if std::env::var("COOJA_TEST_DUMP").is_ok() { eprintln!("{}", out); }
+    assert_eq!(out, out2, "the same session must produce byte-identical replies");
+    let tx = tx_events(&out);
+    let frames: Vec<&str> = tx.iter().map(|(_, f)| f.as_str()).collect();
+    assert_eq!(frames, [ACK_2D, UNICAST_AR, ACK_2D, UNICAST_AR, FRAME], "ACK, echo, ACK, echo, echo:\n{}", out);
+    let air = |mac: usize| (1 + mac as u64 + 2) * 32_000;
+    // the hardware ACK starts exactly 192 µs after the received frame ends, on the cycle
+    assert_eq!(tx[0].0, 2_000_000 + air(17) + 192_000);
+    assert_eq!(tx[2].0, 6_000_000 + air(17) + 192_000);
+    // the echo follows ACK_TX_DONE (352 µs of air for the ACK) by a handful of instructions
+    let ack_air = (6 + 3 + 2) * 32_000;
+    assert!((tx[0].0 + ack_air..tx[0].0 + ack_air + 200).contains(&tx[1].0), "echo at {}", tx[1].0);
+    assert!((tx[2].0 + ack_air..tx[2].0 + ack_air + 200).contains(&tx[3].0), "echo at {}", tx[3].0);
+    // the broadcast is echoed right after its RX_DONE
+    assert!((12_000_000 + air(19)..12_000_000 + air(19) + 200).contains(&tx[4].0), "echo at {}", tx[4].0);
+    assert_eq!((s.tx, s.rx, s.rx_dropped), (5, 5, 1), "the frame to 0x0003 is the one dropped");
+    expect_text("cooja-ack.ndjson", &out);
 }
 
 /// Time passes exactly: a step to `t` leaves the guest at the first cycle at or after `t`, and
