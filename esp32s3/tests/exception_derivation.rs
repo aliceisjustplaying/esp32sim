@@ -110,6 +110,7 @@ fn print_attempts(attempts: &[Attempt]) {
 }
 
 #[test]
+#[ignore = "external receipt: run scripts/test-external-receipts.sh with the pinned build"]
 fn real_idf61_exception_paths_expose_the_incomplete_known_ledgers() -> Result<(), String> {
     let attempts = [
         run_attempt("level1_entry", 0x4037_4340, |machine| {
