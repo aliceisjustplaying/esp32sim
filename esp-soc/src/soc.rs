@@ -75,10 +75,6 @@ pub trait SocBus: Bus {
     fn refresh_irq(&mut self) -> bool;
     /// Deliver deferred device time now (a bus that defers it).
     fn flush_ticks(&mut self) {}
-    /// CPU cycles until the earliest device deadline — a timer, a radio countdown — conservative
-    /// (early, never late); `u32::MAX` when nothing is armed. How far `Machine::run_until_cycle`
-    /// may let time pass while every core sleeps.
-    fn cycles_until_deadline(&self) -> u32 { u32::MAX }
     /// A device event the host must see at the instruction that caused it (a radio
     /// transmission starting): `Machine::run_until_cycle` stops its round there and returns
     /// `RunUntil::Yield`. Reading it clears it.

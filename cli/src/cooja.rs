@@ -250,7 +250,7 @@ impl<'a> Peer<'a> {
             let core = &self.m.cores[0];
             let seg = if core.waiting() && !core.irq_pending() {
                 // asleep: nothing to stamp until a device wakes it, so the segment ends one step after that
-                match self.m.bus.cycles_until_deadline() { u32::MAX => target_ns, dl => target_ns.min(ns_of_cycle(self.now_cycles() + dl as u64) + LOG_STEP_NS) }
+                match self.m.bus.next_deadline() { None => target_ns, Some(dl) => target_ns.min(ns_of_cycle(self.now_cycles() + dl) + LOG_STEP_NS) }
             } else { target_ns.min(now + LOG_STEP_NS) };
             if let Some(t) = self.run_segment(seg) { return Some(t); }
             if self.halted { return None; }
@@ -314,8 +314,7 @@ impl<'a> Peer<'a> {
         let core = &self.m.cores[0];
         let now = self.now_cycles();
         let mut w = if core.waiting() && !core.irq_pending() {
-            let dl = self.m.bus.cycles_until_deadline();
-            if dl == u32::MAX { None } else { Some(((now + dl as u64) * NS_NUM).div_ceil(NS_DEN)) }
+            self.m.bus.next_deadline().map(|dl| ((now + dl) * NS_NUM).div_ceil(NS_DEN))
         } else { Some(ns_of_cycle(now) + self.cfg.slice_ns) };
         if let Some(p) = self.pending.first() { w = Some(w.map_or(p.t(), |w| w.min(p.t()))); }
         w.map(|w| w.max(t + 1))
