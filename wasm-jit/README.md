@@ -22,5 +22,8 @@ Measure the emitted kernel under Node with a fixed five-sample harness:
 cargo run --release -p esp32sim-wasm-jit --example sram_kernel_speed
 ```
 
+The committed checkpoint receipt is in
+`docs/evidence/wasm-jit-sram-kernel-2026-09-04`.
+
 This is a compiler and equivalence checkpoint. It is not yet connected to the
 browser emulator's block dispatcher.

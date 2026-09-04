@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "status": "measured",
+  "measuredAtUtc": "2026-09-04T17:48:20Z",
+  "implementationHead": "fc2f259aae1ed50c0a297c3e67e218e9afd0ecef",
+  "sources": {
+    "harness": {
+      "path": "wasm-jit/examples/sram_kernel_speed.rs",
+      "sha256": "599e52f0895b5adc1aa76c76c1ab5bca0cf79019950cdd8b747e9c52c44e8583"
+    },
+    "kernel": {
+      "path": "esp32s3/tests/fixtures/tinydraw-sram-kernel.bin",
+      "sha256": "d21db307c7be78ffa0bb82a3e1446219bc0eac22cd557fc633e28fd16cadaa8e"
+    }
+  },
+  "environment": {
+    "hostArchitecture": "aarch64",
+    "node": "v24.16.0",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)"
+  },
+  "command": "TMPDIR=$PWD/target/test-tmp cargo run --release -p esp32sim-wasm-jit --example sram_kernel_speed",
+  "workload": {
+    "guestInstructionsPerRun": 7,
+    "receiptCyclesPerRun": 7,
+    "moduleBytes": 5596,
+    "warmupRuns": 100000,
+    "sampleRuns": 1000000,
+    "samples": 5
+  },
+  "elapsedNanoseconds": [19178625, 19472209, 18233375, 18095500, 18147334],
+  "rankedMips": [
+    359.4866920337595,
+    364.98966948881895,
+    383.9113713177072,
+    385.73159010574227,
+    386.8365063137244
+  ],
+  "medianMips": 383.911371,
+  "scope": "Compiler microbenchmark for the seven-instruction receipt-priced SRAM kernel with one JavaScript-to-WebAssembly call per run; excludes browser-emulator dispatch and shared-time scheduling."
+}
