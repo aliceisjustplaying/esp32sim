@@ -44,6 +44,10 @@ JSON file; real boards have the partition erased and behave as before. Natively:
 
 `tools/wasm-test.mjs` runs the built module under Node through the same manifests the page
 uses and fails on a panic or a missing console line; CI runs it after the goldens.
+Set `ESP32SIM_WASM_JIT_STATS=1` to print a JSON summary of JIT attempts, commits, and every
+concurrent scheduler or opcode refusal seen by each manifest. In that profiling mode, manifests
+without their own `expect` string still check panics and board output but do not inherit the
+`Hello world!` assertion.
 
 Every chip is in the one module: `esp32sim_new` takes a board name, and `esp32c3` or `esp32c6`
 builds the RISC-V machine instead of the Xtensa one. The C3 has no `WebServer` of its own — it is

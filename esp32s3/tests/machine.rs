@@ -3,7 +3,7 @@
 //! are two instructions long; the goldens cover real firmware.
 use emu_core::{Bus, Core};
 use esp32s3::board::{make_board, NoBoard};
-use esp_soc::{ScriptAction, Stop};
+use esp_soc::{BrowserExternalBlockRefusal, ScriptAction, Stop};
 
 const IRAM: u32 = 0x4037_0000;
 const RESET: u32 = 0x4000_0400;
@@ -61,6 +61,16 @@ fn browser_external_blocks_are_single_core_scheduler_transactions() {
 
     m.bus.write32(0x600c_0000, 0b010).unwrap();
     assert_eq!(m.browser_external_block_budget(7), None, "core 1 is running");
+    assert_eq!(
+        m.browser_external_block_budget_result(7),
+        Err(BrowserExternalBlockRefusal::OtherCoreActive)
+    );
+    let refusals = m.browser_external_block_refusal_mask(7);
+    assert_ne!(
+        refusals & BrowserExternalBlockRefusal::OtherCoreActive.bit(),
+        0
+    );
+    assert_ne!(refusals & BrowserExternalBlockRefusal::BusBreak.bit(), 0);
 }
 
 /// A chip reset re-creates the digital peripherals but keeps the efuses, the straps, the RTC

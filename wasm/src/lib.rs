@@ -12,6 +12,8 @@ use esp_soc::{Machine, Soc, SocBus, Stop};
 use std::any::Any;
 
 #[cfg(target_arch = "wasm32")]
+use esp_soc::BrowserExternalBlockRefusal;
+#[cfg(target_arch = "wasm32")]
 use esp32sim_wasm_jit::{compile_shared_sram_block, REGISTER_COUNT};
 #[cfg(target_arch = "wasm32")]
 use xtensa_lx7::{decode, Bus as _, Op};
@@ -128,6 +130,133 @@ struct BrowserJit {
     state: Box<[u8; JIT_STATE_LEN]>,
     modules: Vec<CachedJitModule>,
     ticket: Option<JitTicket>,
+    stats: BrowserJitStats,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Default)]
+struct BrowserJitStats {
+    attempts: u64,
+    prepared: u64,
+    committed: u64,
+    commit_rejected: u64,
+    aborted: u64,
+    not_s3: u64,
+    scheduler: Vec<(BrowserExternalBlockRefusal, u64)>,
+    timer: u64,
+    window: u64,
+    loop_boundary: u64,
+    fetch: u64,
+    capacity: u64,
+    compile: u64,
+    unsupported: Vec<(Op, u64)>,
+    report: Vec<u8>,
+}
+
+#[cfg(target_arch = "wasm32")]
+enum BrowserJitReject {
+    Scheduler(u16),
+    Timer,
+    Window,
+    LoopBoundary,
+    Fetch,
+    Capacity,
+    Compile,
+    Unsupported(Op),
+}
+
+#[cfg(target_arch = "wasm32")]
+impl BrowserJitStats {
+    fn reject(&mut self, reason: BrowserJitReject) {
+        match reason {
+            BrowserJitReject::Scheduler(mask) => {
+                for reason in BrowserExternalBlockRefusal::ALL {
+                    if mask & reason.bit() == 0 {
+                        continue;
+                    }
+                    if let Some((_, count)) = self
+                        .scheduler
+                        .iter_mut()
+                        .find(|(seen, _)| *seen == reason)
+                    {
+                        *count += 1;
+                    } else {
+                        self.scheduler.push((reason, 1));
+                    }
+                }
+            }
+            BrowserJitReject::Timer => self.timer += 1,
+            BrowserJitReject::Window => self.window += 1,
+            BrowserJitReject::LoopBoundary => self.loop_boundary += 1,
+            BrowserJitReject::Fetch => self.fetch += 1,
+            BrowserJitReject::Capacity => self.capacity += 1,
+            BrowserJitReject::Compile => self.compile += 1,
+            BrowserJitReject::Unsupported(op) => {
+                if let Some((_, count)) = self.unsupported.iter_mut().find(|(seen, _)| *seen == op)
+                {
+                    *count += 1;
+                } else {
+                    self.unsupported.push((op, 1));
+                }
+            }
+        }
+    }
+
+    fn refresh_report(&mut self) {
+        use std::fmt::Write as _;
+
+        let mut unsupported: Vec<_> = self
+            .unsupported
+            .iter()
+            .map(|(op, count)| (format!("{op:?}"), *count))
+            .collect();
+        unsupported.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let mut scheduler: Vec<_> = self
+            .scheduler
+            .iter()
+            .map(|(reason, count)| (format!("{reason:?}"), *count))
+            .collect();
+        scheduler.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let mut scheduler_reasons = String::new();
+        for (index, (reason, count)) in scheduler.iter().enumerate() {
+            if index != 0 {
+                scheduler_reasons.push(',');
+            }
+            write!(scheduler_reasons, "\"{reason}\":{count}")
+                .expect("writing to a String cannot fail");
+        }
+        let mut ops = String::new();
+        for (index, (op, count)) in unsupported.iter().enumerate() {
+            if index != 0 {
+                ops.push(',');
+            }
+            write!(ops, "\"{op}\":{count}").expect("writing to a String cannot fail");
+        }
+        self.report = format!(
+            concat!(
+                "{{\"attempts\":{},\"prepared\":{},\"committed\":{},",
+                "\"commitRejected\":{},\"aborted\":{},\"rejections\":{{",
+                "\"notS3\":{},\"scheduler\":{{{}}},\"timer\":{},\"window\":{},",
+                "\"loopBoundary\":{},\"fetch\":{},\"capacity\":{},\"compile\":{}",
+                "}},\"unsupported\":{{{}}}}}"
+            ),
+            self.attempts,
+            self.prepared,
+            self.committed,
+            self.commit_rejected,
+            self.aborted,
+            self.not_s3,
+            scheduler_reasons,
+            self.timer,
+            self.window,
+            self.loop_boundary,
+            self.fetch,
+            self.capacity,
+            self.compile,
+            ops,
+        )
+        .into_bytes();
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -232,6 +361,7 @@ pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_
             state: Box::new([0; JIT_STATE_LEN]),
             modules: Vec::new(),
             ticket: None,
+            stats: BrowserJitStats::default(),
         },
     }))
 }
@@ -401,10 +531,21 @@ pub unsafe extern "C" fn esp32sim_jit_prepare(e: *mut Emu, requested: u32, unix_
     }
     esp_soc::host::set_unix_time_ms(unix_ms as u64);
     let Emu { m, jit, .. } = e;
+    jit.stats.attempts += 1;
     let Some(machine) = m.as_any_mut().downcast_mut::<esp32s3::Machine>() else {
+        jit.stats.not_s3 += 1;
         return 0;
     };
-    prepare_browser_jit(machine, jit, requested).unwrap_or(0)
+    match prepare_browser_jit(machine, jit, requested) {
+        Ok(module_id) => {
+            jit.stats.prepared += 1;
+            module_id
+        }
+        Err(reason) => {
+            jit.stats.reject(reason);
+            0
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -412,14 +553,21 @@ fn prepare_browser_jit(
     machine: &mut esp32s3::Machine,
     jit: &mut BrowserJit,
     requested: u32,
-) -> Option<u32> {
+) -> Result<u32, BrowserJitReject> {
     jit.ticket = None;
     let cpu = &machine.cores[0];
-    let limit = machine.browser_external_block_budget(requested)?;
+    let limit = match machine.browser_external_block_budget_result(requested) {
+        Ok(limit) => limit,
+        Err(_) => {
+            return Err(BrowserJitReject::Scheduler(
+                machine.browser_external_block_refusal_mask(requested),
+            ));
+        }
+    };
     for compare in cpu.ccompare {
         let distance = compare.wrapping_sub(cpu.ccount);
         if distance != 0 && distance < limit {
-            return None;
+            return Err(BrowserJitReject::Timer);
         }
     }
 
@@ -428,27 +576,27 @@ fn prepare_browser_jit(
     let mut last_pc = start_pc;
     let mut instruction_count = 0u32;
     while instruction_count < limit {
-        let bytes = machine.bus.fetch(pc).ok()?;
+        let bytes = machine.bus.fetch(pc).map_err(|_| BrowserJitReject::Fetch)?;
         let instruction = decode(pc, bytes);
-        if !matches!(
+        if instruction.len == 0
+            || !matches!(
             instruction.op,
             Op::L32i | Op::L32iN | Op::MoviN | Op::Memw | Op::Sub | Op::Saltu
-        ) || instruction.len == 0
-            || window_overflow_possible(cpu, supported_max_ar(&instruction))
+        )
         {
-            break;
+            return Err(BrowserJitReject::Unsupported(instruction.op));
+        }
+        if window_overflow_possible(cpu, supported_max_ar(&instruction)) {
+            return Err(BrowserJitReject::Window);
         }
         let next_pc = pc.wrapping_add(u32::from(instruction.len));
         if cpu.lcount != 0 && next_pc == cpu.lend {
-            break;
+            return Err(BrowserJitReject::LoopBoundary);
         }
         code.extend_from_slice(&bytes[..instruction.len as usize]);
         last_pc = pc;
         pc = next_pc;
         instruction_count += 1;
-    }
-    if instruction_count != limit {
-        return None;
     }
 
     let mut page_indices = Vec::new();
@@ -471,12 +619,19 @@ fn prepare_browser_jit(
         .map(|index| (index, versions.get(index as usize).copied().unwrap_or(0)))
         .collect();
 
-    let state_offset = u32::try_from(jit.state.as_ptr() as usize).ok()?;
+    let state_offset = u32::try_from(jit.state.as_ptr() as usize)
+        .map_err(|_| BrowserJitReject::Compile)?;
     let dram_len = (esp32s3::bus::DRAM_HIGH - esp32s3::bus::DRAM_LOW) as usize;
-    let dram_storage_offset = machine.bus.sram.len().checked_sub(dram_len)?;
+    let dram_storage_offset = machine
+        .bus
+        .sram
+        .len()
+        .checked_sub(dram_len)
+        .ok_or(BrowserJitReject::Compile)?;
     // SAFETY: `dram_storage_offset` was derived by subtracting `dram_len` from this allocation.
     let dram_ptr = unsafe { machine.bus.sram.as_ptr().add(dram_storage_offset) };
-    let dram_offset = u32::try_from(dram_ptr as usize).ok()?;
+    let dram_offset =
+        u32::try_from(dram_ptr as usize).map_err(|_| BrowserJitReject::Compile)?;
     let module_index = if let Some(index) = jit
         .modules
         .iter()
@@ -485,7 +640,7 @@ fn prepare_browser_jit(
         index
     } else {
         if jit.modules.len() >= JIT_MODULE_LIMIT {
-            return None;
+            return Err(BrowserJitReject::Capacity);
         }
         let compiled = compile_shared_sram_block(
             start_pc,
@@ -495,7 +650,7 @@ fn prepare_browser_jit(
             esp32s3::bus::DRAM_LOW,
             dram_len,
         )
-        .ok()?;
+        .map_err(|_| BrowserJitReject::Compile)?;
         let receipt_cycles = compiled.cycle_cost;
         jit.modules.push(CachedJitModule {
             pc: start_pc,
@@ -521,7 +676,7 @@ fn prepare_browser_jit(
         receipt_cycles,
         code_pages,
     });
-    Some(module_id)
+    Ok(module_id)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -600,6 +755,7 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
             .browser_external_block_budget(ticket.instruction_count)
             .is_some_and(|budget| budget >= ticket.instruction_count);
     if !unchanged {
+        e.jit.stats.commit_rejected += 1;
         return 0;
     }
 
@@ -634,6 +790,7 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
         }
         machine.reboot();
     }
+    e.jit.stats.committed += 1;
     1
 }
 
@@ -644,7 +801,34 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
 #[cfg(target_arch = "wasm32")]
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_jit_abort(e: *mut Emu) {
-    unsafe { &mut *e }.jit.ticket = None;
+    let e = unsafe { &mut *e };
+    let jit = &mut e.jit;
+    jit.ticket = None;
+    jit.stats.aborted += 1;
+}
+
+/// Refresh and return a UTF-8 JSON report of browser-JIT attempts and refusal reasons.
+/// The pointer remains valid until the next mutable call on this emulator.
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access.
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_jit_stats_ptr(e: *mut Emu) -> *const u8 {
+    let e = unsafe { &mut *e };
+    let jit = &mut e.jit;
+    jit.stats.refresh_report();
+    jit.stats.report.as_ptr()
+}
+
+/// Length of the report returned by `esp32sim_jit_stats_ptr`.
+///
+/// # Safety
+/// `e` must point to a live emulator and no mutable access may overlap this call.
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_jit_stats_len(e: *mut Emu) -> usize {
+    unsafe { &*e }.jit.stats.report.len()
 }
 
 /// Pointer to the currently prepared sidecar module, or null without a ticket.

@@ -93,6 +93,43 @@ pub struct Machine<S: Soc> {
 
 const QUANTUM: u64 = 64;
 
+/// Why an external browser executor cannot take the current unmodelled scheduler quantum.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BrowserExternalBlockRefusal {
+    RequestedZero,
+    CostModel,
+    Observer,
+    Stub,
+    FunctionProbe,
+    Script,
+    SoftwareReset,
+    BusBreak,
+    Waiting,
+    Interrupt,
+    OtherCoreIdle,
+    OtherCoreActive,
+}
+
+impl BrowserExternalBlockRefusal {
+    pub const ALL: [Self; 12] = [
+        Self::RequestedZero,
+        Self::CostModel,
+        Self::Observer,
+        Self::Stub,
+        Self::FunctionProbe,
+        Self::Script,
+        Self::OtherCoreIdle,
+        Self::OtherCoreActive,
+        Self::SoftwareReset,
+        Self::BusBreak,
+        Self::Waiting,
+        Self::Interrupt,
+    ];
+
+    pub const fn bit(self) -> u16 { 1 << self as u8 }
+}
+
 /// Records only accesses made synchronously by `Core::step`. Generated direct-memory access is
 /// disabled so every load and store passes through one of the typed methods below.
 struct RecordingBus<'a, B> { bus: &'a mut B, accesses: Vec<MemoryAccess> }
@@ -449,21 +486,53 @@ impl<S: Soc> Machine<S> {
     /// to instructions. The caller still has to enforce architectural boundaries such as
     /// CCOMPARE and register-window overflow for the block it proposes.
     pub fn browser_external_block_budget(&self, requested: u32) -> Option<u32> {
-        if requested == 0
-            || self.cost.is_some()
-            || self.probes.0 != 0
-            || !self.stubs.is_empty()
-            || !self.fn_probes.is_empty()
-            || self.script.pos < self.script.events.len()
-            || self.bus.sw_reset()
-            || self.bus.block_break()
-            || self.cores[0].waiting()
-            || self.cores[0].irq_pending()
-            || (1..S::CORES).any(|core| S::core_state(&self.bus, core) == CoreState::Running)
+        self.browser_external_block_budget_result(requested).ok()
+    }
+
+    /// The external quantum budget together with a stable diagnostic refusal reason.
+    pub fn browser_external_block_budget_result(
+        &self,
+        requested: u32,
+    ) -> Result<u32, BrowserExternalBlockRefusal> {
+        let refusals = self.browser_external_block_refusal_mask(requested);
+        if let Some(reason) = BrowserExternalBlockRefusal::ALL
+            .into_iter()
+            .find(|reason| refusals & reason.bit() != 0)
         {
-            return None;
+            return Err(reason);
         }
-        Some(QUANTUM as u32)
+        Ok(QUANTUM as u32)
+    }
+
+    /// Every reason currently preventing an external quantum, as bits from
+    /// `BrowserExternalBlockRefusal::bit`.
+    pub fn browser_external_block_refusal_mask(&self, requested: u32) -> u16 {
+        use BrowserExternalBlockRefusal as Refusal;
+        let mut mask = 0;
+        if requested == 0 { mask |= Refusal::RequestedZero.bit(); }
+        if self.cost.is_some() { mask |= Refusal::CostModel.bit(); }
+        if self.probes.0 != 0 { mask |= Refusal::Observer.bit(); }
+        if !self.stubs.is_empty() { mask |= Refusal::Stub.bit(); }
+        if !self.fn_probes.is_empty() { mask |= Refusal::FunctionProbe.bit(); }
+        if self.script.pos < self.script.events.len() { mask |= Refusal::Script.bit(); }
+        for core in 1..S::CORES {
+            if S::core_state(&self.bus, core) != CoreState::Running {
+                continue;
+            }
+            if !self.core_held[core]
+                && self.cores[core].waiting()
+                && !self.cores[core].irq_pending()
+            {
+                mask |= Refusal::OtherCoreIdle.bit();
+            } else {
+                mask |= Refusal::OtherCoreActive.bit();
+            }
+        }
+        if self.bus.sw_reset() { mask |= Refusal::SoftwareReset.bit(); }
+        if self.bus.block_break() { mask |= Refusal::BusBreak.bit(); }
+        if self.cores[0].waiting() { mask |= Refusal::Waiting.bit(); }
+        if self.cores[0].irq_pending() { mask |= Refusal::Interrupt.bit(); }
+        mask
     }
 
     /// Advance shared device time after a quantum accepted by

@@ -54,6 +54,12 @@ function dispatchJit(w, emu, mem, cache, disabled, cycles) {
   return false;
 }
 
+function jitStats(w, emu, mem) {
+  if (!w.esp32sim_jit_stats_ptr) return null;
+  const p = w.esp32sim_jit_stats_ptr(emu), len = w.esp32sim_jit_stats_len(emu);
+  return JSON.parse(dec.decode(mem().subarray(p, p + len)));
+}
+
 async function testJitHandoff() {
   let w;
   const { instance } = await WebAssembly.instantiate(wasmBytes, { env: { host_log() {} } });
@@ -72,6 +78,8 @@ async function testJitHandoff() {
   if (withBytes(app, (p, n) => w.esp32sim_load(emu, 3, p, n)) !== 0 || w.esp32sim_boot(emu, 1) !== 0) throw new Error('JIT fixture boot failed');
   if (!dispatchJit(w, emu, mem, new Map(), new Set(), 64)) throw new Error('JIT handoff did not commit');
   if (w.esp32sim_cycles(emu) !== 64 || w.esp32sim_insns(emu) !== 64) throw new Error('JIT handoff accounting mismatch');
+  const stats = jitStats(w, emu, mem);
+  if (stats.attempts !== 1 || stats.prepared !== 1 || stats.committed !== 1) throw new Error(`JIT statistics mismatch: ${JSON.stringify(stats)}`);
   w.esp32sim_delete(emu);
   console.log('ok   wasm JIT handoff: shared-memory block committed at a scheduler boundary');
 }
@@ -126,12 +134,17 @@ async function runManifest(name) {
   const problems = [];
   if (panics.length) problems.push(`panicked: ${panics[0]}`);
   if (!board) problems.push('no board message');
-  if (!text.includes(m.expect || EXPECT.console)) problems.push(`console never showed ${JSON.stringify(m.expect || EXPECT.console)}; got ${text.length} bytes`);
+  const expected = m.expect || (!process.env.ESP32SIM_WASM_JIT_STATS && EXPECT.console);
+  if (expected && !text.includes(expected)) problems.push(`console never showed ${JSON.stringify(expected)}; got ${text.length} bytes`);
   const insns = w.esp32sim_insns(emu);
+  const stats = jitStats(w, emu, mem);
   w.esp32sim_delete(emu);
   const wall = (Date.now() - t0) / 1000;
   if (problems.length) { failures++; console.error(`FAIL ${name}: ${problems.join('; ')}\n  logs: ${logs.slice(0, 5).join('\n        ')}\n  console tail: ${text.slice(-400)}`); }
-  else console.log(`ok   ${name}: board ${board}, ${(insns / 1e6).toFixed(1)} M insns in ${wall.toFixed(1)} s wall (${(insns / 1e6 / wall).toFixed(1)} Minsn/s), ${text.split('\n').length} console lines, ${frames} binary frames`);
+  else {
+    console.log(`ok   ${name}: board ${board}, ${(insns / 1e6).toFixed(1)} M insns in ${wall.toFixed(1)} s wall (${(insns / 1e6 / wall).toFixed(1)} Minsn/s), ${text.split('\n').length} console lines, ${frames} binary frames`);
+  }
+  if (process.env.ESP32SIM_WASM_JIT_STATS) console.log(`jit  ${name}: ${JSON.stringify(stats)}`);
 }
 
 try { await testJitHandoff(); } catch (e) { failures++; console.error(`FAIL wasm JIT handoff: ${e.message}`); }
