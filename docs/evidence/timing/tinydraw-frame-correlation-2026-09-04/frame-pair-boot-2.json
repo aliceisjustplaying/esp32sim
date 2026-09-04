@@ -1,0 +1,183 @@
+{
+  "cacheCounters": {
+    "dbus_accesses": {
+      "40MHz": {
+        "classification": "distribution",
+        "max": 34152,
+        "min": 274,
+        "p50": 16724,
+        "p90": 33737,
+        "samples": 21
+      },
+      "80MHz": {
+        "classification": "distribution",
+        "max": 34152,
+        "min": 274,
+        "p50": 16724,
+        "p90": 33736,
+        "samples": 21
+      },
+      "slowMinusFast": {
+        "classification": "distribution",
+        "max": 1,
+        "min": -1,
+        "p50": 0,
+        "p90": 0,
+        "samples": 21
+      }
+    },
+    "dbus_flash_misses": {
+      "40MHz": {
+        "classification": "distribution",
+        "max": 0,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "samples": 21
+      },
+      "80MHz": {
+        "classification": "distribution",
+        "max": 0,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "samples": 21
+      },
+      "slowMinusFast": {
+        "classification": "distribution",
+        "max": 0,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "samples": 21
+      }
+    },
+    "dbus_psram_misses": {
+      "40MHz": {
+        "classification": "distribution",
+        "max": 533,
+        "min": 0,
+        "p50": 23,
+        "p90": 466,
+        "samples": 21
+      },
+      "80MHz": {
+        "classification": "distribution",
+        "max": 533,
+        "min": 0,
+        "p50": 23,
+        "p90": 466,
+        "samples": 21
+      },
+      "slowMinusFast": {
+        "classification": "distribution",
+        "max": 0,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "samples": 21
+      }
+    },
+    "ibus_accesses": {
+      "40MHz": {
+        "classification": "distribution",
+        "max": 533335,
+        "min": 31374,
+        "p50": 209786,
+        "p90": 511242,
+        "samples": 21
+      },
+      "80MHz": {
+        "classification": "distribution",
+        "max": 415264,
+        "min": 31370,
+        "p50": 209636,
+        "p90": 384913,
+        "samples": 21
+      },
+      "slowMinusFast": {
+        "classification": "distribution",
+        "max": 126329,
+        "min": -3986,
+        "p50": 3586,
+        "p90": 114140,
+        "samples": 21
+      }
+    },
+    "ibus_misses": {
+      "40MHz": {
+        "classification": "distribution",
+        "max": 540,
+        "min": 370,
+        "p50": 435,
+        "p90": 440,
+        "samples": 21
+      },
+      "80MHz": {
+        "classification": "distribution",
+        "max": 551,
+        "min": 377,
+        "p50": 444,
+        "p90": 447,
+        "samples": 21
+      },
+      "slowMinusFast": {
+        "classification": "distribution",
+        "max": 0,
+        "min": -14,
+        "p50": -9,
+        "p90": -4,
+        "samples": 21
+      }
+    },
+    "signatures": {
+      "40MHz": "b02766e4735d2cb4b81529b22cd1709273a5d64429fba5af443227a89c2beb9a",
+      "80MHz": "08343f40d2d51fde3656b03ed219f632d14e1b42d13ad216fcccf95b1a4eaa0a"
+    }
+  },
+  "classification": "distribution",
+  "cycles40MHz": {
+    "classification": "distribution",
+    "max": 996462,
+    "min": 328794,
+    "p50": 644274,
+    "p90": 930015,
+    "samples": 21
+  },
+  "cycles80MHz": {
+    "classification": "distribution",
+    "max": 875451,
+    "min": 340452,
+    "p50": 606399,
+    "p90": 744894,
+    "samples": 21
+  },
+  "disposition": "candidate-evidence-only",
+  "identity": {
+    "board": "waveshare-esp32-s3-touch-amoled-1.8-v2",
+    "common_config_sha256": "432f45e38c9daf64d8c415997af7eaaee4ecb168b63f331bba15ac5c477f8ddb",
+    "idf": "v6.1",
+    "source_commit": "13725930e666270043b53dc9c4a6bfc4e7ed2f82",
+    "workload_sha256": "75a518b9c6ccb7067b09a5594a411d33f4b2a34c891f3a3433c52b9a8a1a4271"
+  },
+  "nonPsramPartition": null,
+  "onePercentClaim": "refused",
+  "receipts": {
+    "40MHz": {
+      "configuration": "10e6fbc1cb5e7f40e52684558aa290d59cd80234281e4351b23e0bae7c44db0d",
+      "manifest": "cb164f6a177a0dea7f6470f552b2489ddec35027465d9a06a77f450e2f1fc01a"
+    },
+    "80MHz": {
+      "configuration": "80d5a0caeb07569689d00884f1267b350c06682d99392cfb5b29ca095c35a8dd",
+      "manifest": "e617e66cac021616433cd8799d7f2ada2208e9cc4cf4dbaf5881aefa69321fb2"
+    }
+  },
+  "slowMinusFast": {
+    "classification": "distribution",
+    "max": 241329,
+    "min": -27246,
+    "p50": -12096,
+    "p90": 227388,
+    "samples": 21
+  }
+}

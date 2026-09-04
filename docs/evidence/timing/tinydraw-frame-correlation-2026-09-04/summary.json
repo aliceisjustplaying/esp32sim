@@ -1,0 +1,201 @@
+{
+  "bootPairs": [
+    {
+      "boot": 1,
+      "negativeFrames": 17,
+      "positiveFrames": 4,
+      "totalCycleDelta": {
+        "classification": "distribution",
+        "max": 241056,
+        "min": -26061,
+        "p50": -9840,
+        "p90": 230310,
+        "samples": 21
+      },
+      "transferWaitDeltaUs": {
+        "classification": "distribution",
+        "max": 486,
+        "min": -565,
+        "p50": -47,
+        "p90": 468,
+        "samples": 21
+      },
+      "transferWaitSignMatchesCycleDelta": 21
+    },
+    {
+      "boot": 2,
+      "negativeFrames": 16,
+      "positiveFrames": 5,
+      "totalCycleDelta": {
+        "classification": "distribution",
+        "max": 241329,
+        "min": -27246,
+        "p50": -12096,
+        "p90": 227388,
+        "samples": 21
+      },
+      "transferWaitDeltaUs": {
+        "classification": "distribution",
+        "max": 931,
+        "min": -572,
+        "p50": -61,
+        "p90": 472,
+        "samples": 21
+      },
+      "transferWaitSignMatchesCycleDelta": 21
+    }
+  ],
+  "classification": "distribution",
+  "conclusion": {
+    "distributionAgreement": "not established",
+    "nonPsramPartition": null,
+    "onePercentClaim": "refused",
+    "psramScalarPrice": null,
+    "reason": "PSRAM remains unknown and transfer-wait phase changes dominate paired signs",
+    "tier": "distribution",
+    "use": "paired total-cycle and shared cache-counter candidate"
+  },
+  "counterCovariates": {
+    "dbusFlashMissPairsBothZero": 42,
+    "dbusPsramMissPairsEqual": 42,
+    "dbus_accessesDelta": {
+      "classification": "distribution",
+      "max": 2,
+      "min": -2,
+      "p50": 0,
+      "p90": 0,
+      "samples": 42
+    },
+    "dbus_flash_missesDelta": {
+      "classification": "distribution",
+      "max": 0,
+      "min": 0,
+      "p50": 0,
+      "p90": 0,
+      "samples": 42
+    },
+    "dbus_psram_missesDelta": {
+      "classification": "distribution",
+      "max": 0,
+      "min": 0,
+      "p50": 0,
+      "p90": 0,
+      "samples": 42
+    },
+    "ibus_accessesDelta": {
+      "classification": "distribution",
+      "max": 128704,
+      "min": -3986,
+      "p50": 3586,
+      "p90": 114140,
+      "samples": 42
+    },
+    "ibus_missesDelta": {
+      "classification": "distribution",
+      "max": 0,
+      "min": -14,
+      "p50": -9,
+      "p90": -4,
+      "samples": 42
+    }
+  },
+  "framePairs": 42,
+  "phaseCoupling": {
+    "isolatedPositiveTailFrames": [
+      {
+        "boot": 2,
+        "cycles": 227388,
+        "dbus_accesses": 0,
+        "dbus_flash_misses": 0,
+        "dbus_psram_misses": 0,
+        "ibus_accesses": 418,
+        "ibus_misses": -11,
+        "seq": 19,
+        "transferWaitUs": 931
+      }
+    ],
+    "longerTransferWaitAt40MHz": 9,
+    "positiveTailThresholdCycles": 200000,
+    "repeatedPositiveTailFrameKeys": [
+      3,
+      9,
+      10
+    ],
+    "repeatedPositiveTailIbusAccessDelta": {
+      "classification": "distribution",
+      "max": 128704,
+      "min": 109908,
+      "p50": 113460,
+      "p90": 128704,
+      "samples": 6
+    },
+    "repeatedPositiveTailTransferWaitDeltaUs": {
+      "classification": "distribution",
+      "max": 486,
+      "min": 467,
+      "p50": 472,
+      "p90": 486,
+      "samples": 6
+    },
+    "shorterTransferWaitAt40MHz": 33,
+    "transferWaitSignMatchesCycleDelta": 42
+  },
+  "rawCaptureCaveats": [
+    {
+      "boot": 1,
+      "panelAttempts": 1,
+      "panelBusResets": 0,
+      "panelFirstFailure": "ESP_OK",
+      "panelFirstFailureStage": "none",
+      "psramMHz": 40,
+      "stalePartialSerialBeforeReset": true
+    },
+    {
+      "boot": 1,
+      "panelAttempts": 1,
+      "panelBusResets": 0,
+      "panelFirstFailure": "ESP_OK",
+      "panelFirstFailureStage": "none",
+      "psramMHz": 80,
+      "stalePartialSerialBeforeReset": true
+    },
+    {
+      "boot": 2,
+      "panelAttempts": 1,
+      "panelBusResets": 0,
+      "panelFirstFailure": "ESP_OK",
+      "panelFirstFailureStage": "none",
+      "psramMHz": 40,
+      "stalePartialSerialBeforeReset": false
+    },
+    {
+      "boot": 2,
+      "panelAttempts": 2,
+      "panelBusResets": 1,
+      "panelFirstFailure": "ESP_ERR_INVALID_RESPONSE",
+      "panelFirstFailureStage": "configure",
+      "psramMHz": 80,
+      "stalePartialSerialBeforeReset": false
+    }
+  ],
+  "repeatability": {
+    "40MHzBoot2MinusBoot1Cycles": {
+      "classification": "distribution",
+      "max": 235878,
+      "min": -2964,
+      "p50": -1536,
+      "p90": -372,
+      "samples": 21
+    },
+    "80MHzBoot2MinusBoot1Cycles": {
+      "classification": "distribution",
+      "max": 1890,
+      "min": -2025,
+      "p50": 1161,
+      "p90": 1374,
+      "samples": 21
+    }
+  },
+  "schemaVersion": 1,
+  "status": "candidate"
+}
