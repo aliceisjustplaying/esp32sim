@@ -230,3 +230,30 @@ fn queued_web_input_is_ordered_and_does_not_advance_guest_time() {
     assert_eq!(m.bus.cycles, cycles);
     assert_eq!(m.insns(), insns);
 }
+
+
+#[test]
+fn knob_input_preserves_pending_scripts_at_the_current_horizon() {
+    let mut m = machine();
+    park(&mut m, 0, IRAM, &SPIN);
+    let web = esp_soc::web::WebServer::queued();
+    m.web = Some(web.clone());
+    m.load_script("0 serial first\n").unwrap();
+    web.push_incoming(r#"{"t":"knob","d":"1"}"#.into());
+    assert!(matches!(m.run(0), Stop::MaxInsns));
+    assert_eq!(m.script.pos, 0);
+    assert!(matches!(&m.script.events[0].1, ScriptAction::Serial(s) if s == "first\n"));
+    m.max_cycles = 64;
+    m.run(u64::MAX);
+    assert_eq!(m.script.pos, 1, "the time-zero script executes once");
+
+    let horizon = m.bus.cycles;
+    m.script.events.insert(m.script.pos, (horizon, ScriptAction::Serial("second".into())));
+    web.push_incoming(r#"{"t":"knob","d":"-1"}"#.into());
+    assert!(matches!(m.run(0), Stop::MaxInsns));
+    assert_eq!(m.script.pos, 1, "neither skip pending events nor replay consumed ones");
+    assert!(matches!(&m.script.events[1].1, ScriptAction::Serial(s) if s == "second"));
+    m.max_cycles = horizon + 64;
+    m.run(u64::MAX);
+    assert_eq!(m.script.pos, 2);
+}
