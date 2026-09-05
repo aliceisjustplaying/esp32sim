@@ -389,6 +389,10 @@ impl Co5300 {
                 self.y = self.y0;
                 self.pending = None;
             }
+            // ESP-IDF sends the command and its four parameter bytes in separate
+            // SPI transfers while keeping chip select active. Preserve the command
+            // after the header-only transfer so the next transfer sets the window.
+            Some(0x2a | 0x2b) => {}
             Some(0x2c | 0x3c) => {
                 for &byte in data {
                     match self.pixel_hi.take() {
@@ -578,6 +582,24 @@ mod amoled_tests {
         assert_eq!(panel.frame[3 * Co5300::WIDTH + 2], 0x07e0);
         assert_eq!(panel.pixels_written, 2);
         assert_eq!(panel.frames, 1);
+    }
+
+    #[test]
+    fn split_gpspi_commands_and_parameters_place_partial_updates_in_the_window() {
+        let mut panel = Co5300::new();
+        // The IDF LCD SPI driver sends these headers separately from the parameters.
+        panel.transaction(&[0x02, 0, 0x2a, 0]);
+        panel.transaction(&[0, 0x60, 0, 0x61]);
+        panel.transaction(&[0x02, 0, 0x2b, 0]);
+        panel.transaction(&[0, 140, 0, 141]);
+        panel.transaction(&[0x32, 0, 0x2c, 0]);
+        panel.transaction(&[0xf8, 0, 0x07, 0xe0]);
+        panel.transaction(&[0x32, 0, 0x3c, 0]);
+        panel.transaction(&[0, 0x1f, 0xff, 0xff]);
+        assert_eq!(&panel.frame[140 * Co5300::WIDTH + 80..140 * Co5300::WIDTH + 82], &[0xf800, 0x07e0]);
+        assert_eq!(&panel.frame[141 * Co5300::WIDTH + 80..141 * Co5300::WIDTH + 82], &[0x001f, 0xffff]);
+        assert_eq!(panel.pixels_written, 4);
+        assert_eq!(panel.frame[0], 0);
     }
 
     #[test]
