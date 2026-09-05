@@ -441,6 +441,8 @@ impl<S: Soc> Machine<S> {
     /// Run until something stops us, for at most `max_insns` scheduling steps. The no-model path
     /// uses 64-instruction quanta; the modeled path schedules one priced event at a time.
     pub fn run(&mut self, max_insns: u64) -> Stop {
+        self.web_poll_input();
+        self.refresh_irq();
         if self.cost.is_some() { self.run_modeled(max_insns) } else { self.run_unmodeled(max_insns) }
     }
 
@@ -759,6 +761,8 @@ impl<S: Soc> Machine<S> {
     /// Nothing else about a run changes: stubs, probes, observers, scripts and the console work
     /// as in `run`; `max_cycles` is not consulted.
     pub fn run_until_cycle(&mut self, target: u64) -> RunUntil {
+        self.web_poll_input();
+        self.refresh_irq();
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
         for c in &mut self.cores {
@@ -926,6 +930,8 @@ impl<S: Soc> Machine<S> {
         w.send_text(&format!("{{\"t\":\"stat\",\"time\":{:.2},\"insns\":{},\"frames\":{},\"behind\":{:.2},\"resyncs\":{},\"cam\":{},\"gpio_in\":\"{:x}\"}}", self.seconds(), self.insns(), board.display_frames(), self.rt.behind, self.rt.resyncs, self.bus.camera_frames(), self.bus.gpio_input()));
     }
 
+    // Host input is accepted at run boundaries without advancing device time. The periodic
+    // poll remains necessary for native callers that run continuously rather than in slices.
     fn web_poll_input(&mut self) {
         let Some(w) = self.web.clone() else { return };
         use crate::web::json_str;
