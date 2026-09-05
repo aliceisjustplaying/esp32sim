@@ -13,9 +13,10 @@
 //!   transmission (`SocBus::take_host_event`), so a `tx` event carries the time of the
 //!   `TX_START` write and the reply goes out before the slice ends;
 //! - an `rx` inside a slice is injected at its own time: the guest runs to `rx.t` and the frame is
-//!   handed to the radio as csim reports it, at its start — SFD now, `RX_DONE` after the air
-//!   time, and the acknowledgement 192 µs after that (`rx_on_air: false` takes `rx.t` as the
-//!   frame's end instead: complete at once) — and the run continues;
+//!   handed to the radio as csim reports it, at its start — its first preamble byte, so the SFD
+//!   follows five byte times later, `RX_DONE` after the whole PPDU, and the acknowledgement
+//!   192 µs after that (`rx_on_air: false` takes `rx.t` as the frame's end instead: complete at
+//!   once) — and the run continues;
 //! - a guest in `wfi` costs nothing: time jumps to the next device deadline or the slice end.
 //!
 //! `wake` is what we ask csim for next: the next device deadline when the guest sleeps, `t +
@@ -150,9 +151,9 @@ pub struct Config {
     pub slice_ns: u64,
     /// which guest consoles become `log` events: bit0 USB-Serial/JTAG, bit1 UART0, bit2 UART1
     pub console_mask: u32,
-    /// an `rx` at `t` is the start of the frame on the air (SFD at `t`, RX_DONE after the air
-    /// time), which is when csim hands a frame-consuming mote a frame; `false` takes `t` as the
-    /// frame's end (complete at once)
+    /// an `rx` at `t` is the start of the frame on the air (its first preamble byte: the SFD
+    /// five byte times later, `RX_DONE` after the whole PPDU), which is when csim hands a
+    /// frame-consuming mote a frame; `false` takes `t` as the frame's end (complete at once)
     pub rx_on_air: bool,
     /// narrate the exchange on stderr
     pub verbose: bool,
