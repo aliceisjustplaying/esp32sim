@@ -141,12 +141,18 @@ struct BrowserJitStats {
     committed: u64,
     commit_rejected: u64,
     aborted: u64,
+    declined: u64,
+    superseded: u64,
+    commit_without_ticket: u64,
+    abort_without_ticket: u64,
+    decline_without_ticket: u64,
     not_s3: u64,
-    scheduler: Vec<(BrowserExternalBlockRefusal, u64)>,
+    scheduler_masks: Vec<(u16, u64)>,
     timer: u64,
     window: u64,
     loop_boundary: u64,
     fetch: u64,
+    decode: u64,
     capacity: u64,
     compile: u64,
     unsupported: Vec<(Op, u64)>,
@@ -160,6 +166,7 @@ enum BrowserJitReject {
     Window,
     LoopBoundary,
     Fetch,
+    Decode,
     Capacity,
     Compile,
     Unsupported(Op),
@@ -170,25 +177,17 @@ impl BrowserJitStats {
     fn reject(&mut self, reason: BrowserJitReject) {
         match reason {
             BrowserJitReject::Scheduler(mask) => {
-                for reason in BrowserExternalBlockRefusal::ALL {
-                    if mask & reason.bit() == 0 {
-                        continue;
-                    }
-                    if let Some((_, count)) = self
-                        .scheduler
-                        .iter_mut()
-                        .find(|(seen, _)| *seen == reason)
-                    {
-                        *count += 1;
-                    } else {
-                        self.scheduler.push((reason, 1));
-                    }
+                if let Some((_, count)) = self.scheduler_masks.iter_mut().find(|(seen, _)| *seen == mask) {
+                    *count += 1;
+                } else {
+                    self.scheduler_masks.push((mask, 1));
                 }
             }
             BrowserJitReject::Timer => self.timer += 1,
             BrowserJitReject::Window => self.window += 1,
             BrowserJitReject::LoopBoundary => self.loop_boundary += 1,
             BrowserJitReject::Fetch => self.fetch += 1,
+            BrowserJitReject::Decode => self.decode += 1,
             BrowserJitReject::Capacity => self.capacity += 1,
             BrowserJitReject::Compile => self.compile += 1,
             BrowserJitReject::Unsupported(op) => {
@@ -202,7 +201,7 @@ impl BrowserJitStats {
         }
     }
 
-    fn refresh_report(&mut self) {
+    fn refresh_report(&mut self, pending: bool) {
         use std::fmt::Write as _;
 
         let mut unsupported: Vec<_> = self
@@ -211,10 +210,17 @@ impl BrowserJitStats {
             .map(|(op, count)| (format!("{op:?}"), *count))
             .collect();
         unsupported.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        let mut scheduler: Vec<_> = self
-            .scheduler
+        let mut scheduler: Vec<_> = BrowserExternalBlockRefusal::ALL
             .iter()
-            .map(|(reason, count)| (format!("{reason:?}"), *count))
+            .filter_map(|reason| {
+                let count: u64 = self
+                    .scheduler_masks
+                    .iter()
+                    .filter(|(mask, _)| mask & reason.bit() != 0)
+                    .map(|(_, count)| count)
+                    .sum();
+                (count != 0).then(|| (format!("{reason:?}"), count))
+            })
             .collect();
         scheduler.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         let mut scheduler_reasons = String::new();
@@ -224,6 +230,15 @@ impl BrowserJitStats {
             }
             write!(scheduler_reasons, "\"{reason}\":{count}")
                 .expect("writing to a String cannot fail");
+        }
+        let mut masks = self.scheduler_masks.clone();
+        masks.sort_by_key(|(mask, _)| *mask);
+        let mut scheduler_masks = String::new();
+        for (index, (mask, count)) in masks.iter().enumerate() {
+            if index != 0 {
+                scheduler_masks.push(',');
+            }
+            write!(scheduler_masks, "\"{mask}\":{count}").expect("writing to a String cannot fail");
         }
         let mut ops = String::new();
         for (index, (op, count)) in unsupported.iter().enumerate() {
@@ -235,9 +250,10 @@ impl BrowserJitStats {
         self.report = format!(
             concat!(
                 "{{\"attempts\":{},\"prepared\":{},\"committed\":{},",
-                "\"commitRejected\":{},\"aborted\":{},\"rejections\":{{",
-                "\"notS3\":{},\"scheduler\":{{{}}},\"timer\":{},\"window\":{},",
-                "\"loopBoundary\":{},\"fetch\":{},\"capacity\":{},\"compile\":{}",
+                "\"commitRejected\":{},\"aborted\":{},\"declined\":{},\"superseded\":{},\"pending\":{},",
+                "\"commitWithoutTicket\":{},\"abortWithoutTicket\":{},\"declineWithoutTicket\":{},\"rejections\":{{",
+                "\"notS3\":{},\"scheduler\":{{{}}},\"schedulerMasks\":{{{}}},\"timer\":{},\"window\":{},",
+                "\"loopBoundary\":{},\"fetch\":{},\"decode\":{},\"capacity\":{},\"compile\":{}",
                 "}},\"unsupported\":{{{}}}}}"
             ),
             self.attempts,
@@ -245,12 +261,20 @@ impl BrowserJitStats {
             self.committed,
             self.commit_rejected,
             self.aborted,
+            self.declined,
+            self.superseded,
+            u8::from(pending),
+            self.commit_without_ticket,
+            self.abort_without_ticket,
+            self.decline_without_ticket,
             self.not_s3,
             scheduler_reasons,
+            scheduler_masks,
             self.timer,
             self.window,
             self.loop_boundary,
             self.fetch,
+            self.decode,
             self.capacity,
             self.compile,
             ops,
@@ -554,7 +578,9 @@ fn prepare_browser_jit(
     jit: &mut BrowserJit,
     requested: u32,
 ) -> Result<u32, BrowserJitReject> {
-    jit.ticket = None;
+    if jit.ticket.take().is_some() {
+        jit.stats.superseded += 1;
+    }
     let cpu = &machine.cores[0];
     let limit = match machine.browser_external_block_budget_result(requested) {
         Ok(limit) => limit,
@@ -574,12 +600,13 @@ fn prepare_browser_jit(
     while instruction_count < limit {
         let bytes = machine.bus.fetch(pc).map_err(|_| BrowserJitReject::Fetch)?;
         let instruction = decode(pc, bytes);
-        if instruction.len == 0
-            || !matches!(
+        if instruction.len == 0 || matches!(instruction.op, Op::Ill | Op::IllN) {
+            return Err(BrowserJitReject::Decode);
+        }
+        if !matches!(
             instruction.op,
             Op::L32i | Op::L32iN | Op::MoviN | Op::Memw | Op::Sub | Op::Saltu
-        )
-        {
+        ) {
             return Err(BrowserJitReject::Unsupported(instruction.op));
         }
         if window_overflow_possible(cpu, supported_max_ar(&instruction)) {
@@ -615,8 +642,8 @@ fn prepare_browser_jit(
         .map(|index| (index, versions.get(index as usize).copied().unwrap_or(0)))
         .collect();
 
-    let state_offset = u32::try_from(jit.state.as_ptr() as usize)
-        .map_err(|_| BrowserJitReject::Compile)?;
+    let state_offset =
+        u32::try_from(jit.state.as_ptr() as usize).map_err(|_| BrowserJitReject::Compile)?;
     let dram_len = (esp32s3::bus::DRAM_HIGH - esp32s3::bus::DRAM_LOW) as usize;
     let dram_storage_offset = machine
         .bus
@@ -626,8 +653,7 @@ fn prepare_browser_jit(
         .ok_or(BrowserJitReject::Compile)?;
     // SAFETY: `dram_storage_offset` was derived by subtracting `dram_len` from this allocation.
     let dram_ptr = unsafe { machine.bus.sram.as_ptr().add(dram_storage_offset) };
-    let dram_offset =
-        u32::try_from(dram_ptr as usize).map_err(|_| BrowserJitReject::Compile)?;
+    let dram_offset = u32::try_from(dram_ptr as usize).map_err(|_| BrowserJitReject::Compile)?;
     let module_index = if let Some(index) = jit
         .modules
         .iter()
@@ -731,9 +757,11 @@ fn load_jit_u64(state: &[u8], offset: usize) -> u64 {
 pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
     let e = unsafe { &mut *e };
     let Some(ticket) = e.jit.ticket.take() else {
+        e.jit.stats.commit_without_ticket += 1;
         return 0;
     };
     let Some(machine) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else {
+        e.jit.stats.commit_rejected += 1;
         return 0;
     };
     let cpu = &machine.cores[0];
@@ -742,9 +770,10 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
         && cpu.ccount == ticket.ccount
         && cpu.insn_count == ticket.insns
         && machine.bus.cycles == ticket.bus_cycles
-        && ticket.code_pages.iter().all(|&(index, version)| {
-            versions.get(index as usize).copied().unwrap_or(0) == version
-        })
+        && ticket
+            .code_pages
+            .iter()
+            .all(|&(index, version)| versions.get(index as usize).copied().unwrap_or(0) == version)
         && load_jit_u32(&e.jit.state[..], esp32sim_wasm_jit::PC_OFFSET) == ticket.next_pc
         && load_jit_u64(&e.jit.state[..], esp32sim_wasm_jit::CYCLE_OFFSET) == ticket.receipt_cycles
         && machine
@@ -757,10 +786,7 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
 
     let cpu = &mut machine.cores[0];
     for register in 0..REGISTER_COUNT {
-        cpu.set_ar(
-            register as u8,
-            load_jit_u32(&e.jit.state[..], register * 4),
-        );
+        cpu.set_ar(register as u8, load_jit_u32(&e.jit.state[..], register * 4));
     }
     cpu.pc = ticket.next_pc;
     cpu.insn_count += u64::from(ticket.instruction_count);
@@ -790,7 +816,7 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
     1
 }
 
-/// Discard a prepared sidecar result after the generated module trapped.
+/// Discard a prepared sidecar result after module compilation or execution failed.
 ///
 /// # Safety
 /// `e` must point to a live emulator to which the caller has exclusive access.
@@ -799,8 +825,26 @@ pub unsafe extern "C" fn esp32sim_jit_commit(e: *mut Emu) -> u32 {
 pub unsafe extern "C" fn esp32sim_jit_abort(e: *mut Emu) {
     let e = unsafe { &mut *e };
     let jit = &mut e.jit;
-    jit.ticket = None;
-    jit.stats.aborted += 1;
+    if jit.ticket.take().is_some() {
+        jit.stats.aborted += 1;
+    } else {
+        jit.stats.abort_without_ticket += 1;
+    }
+}
+
+/// Decline a prepared module without attempting execution (for example, a blacklisted id).
+///
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access.
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_jit_decline(e: *mut Emu) {
+    let jit = &mut unsafe { &mut *e }.jit;
+    if jit.ticket.take().is_some() {
+        jit.stats.declined += 1;
+    } else {
+        jit.stats.decline_without_ticket += 1;
+    }
 }
 
 /// Refresh and return a UTF-8 JSON report of browser-JIT attempts and refusal reasons.
@@ -813,7 +857,7 @@ pub unsafe extern "C" fn esp32sim_jit_abort(e: *mut Emu) {
 pub unsafe extern "C" fn esp32sim_jit_stats_ptr(e: *mut Emu) -> *const u8 {
     let e = unsafe { &mut *e };
     let jit = &mut e.jit;
-    jit.stats.refresh_report();
+    jit.stats.refresh_report(jit.ticket.is_some());
     jit.stats.report.as_ptr()
 }
 

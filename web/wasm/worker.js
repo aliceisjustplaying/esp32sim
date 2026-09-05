@@ -23,7 +23,7 @@ function dispatchJit(cycles) {
   if (!wasm.esp32sim_jit_prepare) return false;
   const id = wasm.esp32sim_jit_prepare(emu, Math.max(1, Math.min(cycles, 0xffffffff)), Date.now());
   if (id === 0) return false;
-  if (jitDisabled.has(id)) { wasm.esp32sim_jit_abort(emu); return false; }
+  if (jitDisabled.has(id)) { (wasm.esp32sim_jit_decline || wasm.esp32sim_jit_abort)(emu); return false; }
   try {
     let instance = jitModules.get(id);
     if (!instance) {

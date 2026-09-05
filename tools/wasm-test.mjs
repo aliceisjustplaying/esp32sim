@@ -15,6 +15,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import assert from 'node:assert/strict';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const fwDir = join(root, 'web', 'wasm', 'fw');
@@ -36,7 +37,7 @@ function dispatchJit(w, emu, mem, cache, disabled, cycles) {
   if (!w.esp32sim_jit_prepare) return false;
   const id = w.esp32sim_jit_prepare(emu, cycles, Date.now());
   if (id === 0) return false;
-  if (disabled.has(id)) { w.esp32sim_jit_abort(emu); return false; }
+  if (disabled.has(id)) { (w.esp32sim_jit_decline || w.esp32sim_jit_abort)(emu); return false; }
   try {
     let instance = cache.get(id);
     if (!instance) {
@@ -55,7 +56,9 @@ function dispatchJit(w, emu, mem, cache, disabled, cycles) {
 }
 
 function jitStats(w, emu, mem) {
-  if (!w.esp32sim_jit_stats_ptr) return null;
+  if (!w.esp32sim_jit_stats_ptr || !w.esp32sim_jit_stats_len) {
+    throw new Error('WASM module predates the JIT statistics ABI; rebuild with tools/wasm-build.sh');
+  }
   const p = w.esp32sim_jit_stats_ptr(emu), len = w.esp32sim_jit_stats_len(emu);
   return JSON.parse(dec.decode(mem().subarray(p, p + len)));
 }
@@ -66,22 +69,67 @@ async function testJitHandoff() {
   w = instance.exports;
   const mem = () => new Uint8Array(w.memory.buffer);
   const withBytes = (bytes, f) => { const p = w.esp32sim_alloc(bytes.length); mem().set(bytes, p); try { return f(p, bytes.length); } finally { w.esp32sim_free(p, bytes.length); } };
-  const emu = withBytes(enc.encode('none'), (p, n) => w.esp32sim_new(p, n, 1, 0));
   const entry = 0x40370000;
+  const boot = program => {
+    const emu = withBytes(enc.encode('none'), (p, n) => w.esp32sim_new(p, n, 1, 0));
+    const app = new Uint8Array(24 + 8 + program.length), view = new DataView(app.buffer);
+    app[0] = 0xe9; app[1] = 1; view.setUint32(4, entry, true);
+    view.setUint32(24, entry, true); view.setUint32(28, program.length, true);
+    app.set(program, 32);
+    if (withBytes(app, (p, n) => w.esp32sim_load(emu, 3, p, n)) !== 0 || w.esp32sim_boot(emu, 1) !== 0) throw new Error('JIT fixture boot failed');
+    return emu;
+  };
+  const statsFor = emu => {
+    const stats = jitStats(w, emu, mem);
+    assert.equal(stats.prepared, stats.committed + stats.commitRejected + stats.aborted + stats.declined + stats.superseded + stats.pending, 'every prepared ticket has one outcome');
+    return stats;
+  };
+  assert.throws(() => jitStats({}, 0, mem), /predates the JIT statistics ABI/);
   const program = new Uint8Array(64 * 2 + 3);
   for (let i = 0; i < 64; i++) program.set([0x0c, 0x03], i * 2); // movi.n a3,0
   program.set([0x06, 0xff, 0xff], 64 * 2);                       // j .
-  const app = new Uint8Array(24 + 8 + program.length), view = new DataView(app.buffer);
-  app[0] = 0xe9; app[1] = 1; view.setUint32(4, entry, true);
-  view.setUint32(24, entry, true); view.setUint32(28, program.length, true);
-  app.set(program, 32);
-  if (withBytes(app, (p, n) => w.esp32sim_load(emu, 3, p, n)) !== 0 || w.esp32sim_boot(emu, 1) !== 0) throw new Error('JIT fixture boot failed');
+  const emu = boot(program);
+  jitStats(w, emu, mem); // Give an actionable error for a pre-statistics module.
+  if (!w.esp32sim_jit_decline) throw new Error('WASM module predates JIT ticket diagnostics; rebuild with tools/wasm-build.sh');
+  assert.equal(w.esp32sim_jit_commit(emu), 0);
+  w.esp32sim_jit_abort(emu);
+  w.esp32sim_jit_decline(emu);
+  const prepare = () => {
+    const id = w.esp32sim_jit_prepare(emu, 64, Date.now());
+    assert.notEqual(id, 0);
+    assert.equal(statsFor(emu).pending, 1);
+    return id;
+  };
+  const id = prepare();
+  prepare(); // Replacing a pending result must account for the old ticket.
+  assert.equal(statsFor(emu).superseded, 1);
+  w.esp32sim_jit_decline(emu);
+  prepare();
+  w.esp32sim_jit_abort(emu);
+  prepare();
+  assert.equal(w.esp32sim_jit_commit(emu), 0); // No generated execution yet.
+  assert.equal(dispatchJit(w, emu, mem, new Map(), new Set([id]), 64), false);
   if (!dispatchJit(w, emu, mem, new Map(), new Set(), 64)) throw new Error('JIT handoff did not commit');
   if (w.esp32sim_cycles(emu) !== 64 || w.esp32sim_insns(emu) !== 64) throw new Error('JIT handoff accounting mismatch');
-  const stats = jitStats(w, emu, mem);
-  if (stats.attempts !== 1 || stats.prepared !== 1 || stats.committed !== 1) throw new Error(`JIT statistics mismatch: ${JSON.stringify(stats)}`);
+  const stats = statsFor(emu);
+  for (const [name, expected] of Object.entries({attempts: 6, prepared: 6, committed: 1, commitRejected: 1, aborted: 1, declined: 2, superseded: 1, pending: 0, commitWithoutTicket: 1, abortWithoutTicket: 1, declineWithoutTicket: 1})) {
+    assert.equal(stats[name], expected, name);
+  }
   w.esp32sim_delete(emu);
-  console.log('ok   wasm JIT handoff: shared-memory block committed at a scheduler boundary');
+  const invalid = boot(new Uint8Array([0, 0, 0])); // Reserved/illegal encoding.
+  assert.equal(w.esp32sim_jit_prepare(invalid, 64, Date.now()), 0);
+  assert.equal(statsFor(invalid).rejections.decode, 1);
+  assert.deepEqual(statsFor(invalid).unsupported, {});
+  w.esp32sim_delete(invalid);
+  const waiting = boot(new Uint8Array([0x00, 0x70, 0x00])); // waiti 0
+  w.esp32sim_run(waiting, 64, Date.now());
+  assert.equal(w.esp32sim_jit_prepare(waiting, 0, Date.now()), 0);
+  const rejected = statsFor(waiting).rejections;
+  assert.equal(rejected.scheduler.RequestedZero, 1);
+  assert.equal(rejected.scheduler.Waiting, 1);
+  assert.equal(rejected.schedulerMasks[String((1 << 0) | (1 << 8))], 1, 'retain concurrent refusal bits');
+  w.esp32sim_delete(waiting);
+  console.log('ok   wasm JIT handoff: shared-memory commit, ticket accounting, decode and concurrent refusals');
 }
 
 async function runManifest(name) {
