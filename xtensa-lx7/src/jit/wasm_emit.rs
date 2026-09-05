@@ -1,5 +1,7 @@
 //! Binary WASM emitter for a straight-line Xtensa block.
 use super::*;
+#[path = "wasm_float.rs"]
+mod float;
 
 // Most unsupported operations keep their block interpreted. Calls/returns at the
 // end may use a helper after the compiled prefix; memory misses also use helpers.
@@ -80,10 +82,10 @@ pub(super) fn supported(op: crate::Op, fast: bool) -> bool {
             | Bbsi
             | Bbc
             | Bbs
-    ) || (fast
+    ) || float::supported(op) || (fast
         && matches!(
             op,
-            L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN
+            L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN | Lsi | Ssi
         ))
 }
 
@@ -160,6 +162,18 @@ impl Gen {
         self.c(2);
         self.op(0x74);
         self.op(0x6a);
+    }
+    fn fr(&mut self, r: u8) {
+        self.cpu(offset_of!(Cpu, fr) + 4 * r as usize);
+    }
+    fn float(&mut self, r: u8) {
+        self.fr(r);
+        self.op(0xbe); // f32.reinterpret_i32 preserves register bits.
+    }
+    fn boolean(&mut self, r: u8) {
+        self.cpu(offset_of!(Cpu, br));
+        self.c(1 << r);
+        self.op(0x71);
     }
     fn ar(&mut self, r: u8) {
         self.get(13 + r);
@@ -352,6 +366,8 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
             mask
         } else if !supported(bi.insn.op, block.fast) {
             u16::MAX
+        } else if float::supported(bi.insn.op) || matches!(bi.insn.op, crate::Op::Lsi | crate::Op::Ssi) {
+            mask | float::registers(&bi.insn)
         } else {
             mask | (1 << bi.insn.r) | (1 << bi.insn.s) | (1 << bi.insn.t)
         }
@@ -462,6 +478,10 @@ fn emit_instruction(
     let i = &bi.insn;
     let (r, s, t) = (i.r, i.s, i.t);
     let imm = i.imm as u32;
+    if float::supported(i.op) {
+        float::emit(g, bi, pc, next, last);
+        return true;
+    }
     match i.op {
         Nop | NopN | Memw | Extw => {}
         Movi | MoviN => {
@@ -758,7 +778,8 @@ fn emit_instruction(
             g.ret(CODE_LEFT);
             g.end();
         }
-        L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN if fast => {
+        L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN | Lsi | Ssi if fast => {
+            if matches!(i.op, Lsi | Ssi) { float::guard(g, bi, pc, next, last); }
             emit_memory(g, bi, pc, next, last);
         }
         _ => return false,
@@ -769,7 +790,7 @@ fn emit_instruction(
 fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     use crate::Op::*;
     let i = &bi.insn;
-    let store = matches!(i.op, S8i | S16i | S32i | S32iN);
+    let store = matches!(i.op, S8i | S16i | S32i | S32iN | Ssi);
     let width = match i.op {
         L8ui | S8i => 1,
         L16ui | L16si | S16i => 2,
@@ -839,7 +860,7 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     g.get(REL);
     g.op(0x6a);
     if store {
-        g.ar(i.t);
+        if i.op == Ssi { g.fr(i.t); } else { g.ar(i.t); }
         g.op(match width {
             1 => 0x3a,
             2 => 0x3b,
@@ -863,6 +884,7 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
         g.op(0x6a);
         g.store(0);
     } else {
+        if i.op == Lsi { g.set(TMP); g.get(0); g.get(TMP); }
         g.op(match i.op {
             L8ui => 0x2d,
             L16ui => 0x2f,
@@ -870,7 +892,7 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
             _ => 0x28,
         });
         g.0.extend([0, 0]);
-        g.set_ar(i.t);
+        if i.op == Lsi { g.store(offset_of!(Cpu, fr) + 4 * i.t as usize); } else { g.set_ar(i.t); }
     }
     g.0.extend([0x0c, 1]);
     g.end();

@@ -112,6 +112,11 @@ fn cpu(seed: u32) -> Cpu {
     c
 }
 fn same(a: &Cpu, b: &Cpu) {
+    assert_eq!(a.fr, b.fr, "float register bits");
+    assert_eq!(a.br, b.br, "boolean registers");
+    assert_eq!(a.cpenable, b.cpenable);
+    assert_eq!(a.fcr, b.fcr);
+    assert_eq!(a.fsr, b.fsr);
     assert_eq!(a.ar, b.ar, "registers at {:x}", a.pc);
     assert_eq!(a.pc, b.pc, "PC");
     assert_eq!(a.ps, b.ps);
@@ -537,6 +542,83 @@ fn entry_and_shifts() -> u32 {
     tests
 }
 
+fn floating_point() -> u32 {
+    use Op::*;
+    let ops = [AddS, SubS, MulS, MaddS, MsubS, MovS, AbsS, NegS, Rfr, Wfr, ConstS,
+        FloatS, UfloatS, RoundS, TruncS, FloorS, CeilS, UtruncS, UnS, OeqS, UeqS, OltS,
+        UltS, OleS, UleS, MoveqzS, MovnezS, MovltzS, MovgezS, MovfS, MovtS,
+        MaddnS, DivnS, Div0S, Nexp01S, Recip0S, Rsqrt0S, Sqrt0S, AddexpS,
+        MkdadjS, MksadjS, AddexpmS, Movf, Movt, Bf, Bt];
+    let values = [0, 0x8000_0000, 1, 0x007f_ffff, 0x0080_0000, 0x3f80_0001,
+        0xbf80_0000, 0x3fc0_0000, 0xc020_0000, 0x4eff_ffff, 0x4f00_0000,
+        0x4f7f_ffff, 0x4f80_0000, 0xcf00_0000, 0x7f7f_ffff, 0x7f80_0000,
+        0xff80_0000, 0x7fc1_2345, 0xffc5_4321, 0x7f81_2345];
+    let mut tests = 0;
+    for op in ops {
+        assert!(super::emitter::supported(op, true));
+        for (n, &bits) in values.iter().enumerate() {
+            for entry in 0..3 {
+                for budget in [1, 3] {
+                    let mut block = [insn(Add), insn(op), insn(Xor)];
+                    block[1].insn.imm = if matches!(op, Bf | Bt) { (BASE + 48) as i32 } else { (n % 16) as i32 };
+                    compare_configured(&mut block, n as u32, entry, budget, None, true, false, n % 3 == 0, n % 7 == 0, |c| {
+                        c.cpenable = if n % 9 == 0 { 0 } else { 1 };
+                        c.br = if n % 2 == 0 { 0xaaaa } else { 0x5555 };
+                        c.fr[3] = 0xbf80_0000;
+                        c.fr[4] = bits;
+                        c.fr[5] = values[(n + 5) % values.len()];
+                    });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    // A drawing-like bundle connects float, boolean and integer state through a
+    // conversion/coverage decision, including partial execution and aliased operands.
+    let raster_ops = [Wfr, FloatS, SubS, MulS, MaddS, OltS, MovtS, TruncS, Movf, Bt];
+    for entry in 0..raster_ops.len() as u32 {
+        for budget in [1, 4, 12] {
+            let mut block: Vec<_> = raster_ops.into_iter().map(insn).collect();
+            for bi in &mut block {
+                if matches!(bi.insn.op, MovtS | Movf) { bi.insn.t = 3; }
+                if bi.insn.op == Bt { bi.insn.s = 3; bi.insn.imm = (BASE + 48) as i32; }
+                bi.max_ar = crate::exec::max_ar(&bi.insn);
+            }
+            compare_configured(&mut block, 15, entry, budget, None, true, false, false, false, |c| {
+                c.cpenable = 1; c.fr[3] = 0.5f32.to_bits();
+                c.fr[4] = 2.25f32.to_bits(); c.fr[5] = 3.5f32.to_bits();
+            });
+            tests += 1;
+        }
+    }
+    // Cancellation distinguishes one fused rounding from multiply followed by add.
+    for op in [MaddS, MsubS] {
+        compare_configured(&mut [insn(op), insn(Rfr)], 0, 0, 2, None, true, false, false, false, |c| {
+            c.cpenable = 1; c.fr[3] = (-1f32).to_bits();
+            c.fr[4] = if op == MaddS { 0x3f80_0001 } else { 0xbf80_0001 };
+            c.fr[5] = 0x3f7f_fffe;
+        });
+        tests += 1;
+    }
+    // Both native TLB accesses and helper paths must preserve raw FP bits and code versions.
+    for op in [Lsi, Ssi] {
+        for addr in [BASE + 512, BASE + 513, BASE + 65536] {
+            for fast in [false, true] {
+                for readonly in [false, true] {
+                    for enabled in [0, 1] {
+                        compare_configured(&mut [insn(Add), insn(op), insn(Xor)], 1, 0, 3,
+                            Some(addr), fast, readonly, false, false, |c| {
+                                c.cpenable = enabled; c.fr[5] = 0x7f81_2345;
+                            });
+                        tests += 1;
+                    }
+                }
+            }
+        }
+    }
+    tests
+}
+
 pub fn run_tests() -> u32 {
     use Op::*;
     let ops = [
@@ -604,5 +686,5 @@ pub fn run_tests() -> u32 {
     }
     scheduler();
     retention();
-    tests + 2 + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
+    tests + floating_point() + 2 + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
 }
