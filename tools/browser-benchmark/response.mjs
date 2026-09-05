@@ -1,7 +1,7 @@
 // Uses the production worker, including pacing and the input queue.
 const canvas = document.querySelector('canvas'), ctx = canvas.getContext('2d');
 const status = document.querySelector('#status');
-const receipt = {environment: {userAgent: navigator.userAgent, crossOriginIsolated}, inputs: [], frames: [], strokes: [], serial: ''};
+const receipt = {startedAt: performance.now(), environment: {userAgent: navigator.userAgent, crossOriginIsolated}, inputs: [], frames: [], strokes: [], serial: ''};
 window.receipt = receipt;
 let ready = false, replayed = false, previous = null, lastChange = 0, active = null, serial = '', frameId = 0;
 const worker = new Worker('/web/wasm/worker.js', {type: 'module'});
@@ -74,7 +74,7 @@ worker.onmessage = ({data: message}) => {
       serial += event.data; receipt.serial = serial;
       if (active?.upAt && !active.commitReportedAt && /TINYDRAW_LIVE_STROKE_DONE committed=1 refresh=1 commit_failed=0/.test(serial.slice(active.serialStart))) active.commitReportedAt = performance.now();
       if (!ready && serial.includes('TINYDRAW_VECTOR_V2_READY')) {
-        ready = true; window.ready = true;
+        ready = true; window.ready = true; receipt.readyAt = performance.now(); receipt.bootWallMs = receipt.readyAt - receipt.startedAt;
         status.textContent = 'Ready. Drag on the drawing or replay the fixed strokes.';
         document.querySelector('#replay').disabled = false;
       }
