@@ -115,11 +115,13 @@ pub enum BrowserExternalBlockRefusal {
     Observer,
     Stub,
     FunctionProbe,
+    /// Reserved diagnostic bit: scripts are delivered at the end of external quanta.
     Script,
     SoftwareReset,
     BusBreak,
     Waiting,
     Interrupt,
+    /// Reserved diagnostic bit: idle peers now participate in external quanta.
     OtherCoreIdle,
     OtherCoreActive,
 }
