@@ -1,0 +1,281 @@
+{
+  "date": "2026-09-05",
+  "sourceCommit": "184734209e94a2b3a5e1a1f0e31e48ca4f8be344",
+  "wasmSha256": "d6ee47687f3e70753a5a19ce9e72306915cafc3b752a284d03f6d94beaa8e15d",
+  "runtime": "v24.16.0",
+  "host": {
+    "system": "Darwin",
+    "release": "27.0.0",
+    "architecture": "arm64"
+  },
+  "buildCommand": "tools/wasm-build.sh",
+  "command": "ESP32SIM_WASM_JIT_STATS=1 node tools/wasm-test.mjs hello atech atech-sid panel panel-sid",
+  "emulatedSecondsPerManifest": 3,
+  "schedulerReasonBits": {
+    "RequestedZero": 1,
+    "CostModel": 2,
+    "Observer": 4,
+    "Stub": 8,
+    "FunctionProbe": 16,
+    "Script": 32,
+    "SoftwareReset": 64,
+    "BusBreak": 128,
+    "Waiting": 256,
+    "Interrupt": 512,
+    "OtherCoreIdle": 1024,
+    "OtherCoreActive": 2048
+  },
+  "inputSha256": {
+    "hello.json": "effb7f5d7fb33dcbabbe8ef8310c2b32ae875594553c056cde09c3fa762e5412",
+    "esp32s3_rev0_rom.elf": "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd",
+    "public/hello-bootloader.bin": "7efecb4df4463ece11ab286068a505ecd174f66fd4aacc53d887fcb9c18f0579",
+    "public/hello-ptable.bin": "7f00b6c042a89b15b0cac534f82ed988caf29278ff5700b0c511eb1b5bb7c820",
+    "public/hello_world.bin": "d9142e72453e8b71f6903f4dd869a4ee09c34d94cfafcb4f4309f8d2bf9040c9",
+    "atech.json": "56bd859ad01ce08a0ad37257c29adfdc04b21e8904a68ba2bc383cbc92230a02",
+    "public/atech-bootloader.bin": "876f58f4c5e2b2a3eae9e025b29096f034af99f6617edae3676817306d306dcf",
+    "public/atech-ptable.bin": "1d9cca96de0fe07ad7fc0648b9878ddecd9ce565e38b589ad20fea698ed4c80c",
+    "public/atech-firmware.bin": "f66e6178d75e2a3bb85e708e382ae646822c3331eb1590a5f7301928c2eb1000",
+    "public/atech-script1.txt": "53f404f05590a41ce68ee16f04700c9e378a58cf148035f6267b71d2d37b3458",
+    "atech-sid.json": "daf385744ba51940a68579e165420b116f431ce271206436b62db342777f0a3b",
+    "public/atech-sid.txt": "6aaf9b926968c8383d6370ba1ab34130fe8361ae53e5d9ae838ac75e001f42a3",
+    "panel.json": "cfc51b851a7a666f66860e5ba6e35ea6abc01c1160eca75b6b90a19f8dd0fb75",
+    "public/panel-bootloader.bin": "f804e8ef245d68ee0932650062e8f4d6b14df22d61fb39ba50f5e33977127801",
+    "public/panel-ptable.bin": "fb462bc675bf6928afe8de87977f72c7dfce38491d32aa89a9204b6d4d5b1066",
+    "public/panel-demo.bin": "8094e4be95f8d92c7ce41fe1acbbecbcdb3b31725fc292a1eef63cfcc22cf5a0",
+    "public/energydata.json": "aa8d5326406a83aa254d953d16f18f644c0112d523ef2e2e66b3ab1add4ff0cb",
+    "panel-sid.json": "cdc505d65324b72b9cc8676c9aeaf528d0ef2af2054e730adc0b2b751801835d",
+    "public/panel-sid.txt": "bb6e0b1f1d5945265f0310f2a40b59b03602b257b412f52f649fc2c66823f420"
+  },
+  "results": {
+    "hello": {
+      "attempts": 360,
+      "prepared": 0,
+      "committed": 0,
+      "commitRejected": 0,
+      "aborted": 0,
+      "declined": 0,
+      "superseded": 0,
+      "pending": 0,
+      "commitWithoutTicket": 0,
+      "abortWithoutTicket": 0,
+      "declineWithoutTicket": 0,
+      "rejections": {
+        "notS3": 0,
+        "scheduler": {
+          "Waiting": 358,
+          "OtherCoreActive": 1
+        },
+        "schedulerMasks": {
+          "256": 358,
+          "2048": 1
+        },
+        "timer": 0,
+        "window": 0,
+        "loopBoundary": 0,
+        "fetch": 0,
+        "decode": 0,
+        "capacity": 0,
+        "compile": 0
+      },
+      "unsupported": {
+        "J": 1
+      }
+    },
+    "atech": {
+      "attempts": 360,
+      "prepared": 0,
+      "committed": 0,
+      "commitRejected": 0,
+      "aborted": 0,
+      "declined": 0,
+      "superseded": 0,
+      "pending": 0,
+      "commitWithoutTicket": 0,
+      "abortWithoutTicket": 0,
+      "declineWithoutTicket": 0,
+      "rejections": {
+        "notS3": 0,
+        "scheduler": {
+          "Waiting": 357,
+          "OtherCoreActive": 97
+        },
+        "schedulerMasks": {
+          "256": 261,
+          "2048": 1,
+          "2304": 96
+        },
+        "timer": 0,
+        "window": 0,
+        "loopBoundary": 0,
+        "fetch": 0,
+        "decode": 0,
+        "capacity": 0,
+        "compile": 0
+      },
+      "unsupported": {
+        "AddiN": 1,
+        "J": 1
+      }
+    },
+    "atech-sid": {
+      "attempts": 360,
+      "prepared": 0,
+      "committed": 0,
+      "commitRejected": 0,
+      "aborted": 0,
+      "declined": 0,
+      "superseded": 0,
+      "pending": 0,
+      "commitWithoutTicket": 0,
+      "abortWithoutTicket": 0,
+      "declineWithoutTicket": 0,
+      "rejections": {
+        "notS3": 0,
+        "scheduler": {
+          "Waiting": 354,
+          "OtherCoreActive": 50,
+          "Interrupt": 1
+        },
+        "schedulerMasks": {
+          "256": 304,
+          "768": 1,
+          "2048": 1,
+          "2304": 49
+        },
+        "timer": 0,
+        "window": 0,
+        "loopBoundary": 0,
+        "fetch": 0,
+        "decode": 0,
+        "capacity": 0,
+        "compile": 0
+      },
+      "unsupported": {
+        "AddiN": 1,
+        "J": 1,
+        "Moveqz": 1,
+        "Movi": 1,
+        "S32iN": 1
+      }
+    },
+    "panel": {
+      "attempts": 360,
+      "prepared": 0,
+      "committed": 0,
+      "commitRejected": 0,
+      "aborted": 0,
+      "declined": 0,
+      "superseded": 0,
+      "pending": 0,
+      "commitWithoutTicket": 0,
+      "abortWithoutTicket": 0,
+      "declineWithoutTicket": 0,
+      "rejections": {
+        "notS3": 0,
+        "scheduler": {
+          "Waiting": 304,
+          "OtherCoreActive": 10,
+          "Interrupt": 6
+        },
+        "schedulerMasks": {
+          "256": 290,
+          "768": 6,
+          "2048": 2,
+          "2304": 8
+        },
+        "timer": 0,
+        "window": 0,
+        "loopBoundary": 0,
+        "fetch": 0,
+        "decode": 0,
+        "capacity": 0,
+        "compile": 0
+      },
+      "unsupported": {
+        "S32iN": 19,
+        "Addi": 8,
+        "AddiN": 2,
+        "Addx4": 2,
+        "Bbci": 2,
+        "Extui": 2,
+        "L32r": 2,
+        "Rsil": 2,
+        "AddN": 1,
+        "Bgei": 1,
+        "Bgeu": 1,
+        "Bgeui": 1,
+        "Blt": 1,
+        "Bnei": 1,
+        "BnezN": 1,
+        "Bnone": 1,
+        "Call8": 1,
+        "J": 1,
+        "MovN": 1,
+        "Or": 1,
+        "RetwN": 1,
+        "Rsr": 1,
+        "S32e": 1
+      }
+    },
+    "panel-sid": {
+      "attempts": 360,
+      "prepared": 0,
+      "committed": 0,
+      "commitRejected": 0,
+      "aborted": 0,
+      "declined": 0,
+      "superseded": 0,
+      "pending": 0,
+      "commitWithoutTicket": 0,
+      "abortWithoutTicket": 0,
+      "declineWithoutTicket": 0,
+      "rejections": {
+        "notS3": 0,
+        "scheduler": {
+          "Waiting": 304,
+          "OtherCoreActive": 10,
+          "Interrupt": 6
+        },
+        "schedulerMasks": {
+          "256": 290,
+          "768": 6,
+          "2048": 2,
+          "2304": 8
+        },
+        "timer": 0,
+        "window": 0,
+        "loopBoundary": 0,
+        "fetch": 0,
+        "decode": 0,
+        "capacity": 0,
+        "compile": 0
+      },
+      "unsupported": {
+        "S32iN": 19,
+        "Addi": 8,
+        "AddiN": 2,
+        "Addx4": 2,
+        "Bbci": 2,
+        "Extui": 2,
+        "L32r": 2,
+        "Rsil": 2,
+        "AddN": 1,
+        "Bgei": 1,
+        "Bgeu": 1,
+        "Bgeui": 1,
+        "Blt": 1,
+        "Bnei": 1,
+        "BnezN": 1,
+        "Bnone": 1,
+        "Call8": 1,
+        "J": 1,
+        "MovN": 1,
+        "Or": 1,
+        "RetwN": 1,
+        "Rsr": 1,
+        "S32e": 1
+      }
+    }
+  },
+  "scope": "Eligibility at Node driver boundaries; concurrent refusal masks retained. This does not measure compiled workload fraction, browser throughput or drawing latency."
+}
