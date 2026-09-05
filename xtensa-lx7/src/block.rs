@@ -62,7 +62,6 @@ pub struct BlockCache {
     pub flushes: u64,
     /// native code for blocks, when the host supports it and `jit_enabled`
     code: Option<crate::jit::CodeCache>,
-    helpers: Option<crate::jit::Helpers>,
     pub jit_enabled: bool,
     /// A machine observer requires one callback for each individual block execution.
     pub observed: bool,
@@ -77,7 +76,7 @@ impl BlockCache {
                      #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
                      profile: crate::jit::profile::Profile::default(),
                      entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
-                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, observed: false, compiled: 0, jit_instructions: 0 }
+                     code: crate::jit::CodeCache::new(CODE_SIZE), jit_enabled: crate::jit::AVAILABLE, observed: false, compiled: 0, jit_instructions: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
@@ -220,20 +219,27 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
 
     let code = cpu.blocks.entries[ei as usize].code;
     if code != crate::jit::NONE && cpu.blocks.jit_enabled && crate::jit::ready(cpu.blocks.code.as_ref().unwrap(), code) {
-        if cpu.blocks.helpers.is_none() { cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>()); }
         #[cfg(target_arch = "wasm32")]
         if crate::jit::loop_len(cpu.blocks.code.as_ref().unwrap(), code, cpu).is_some() {
             limit = budget.min(0xffff);
             for i in 0..3 { let d = cpu.ccompare[i].wrapping_sub(cpu.ccount); if d != 0 && d < limit { limit = d; } }
         }
         let entry = cpu.blocks.arena[k as usize].off;
-        // SAFETY: `code` and `entry` came from this live cache entry, the helpers were created for
-        // `B`, and `fast_mem` below describes this exclusively borrowed bus for the duration.
+        let fm = bus.fast_mem();
+        // Keep ownership outside Cpu while generated code and its helpers exclusively borrow
+        // the whole CPU. A shared reference fabricated through a raw pointer to cpu.blocks
+        // would still overlap that mutable borrow, even if generated code ignores the cache.
+        let cache = cpu.blocks.code.take().unwrap();
+        // Helpers are specialized for this invocation's B. Caching the first table in Cpu
+        // would call the wrong functions if the same CPU later runs with another Bus type.
+        let helpers = crate::jit::Helpers::new::<B>();
+        // SAFETY: `code` and `entry` came from this live cache, which remains owned locally
+        // throughout execution. Native fallback instructions remain in the unmoved arena;
+        // helpers copy them before borrowing Cpu. `fm` describes this exclusive bus borrow.
         let r = unsafe {
-            let b = &*(&cpu.blocks as *const BlockCache);          // the code reads nothing from the cache itself
-            let fm = bus.fast_mem();
-            crate::jit::run(b.code.as_ref().unwrap(), code, cpu, bus, b.helpers.as_ref().unwrap(), limit, entry, fm)
+            crate::jit::run(&cache, code, cpu, bus, &helpers, limit, entry, fm)
         };
+        cpu.blocks.code = Some(cache);
         let (done, exit) = (r & 0xffff, r >> 16);
         cpu.blocks.jit_instructions += done as u64;
         cpu.insn_count += done as u64;
@@ -277,4 +283,64 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
     // cut short by the budget or a timer deadline while still inside the block: resume there
     if trap.is_none() && !broke && k < end { cpu.blocks.resume = (ei, k, cpu.pc); }
     (done + pre as u32, trap)
+}
+
+#[cfg(any(test, feature = "wasm-jit-tests"))]
+pub(crate) mod ownership_tests {
+    use super::*;
+    use crate::bus::{FastMem, TlbEntry, TLB_ENTRIES};
+    use crate::{Fault, FlatRam};
+
+    // Distinct Bus types with deliberately identical layout: the regression observes wrong
+    // helper selection without relying on a layout mismatch or invalid memory access.
+    #[repr(transparent)]
+    struct TaggedBus<const VALUE: u32>(FlatRam);
+    impl<const VALUE: u32> Bus for TaggedBus<VALUE> {
+        fn read8(&mut self, a: u32) -> Result<u8, Fault> { self.0.read8(a) }
+        fn read16(&mut self, a: u32) -> Result<u16, Fault> { self.0.read16(a) }
+        fn read32(&mut self, _: u32) -> Result<u32, Fault> { Ok(VALUE) }
+        fn write8(&mut self, a: u32, v: u8) -> Result<(), Fault> { self.0.write8(a, v) }
+        fn write16(&mut self, a: u32, v: u16) -> Result<(), Fault> { self.0.write16(a, v) }
+        fn write32(&mut self, a: u32, v: u32) -> Result<(), Fault> { self.0.write32(a, v) }
+        fn fetch(&mut self, pc: u32) -> Result<[u8; 4], Fault> { self.0.fetch(pc) }
+        fn page_versions(&self) -> &[u32] { self.0.page_versions() }
+        fn fast_mem(&mut self) -> Option<FastMem> {
+            // Admit compiled loads but force their slow helper path.
+            static TLB: [TlbEntry; TLB_ENTRIES] = [TlbEntry::EMPTY; TLB_ENTRIES];
+            Some(FastMem { tlb: TLB.as_ptr(), page_ver: &mut self.0.ver })
+        }
+    }
+    fn bus<const VALUE: u32>() -> TaggedBus<VALUE> {
+        let mut ram = FlatRam::new(0x4037_0000, 64);
+        // l32i.n a3,a4,0; j self
+        ram.mem[..5].copy_from_slice(&[0x38, 0x04, 0x06, 0xff, 0xff]);
+        TaggedBus(ram)
+    }
+
+    #[cfg_attr(test, test)]
+    pub(crate) fn compiled_helpers_follow_the_current_bus_type() {
+        let mut cpu = Cpu::new(0);
+        cpu.ps = 0;
+        let mut first = bus::<11>();
+        let mut second = bus::<22>();
+        // A WASM slow load exits immediately; limit both backends to that instruction.
+        for _ in 0..40 {
+            cpu.pc = first.0.base;
+            assert_eq!(run_block(&mut cpu, &mut first, 1), (1, None));
+            assert_eq!(cpu.get_ar(3), 11);
+        }
+        let compiled = cpu.blocks.jit_instructions;
+        cpu.pc = second.0.base;
+        assert_eq!(run_block(&mut cpu, &mut second, 1), (1, None));
+        assert_eq!(cpu.get_ar(3), 22);
+        if crate::jit::AVAILABLE {
+            assert!(compiled > 0, "must exercise compiled helpers");
+            assert_eq!(cpu.blocks.jit_instructions, compiled + 1);
+        }
+        // Execution must restore cache ownership for subsequent invalidation and reuse.
+        cpu.blocks.flush();
+        cpu.pc = first.0.base;
+        assert_eq!(run_block(&mut cpu, &mut first, 1), (1, None));
+        assert_eq!(cpu.get_ar(3), 11);
+    }
 }

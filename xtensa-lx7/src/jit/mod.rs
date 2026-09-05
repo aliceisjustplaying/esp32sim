@@ -124,7 +124,9 @@ mod native {
     extern "C" fn h_exec<B: Bus>(cpu: *mut Cpu, bus: *mut B, insn: *const BlockInsn, pc: u32) -> u32 {
         // SAFETY: The CPU and bus pointers are the exclusive pointers supplied to `run`, and the
         // instruction points into the stable block arena for the duration of that call.
-        let (cpu, bus, i) = unsafe { (&mut *cpu, &mut *bus, &*insn) };
+        // Copy before borrowing Cpu: its owned arena must not remain shared through i.
+        let i = unsafe { *insn };
+        let (cpu, bus) = unsafe { (&mut *cpu, &mut *bus) };
         cpu.pc = pc;
         bus.note_pc(pc);
         match exec_insn(cpu, bus, &i.insn) { Ok(()) => (bus.block_break() as u32) << 1, Err(t) => { cpu.jit_trap = Some(t); 1 } }
