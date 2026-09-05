@@ -1,5 +1,9 @@
 # TinyDraw battery in browser WASM — 2026-09-04
 
+Capture retention: summaries and compact results remain here. Full profiles, event
+streams, console logs and screenshots are available through the [capture archive](../ARCHIVE.md).
+For raw-file reproduction commands below, restore those files to their original paths first.
+
 A fresh 604-slot gate firmware built from TinyDraw main
 `7a157d44a9da3312b1ecda2b45b116af2de28e63` completed in a dedicated browser
 Web Worker on an Apple M1 Pro. All 36 final boolean gates passed. The firmware
