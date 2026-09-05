@@ -377,6 +377,43 @@ fn hardware_loops() -> u32 {
             }
         }
     }
+    // The next iteration can leave fast RAM and fault; completed iterations, spills
+    // and the slow fault's PC must all agree with instruction-by-instruction execution.
+    let mut crossing = [insn(Op::L32i), insn(Op::Addi), insn(Op::S32i), insn(Op::Addi)];
+    crossing[0].insn.imm = 0;
+    crossing[1].insn.t = 4; crossing[1].insn.imm = 4;
+    crossing[2].insn.s = 6; crossing[2].insn.imm = 0;
+    crossing[3].insn.s = 6; crossing[3].insn.t = 6; crossing[3].insn.imm = 4;
+    for bi in &mut crossing { bi.max_ar = crate::exec::max_ar(&bi.insn); }
+    for entry in 0..4 {
+        for budget in 1..=20 {
+            compare_configured(&mut crossing, 15, entry, budget, None, true, false,
+                false, false, |c| {
+                    c.set_ar(4, BASE + 65_532); c.set_ar(6, BASE + 0x2000);
+                    c.lbeg = BASE; c.lend = BASE + 12; c.lcount = 9;
+                });
+            cases += 1;
+        }
+    }
+    // Implicit CALL return registers are not initialized until the suffix executes.
+    // A cut or return at a hardware backedge must not spill those uninitialized locals.
+    for call in [Op::Call4, Op::Call8, Op::Call12] {
+        let mut suffix = [insn(Op::Add), insn(Op::MovN), insn(call)];
+        suffix[2].insn.imm = (BASE + 0x100) as i32;
+        for budget in 1..=10 {
+            compare_configured(&mut suffix, 0, 0, budget, None, false, false,
+                false, false, |c| { c.lbeg = BASE; c.lend = BASE + 6; c.lcount = 2; });
+            cases += 1;
+        }
+    }
+    // LCOUNT-writing suffixes cannot enter production compilation, so accounting
+    // may use LCOUNT deltas as backedge counts even after the suffix executes.
+    for op in [Op::Wsr, Op::Xsr, Op::Loop, Op::Loopnez, Op::Loopgtz] {
+        let mut rejected = [insn(Op::Add), insn(Op::MovN), insn(op)];
+        rejected[2].insn.imm = crate::state::sr::LCOUNT as i32;
+        assert!(compile(&mut CodeCache::new(0).unwrap(), &mut rejected, BASE, true).is_none());
+        cases += 1;
+    }
     // Stores to either code page must stop at the first loop end, including aliases.
     // An observer head also stops there; a slow access exits after that instruction.
     let mut cc = CodeCache::new(0).unwrap();
@@ -398,6 +435,25 @@ fn hardware_loops() -> u32 {
         assert_eq!(result & 0xffff, expected, "hardware loop admission/exit");
         cases += 1;
     }
+    // Attaching/removing a block observer affects an already published module without
+    // flushing it; ordinary JIT execution stays active while repeated callbacks stop.
+    let mut c = cpu(0);
+    for observed in [true, false, true] {
+        let mut ram = Ram::new(true, false);
+        c.pc = BASE;
+        c.set_ar(4, BASE + 0x1000); c.set_ar(6, BASE + 0x2000);
+        c.lbeg = BASE; c.lend = BASE + 6; c.lcount = 9;
+        crate::Core::set_block_observation(&mut c, observed);
+        let fm = ram.fast_mem();
+        let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), 100, 0, fm) };
+        assert_eq!(result & 0xffff, if observed { 2 } else { 21 });
+        assert_eq!(c.blocks.clone().observed, observed);
+        c.blocks.flush();
+        assert_eq!(c.blocks.observed, observed);
+        cases += 1;
+    }
+    #[cfg(feature = "wasm-jit-profile")]
+    assert!(c.blocks.profile.report().contains("[wasm-loop] pc=40370000 calls=1 retained_backedges=9"));
     // Packed return counts remain bounded even when a direct caller offers > u16::MAX.
     let mut c = cpu(0);
     let mut ram = Ram::new(true, false);

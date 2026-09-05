@@ -29,11 +29,12 @@ pub struct Profile {
     rng: u32,
     calls: u64,
     rows: HashMap<(u32, bool), Row>,
+    loops: HashMap<u32, (u64, u64)>,
 }
 
 impl Default for Profile {
     fn default() -> Self {
-        Self { rng: 0x914f_7ab3, calls: 0, rows: HashMap::new() }
+        Self { rng: 0x914f_7ab3, calls: 0, rows: HashMap::new(), loops: HashMap::new() }
     }
 }
 
@@ -59,8 +60,21 @@ impl Profile {
         row.ms += ms;
     }
 
+    /// Count completed retained backedges once per dispatch, never in generated loops.
+    pub fn record_loop(&mut self, pc: u32, retained: u32) {
+        if retained == 0 { return; }
+        let row = self.loops.entry(pc).or_default();
+        row.0 += 1;
+        row.1 += retained as u64;
+    }
+
     pub fn report(&self) -> String {
         let mut text = format!("[wasm-profile] calls={} sample_probability=1/4096\n", self.calls);
+        let mut loops: Vec<_> = self.loops.iter().collect();
+        loops.sort_by_key(|(pc, _)| **pc);
+        for (pc, (calls, backedges)) in loops {
+            writeln!(text, "[wasm-loop] pc={pc:08x} calls={calls} retained_backedges={backedges}").unwrap();
+        }
         for jit in [false, true] {
             let rows: Vec<_> = self.rows.iter().filter(|((_, j), _)| *j == jit).collect();
             let samples: u64 = rows.iter().map(|(_, r)| r.samples).sum();

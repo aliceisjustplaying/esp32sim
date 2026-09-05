@@ -241,7 +241,7 @@ extern "C" fn h_overflow(cpu: *mut Cpu, max_ar: u32, pc: u32) -> u32 {
 /// The decoder already cuts at interior observers; the loop head needs its own check.
 pub fn loop_len(cc: &CodeCache, code: u32, cpu: &Cpu) -> Option<usize> {
     let b = &cc.blocks[code as usize];
-    if cpu.lcount == 0 || cpu.lbeg != b.pc
+    if cpu.blocks.observed || cpu.lcount == 0 || cpu.lbeg != b.pc
         || cpu.boundary_bloom & emu_core::core::pc_bit(b.pc) != 0 {
         return None;
     }
@@ -296,6 +296,11 @@ pub unsafe fn run<B: Bus>(
         // prefixes when locating the last executed instruction (including slow exits).
         let repeated = looping.map_or(0, |n| (initial_lcount - cpu.lcount) as usize * n);
         let offset = (entry + done) as usize - repeated;
+        #[cfg(feature = "wasm-jit-profile")]
+        if looping.is_some() {
+            let retained = initial_lcount - cpu.lcount - u32::from(offset == 0);
+            cpu.blocks.profile.record_loop(b.pc, retained);
+        }
         // Offset zero means the last retired instruction took a hardware backedge.
         // The destination PC alone cannot prove that: a suffix branch may target LBEG.
         let last = if offset == 0 { looping.unwrap() - 1 } else { offset - 1 };
