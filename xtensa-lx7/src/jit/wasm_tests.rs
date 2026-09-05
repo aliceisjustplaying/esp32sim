@@ -472,12 +472,77 @@ fn window_masks() -> u32 {
     cases
 }
 
+fn entry_and_shifts() -> u32 {
+    use Op::*;
+    let mut tests = 0;
+    for op in [Sll, Srl] {
+        for sar in (0..=64).chain([127, u32::MAX]) {
+            for value in [0, 1, 0x8000_0000, 0xffff_ffff, 0xa5a5_5a5a] {
+                for alias in [false, true] {
+                    let mut shift = insn(op);
+                    if alias { shift.insn.r = if op == Sll { 4 } else { 5 }; }
+                    shift.max_ar = crate::exec::max_ar(&shift.insn);
+                    let mut block = [insn(Nop), shift, insn(Xor)];
+                    let mut cc = CodeCache::new(0).unwrap();
+                    assert!(compile(&mut cc, &mut block, BASE, false).is_some());
+                    compare_configured(&mut block, 15, 0, 3, None, false, false,
+                        false, false, |c| {
+                            c.sar = sar;
+                            c.set_ar(4, value);
+                            c.set_ar(5, value);
+                        });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    for wb in [0, 14, 15] {
+        for flags in [0, ps::WOE, ps::WOE | ps::EXCM] {
+            // The +4 frame is outside the initial a15 guard, but can collide
+            // after ENTRY rotates. This catches reuse of the whole-block proof.
+            for windows in [0, 1 << ((wb + 4) & 15), 0xffff] {
+                for inc in 0..4 {
+                    for s in [0, 1, 3, 4] {
+                        let mut prefix = insn(Movi);
+                        prefix.insn.t = 1;
+                        prefix.insn.imm = -1;
+                        let mut enter = insn(Entry);
+                        enter.insn.s = s;
+                        enter.insn.imm = 32;
+                        let mut upper = insn(Add);
+                        upper.insn.r = 15;
+                        let mut block = [prefix, enter, upper, enter, insn(Xor)];
+                        for bi in &mut block { bi.max_ar = crate::exec::max_ar(&bi.insn); }
+                        let mut cc = CodeCache::new(0).unwrap();
+                        assert!(compile(&mut cc, &mut block, BASE, false).is_some());
+                        for entry in 0..5 {
+                            for budget in 0..=5 {
+                                compare_configured(&mut block, wb, entry, budget, None, false,
+                                    false, false, false, |c| {
+                                        c.ps = flags | (inc << ps::CALLINC_SHIFT);
+                                        c.windowstart = windows;
+                                        // Alternate active loop ends directly after ENTRY.
+                                        c.lcount = inc & 1;
+                                        c.lend = BASE + 6;
+                                        c.lbeg = BASE;
+                                    });
+                                tests += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    tests
+}
+
 pub fn run_tests() -> u32 {
     use Op::*;
     let ops = [
         Nop, NopN, Memw, Extw, Movi, MoviN, Mov, MovN, Add, AddN, Sub, And, Or, Xor, Mull, Salt,
         Saltu, Addi, AddiN, Addmi, Addx2, Addx4, Addx8, Subx2, Subx4, Subx8, Neg, Slli, Srli, Srai,
-        Extui, Sext, Ssr, Ssl, Ssa8l, Ssa8b, Ssai, Abs, Src, Min, Max, Minu, Maxu, Moveqz, Movnez,
+        Sll, Srl, Extui, Sext, Ssr, Ssl, Ssa8l, Ssa8b, Ssai, Abs, Src, Min, Max, Minu, Maxu, Moveqz, Movnez,
         Movltz, Movgez, Nsau, J, Jx, Beqz, BeqzN, Bnez, BnezN, Bltz, Bgez, Beqi, Bnei, Blti, Bgei,
         Bltui, Bgeui, Beq, Bne, Blt, Bge, Bltu, Bgeu, Bbci, Bbsi, Bbc, Bbs,
     ];
@@ -539,5 +604,5 @@ pub fn run_tests() -> u32 {
     }
     scheduler();
     retention();
-    tests + 2 + window_masks() + terminal_helpers() + whole_block_guards()
+    tests + 2 + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
 }
