@@ -359,7 +359,8 @@ impl<S: Soc> Machine<S> {
     // ------------------------------------------------------------------ execution
     /// Execute up to `budget` instructions on `core` the fast way (blocks, JIT). Returns the
     /// iterations consumed (as `step_core` would have counted them) and a stop, if any.
-    #[inline]
+    #[cfg_attr(all(target_arch = "wasm32", feature = "wasm-cpu-profile"), inline(never))]
+    #[cfg_attr(not(all(target_arch = "wasm32", feature = "wasm-cpu-profile")), inline)]
     fn step_blocks(&mut self, core: usize, budget: u32) -> (u32, Option<Stop>) {
         let cpu = &mut self.cores[core];
         let pc = cpu.pc();

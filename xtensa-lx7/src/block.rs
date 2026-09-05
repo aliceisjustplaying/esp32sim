@@ -180,13 +180,16 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
             let e = cpu.blocks.entries[ei];
             let ops = &cpu.blocks.arena[e.start as usize..(e.start + e.n as u32) as usize];
             let fast = bus.fast_mem().is_some();
-            cpu.blocks.profile.record(pc, before != cpu.blocks.jit_instructions, result.0, elapsed, ops, fast);
+            // Attribute resumed execution to its decoder block head, matching JIT names.
+            cpu.blocks.profile.record(e.pc, before != cpu.blocks.jit_instructions, result.0, elapsed, ops, fast);
             return result;
         }
     }
     run_block_inner(cpu, bus, budget)
 }
 
+// Keep this boundary visible to a sampling profiler without adding per-block clocks.
+#[cfg_attr(all(target_arch = "wasm32", feature = "wasm-cpu-profile"), inline(never))]
 fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
     if let Some(t) = cpu.check_interrupts() { return (1, Some(t)); }
     if cpu.waiting { cpu.advance_ccount(1); return (1, None); }

@@ -388,7 +388,20 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
     g.1 = 0;
     emit_body(&mut g, block, false);
     g.end();
-    module(&g.0)
+    #[cfg(not(feature = "wasm-cpu-profile"))]
+    { module(&g.0) }
+    #[cfg(feature = "wasm-cpu-profile")]
+    {
+        let mut bytes = module(&g.0);
+        // Diagnostic names connect host CPU samples to the guest ELF without a debugger.
+        let mut names = Vec::new();
+        name(&mut names, "name");
+        let mut functions = vec![1, 0]; // one function, index zero
+        name(&mut functions, &format!("xtensa_{:08x}", block.pc));
+        section(&mut names, 1, &functions);
+        section(&mut bytes, 0, &names);
+        bytes
+    }
 }
 
 fn emit_body(g: &mut Gen, block: &Block, whole: bool) {

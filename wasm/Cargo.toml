@@ -20,3 +20,4 @@ xtensa-lx7 = { path = "../xtensa-lx7" }
 [features]
 jit-tests = ["xtensa-lx7/wasm-jit-tests"]
 jit-profile = ["xtensa-lx7/wasm-jit-profile"]
+cpu-profile = ["xtensa-lx7/wasm-cpu-profile", "esp-soc/wasm-cpu-profile"]

@@ -225,6 +225,7 @@ extern "C" fn h_overflow(cpu: *mut Cpu, max_ar: u32, pc: u32) -> u32 {
 /// # Safety
 /// `code` must be ready in this cache; `entry` must be its recorded instruction index.
 /// `h` must have been created for B. FastMem must describe this bus and remain valid.
+#[cfg_attr(feature = "wasm-cpu-profile", inline(never))]
 pub unsafe fn run<B: Bus>(
     cc: &CodeCache,
     code: u32,
