@@ -481,7 +481,10 @@ impl<S: Soc> Machine<S> {
     fn run_unmodeled(&mut self, max_insns: u64) -> Stop {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); }
+        for c in &mut self.cores {
+            c.set_boundaries(self.stub_bloom | self.probe_bloom);
+            c.set_block_observation(self.probes.contains(Wants::BLOCK));
+        }
         // the fast path cannot honour per-instruction observers; those runs single-step
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
@@ -758,7 +761,10 @@ impl<S: Soc> Machine<S> {
     pub fn run_until_cycle(&mut self, target: u64) -> RunUntil {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); }
+        for c in &mut self.cores {
+            c.set_boundaries(self.stub_bloom | self.probe_bloom);
+            c.set_block_observation(self.probes.contains(Wants::BLOCK));
+        }
         let blocks = !self.probes.contains(Wants::INSN);
         let no_skip = self.probes.contains(Wants::NO_IDLE_SKIP);
         loop {

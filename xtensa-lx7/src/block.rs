@@ -64,6 +64,8 @@ pub struct BlockCache {
     code: Option<crate::jit::CodeCache>,
     helpers: Option<crate::jit::Helpers>,
     pub jit_enabled: bool,
+    /// A machine observer requires one callback for each individual block execution.
+    pub observed: bool,
     pub compiled: u64,
     /// Instructions retired through compiled blocks (including their interpreter helpers).
     pub jit_instructions: u64,
@@ -75,7 +77,7 @@ impl BlockCache {
                      #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
                      profile: crate::jit::profile::Profile::default(),
                      entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
-                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, compiled: 0, jit_instructions: 0 }
+                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, observed: false, compiled: 0, jit_instructions: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
@@ -95,7 +97,7 @@ impl BlockCache {
 
 impl Default for BlockCache { fn default() -> Self { Self::new() } }
 /// A clone of a CPU starts with an empty cache; compiled code is tied to the original's arena.
-impl Clone for BlockCache { fn clone(&self) -> Self { let mut b = Self::new(); b.jit_enabled = self.jit_enabled; b } }
+impl Clone for BlockCache { fn clone(&self) -> Self { let mut b = Self::new(); b.jit_enabled = self.jit_enabled; b.observed = self.observed; b } }
 
 /// The instruction ends a block: control transfer, or a change to interrupt/timer/window state
 /// that the per-block checks depend on.

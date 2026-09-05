@@ -343,7 +343,7 @@ impl Gen {
             self.set(WB);
         }
     }
-    fn fallthrough(&mut self, next: u32) {
+    fn fallthrough(&mut self, next: u32, looping: bool) {
         self.advance();
         self.cpu(LEND);
         self.c(next);
@@ -359,9 +359,19 @@ impl Gen {
         self.get(0);
         self.cpu(LBEG);
         self.store(PC);
+        if looping {
+            // LCOUNT-if, LEND-if, instruction-if, shared-backedge block.
+            self.0.extend([0x0c, 3]);
+        } else {
+            self.ret(CODE_LEFT);
+        }
+        self.end();
+        self.end();
+    }
+    fn repeat_guard(&mut self) {
         self.get(2);
         self.load(offset_of!(Helpers, loop_end));
-        self.c(next);
+        self.cpu(LEND);
         self.op(0x46);
         self.get(2);
         self.load(offset_of!(Helpers, version_ptrs));
@@ -370,32 +380,30 @@ impl Gen {
         self.op(0x71);
         self.begin_if();
         // A store into either decoded code page must return to normal validation.
+        // This guard is emitted once per block, not once per possible loop-end PC.
         for n in 0..2 {
             self.get(2);
             self.load(offset_of!(Helpers, version_ptrs) + n * 4);
             self.load(0);
             self.get(2);
             self.load(offset_of!(Helpers, versions) + n * 4);
-            self.op(0x47);
-            self.begin_if();
-            self.ret(CODE_LEFT);
-            self.end();
+            self.op(0x46);
+            if n != 0 { self.op(0x71); }
         }
         self.get(DONE);
         self.get(3);
-        self.op(0x4f);
+        self.op(0x49);
+        self.op(0x71);
         self.begin_if();
-        self.ret(CODE_LEFT);
-        self.end();
         self.c(0);
         self.set(4);
-        // repeat-if, LCOUNT-if, LEND-if, instruction-if, enclosing WASM loop
-        self.0.extend([0x0c, 4]);
+        // version/budget-if, admission-if, enclosing WASM loop.
+        self.0.extend([0x0c, 2]);
+        self.end();
         self.end();
         self.ret(CODE_LEFT);
-        self.end();
-        self.end();
     }
+
 }
 
 pub(super) fn generate(block: &Block) -> Vec<u8> {
@@ -456,12 +464,27 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
     g.begin_if();
     emit_body(&mut g, block, true);
     g.end();
+    let looping = block.loop_prefix != 0;
     // On a backedge, later instructions may have dirtied locals before an early cut.
-    g.1 = registers;
-    g.0.extend([0x03, 0x40]);
+    // The whole-body pass has already identified exactly those written registers.
+    if looping {
+        // A suffix CALL can write an implicit return register that was never loaded.
+        // It cannot participate in a repeated prefix; do not spill it before it executes.
+        g.1 &= registers;
+        g.0.extend([0x03, 0x40, 0x02, 0x40]); // repeat loop, shared-backedge block
+    } else {
+        g.1 = 0;
+    }
     emit_body(&mut g, block, false);
-    g.end();
-    g.op(0x00); // emit_body always returns; the void loop has no fallthrough value.
+    if looping {
+        g.end();
+        // Only loaded operands can be live at a fallthrough backedge; suffix calls
+        // return directly and must not contribute their uninitialized return locals.
+        g.1 &= registers;
+        g.repeat_guard();
+        g.end();
+        g.op(0x00); // every iteration returns or branches; no void-loop fallthrough
+    }
     g.end();
     #[cfg(not(feature = "wasm-cpu-profile"))]
     { module(&g.0) }
@@ -506,7 +529,7 @@ fn emit_body(g: &mut Gen, block: &Block, whole: bool) {
             if whole {
                 g.advance();
             } else {
-                g.fallthrough(next);
+                g.fallthrough(next, block.loop_prefix != 0);
             }
         } else {
             g.fallback(bi, pc, next, last, !last);
