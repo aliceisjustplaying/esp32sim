@@ -959,8 +959,9 @@ impl<S: Soc> Machine<S> {
                     let mut tc = (self.bus.cycles() + step).max(self.script.knob_next);   // queue detents back to back, never overlapping
                     for _ in 0..d.unsigned_abs() { for (pn, l) in Self::quadrature(clk, dt, d > 0) { self.script.events.push((tc, ScriptAction::Gpio(pn, l))); tc += step; } tc += step * 4; }
                     self.script.knob_next = tc;
-                    self.script.events.sort_by_key(|e| e.0);
-                    self.script.pos = self.script.events.iter().position(|e| e.0 > self.bus.cycles()).unwrap_or(self.script.events.len());
+                    // Keep already consumed events before the cursor; pending events at the
+                    // current horizon have not necessarily run when input arrives at run entry.
+                    self.script.events[self.script.pos..].sort_by_key(|e| e.0);
                 }
                 "serial" => { let line = json_str(&m, "line").unwrap_or_default(); self.bus.serial_input(format!("{}\n", line).as_bytes()); }
                 "touch" => { let x: u16 = json_str(&m, "x").and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = json_str(&m, "y").and_then(|v| v.parse().ok()).unwrap_or(0);

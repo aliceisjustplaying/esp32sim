@@ -30,7 +30,7 @@ function loop() {
   const turnMs = pacing.turnMs(now);
   while (cur < target) {
     const before = performance.now();
-    const remaining = pacing.sliceCycles(target - cur, turnMs - (before - now));
+    const remaining = pacing.sliceCycles(target - cur, turnMs - (before - now), now);
     const previous = cur;
     const rc = wasm.esp32sim_run(emu, remaining, Date.now());
     cur = wasm.esp32sim_cycles(emu);
