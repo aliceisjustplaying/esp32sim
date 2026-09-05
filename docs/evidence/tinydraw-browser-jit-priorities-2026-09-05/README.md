@@ -1,5 +1,9 @@
 # Highest-value browser JIT work for TinyDraw
 
+Capture retention: summaries and compact results remain here. Full profiles, event
+streams, console logs and screenshots are available through the [capture archive](../ARCHIVE.md).
+For raw-file reproduction commands below, restore those files to their original paths first.
+
 The strongest next investment is **compiling complete hot raster paths**: fill the
 function-entry and variable-shift gaps, then add the native floating-point operations
 those paths use. The larger architectural opportunity is keeping connected hot paths
@@ -96,8 +100,8 @@ the comparison. The separate `ssaa_receipt=yellow` remains unresolved.
 
 [Battery summaries](battery/summary.txt), [CPU categories](battery/cpu-summary.txt),
 and [drawing CPU attribution](drawing-profile/summary.txt) retain the detailed ranking.
-Large JSON receipts are gzip-compressed; the joining tool accepts compressed event
-files. Raw `.cpuprofile` files remain directly importable. These diagnostic builds
+The capture archive links the full JSON receipts and importable `.cpuprofile` files;
+the joining tool accepts downloaded compressed event files. These diagnostic builds
 change Rust inlining and add sampling overhead; their wall times are not optimization
 benchmarks. CPU captures ran separately from builds and other simulator runs.
 

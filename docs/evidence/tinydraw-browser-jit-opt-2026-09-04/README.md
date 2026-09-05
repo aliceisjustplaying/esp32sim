@@ -1,5 +1,9 @@
 # TinyDraw browser JIT: less recompilation and execution overhead
 
+Capture retention: summaries and compact results remain here. Full profiles, event
+streams, console logs and screenshots are available through the [capture archive](../ARCHIVE.md).
+For raw-file reproduction commands below, restore those files to their original paths first.
+
 The optimized JIT completed the same fresh TinyDraw battery in **130.0002 seconds**,
 down from **154.1016 seconds** for the previous JIT: 15.6% less wall time in these
 runs. The interpreter on the same updated binary took 156.9248 seconds.

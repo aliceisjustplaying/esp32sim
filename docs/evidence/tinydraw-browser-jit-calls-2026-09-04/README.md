@@ -1,5 +1,9 @@
 # TinyDraw browser JIT: hot call blocks and fewer instruction checks
 
+Capture retention: summaries and compact results remain here. Full profiles, event
+streams, console logs and screenshots are available through the [capture archive](../ARCHIVE.md).
+For raw-file reproduction commands below, restore those files to their original paths first.
+
 The final candidate reduced the median battery time from **138.4022 seconds** to
 **132.3533 seconds** across three runs each: **4.37% less wall time**. All candidate
 runs were faster than all baselines in this session.
