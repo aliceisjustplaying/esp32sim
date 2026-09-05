@@ -1,4 +1,4 @@
-//! Binary WASM emitter for a straight-line Xtensa block.
+//! Binary WASM emitter for an Xtensa block, with budgeted hardware-loop prefixes.
 use super::*;
 #[path = "wasm_float.rs"]
 mod float;
@@ -87,6 +87,17 @@ pub(super) fn supported(op: crate::Op, fast: bool) -> bool {
             op,
             L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN | Lsi | Ssi
         ))
+}
+
+// Initially admit only straight-line integer/memory loops. Slow memory paths leave
+// generated execution; no helper can change mappings or interrupt state and continue.
+pub(super) fn loop_safe(op: crate::Op, fast: bool) -> bool {
+    use crate::Op::*;
+    matches!(op, Nop | NopN | Movi | MoviN | Mov | MovN | Add | AddN | Sub
+        | And | Or | Xor | Addi | AddiN | Addmi | Addx2 | Addx4 | Addx8
+        | Subx2 | Subx4 | Subx8 | Neg | Slli | Srli | Srai | Extui | Sext)
+        || (fast && matches!(op, L8ui | L16ui | L16si | L32i | L32iN | L32r
+            | S8i | S16i | S32i | S32iN))
 }
 
 // Calls and returns must end decoder blocks. Normal calls are emitted directly;
@@ -332,7 +343,7 @@ impl Gen {
             self.set(WB);
         }
     }
-    fn fallthrough(&mut self, next: u32) {
+    fn fallthrough(&mut self, next: u32, looping: bool) {
         self.advance();
         self.cpu(LEND);
         self.c(next);
@@ -348,10 +359,51 @@ impl Gen {
         self.get(0);
         self.cpu(LBEG);
         self.store(PC);
-        self.ret(CODE_LEFT);
+        if looping {
+            // LCOUNT-if, LEND-if, instruction-if, shared-backedge block.
+            self.0.extend([0x0c, 3]);
+        } else {
+            self.ret(CODE_LEFT);
+        }
         self.end();
         self.end();
     }
+    fn repeat_guard(&mut self) {
+        self.get(2);
+        self.load(offset_of!(Helpers, loop_end));
+        self.cpu(LEND);
+        self.op(0x46);
+        self.get(2);
+        self.load(offset_of!(Helpers, version_ptrs));
+        self.op(0x45);
+        self.op(0x45);
+        self.op(0x71);
+        self.begin_if();
+        // A store into either decoded code page must return to normal validation.
+        // This guard is emitted once per block, not once per possible loop-end PC.
+        for n in 0..2 {
+            self.get(2);
+            self.load(offset_of!(Helpers, version_ptrs) + n * 4);
+            self.load(0);
+            self.get(2);
+            self.load(offset_of!(Helpers, versions) + n * 4);
+            self.op(0x46);
+            if n != 0 { self.op(0x71); }
+        }
+        self.get(DONE);
+        self.get(3);
+        self.op(0x49);
+        self.op(0x71);
+        self.begin_if();
+        self.c(0);
+        self.set(4);
+        // version/budget-if, admission-if, enclosing WASM loop.
+        self.0.extend([0x0c, 2]);
+        self.end();
+        self.end();
+        self.ret(CODE_LEFT);
+    }
+
 }
 
 pub(super) fn generate(block: &Block) -> Vec<u8> {
@@ -412,8 +464,27 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
     g.begin_if();
     emit_body(&mut g, block, true);
     g.end();
-    g.1 = 0;
+    let looping = block.loop_prefix != 0;
+    // On a backedge, later instructions may have dirtied locals before an early cut.
+    // The whole-body pass has already identified exactly those written registers.
+    if looping {
+        // A suffix CALL can write an implicit return register that was never loaded.
+        // It cannot participate in a repeated prefix; do not spill it before it executes.
+        g.1 &= registers;
+        g.0.extend([0x03, 0x40, 0x02, 0x40]); // repeat loop, shared-backedge block
+    } else {
+        g.1 = 0;
+    }
     emit_body(&mut g, block, false);
+    if looping {
+        g.end();
+        // Only loaded operands can be live at a fallthrough backedge; suffix calls
+        // return directly and must not contribute their uninitialized return locals.
+        g.1 &= registers;
+        g.repeat_guard();
+        g.end();
+        g.op(0x00); // every iteration returns or branches; no void-loop fallthrough
+    }
     g.end();
     #[cfg(not(feature = "wasm-cpu-profile"))]
     { module(&g.0) }
@@ -458,7 +529,7 @@ fn emit_body(g: &mut Gen, block: &Block, whole: bool) {
             if whole {
                 g.advance();
             } else {
-                g.fallthrough(next);
+                g.fallthrough(next, block.loop_prefix != 0);
             }
         } else {
             g.fallback(bi, pc, next, last, !last);

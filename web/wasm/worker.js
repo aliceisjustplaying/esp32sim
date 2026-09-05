@@ -1,4 +1,6 @@
 import { createJitHost } from './jit.mjs';
+import { createPacing } from './pacing.mjs';
+let pacing = createPacing();
 // esp32sim in a Web Worker: owns the wasm instance, paces it to wall time, and relays the UI
 // protocol (docs/web-ui.md) to the page as postMessage — text as strings, binary as ArrayBuffers.
 let CPU_HZ = 240e6;   // replaced from the module once an emulator exists: the C3 runs at 160 MHz
@@ -25,13 +27,17 @@ function loop() {
   let cur = wasm.esp32sim_cycles(emu);
   let target = (now - t0) / 1000 * CPU_HZ;
   if (target - cur > CPU_HZ * 0.5) { t0 = now - cur / CPU_HZ * 1000; target = cur + CPU_HZ * 0.02; resyncs++; }   // hopelessly behind: skip, don't burst
+  const turnMs = pacing.turnMs(now);
   while (cur < target) {
-    const remaining = Math.min(target - cur, 2_000_000);
+    const before = performance.now();
+    const remaining = pacing.sliceCycles(target - cur, turnMs - (before - now), now);
+    const previous = cur;
     const rc = wasm.esp32sim_run(emu, remaining, Date.now());
     cur = wasm.esp32sim_cycles(emu);
+    pacing.observe(cur - previous, performance.now() - before);
     drain();
     if (rc !== 0) { running = false; postMessage({ stopped: rc }); return; }
-    if (performance.now() - now > 25) break;                       // let messages flow, come back
+    if (performance.now() - now >= turnMs) break;                       // let messages flow, come back
   }
   const aheadMs = cur / CPU_HZ * 1000 - (performance.now() - t0);
   const wall = performance.now();
@@ -49,6 +55,7 @@ onmessage = async (ev) => {
     if (m.op === 'init') { const r = await WebAssembly.instantiate(m.wasm, imports); wasm = r.instance.exports;  postMessage({ ready: true }); }
     else if (m.op === 'create') {
       running = false;
+      pacing = createPacing();
       if (emu) { wasm.esp32sim_delete(emu); emu = 0; }
       emu = withBytes(enc.encode(m.board), (p, n) => wasm.esp32sim_new(p, n, m.flash_mb | 0, m.psram_mb | 0));
       if (emu !== 0) wasm.esp32sim_set_jit(emu, m.jit === false ? 0 : 1);
@@ -60,7 +67,7 @@ onmessage = async (ev) => {
     else if (m.op === 'wifi') { withBytes(enc.encode(m.spec), (p, n) => wasm.esp32sim_wifi(emu, p, n)); }
     else if (m.op === 'start') { const rc = wasm.esp32sim_boot(emu, m.appDirect ? 1 : 0); if (rc === 0) { running = true; t0 = performance.now(); loop(); } postMessage({ started: rc === 0 }); }
     else if (m.op === 'stop') { running = false; }
-    else if (m.op === 'text') { withBytes(enc.encode(m.data), (p, n) => wasm.esp32sim_in_text(emu, p, n)); }
-    else if (m.op === 'bin') { withBytes(new Uint8Array(m.data), (p, n) => wasm.esp32sim_in_bin(emu, p, n)); }
+    else if (m.op === 'text') { pacing.input(performance.now()); withBytes(enc.encode(m.data), (p, n) => wasm.esp32sim_in_text(emu, p, n)); }
+    else if (m.op === 'bin') { pacing.input(performance.now()); withBytes(new Uint8Array(m.data), (p, n) => wasm.esp32sim_in_bin(emu, p, n)); }
   } catch (err) { postMessage({ log: '[worker] ' + (err && err.stack || err) }); running = false; }
 };

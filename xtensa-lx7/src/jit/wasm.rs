@@ -31,6 +31,7 @@ struct Block {
     pc: u32,
     pcs: Vec<u32>,
     fast: bool,
+    loop_prefix: usize,
     generation: u64,
     hits: Cell<u32>,
     slot: Cell<u32>,
@@ -146,6 +147,7 @@ fn queue(cc: &mut CodeCache, instructions: &mut [BlockInsn], pc: u32, fast: bool
         .collect();
     cc.blocks.push(Block {
         pcs,
+        loop_prefix: instructions.iter().take_while(|i| emitter::loop_safe(i.insn.op, fast)).count(),
         instructions: instructions.to_vec(),
         pc,
         fast,
@@ -176,10 +178,14 @@ pub fn ready(cc: &CodeCache, code: u32) -> bool {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct Helpers {
     exec: usize,
     overflow: usize,
     fused: usize,
+    loop_end: u32,
+    version_ptrs: [*const u32; 2],
+    versions: [u32; 2],
 }
 impl Helpers {
     pub fn new<B: Bus>() -> Self {
@@ -187,6 +193,9 @@ impl Helpers {
             exec: h_exec::<B> as *const () as usize,
             overflow: h_overflow as *const () as usize,
             fused: h_fused as *const () as usize,
+            loop_end: 0,
+            version_ptrs: [std::ptr::null(); 2],
+            versions: [0; 2],
         }
     }
 }
@@ -228,6 +237,19 @@ extern "C" fn h_overflow(cpu: *mut Cpu, max_ar: u32, pc: u32) -> u32 {
     }
 }
 
+/// A loop may repeat only across an ordinary instruction boundary with no observer.
+/// The decoder already cuts at interior observers; the loop head needs its own check.
+pub fn loop_len(cc: &CodeCache, code: u32, cpu: &Cpu) -> Option<usize> {
+    let b = &cc.blocks[code as usize];
+    if cpu.blocks.observed || cpu.lcount == 0 || cpu.lbeg != b.pc
+        || cpu.boundary_bloom & emu_core::core::pc_bit(b.pc) != 0 {
+        return None;
+    }
+    b.instructions.iter().zip(&b.pcs).take(b.loop_prefix)
+        .position(|(i, pc)| pc.wrapping_add(i.insn.len as u32) == cpu.lend)
+        .map(|n| n + 1)
+}
+
 /// Execute a published block against the exclusively borrowed machine state.
 ///
 /// # Safety
@@ -251,11 +273,38 @@ pub unsafe fn run<B: Bus>(
     let (tlb, versions) = fm
         .map(|m| (m.tlb, m.page_ver))
         .unwrap_or((std::ptr::null(), std::ptr::null_mut()));
-    let result = f(cpu, bus, h, budget, entry, tlb, versions);
+    let b = &cc.blocks[code as usize];
+    let looping = loop_len(cc, code, cpu);
+    let initial_lcount = cpu.lcount;
+    let result = if looping.is_some() {
+        let mut guarded = *h;
+        let last = b.pcs.last().unwrap().wrapping_add(b.instructions.last().unwrap().insn.len as u32 - 1);
+        let indices = [bus.code_page(b.pc), bus.code_page(last)];
+        let pv = bus.page_versions();
+        if let (Some(a), Some(z)) = (pv.get(indices[0] as usize), pv.get(indices[1] as usize)) {
+            guarded.loop_end = cpu.lend;
+            guarded.version_ptrs = [a as *const u32, z as *const u32];
+            guarded.versions = [*a, *z];
+        }
+        f(cpu, bus, &guarded, budget.min(0xffff), entry, tlb, versions)
+    } else {
+        f(cpu, bus, h, budget.min(0xffff), entry, tlb, versions)
+    };
     let done = result & 0xffff;
     if done > 0 {
-        let b = &cc.blocks[code as usize];
-        let pc = b.pcs[(entry + done - 1) as usize];
+        // LCOUNT changes only at the admitted hardware backedge. Subtract repeated
+        // prefixes when locating the last executed instruction (including slow exits).
+        let repeated = looping.map_or(0, |n| (initial_lcount - cpu.lcount) as usize * n);
+        let offset = (entry + done) as usize - repeated;
+        #[cfg(feature = "wasm-jit-profile")]
+        if looping.is_some() {
+            let retained = initial_lcount - cpu.lcount - u32::from(offset == 0);
+            cpu.blocks.profile.record_loop(b.pc, retained);
+        }
+        // Offset zero means the last retired instruction took a hardware backedge.
+        // The destination PC alone cannot prove that: a suffix branch may target LBEG.
+        let last = if offset == 0 { looping.unwrap() - 1 } else { offset - 1 };
+        let pc = b.pcs[last];
         bus.note_pc(pc);
     }
     // Direct memory accesses need no peripheral callbacks. Preserve the last instruction PC

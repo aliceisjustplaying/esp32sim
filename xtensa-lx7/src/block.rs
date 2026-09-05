@@ -16,8 +16,9 @@
 //!   interrupt line (`Bus::block_break`) and the block ends there, so delivery latency is
 //!   unchanged. Instructions that alter `PS`, `INTENABLE` or interrupt state end blocks.
 //! - **Control flow**: after each instruction the actual `pc` is compared with the fall-through
-//!   address, so taken branches, zero-overhead loop back-edges and exceptions all leave the
-//!   block immediately.
+//!   address, so taken branches and exceptions leave the block immediately. The WASM JIT
+//!   may retain a safe hardware-loop prefix across backedges within the same budget; it
+//!   validates code versions and observer boundaries before each repeat.
 //! - **Self-modifying code**: a block remembers the write-version of the (at most two) pages
 //!   it was decoded from and is rebuilt when either changes. Stores from within a block
 //!   into its own remaining instructions take effect at the next block entry — on silicon
@@ -63,6 +64,8 @@ pub struct BlockCache {
     code: Option<crate::jit::CodeCache>,
     helpers: Option<crate::jit::Helpers>,
     pub jit_enabled: bool,
+    /// A machine observer requires one callback for each individual block execution.
+    pub observed: bool,
     pub compiled: u64,
     /// Instructions retired through compiled blocks (including their interpreter helpers).
     pub jit_instructions: u64,
@@ -74,7 +77,7 @@ impl BlockCache {
                      #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
                      profile: crate::jit::profile::Profile::default(),
                      entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
-                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, compiled: 0, jit_instructions: 0 }
+                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, observed: false, compiled: 0, jit_instructions: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
@@ -94,7 +97,7 @@ impl BlockCache {
 
 impl Default for BlockCache { fn default() -> Self { Self::new() } }
 /// A clone of a CPU starts with an empty cache; compiled code is tied to the original's arena.
-impl Clone for BlockCache { fn clone(&self) -> Self { let mut b = Self::new(); b.jit_enabled = self.jit_enabled; b } }
+impl Clone for BlockCache { fn clone(&self) -> Self { let mut b = Self::new(); b.jit_enabled = self.jit_enabled; b.observed = self.observed; b } }
 
 /// The instruction ends a block: control transfer, or a change to interrupt/timer/window state
 /// that the per-block checks depend on.
@@ -164,7 +167,8 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
     Ok((ei as u32, start, n))
 }
 
-/// Run one block (or the rest of a cut block) at `cpu.pc`, at most `budget` instructions.
+/// Run a block (or a cut continuation) at `cpu.pc`, at most `budget` instructions.
+/// WASM may repeat an admitted hardware-loop prefix within that same budget.
 /// Returns `(iterations, trap)` where iterations is what a loop over `step()` would have
 /// consumed: executed instructions, plus one for a trap taken before an instruction ran.
 pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
@@ -217,6 +221,11 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
     let code = cpu.blocks.entries[ei as usize].code;
     if code != crate::jit::NONE && cpu.blocks.jit_enabled && crate::jit::ready(cpu.blocks.code.as_ref().unwrap(), code) {
         if cpu.blocks.helpers.is_none() { cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>()); }
+        #[cfg(target_arch = "wasm32")]
+        if crate::jit::loop_len(cpu.blocks.code.as_ref().unwrap(), code, cpu).is_some() {
+            limit = budget.min(0xffff);
+            for i in 0..3 { let d = cpu.ccompare[i].wrapping_sub(cpu.ccount); if d != 0 && d < limit { limit = d; } }
+        }
         let entry = cpu.blocks.arena[k as usize].off;
         // SAFETY: `code` and `entry` came from this live cache entry, the helpers were created for
         // `B`, and `fast_mem` below describes this exclusively borrowed bus for the duration.
@@ -232,7 +241,21 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         return match exit {
             crate::jit::CODE_TRAP => (done, cpu.jit_trap.take()),
             crate::jit::CODE_TRAP_PRE => (done + 1, cpu.jit_trap.take()),
-            crate::jit::CODE_CUT => { if k + done < end { cpu.blocks.resume = (ei, k + done, cpu.pc); } (done, None) }
+            crate::jit::CODE_CUT => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    // A repeated hardware prefix makes retired count differ from arena offset.
+                    let e = cpu.blocks.entries[ei as usize];
+                    let mut at = e.pc;
+                    for index in e.start..end {
+                        if at == cpu.pc { cpu.blocks.resume = (ei, index, cpu.pc); break; }
+                        at = at.wrapping_add(cpu.blocks.arena[index as usize].insn.len as u32);
+                    }
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                if k + done < end { cpu.blocks.resume = (ei, k + done, cpu.pc); }
+                (done, None)
+            }
             _ => (done, None),
         };
     }
