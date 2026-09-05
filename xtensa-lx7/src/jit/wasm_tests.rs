@@ -542,6 +542,45 @@ fn entry_and_shifts() -> u32 {
     tests
 }
 
+fn floating_point_guard_proof() -> u32 {
+    use Op::*;
+    let mut tests = 0;
+    // Ineligible helper-containing blocks still test the emitter's continuation
+    // machinery. A helper may disable or enable CP before the scalar instruction.
+    for op in [Wsr, Xsr] {
+        for enabled in [0, 1] {
+            for entry in 0..4 {
+                for budget in [1, 2, 4] {
+                    let mut block = [insn(Add), insn(op), insn(AddS), insn(Rfr)];
+                    block[1].insn.imm = crate::state::sr::CPENABLE as i32;
+                    compare_configured(&mut block, 0, entry, budget, None, true, false, false, false, |c| {
+                        c.cpenable = enabled; c.set_ar(5, enabled ^ 1);
+                        c.fr[3] = 2f32.to_bits(); c.fr[4] = 3f32.to_bits(); c.fr[5] = 4f32.to_bits();
+                    });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    // Disabled CP must not prevent a prefix store or cause a trap when a budget
+    // cut or taken branch exits before the FP instruction.
+    for prefix in [S32i, Bt] {
+        for enabled in [0, 1] {
+            for entry in 0..3 {
+                for budget in [1, 3] {
+                    let mut block = [insn(prefix), insn(AddS), insn(Rfr)];
+                    if prefix == Bt { block[0].insn.imm = (BASE + 48) as i32; }
+                    compare_configured(&mut block, 0, entry, budget, Some(BASE + 512), true, false, false, false, |c| {
+                        c.cpenable = enabled; c.br = 1 << 4;
+                    });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    tests
+}
+
 fn floating_point() -> u32 {
     use Op::*;
     let ops = [AddS, SubS, MulS, MaddS, MsubS, MovS, AbsS, NegS, Rfr, Wfr, ConstS,
@@ -686,5 +725,5 @@ pub fn run_tests() -> u32 {
     }
     scheduler();
     retention();
-    tests + floating_point() + 2 + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
+    tests + floating_point() + floating_point_guard_proof() + 2 + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
 }

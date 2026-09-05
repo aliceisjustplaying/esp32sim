@@ -401,6 +401,14 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
     g.op(0x4b);
     g.op(0x72);
     g.op(0x71);
+    if float::can_hoist_guard(block) {
+        // A disabled coprocessor takes the checked path, which completes the
+        // integer prefix and traps exactly at the first executed FP instruction.
+        g.cpu(offset_of!(Cpu, cpenable));
+        g.c(1);
+        g.op(0x71);
+        g.op(0x71);
+    }
     g.begin_if();
     emit_body(&mut g, block, true);
     g.end();
@@ -426,6 +434,7 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
 fn emit_body(g: &mut Gen, block: &Block, whole: bool) {
     let mut pc = block.pc;
     let mut window_changed = false;
+    let cp_enabled = whole && float::can_hoist_guard(block);
     for (index, bi) in block.instructions.iter().enumerate() {
         let next = pc.wrapping_add(bi.insn.len as u32);
         if !whole {
@@ -445,7 +454,7 @@ fn emit_body(g: &mut Gen, block: &Block, whole: bool) {
             g.overflow(bi.max_ar, pc);
         }
         let last = index + 1 == block.instructions.len();
-        if emit_instruction(g, bi, block.fast, pc, next, last) {
+        if emit_instruction(g, bi, block.fast, pc, next, last, cp_enabled) {
             if whole {
                 g.advance();
             } else {
@@ -473,13 +482,14 @@ fn emit_instruction(
     pc: u32,
     next: u32,
     last: bool,
+    cp_enabled: bool,
 ) -> bool {
     use crate::Op::*;
     let i = &bi.insn;
     let (r, s, t) = (i.r, i.s, i.t);
     let imm = i.imm as u32;
     if float::supported(i.op) {
-        float::emit(g, bi, pc, next, last);
+        float::emit(g, bi, pc, next, last, cp_enabled);
         return true;
     }
     match i.op {
@@ -779,7 +789,7 @@ fn emit_instruction(
             g.end();
         }
         L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN | Lsi | Ssi if fast => {
-            if matches!(i.op, Lsi | Ssi) { float::guard(g, bi, pc, next, last); }
+            if !cp_enabled && matches!(i.op, Lsi | Ssi) { float::guard(g, bi, pc, next, last); }
             emit_memory(g, bi, pc, next, last);
         }
         _ => return false,

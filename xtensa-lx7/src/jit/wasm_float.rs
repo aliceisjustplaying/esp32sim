@@ -54,6 +54,25 @@ pub(super) fn supported(op: crate::Op) -> bool {
     )
 }
 
+// CPENABLE cannot change within an entirely supported block. A final call/return
+// helper may change machine state, but exits immediately. Do not extend this proof
+// across arbitrary interpreter helpers: they may write CPENABLE before later FP.
+pub(super) fn can_hoist_guard(block: &Block) -> bool {
+    block
+        .instructions
+        .iter()
+        .any(|bi| requires_coprocessor(bi.insn.op))
+        && block.instructions.iter().enumerate().all(|(n, bi)| {
+            super::supported(bi.insn.op, block.fast)
+                || (n + 1 == block.instructions.len() && terminal_helper(bi.insn.op))
+        })
+}
+
+fn requires_coprocessor(op: crate::Op) -> bool {
+    use crate::Op::*;
+    (supported(op) && !matches!(op, Movf | Movt | Bf | Bt)) || matches!(op, Lsi | Ssi)
+}
+
 // Floating and boolean register numbers are not windowed integer operands.
 // Avoid loading unrelated ARs at every dispatch into a scalar drawing block.
 pub(super) fn registers(i: &crate::Insn) -> u16 {
@@ -79,12 +98,12 @@ pub(super) fn guard(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool)
     g.end();
 }
 
-pub(super) fn emit(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
+pub(super) fn emit(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool, cp_enabled: bool) {
     use crate::Op::*;
     let i = &bi.insn;
     let (r, s, t) = (i.r, i.s, i.t);
     let imm = i.imm as u32;
-    if !matches!(i.op, Movf | Movt | Bf | Bt) {
+    if !cp_enabled && requires_coprocessor(i.op) {
         guard(g, bi, pc, next, last);
     }
     match i.op {
