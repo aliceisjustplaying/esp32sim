@@ -14,7 +14,7 @@ await new Promise(r=>setTimeout(r,3000));
 const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);await fs.writeFile(`${output}/drawing-before.png`,Buffer.from(shot.data,'base64'));
 await evaluate('window.replay();true');
 while(!await evaluate('window.finished'))await new Promise(r=>setTimeout(r,1000));
-const receipt=await evaluate('window.receipt');await fs.writeFile(`${output}/drawing-response.json`,JSON.stringify(receipt,null,2));console.log(JSON.stringify(receipt.summary));
+const receipt=await evaluate('window.receipt');receipt.captureBrowser=v;await fs.writeFile(`${output}/drawing-response.json`,JSON.stringify(receipt,null,2));console.log(JSON.stringify(receipt.summary));
 const after=await send('Page.captureScreenshot',{format:'png'},sessionId);await fs.writeFile(`${output}/drawing-after.png`,Buffer.from(after.data,'base64'));
 if (receipt.summary.committed !== 3) process.exitCode=1;
 } finally { clearTimeout(timeout); if (ws.readyState === WebSocket.OPEN) await send('Target.closeTarget',{targetId}); ws.close(); }

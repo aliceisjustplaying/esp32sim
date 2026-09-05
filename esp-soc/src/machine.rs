@@ -441,6 +441,8 @@ impl<S: Soc> Machine<S> {
     /// Run until something stops us, for at most `max_insns` scheduling steps. The no-model path
     /// uses 64-instruction quanta; the modeled path schedules one priced event at a time.
     pub fn run(&mut self, max_insns: u64) -> Stop {
+        self.web_poll_input();
+        self.refresh_irq();
         if self.cost.is_some() { self.run_modeled(max_insns) } else { self.run_unmodeled(max_insns) }
     }
 
@@ -481,7 +483,10 @@ impl<S: Soc> Machine<S> {
     fn run_unmodeled(&mut self, max_insns: u64) -> Stop {
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); }
+        for c in &mut self.cores {
+            c.set_boundaries(self.stub_bloom | self.probe_bloom);
+            c.set_block_observation(self.probes.contains(Wants::BLOCK));
+        }
         // the fast path cannot honour per-instruction observers; those runs single-step
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
@@ -756,9 +761,14 @@ impl<S: Soc> Machine<S> {
     /// Nothing else about a run changes: stubs, probes, observers, scripts and the console work
     /// as in `run`; `max_cycles` is not consulted.
     pub fn run_until_cycle(&mut self, target: u64) -> RunUntil {
+        self.web_poll_input();
+        self.refresh_irq();
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
-        for c in &mut self.cores { c.set_boundaries(self.stub_bloom | self.probe_bloom); }
+        for c in &mut self.cores {
+            c.set_boundaries(self.stub_bloom | self.probe_bloom);
+            c.set_block_observation(self.probes.contains(Wants::BLOCK));
+        }
         let blocks = !self.probes.contains(Wants::INSN);
         let no_skip = self.probes.contains(Wants::NO_IDLE_SKIP);
         loop {
@@ -920,6 +930,8 @@ impl<S: Soc> Machine<S> {
         w.send_text(&format!("{{\"t\":\"stat\",\"time\":{:.2},\"insns\":{},\"frames\":{},\"behind\":{:.2},\"resyncs\":{},\"cam\":{},\"gpio_in\":\"{:x}\"}}", self.seconds(), self.insns(), board.display_frames(), self.rt.behind, self.rt.resyncs, self.bus.camera_frames(), self.bus.gpio_input()));
     }
 
+    // Host input is accepted at run boundaries without advancing device time. The periodic
+    // poll remains necessary for native callers that run continuously rather than in slices.
     fn web_poll_input(&mut self) {
         let Some(w) = self.web.clone() else { return };
         use crate::web::json_str;
@@ -947,8 +959,9 @@ impl<S: Soc> Machine<S> {
                     let mut tc = (self.bus.cycles() + step).max(self.script.knob_next);   // queue detents back to back, never overlapping
                     for _ in 0..d.unsigned_abs() { for (pn, l) in Self::quadrature(clk, dt, d > 0) { self.script.events.push((tc, ScriptAction::Gpio(pn, l))); tc += step; } tc += step * 4; }
                     self.script.knob_next = tc;
-                    self.script.events.sort_by_key(|e| e.0);
-                    self.script.pos = self.script.events.iter().position(|e| e.0 > self.bus.cycles()).unwrap_or(self.script.events.len());
+                    // Keep already consumed events before the cursor; pending events at the
+                    // current horizon have not necessarily run when input arrives at run entry.
+                    self.script.events[self.script.pos..].sort_by_key(|e| e.0);
                 }
                 "serial" => { let line = json_str(&m, "line").unwrap_or_default(); self.bus.serial_input(format!("{}\n", line).as_bytes()); }
                 "touch" => { let x: u16 = json_str(&m, "x").and_then(|v| v.parse().ok()).unwrap_or(0); let y: u16 = json_str(&m, "y").and_then(|v| v.parse().ok()).unwrap_or(0);

@@ -1,5 +1,7 @@
-//! Binary WASM emitter for a straight-line Xtensa block.
+//! Binary WASM emitter for an Xtensa block, with budgeted hardware-loop prefixes.
 use super::*;
+#[path = "wasm_float.rs"]
+mod float;
 
 // Most unsupported operations keep their block interpreted. Calls/returns at the
 // end may use a helper after the compiled prefix; memory misses also use helpers.
@@ -80,11 +82,22 @@ pub(super) fn supported(op: crate::Op, fast: bool) -> bool {
             | Bbsi
             | Bbc
             | Bbs
-    ) || (fast
+    ) || float::supported(op) || (fast
         && matches!(
             op,
-            L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN
+            L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN | Lsi | Ssi
         ))
+}
+
+// Initially admit only straight-line integer/memory loops. Slow memory paths leave
+// generated execution; no helper can change mappings or interrupt state and continue.
+pub(super) fn loop_safe(op: crate::Op, fast: bool) -> bool {
+    use crate::Op::*;
+    matches!(op, Nop | NopN | Movi | MoviN | Mov | MovN | Add | AddN | Sub
+        | And | Or | Xor | Addi | AddiN | Addmi | Addx2 | Addx4 | Addx8
+        | Subx2 | Subx4 | Subx8 | Neg | Slli | Srli | Srai | Extui | Sext)
+        || (fast && matches!(op, L8ui | L16ui | L16si | L32i | L32iN | L32r
+            | S8i | S16i | S32i | S32iN))
 }
 
 // Calls and returns must end decoder blocks. Normal calls are emitted directly;
@@ -160,6 +173,18 @@ impl Gen {
         self.c(2);
         self.op(0x74);
         self.op(0x6a);
+    }
+    fn fr(&mut self, r: u8) {
+        self.cpu(offset_of!(Cpu, fr) + 4 * r as usize);
+    }
+    fn float(&mut self, r: u8) {
+        self.fr(r);
+        self.op(0xbe); // f32.reinterpret_i32 preserves register bits.
+    }
+    fn boolean(&mut self, r: u8) {
+        self.cpu(offset_of!(Cpu, br));
+        self.c(1 << r);
+        self.op(0x71);
     }
     fn ar(&mut self, r: u8) {
         self.get(13 + r);
@@ -318,7 +343,7 @@ impl Gen {
             self.set(WB);
         }
     }
-    fn fallthrough(&mut self, next: u32) {
+    fn fallthrough(&mut self, next: u32, looping: bool) {
         self.advance();
         self.cpu(LEND);
         self.c(next);
@@ -334,10 +359,51 @@ impl Gen {
         self.get(0);
         self.cpu(LBEG);
         self.store(PC);
-        self.ret(CODE_LEFT);
+        if looping {
+            // LCOUNT-if, LEND-if, instruction-if, shared-backedge block.
+            self.0.extend([0x0c, 3]);
+        } else {
+            self.ret(CODE_LEFT);
+        }
         self.end();
         self.end();
     }
+    fn repeat_guard(&mut self) {
+        self.get(2);
+        self.load(offset_of!(Helpers, loop_end));
+        self.cpu(LEND);
+        self.op(0x46);
+        self.get(2);
+        self.load(offset_of!(Helpers, version_ptrs));
+        self.op(0x45);
+        self.op(0x45);
+        self.op(0x71);
+        self.begin_if();
+        // A store into either decoded code page must return to normal validation.
+        // This guard is emitted once per block, not once per possible loop-end PC.
+        for n in 0..2 {
+            self.get(2);
+            self.load(offset_of!(Helpers, version_ptrs) + n * 4);
+            self.load(0);
+            self.get(2);
+            self.load(offset_of!(Helpers, versions) + n * 4);
+            self.op(0x46);
+            if n != 0 { self.op(0x71); }
+        }
+        self.get(DONE);
+        self.get(3);
+        self.op(0x49);
+        self.op(0x71);
+        self.begin_if();
+        self.c(0);
+        self.set(4);
+        // version/budget-if, admission-if, enclosing WASM loop.
+        self.0.extend([0x0c, 2]);
+        self.end();
+        self.end();
+        self.ret(CODE_LEFT);
+    }
+
 }
 
 pub(super) fn generate(block: &Block) -> Vec<u8> {
@@ -352,6 +418,8 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
             mask
         } else if !supported(bi.insn.op, block.fast) {
             u16::MAX
+        } else if float::supported(bi.insn.op) || matches!(bi.insn.op, crate::Op::Lsi | crate::Op::Ssi) {
+            mask | float::registers(&bi.insn)
         } else {
             mask | (1 << bi.insn.r) | (1 << bi.insn.s) | (1 << bi.insn.t)
         }
@@ -385,11 +453,38 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
     g.op(0x4b);
     g.op(0x72);
     g.op(0x71);
+    if float::can_hoist_guard(block) {
+        // A disabled coprocessor takes the checked path, which completes the
+        // integer prefix and traps exactly at the first executed FP instruction.
+        g.cpu(offset_of!(Cpu, cpenable));
+        g.c(1);
+        g.op(0x71);
+        g.op(0x71);
+    }
     g.begin_if();
     emit_body(&mut g, block, true);
     g.end();
-    g.1 = 0;
+    let looping = block.loop_prefix != 0;
+    // On a backedge, later instructions may have dirtied locals before an early cut.
+    // The whole-body pass has already identified exactly those written registers.
+    if looping {
+        // A suffix CALL can write an implicit return register that was never loaded.
+        // It cannot participate in a repeated prefix; do not spill it before it executes.
+        g.1 &= registers;
+        g.0.extend([0x03, 0x40, 0x02, 0x40]); // repeat loop, shared-backedge block
+    } else {
+        g.1 = 0;
+    }
     emit_body(&mut g, block, false);
+    if looping {
+        g.end();
+        // Only loaded operands can be live at a fallthrough backedge; suffix calls
+        // return directly and must not contribute their uninitialized return locals.
+        g.1 &= registers;
+        g.repeat_guard();
+        g.end();
+        g.op(0x00); // every iteration returns or branches; no void-loop fallthrough
+    }
     g.end();
     #[cfg(not(feature = "wasm-cpu-profile"))]
     { module(&g.0) }
@@ -410,6 +505,7 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
 fn emit_body(g: &mut Gen, block: &Block, whole: bool) {
     let mut pc = block.pc;
     let mut window_changed = false;
+    let cp_enabled = whole && float::can_hoist_guard(block);
     for (index, bi) in block.instructions.iter().enumerate() {
         let next = pc.wrapping_add(bi.insn.len as u32);
         if !whole {
@@ -429,11 +525,11 @@ fn emit_body(g: &mut Gen, block: &Block, whole: bool) {
             g.overflow(bi.max_ar, pc);
         }
         let last = index + 1 == block.instructions.len();
-        if emit_instruction(g, bi, block.fast, pc, next, last) {
+        if emit_instruction(g, bi, block.fast, pc, next, last, cp_enabled) {
             if whole {
                 g.advance();
             } else {
-                g.fallthrough(next);
+                g.fallthrough(next, block.loop_prefix != 0);
             }
         } else {
             g.fallback(bi, pc, next, last, !last);
@@ -457,11 +553,16 @@ fn emit_instruction(
     pc: u32,
     next: u32,
     last: bool,
+    cp_enabled: bool,
 ) -> bool {
     use crate::Op::*;
     let i = &bi.insn;
     let (r, s, t) = (i.r, i.s, i.t);
     let imm = i.imm as u32;
+    if float::supported(i.op) {
+        float::emit(g, bi, pc, next, last, cp_enabled);
+        return true;
+    }
     match i.op {
         Nop | NopN | Memw | Extw => {}
         Movi | MoviN => {
@@ -758,7 +859,8 @@ fn emit_instruction(
             g.ret(CODE_LEFT);
             g.end();
         }
-        L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN if fast => {
+        L8ui | L16ui | L16si | L32i | L32iN | L32r | S8i | S16i | S32i | S32iN | Lsi | Ssi if fast => {
+            if !cp_enabled && matches!(i.op, Lsi | Ssi) { float::guard(g, bi, pc, next, last); }
             emit_memory(g, bi, pc, next, last);
         }
         _ => return false,
@@ -769,7 +871,7 @@ fn emit_instruction(
 fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     use crate::Op::*;
     let i = &bi.insn;
-    let store = matches!(i.op, S8i | S16i | S32i | S32iN);
+    let store = matches!(i.op, S8i | S16i | S32i | S32iN | Ssi);
     let width = match i.op {
         L8ui | S8i => 1,
         L16ui | L16si | S16i => 2,
@@ -839,7 +941,7 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     g.get(REL);
     g.op(0x6a);
     if store {
-        g.ar(i.t);
+        if i.op == Ssi { g.fr(i.t); } else { g.ar(i.t); }
         g.op(match width {
             1 => 0x3a,
             2 => 0x3b,
@@ -863,6 +965,7 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
         g.op(0x6a);
         g.store(0);
     } else {
+        if i.op == Lsi { g.set(TMP); g.get(0); g.get(TMP); }
         g.op(match i.op {
             L8ui => 0x2d,
             L16ui => 0x2f,
@@ -870,7 +973,7 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
             _ => 0x28,
         });
         g.0.extend([0, 0]);
-        g.set_ar(i.t);
+        if i.op == Lsi { g.store(offset_of!(Cpu, fr) + 4 * i.t as usize); } else { g.set_ar(i.t); }
     }
     g.0.extend([0x0c, 1]);
     g.end();

@@ -157,7 +157,7 @@ fn browser_touch_reaches_the_amoled_controller_and_gpio() {
     web.push_incoming(r#"{"t":"touch","x":"123","y":"234","down":"1"}"#.to_string());
     m.web = Some(web);
     park(&mut m, 0, IRAM, &SPIN);
-    m.max_cycles = esp32s3::periph::CPU_HZ / 50 + 256;
+    m.max_cycles = 64;
 
     assert!(matches!(m.run(u64::MAX), Stop::Halted));
     let state = *touch.lock().expect("AMOLED touch state mutex poisoned");
@@ -198,4 +198,62 @@ fn observers_count_the_same_instructions_either_way() {
         let r = m.reports();
         assert!(r.contains(&format!("of {} instructions", m.insns())), "{}", r);
     }
+}
+
+#[test]
+fn queued_web_input_is_ordered_and_does_not_advance_guest_time() {
+    let mut m = machine();
+    let board = esp32s3::board::WaveshareAmoled18V2::new();
+    let touch = board.touch_state.clone();
+    m.bus.board = Box::new(board);
+    let web = esp_soc::web::WebServer::queued();
+    m.web = Some(web.clone());
+    for (x, down) in [(10, 1), (20, 1), (30, 0)] {
+        web.push_incoming(format!(r#"{{"t":"touch","x":"{x}","y":"40","down":"{down}"}}"#));
+    }
+    let cycles = m.bus.cycles;
+    let insns = m.insns();
+    assert!(matches!(m.run(0), Stop::MaxInsns));
+    let state = *touch.lock().unwrap();
+    assert_eq!((state.x, state.y, state.down), (30, 40, true));
+    assert!(state.release_pending, "controller retains an unread press until the guest reads it");
+    assert_eq!(m.bus.cycles, cycles);
+    assert_eq!(m.insns(), insns);
+    assert!(web.poll_incoming().is_empty());
+    assert!(web.take_outbox().is_empty(), "input must not force a display publication");
+
+    web.push_incoming(r#"{"t":"touch","x":"50","y":"60","down":"1"}"#.into());
+    assert!(matches!(m.run_until_cycle(cycles), esp_soc::RunUntil::Reached));
+    let state = *touch.lock().unwrap();
+    assert_eq!((state.x, state.y, state.down), (50, 60, true));
+    assert!(!state.release_pending, "the next press clears the earlier queued release");
+    assert_eq!(m.bus.cycles, cycles);
+    assert_eq!(m.insns(), insns);
+}
+
+
+#[test]
+fn knob_input_preserves_pending_scripts_at_the_current_horizon() {
+    let mut m = machine();
+    park(&mut m, 0, IRAM, &SPIN);
+    let web = esp_soc::web::WebServer::queued();
+    m.web = Some(web.clone());
+    m.load_script("0 serial first\n").unwrap();
+    web.push_incoming(r#"{"t":"knob","d":"1"}"#.into());
+    assert!(matches!(m.run(0), Stop::MaxInsns));
+    assert_eq!(m.script.pos, 0);
+    assert!(matches!(&m.script.events[0].1, ScriptAction::Serial(s) if s == "first\n"));
+    m.max_cycles = 64;
+    m.run(u64::MAX);
+    assert_eq!(m.script.pos, 1, "the time-zero script executes once");
+
+    let horizon = m.bus.cycles;
+    m.script.events.insert(m.script.pos, (horizon, ScriptAction::Serial("second".into())));
+    web.push_incoming(r#"{"t":"knob","d":"-1"}"#.into());
+    assert!(matches!(m.run(0), Stop::MaxInsns));
+    assert_eq!(m.script.pos, 1, "neither skip pending events nor replay consumed ones");
+    assert!(matches!(&m.script.events[1].1, ScriptAction::Serial(s) if s == "second"));
+    m.max_cycles = horizon + 64;
+    m.run(u64::MAX);
+    assert_eq!(m.script.pos, 2);
 }

@@ -34,6 +34,7 @@ impl emu_core::Core for Cpu {
     fn step<B: Bus>(&mut self, bus: &mut B) -> StepOutcome { crate::exec::step_outcome(self, bus) }
     fn run<B: Bus>(&mut self, bus: &mut B, budget: u32) -> (u32, Option<Trap>) { crate::block::run_block(self, bus, budget) }
     fn set_boundaries(&mut self, bloom: u64) { if self.boundary_bloom != bloom { self.blocks.flush(); self.boundary_bloom = bloom; } }
+    fn set_block_observation(&mut self, enabled: bool) { self.blocks.observed = enabled; }
     fn flush_caches(&mut self) { self.blocks.flush(); }
     fn set_jit(&mut self, on: bool) { self.blocks.jit_enabled = on; }
     fn code_cache_stats(&self) -> Option<(u64, u64, u64, usize)> { Some((self.blocks.builds, self.blocks.flushes, self.blocks.compiled, self.blocks.code_bytes())) }

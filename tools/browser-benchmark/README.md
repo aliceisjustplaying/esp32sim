@@ -119,3 +119,40 @@ Keep raw captures in the `target/` output directories used above. Commit compact
 results and reproduction details according to the [evidence retention policy](../../docs/evidence/README.md).
 Publish captures needed to substantiate a claim as fork release assets or in a separate
 evidence repository, then include verified links and SHA-256 hashes in the summary.
+
+## Compare workload intervals
+
+Use `compare-runs.py` to compare repeated uninstrumented captures:
+
+```sh
+python3 tools/browser-benchmark/compare-runs.py \
+  --baseline target/baseline-1 target/baseline-2 target/baseline-3 \
+  --candidate target/candidate-1 target/candidate-2 target/candidate-3 \
+  > target/comparison.json
+```
+
+The report includes every sample and the median change in total host wall time. It also
+splits execution at firmware console milestones into boot/native kernels, cold rendering
+and initial pan, pan sequences, cache tour, mixed drawing, hairlines, export, history and
+settling. These intervals include setup and console delivery between milestones; they
+are not isolated function timings or guest-device measurements.
+
+The tool requires matching console hashes, instruction counts, final firmware verdicts,
+Chrome versions and V8 versions. Verify matching firmware hashes and ordinary, unprofiled
+builds from the capture provenance too. Run comparisons serially with other builds and
+simulator workloads stopped; three samples per build are a starting point, not a
+statistical confidence guarantee.
+
+## Select a candidate worker
+
+When comparing changes to the worker itself, select its checkout separately from the
+WASM and firmware paths in the asset map:
+
+```sh
+python3 tools/browser-benchmark/serve.py /absolute/path/assets.json \
+  --web-root /absolute/path/candidate-checkout --port 8801
+```
+
+`--web-root` selects `web/wasm/worker.js` and its imported JavaScript modules. The asset
+map still selects the WASM binary and firmware. Record both the worker checkout commit
+and the asset hashes so each candidate uses its matching worker and binary.

@@ -7,9 +7,10 @@ import pathlib
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('assets', type=pathlib.Path)
 parser.add_argument('--port', type=int, default=8792)
+parser.add_argument('--web-root', type=pathlib.Path, help='Checkout containing the worker and its JavaScript modules')
 args = parser.parse_args()
 assets = json.loads(args.assets.read_text())
-root = pathlib.Path(__file__).resolve().parents[2]
+root = (args.web_root or pathlib.Path(__file__).resolve().parents[2]).resolve()
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):

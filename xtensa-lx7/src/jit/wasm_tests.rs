@@ -112,6 +112,11 @@ fn cpu(seed: u32) -> Cpu {
     c
 }
 fn same(a: &Cpu, b: &Cpu) {
+    assert_eq!(a.fr, b.fr, "float register bits");
+    assert_eq!(a.br, b.br, "boolean registers");
+    assert_eq!(a.cpenable, b.cpenable);
+    assert_eq!(a.fcr, b.fcr);
+    assert_eq!(a.fsr, b.fsr);
     assert_eq!(a.ar, b.ar, "registers at {:x}", a.pc);
     assert_eq!(a.pc, b.pc, "PC");
     assert_eq!(a.ps, b.ps);
@@ -200,7 +205,10 @@ fn compare_configured(
     let mut count = 0;
     let mut trap = None;
     let mut pre = false;
-    for instruction in block.iter().skip(entry as usize).take(budget as usize) {
+    let repeat = loop_len(&cc, code, &a).is_some();
+    for _ in 0..budget {
+        let index = a.pc.wrapping_sub(BASE) / 3;
+        let Some(instruction) = block.get(index as usize) else { break; };
         if let Some(t) = a.check_overflow(instruction.max_ar) {
             trap = Some(t);
             pre = true;
@@ -216,7 +224,7 @@ fn compare_configured(
         }
         // A pre-instruction trap after a completed prefix must still be checked
         // on the next iteration; it retires no additional instruction.
-        if a.pc != pc + 3 || (count == done && exit != CODE_TRAP_PRE) {
+        if (a.pc != pc + 3 && !(repeat && a.pc == a.lbeg)) || (count == done && exit != CODE_TRAP_PRE) {
             break;
         }
     }
@@ -348,6 +356,203 @@ fn scheduler() {
     }
     panic!("timer interrupt not delivered");
 }
+fn hardware_loops() -> u32 {
+    // A load/store prefix ending before the decoded block end, like panel transport.
+    // The trailing ADD must run once after LCOUNT expires, never on a backedge.
+    let mut block = [insn(Op::L32i), insn(Op::S32i), insn(Op::Add)];
+    block[0].insn.imm = 0;
+    block[1].insn.imm = 0;
+    block[1].insn.s = 6;
+    let mut cases = 0;
+    for lcount in [0, 1, 2, 9] {
+        for entry in 0..3 {
+            for budget in 0..=25 {
+                compare_configured(&mut block, 15, entry, budget, None, true, false,
+                    false, false, |c| {
+                        c.set_ar(4, BASE + 0x1000);
+                        c.set_ar(6, BASE + 0x2000);
+                        c.lbeg = BASE; c.lend = BASE + 6; c.lcount = lcount;
+                    });
+                cases += 1;
+            }
+        }
+    }
+    // The next iteration can leave fast RAM and fault; completed iterations, spills
+    // and the slow fault's PC must all agree with instruction-by-instruction execution.
+    let mut crossing = [insn(Op::L32i), insn(Op::Addi), insn(Op::S32i), insn(Op::Addi)];
+    crossing[0].insn.imm = 0;
+    crossing[1].insn.t = 4; crossing[1].insn.imm = 4;
+    crossing[2].insn.s = 6; crossing[2].insn.imm = 0;
+    crossing[3].insn.s = 6; crossing[3].insn.t = 6; crossing[3].insn.imm = 4;
+    for bi in &mut crossing { bi.max_ar = crate::exec::max_ar(&bi.insn); }
+    for entry in 0..4 {
+        for budget in 1..=20 {
+            compare_configured(&mut crossing, 15, entry, budget, None, true, false,
+                false, false, |c| {
+                    c.set_ar(4, BASE + 65_532); c.set_ar(6, BASE + 0x2000);
+                    c.lbeg = BASE; c.lend = BASE + 12; c.lcount = 9;
+                });
+            cases += 1;
+        }
+    }
+    // Implicit CALL return registers are not initialized until the suffix executes.
+    // A cut or return at a hardware backedge must not spill those uninitialized locals.
+    for call in [Op::Call4, Op::Call8, Op::Call12] {
+        let mut suffix = [insn(Op::Add), insn(Op::MovN), insn(call)];
+        suffix[2].insn.imm = (BASE + 0x100) as i32;
+        for budget in 1..=10 {
+            compare_configured(&mut suffix, 0, 0, budget, None, false, false,
+                false, false, |c| { c.lbeg = BASE; c.lend = BASE + 6; c.lcount = 2; });
+            cases += 1;
+        }
+    }
+    // LCOUNT-writing suffixes cannot enter production compilation, so accounting
+    // may use LCOUNT deltas as backedge counts even after the suffix executes.
+    for op in [Op::Wsr, Op::Xsr, Op::Loop, Op::Loopnez, Op::Loopgtz] {
+        let mut rejected = [insn(Op::Add), insn(Op::MovN), insn(op)];
+        rejected[2].insn.imm = crate::state::sr::LCOUNT as i32;
+        assert!(compile(&mut CodeCache::new(0).unwrap(), &mut rejected, BASE, true).is_none());
+        cases += 1;
+    }
+    // Stores to either code page must stop at the first loop end, including aliases.
+    // An observer head also stops there; a slow access exits after that instruction.
+    let mut cc = CodeCache::new(0).unwrap();
+    let code = queue(&mut cc, &mut block, BASE, true);
+    for _ in 0..HOT { ready(&cc, code); }
+    for (destination, observed, fast, expected) in [
+        (BASE + 0x2000, false, true, 21),
+        (BASE + 0x2000, true, true, 2),
+        (BASE + 32, false, true, 2),
+        (BASE + 0x2000, false, false, 1),
+    ] {
+        let mut c = cpu(0);
+        let mut ram = Ram::new(fast, false);
+        c.set_ar(4, BASE + 0x1000); c.set_ar(6, destination);
+        c.lbeg = BASE; c.lend = BASE + 6; c.lcount = 9;
+        if observed { c.boundary_bloom = emu_core::core::pc_bit(BASE); }
+        let fm = ram.fast_mem();
+        let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), 100, 0, fm) };
+        assert_eq!(result & 0xffff, expected, "hardware loop admission/exit");
+        cases += 1;
+    }
+    // Attaching/removing a block observer affects an already published module without
+    // flushing it; ordinary JIT execution stays active while repeated callbacks stop.
+    let mut c = cpu(0);
+    for observed in [true, false, true] {
+        let mut ram = Ram::new(true, false);
+        c.pc = BASE;
+        c.set_ar(4, BASE + 0x1000); c.set_ar(6, BASE + 0x2000);
+        c.lbeg = BASE; c.lend = BASE + 6; c.lcount = 9;
+        crate::Core::set_block_observation(&mut c, observed);
+        let fm = ram.fast_mem();
+        let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), 100, 0, fm) };
+        assert_eq!(result & 0xffff, if observed { 2 } else { 21 });
+        assert_eq!(c.blocks.clone().observed, observed);
+        c.blocks.flush();
+        assert_eq!(c.blocks.observed, observed);
+        cases += 1;
+    }
+    #[cfg(feature = "wasm-jit-profile")]
+    assert!(c.blocks.profile.report().contains("[wasm-loop] pc=40370000 calls=1 retained_backedges=9"));
+    // Packed return counts remain bounded even when a direct caller offers > u16::MAX.
+    let mut c = cpu(0);
+    let mut ram = Ram::new(true, false);
+    c.set_ar(4, BASE + 0x1000); c.set_ar(6, BASE + 0x2000);
+    c.lbeg = BASE; c.lend = BASE + 6; c.lcount = 50_000;
+    let fm = ram.fast_mem();
+    let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), 65_536, 0, fm) };
+    assert_eq!(result & 0xffff, 65_535);
+    assert_eq!(c.lcount, 50_000 - 32_767);
+    assert_eq!(ram.versions[32], 32_767);
+    cases += 1;
+    // A suffix branch to LBEG is not another hardware backedge. Its own PC must
+    // be attributed, even though its destination matches the hardware loop head.
+    block[2].insn.op = Op::J;
+    block[2].insn.imm = BASE as i32;
+    let code = queue(&mut cc, &mut block, BASE, true);
+    for _ in 0..HOT { ready(&cc, code); }
+    for budget in 1..=10 {
+        let mut c = cpu(0);
+        let mut ram = Ram::new(true, false);
+        c.set_ar(4, BASE + 0x1000); c.set_ar(6, BASE + 0x2000);
+        c.lbeg = BASE; c.lend = BASE + 6; c.lcount = 2;
+        let fm = ram.fast_mem();
+        let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), budget, 0, fm) };
+        let done = budget.min(7);
+        assert_eq!(result & 0xffff, done);
+        assert_eq!(ram.noted, if done == 7 { BASE + 6 } else { BASE + ((done - 1) % 2) * 3 });
+        cases += 1;
+    }
+    // A block straddling version pages must check the second page as well.
+    block[2].insn.op = Op::Add;
+    let start = BASE + 254;
+    let code = queue(&mut cc, &mut block, start, true);
+    for _ in 0..HOT { ready(&cc, code); }
+    let mut c = cpu(0);
+    let mut ram = Ram::new(true, false);
+    c.pc = start; c.lbeg = start; c.lend = start + 6; c.lcount = 9;
+    c.set_ar(4, BASE + 0x1000); c.set_ar(6, BASE + 0x110);
+    let fm = ram.fast_mem();
+    let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), 100, 0, fm) };
+    assert_eq!(result & 0xffff, 2);
+    assert_eq!(ram.versions[0], 0); assert_eq!(ram.versions[1], 1);
+    cases + 1
+}
+
+fn hardware_loop_scheduler() {
+    // l32i.n a3,a4,0; s32i.n a3,a5,0; addi.n a4,a4,4;
+    // addi.n a5,a5,4; j self. Hardware loop ends immediately before J.
+    let programs: &[(&[u8], u8, u8, u32)] = &[
+        (&[0x38, 0x04, 0x39, 0x05, 0x4b, 0x44, 0x4b, 0x55, 0x06, 0xff, 0xff], 4, 5, 8),
+        // Actual mixed-width panel prefix from 0x40383349: l16ui/addi.n/s16i/addi.n.
+        (&[0xb2, 0x1a, 0, 0x2b, 0xaa, 0xb2, 0x59, 0, 0x2b, 0x99, 0x06, 0xff, 0xff], 10, 9, 10),
+    ];
+    for &(program, source, destination, span) in programs {
+        let (mut a, mut b) = (cpu(0), cpu(0));
+        let (mut ra, mut rb) = (Ram::new(true, false), Ram::new(true, false));
+        ra.ram.mem[..program.len()].copy_from_slice(program);
+        rb.ram.mem[..program.len()].copy_from_slice(program);
+        let mut repeated = false;
+        for turn in 0..160 {
+            for c in [&mut a, &mut b] {
+                c.pc = BASE;
+                c.lbeg = BASE; c.lend = BASE + span; c.lcount = 100;
+                c.set_ar(source, BASE + 0x1000); c.set_ar(destination, BASE + 0x2000);
+            }
+            let budget = 1 + turn % 31;
+            let (done, trap) = crate::block::run_block(&mut b, &mut rb, budget);
+            assert!(trap.is_none()); assert!(done <= budget);
+            repeated |= done > 5;
+            for _ in 0..done { ra.note_pc(a.pc); crate::step(&mut a, &mut ra).unwrap(); }
+            same(&a, &b);
+            assert_eq!(ra.ram.mem, rb.ram.mem);
+            assert_eq!(ra.versions, rb.versions);
+            assert_eq!(ra.noted, rb.noted);
+            // Consume a cut continuation without resetting PC, exercising arena resume lookup.
+            let (done, trap) = crate::block::run_block(&mut b, &mut rb, 3);
+            assert!(trap.is_none());
+            for _ in 0..done { ra.note_pc(a.pc); crate::step(&mut a, &mut ra).unwrap(); }
+            same(&a, &b);
+        }
+        assert!(repeated, "hardware loop did not retire multiple iterations in one dispatch");
+        // A hot loop must stop at every timer position, including a wrapping CCOUNT.
+        for distance in 1..=17 {
+            for c in [&mut a, &mut b] {
+                c.pc = BASE; c.lcount = 100; c.ccount = u32::MAX - 8;
+                c.ccompare = [c.ccount.wrapping_add(distance), 0, 0];
+                c.interrupt = 0; c.intenable = 0;
+            }
+            let (done, trap) = crate::block::run_block(&mut b, &mut rb, 32);
+            // CCOMPARE1/2=0 may cut earlier across wrap too.
+            let expected = distance.min(9);
+            assert_eq!(done, expected); assert!(trap.is_none());
+            for _ in 0..done { ra.note_pc(a.pc); crate::step(&mut a, &mut ra).unwrap(); }
+            same(&a, &b);
+            assert_eq!(a.interrupt, b.interrupt);
+        }
+    }
+}
+
 fn retention() {
     use Op::*;
     let mut cc = CodeCache::new(0).unwrap();
@@ -537,6 +742,122 @@ fn entry_and_shifts() -> u32 {
     tests
 }
 
+fn floating_point_guard_proof() -> u32 {
+    use Op::*;
+    let mut tests = 0;
+    // Ineligible helper-containing blocks still test the emitter's continuation
+    // machinery. A helper may disable or enable CP before the scalar instruction.
+    for op in [Wsr, Xsr] {
+        for enabled in [0, 1] {
+            for entry in 0..4 {
+                for budget in [1, 2, 4] {
+                    let mut block = [insn(Add), insn(op), insn(AddS), insn(Rfr)];
+                    block[1].insn.imm = crate::state::sr::CPENABLE as i32;
+                    compare_configured(&mut block, 0, entry, budget, None, true, false, false, false, |c| {
+                        c.cpenable = enabled; c.set_ar(5, enabled ^ 1);
+                        c.fr[3] = 2f32.to_bits(); c.fr[4] = 3f32.to_bits(); c.fr[5] = 4f32.to_bits();
+                    });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    // Disabled CP must not prevent a prefix store or cause a trap when a budget
+    // cut or taken branch exits before the FP instruction.
+    for prefix in [S32i, Bt] {
+        for enabled in [0, 1] {
+            for entry in 0..3 {
+                for budget in [1, 3] {
+                    let mut block = [insn(prefix), insn(AddS), insn(Rfr)];
+                    if prefix == Bt { block[0].insn.imm = (BASE + 48) as i32; }
+                    compare_configured(&mut block, 0, entry, budget, Some(BASE + 512), true, false, false, false, |c| {
+                        c.cpenable = enabled; c.br = 1 << 4;
+                    });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    tests
+}
+
+fn floating_point() -> u32 {
+    use Op::*;
+    let ops = [AddS, SubS, MulS, MaddS, MsubS, MovS, AbsS, NegS, Rfr, Wfr, ConstS,
+        FloatS, UfloatS, RoundS, TruncS, FloorS, CeilS, UtruncS, UnS, OeqS, UeqS, OltS,
+        UltS, OleS, UleS, MoveqzS, MovnezS, MovltzS, MovgezS, MovfS, MovtS,
+        MaddnS, DivnS, Div0S, Nexp01S, Recip0S, Rsqrt0S, Sqrt0S, AddexpS,
+        MkdadjS, MksadjS, AddexpmS, Movf, Movt, Bf, Bt];
+    let values = [0, 0x8000_0000, 1, 0x007f_ffff, 0x0080_0000, 0x3f80_0001,
+        0xbf80_0000, 0x3fc0_0000, 0xc020_0000, 0x4eff_ffff, 0x4f00_0000,
+        0x4f7f_ffff, 0x4f80_0000, 0xcf00_0000, 0x7f7f_ffff, 0x7f80_0000,
+        0xff80_0000, 0x7fc1_2345, 0xffc5_4321, 0x7f81_2345];
+    let mut tests = 0;
+    for op in ops {
+        assert!(super::emitter::supported(op, true));
+        for (n, &bits) in values.iter().enumerate() {
+            for entry in 0..3 {
+                for budget in [1, 3] {
+                    let mut block = [insn(Add), insn(op), insn(Xor)];
+                    block[1].insn.imm = if matches!(op, Bf | Bt) { (BASE + 48) as i32 } else { (n % 16) as i32 };
+                    compare_configured(&mut block, n as u32, entry, budget, None, true, false, n % 3 == 0, n % 7 == 0, |c| {
+                        c.cpenable = if n % 9 == 0 { 0 } else { 1 };
+                        c.br = if n % 2 == 0 { 0xaaaa } else { 0x5555 };
+                        c.fr[3] = 0xbf80_0000;
+                        c.fr[4] = bits;
+                        c.fr[5] = values[(n + 5) % values.len()];
+                    });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    // A drawing-like bundle connects float, boolean and integer state through a
+    // conversion/coverage decision, including partial execution and aliased operands.
+    let raster_ops = [Wfr, FloatS, SubS, MulS, MaddS, OltS, MovtS, TruncS, Movf, Bt];
+    for entry in 0..raster_ops.len() as u32 {
+        for budget in [1, 4, 12] {
+            let mut block: Vec<_> = raster_ops.into_iter().map(insn).collect();
+            for bi in &mut block {
+                if matches!(bi.insn.op, MovtS | Movf) { bi.insn.t = 3; }
+                if bi.insn.op == Bt { bi.insn.s = 3; bi.insn.imm = (BASE + 48) as i32; }
+                bi.max_ar = crate::exec::max_ar(&bi.insn);
+            }
+            compare_configured(&mut block, 15, entry, budget, None, true, false, false, false, |c| {
+                c.cpenable = 1; c.fr[3] = 0.5f32.to_bits();
+                c.fr[4] = 2.25f32.to_bits(); c.fr[5] = 3.5f32.to_bits();
+            });
+            tests += 1;
+        }
+    }
+    // Cancellation distinguishes one fused rounding from multiply followed by add.
+    for op in [MaddS, MsubS] {
+        compare_configured(&mut [insn(op), insn(Rfr)], 0, 0, 2, None, true, false, false, false, |c| {
+            c.cpenable = 1; c.fr[3] = (-1f32).to_bits();
+            c.fr[4] = if op == MaddS { 0x3f80_0001 } else { 0xbf80_0001 };
+            c.fr[5] = 0x3f7f_fffe;
+        });
+        tests += 1;
+    }
+    // Both native TLB accesses and helper paths must preserve raw FP bits and code versions.
+    for op in [Lsi, Ssi] {
+        for addr in [BASE + 512, BASE + 513, BASE + 65536] {
+            for fast in [false, true] {
+                for readonly in [false, true] {
+                    for enabled in [0, 1] {
+                        compare_configured(&mut [insn(Add), insn(op), insn(Xor)], 1, 0, 3,
+                            Some(addr), fast, readonly, false, false, |c| {
+                                c.cpenable = enabled; c.fr[5] = 0x7f81_2345;
+                            });
+                        tests += 1;
+                    }
+                }
+            }
+        }
+    }
+    tests
+}
+
 pub fn run_tests() -> u32 {
     use Op::*;
     let ops = [
@@ -604,5 +925,6 @@ pub fn run_tests() -> u32 {
     }
     scheduler();
     retention();
-    tests + 2 + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
+    hardware_loop_scheduler();
+    tests + floating_point() + floating_point_guard_proof() + 3 + hardware_loops() + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
 }

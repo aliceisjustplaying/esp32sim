@@ -129,6 +129,8 @@ pub trait Core {
     /// pcs the machine intercepts (stubs, probes) as a bloom over `pc_bit`: a fast path must
     /// stop at every one of them so the machine can look.
     fn set_boundaries(&mut self, _bloom: u64) {}
+    /// Preserve individual fast-path block callbacks instead of combining repeated blocks.
+    fn set_block_observation(&mut self, _enabled: bool) {}
     /// Throw away decoded/compiled code (after loading an image or changing boundaries).
     fn flush_caches(&mut self) {}
     /// Enable/disable native code generation, if the core has it (`--no-jit`: the interpreter is the oracle).
