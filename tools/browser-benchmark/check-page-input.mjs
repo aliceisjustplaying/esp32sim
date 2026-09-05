@@ -47,7 +47,7 @@ try {
     const r = c.getBoundingClientRect(); return {x:r.left+30,y:r.top+30};
   })()`);
   const mouse = (type, offset = 0) => send('Input.dispatchMouseEvent', {
-    type, x: rect.x + offset, y: rect.y, button: type === 'mouseMoved' ? 'none' : 'left',
+    type, x: rect.x + offset, y: rect.y, button: 'left',
     buttons: type === 'mouseReleased' ? 0 : 1, clickCount: type === 'mouseMoved' ? 0 : 1,
   }, sessionId);
   await mouse('mousePressed');
@@ -78,11 +78,26 @@ try {
   await new Promise(r => setTimeout(r, 80));
   assert.equal((await evaluate('window.sentTouches')).length, 3, 'no stale timer after cancel');
   await mouse('mouseReleased', 25);
+  await evaluate(`window.sentTouches.length=0; window.pointerLifecycle=[];
+    for (const type of ['pointerdown','pointermove','pointerup','gotpointercapture','lostpointercapture'])
+      document.querySelector('#lcd').addEventListener(type, e => pointerLifecycle.push({type:e.type,id:e.pointerId,buttons:e.buttons,captured:e.currentTarget.hasPointerCapture(e.pointerId)}));`);
+  for (let index=0;index<3;index++) {
+    await send('Input.dispatchMouseEvent', {type:'mouseMoved',x:rect.x+index*10,y:rect.y,button:'none',buttons:0}, sessionId);
+    await mouse('mousePressed',index*10);
+    await mouse('mouseMoved',index*10+5);
+    await mouse('mouseMoved',index*10+10);
+    await mouse('mouseReleased',index*10+10);
+    await new Promise(r=>setTimeout(r,50));
+  }
+  events = await evaluate('window.sentTouches');
+  assert.deepEqual(events.map(({x,down})=>[x,down]), [[30,1],[40,1],[40,0],[40,1],[50,1],[50,0],[50,1],[60,1],[60,0]], 'successive real drags keep their contact');
+  const lifecycle = await evaluate('window.pointerLifecycle');
+  assert.ok(lifecycle.filter(e=>e.type==='pointermove'&&e.buttons===1).every(e=>e.captured), 'CDP drag events must preserve actual capture');
   if (new URL(url).searchParams.has('touchTrace')) {
     await evaluate(`(() => { for (let i=0;i<2100;i++) window.recordTouchTrace({stage:'test',i}); })()`);
     assert.equal(await evaluate('window.__esp32simTouchTrace.length'), 2048, 'trace retention is bounded');
   }
-  console.log(JSON.stringify({passed: true, browser: version.Browser, checks: ['trailing dense move', 'bounded sampling', 'release', 'cancel flush', 'single contact', 'no stale timer'], scope: 'actual index.html listeners, captured transport; no firmware latency assertion'}));
+  console.log(JSON.stringify({passed: true, browser: version.Browser, checks: ['trailing dense move', 'bounded sampling', 'release', 'cancel flush', 'single contact', 'no stale timer', 'successive captured drags'], scope: 'actual index.html listeners, captured transport; no firmware latency assertion'}));
 } finally {
   if (targetId) await send('Target.closeTarget', {targetId});
   socket.close();
