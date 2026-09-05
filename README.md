@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/esp32sim-logo.png" alt="esp32sim — a smiling chip in an emulator window" width="320">
+</p>
+
 # esp32sim — an ESP32 emulator in Rust: **Xtensa (S3) and RISC-V (C3, C6)**
 
 Instruction-level emulation of three ESP32 SoCs, across **both of Espressif's CPU architectures**.
