@@ -30,7 +30,9 @@ def read_run(directory):
     if 'HeadlessChrome/' not in version['User-Agent']:
         raise ValueError(f'{directory}: expected a headless Chrome timing capture')
     events = json.loads((directory / 'events.json').read_text())
-    if any(event.get('type') == 'emu' and 'jit-profile' in event.get('line', '') for event in events):
+    if any(event.get('type') in ('emu', 'log')
+           and any(marker in event.get('line', '') for marker in ('jit-profile', '[wasm-profile]'))
+           for event in events):
         raise ValueError(f'{directory}: profiling captures cannot establish production speed')
     serial, pending, times = '', '', {}
     markers = {marker for _, marker in MILESTONES}
