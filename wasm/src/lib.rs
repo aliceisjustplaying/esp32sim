@@ -30,6 +30,7 @@ trait MachineApi {
     fn stub(&mut self, name: &str, value: u32) -> u32;
     fn observer(&mut self, name: &str, arg: &str) -> u32;
     fn reports(&mut self) -> String;
+    fn set_jit(&mut self, enabled: bool);
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
@@ -91,6 +92,7 @@ impl<S: Soc> MachineApi for Machine<S> {
         }
     }
     fn reports(&mut self) -> String { Machine::reports(self) }
+    fn set_jit(&mut self, enabled: bool) { for core in &mut self.cores { xtensa_lx7::Core::set_jit(core, enabled); } }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }
 
@@ -762,4 +764,53 @@ pub unsafe extern "C" fn esp32sim_in_bin(e: *mut Emu, ptr: *const u8, len: usize
     // SAFETY: The caller provides a readable input buffer for this call.
     let input = unsafe { bytes(ptr, len) };
     if let Some(w) = e.m.web() { w.push_incoming_bin(input.to_vec()); }
+}
+
+/// Enable or disable the scheduler-integrated block JIT. The interpreter remains available.
+///
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_jit(e: *mut Emu, enabled: u32) {
+    // SAFETY: The ABI caller guarantees a live exclusive handle.
+    unsafe { &mut *e }.m.set_jit(enabled != 0);
+}
+
+/// Guest instructions retired by compiled blocks, including interpreter helpers.
+///
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_block_jit_insns(e: *mut Emu) -> f64 {
+    // SAFETY: The ABI caller guarantees a live exclusive handle.
+    let e = unsafe { &mut *e };
+    e.m.as_any_mut().downcast_mut::<esp32s3::Machine>()
+        .map(|m| m.cores.iter().map(|c| c.blocks.jit_instructions).sum::<u64>() as f64)
+        .unwrap_or(0.0)
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "jit-tests"))]
+mod jit_tests;
+
+/// Emit the optional statistical block profile through host_log.
+///
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[cfg(all(target_arch = "wasm32", feature = "jit-profile"))]
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_profile_report(e: *mut Emu) {
+    // SAFETY: the ABI caller guarantees a live exclusive handle.
+    if let Some(m) = unsafe { &mut *e }.m.as_any_mut().downcast_mut::<esp32s3::Machine>() {
+        for (i, core) in m.cores.iter().enumerate() {
+            log(&format!("core={i}\n{}", core.blocks.profile.report()));
+        }
+    }
+}
+
+/// Runs the generated-code differential suite in a real WASM runtime.
+#[cfg(all(target_arch = "wasm32", feature = "jit-tests"))]
+#[no_mangle]
+pub extern "C" fn esp32sim_test_block_jit() -> u32 {
+    std::panic::set_hook(Box::new(|info| log(&format!("[jit test] {info}"))));
+    xtensa_lx7::jit::tests::run_tests() + jit_tests::run()
 }

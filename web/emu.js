@@ -7,7 +7,7 @@
   const q = new URLSearchParams(location.search);
   // wasm mode: asked for explicitly, or the page is on a static host that cannot be the native emulator
   if (!q.has('wasm') && !/\.github\.io$/.test(location.hostname)) return;
-  const worker = new Worker('wasm/worker.js');
+  const worker = new Worker('wasm/worker.js', { type: 'module' });
   let onmessage = null, setStatus = () => {}, ready = false, started = false;
   const KINDS = { rom: 0, bootloader: 1, ptable: 2, app: 3, elf: 4, flash: 5, script: 6, picture: 7 };
   const pending = new Map();
@@ -75,7 +75,7 @@
   async function boot(cfg, files) {
     if (started) { location.reload(); return; }
     setStatus('loading firmware…');
-    const ok = await ask('created', { op: 'create', board: cfg.board, flash_mb: cfg.flash_mb, psram_mb: cfg.psram_mb });
+    const ok = await ask('created', { op: 'create', board: cfg.board, flash_mb: cfg.flash_mb, psram_mb: cfg.psram_mb, jit: q.get('jit') !== '0' });
     if (!ok) { setStatus('unknown board'); return; }
     for (const [kind, data, at] of files) {
       const key = at !== undefined ? 'loadat' + at : 'load' + KINDS[kind];

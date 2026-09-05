@@ -31,7 +31,7 @@ use crate::state::{sr, Cpu};
 pub use emu_core::core::pc_bit;
 
 #[derive(Clone, Copy)]
-pub struct BlockInsn { pub insn: Insn, pub max_ar: u8, /// byte offset of this instruction's native code from the block body start
+pub struct BlockInsn { pub insn: Insn, pub max_ar: u8, /// Backend entry: native byte offset or WASM instruction index
  pub off: u32 }
 
 #[derive(Clone, Copy)]
@@ -42,14 +42,16 @@ impl Entry { const EMPTY: Entry = Entry { pc: 1, start: 0, n: 0, vidx: [0; 2], v
 #[cfg(target_arch = "wasm32")] const ENTRIES: usize = 1 << 15;
 /// Instructions per block. At most 3 bytes each, so a block spans at most two version pages.
 pub const MAX_LEN: usize = 32;
-/// Arena size at which everything is thrown away and rebuilt (bounded memory, no eviction
-/// bookkeeping). The arena never reallocates — compiled code holds pointers into it.
+/// Arena size at which decoded entries are rebuilt. The arena never reallocates:
+/// native code holds pointers into it; WASM code owns separate retained instruction storage.
 #[cfg(not(target_arch = "wasm32"))] const ARENA_MAX: usize = 1 << 20;
 #[cfg(target_arch = "wasm32")] const ARENA_MAX: usize = 1 << 17;   // 4 MB per core in the browser
 /// Native code cache size; flushed together with the blocks when full.
 const CODE_SIZE: usize = 256 << 20;   // address space; pages are only committed as code is written
 
 pub struct BlockCache {
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    pub profile: crate::jit::profile::Profile,
     entries: Vec<Entry>,
     arena: Vec<BlockInsn>,
     /// A block cut short by the caller's budget or a timer deadline resumes here rather than
@@ -62,12 +64,17 @@ pub struct BlockCache {
     helpers: Option<crate::jit::Helpers>,
     pub jit_enabled: bool,
     pub compiled: u64,
+    /// Instructions retired through compiled blocks (including their interpreter helpers).
+    pub jit_instructions: u64,
 }
 
 impl BlockCache {
     pub fn new() -> Self {
-        BlockCache { entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
-                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, compiled: 0 }
+        BlockCache {
+                     #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+                     profile: crate::jit::profile::Profile::default(),
+                     entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
+                     code: crate::jit::CodeCache::new(CODE_SIZE), helpers: None, jit_enabled: crate::jit::AVAILABLE, compiled: 0, jit_instructions: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
@@ -161,6 +168,26 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
 /// Returns `(iterations, trap)` where iterations is what a loop over `step()` would have
 /// consumed: executed instructions, plus one for a trap taken before an instruction ran.
 pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    {
+        if cpu.blocks.profile.sample() {
+            let pc = cpu.pc;
+            let ei = if cpu.blocks.resume.2 == pc { cpu.blocks.resume.0 as usize } else { BlockCache::index(pc) };
+            let before = cpu.blocks.jit_instructions;
+            let start = crate::jit::profile::now();
+            let result = run_block_inner(cpu, bus, budget);
+            let elapsed = crate::jit::profile::now() - start;
+            let e = cpu.blocks.entries[ei];
+            let ops = &cpu.blocks.arena[e.start as usize..(e.start + e.n as u32) as usize];
+            let fast = bus.fast_mem().is_some();
+            cpu.blocks.profile.record(pc, before != cpu.blocks.jit_instructions, result.0, elapsed, ops, fast);
+            return result;
+        }
+    }
+    run_block_inner(cpu, bus, budget)
+}
+
+fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
     if let Some(t) = cpu.check_interrupts() { return (1, Some(t)); }
     if cpu.waiting { cpu.advance_ccount(1); return (1, None); }
     let pc = cpu.pc;
@@ -185,7 +212,7 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
     for i in 0..3 { let d = cpu.ccompare[i].wrapping_sub(cpu.ccount); if d != 0 && d < limit { limit = d; } }
 
     let code = cpu.blocks.entries[ei as usize].code;
-    if code != crate::jit::NONE && cpu.blocks.jit_enabled {
+    if code != crate::jit::NONE && cpu.blocks.jit_enabled && crate::jit::ready(cpu.blocks.code.as_ref().unwrap(), code) {
         if cpu.blocks.helpers.is_none() { cpu.blocks.helpers = Some(crate::jit::Helpers::new::<B>()); }
         let entry = cpu.blocks.arena[k as usize].off;
         // SAFETY: `code` and `entry` came from this live cache entry, the helpers were created for
@@ -196,6 +223,7 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
             crate::jit::run(b.code.as_ref().unwrap(), code, cpu, bus, b.helpers.as_ref().unwrap(), limit, entry, fm)
         };
         let (done, exit) = (r & 0xffff, r >> 16);
+        cpu.blocks.jit_instructions += done as u64;
         cpu.insn_count += done as u64;
         cpu.advance_ccount(done);
         return match exit {
