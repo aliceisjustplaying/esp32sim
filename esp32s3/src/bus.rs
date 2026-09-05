@@ -237,11 +237,11 @@ impl SocBus {
         let w = self.periph.read32(addr & !3);
         match size { 1 => (w >> ((addr & 3) * 8)) & 0xff, 2 => (w >> ((addr & 2) * 8)) & 0xffff, _ => w }
     }
-    fn periph_write(&mut self, addr: u32, v: u32, size: u32) {
-        self.periph_write_inner(addr, v, size);
+    fn periph_write(&mut self, addr: u32, v: u32) {
+        self.periph_write_inner(addr, v);
         self.refresh_tick_budget();   // the write may have armed something
     }
-    fn periph_write_inner(&mut self, addr: u32, v: u32, size: u32) {
+    fn periph_write_inner(&mut self, addr: u32, v: u32) {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
             let i = ((addr - MMU_TABLE) >> 2) as usize;
             if self.mmu[i] != v & 0xffff { self.mmu[i] = v & 0xffff; self.invalidate_tlb(); }
@@ -249,11 +249,7 @@ impl SocBus {
         }
         self.flush_ticks();
         let a = addr & !3;
-        let w = match size {
-            4 => v,
-            2 => { let old = self.periph.read32(a); let sh = (addr & 2) * 8; (old & !(0xffff << sh)) | ((v & 0xffff) << sh) }
-            _ => { let old = self.periph.read32(a); let sh = (addr & 3) * 8; (old & !(0xff << sh)) | ((v & 0xff) << sh) }
-        };
+        let w = v;
         if a == PERIPH_BASE + 0x24_000 && w & (1 << 24) != 0 {
             self.spi2_dma_fault = None;
         }
@@ -803,14 +799,17 @@ impl Bus for SocBus {
         }
     }
     fn write8(&mut self, addr: u32, v: u8) -> Result<(), Fault> {
-        if Self::is_periph(addr) { self.periph_write(addr, v as u32, 1); return Ok(()); }
+        // S3 register writes are modelled only as aligned words (TRM §15.6.6).
+        // Reject unsupported widths before reading a device or advancing its time.
+        // This is an explicit emulator policy, not a model of optional PMS IRQs.
+        if Self::is_periph(addr) { self.last_fault = Some((addr, true)); return Err(Fault::Prohibited); }
         match self.lookup(addr) {
             Some(e) if e.writable != 0 => { let rel = (addr - e.lo) as usize; self.buf_mut(e.src as u8)[e.off as usize + rel] = v; self.bump(e.vbase, rel, 1); Ok(()) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
     }
     fn write16(&mut self, addr: u32, v: u16) -> Result<(), Fault> {
-        if Self::is_periph(addr) { self.periph_write(addr, v as u32, 2); return Ok(()); }
+        if Self::is_periph(addr) { self.last_fault = Some((addr, true)); return Err(Fault::Prohibited); }
         match self.lookup(addr) {
             Some(e) if e.writable != 0 && addr.wrapping_add(2) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
             Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); self.write8(addr, b[0])?; self.write8(addr + 1, b[1]) }
@@ -818,7 +817,10 @@ impl Bus for SocBus {
         }
     }
     fn write32(&mut self, addr: u32, v: u32) -> Result<(), Fault> {
-        if Self::is_periph(addr) { self.periph_write(addr, v, 4); return Ok(()); }
+        if Self::is_periph(addr) {
+            if addr & 3 != 0 { self.last_fault = Some((addr, true)); return Err(Fault::Misaligned); }
+            self.periph_write(addr, v); return Ok(());
+        }
         match self.lookup(addr) {
             Some(e) if e.writable != 0 && addr.wrapping_add(4) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
             Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); for i in 0..4 { self.write8(addr + i, b[i as usize])?; } Ok(()) }
@@ -872,6 +874,9 @@ impl SocBus {
         let c = std::mem::take(&mut self.tick_pending);
         if c == 0 { return; }
         self.tick_impl(c);
+        // MMIO reads also flush time. Tell the CPU to refresh interrupt lines even
+        // when no Bus::tick call reaches the periodic backstop.
+        self.irq_dirty = true;
         self.refresh_tick_budget();
     }
 
@@ -1234,6 +1239,83 @@ mod gp_spi_board_tests {
         assert_eq!(bus.periph.gdma.out[0].eof_desc, FIRST_DESC);
         assert!(!bus.periph.gdma.out[0].running);
         assert_eq!(bus.periph.spi2.transfers, 1);
+    }
+
+    #[test]
+    fn narrow_mmio_writes_are_rejected_without_device_or_time_side_effects() {
+        const USB: u32 = 0x6003_8000;
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.tick_budget = MAX_TICK_DEFER;
+        bus.periph.usb.host_input(&[0x11, 0x22]);
+        bus.periph.usb.int_raw |= 2;
+        bus.periph.usb.int_ena = 0x1122_3344;
+        assert_eq!(Bus::tick(&mut bus, 37), 0);
+        bus.periph.misc.mmio_log = Some(Vec::new());
+        for lane in 0..4 {
+            assert_eq!(bus.write8(USB + lane, 0x55), Err(Fault::Prohibited));
+            assert_eq!(bus.write8(USB + 0x14 + lane, 0xff), Err(Fault::Prohibited));
+            assert_eq!(bus.write8(USB + 0x10 + lane, 0xff), Err(Fault::Prohibited));
+        }
+        for lane in [0, 2] {
+            assert_eq!(bus.write16(USB + lane, 0x5566), Err(Fault::Prohibited));
+            assert_eq!(bus.write16(USB + 0x14 + lane, 0xffff), Err(Fault::Prohibited));
+        }
+        assert_eq!(bus.last_fault, Some((USB + 0x16, true)));
+        assert_eq!(bus.tick_pending, 37);
+        assert!(!bus.irq_dirty);
+        assert!(bus.periph.misc.mmio_log.as_ref().unwrap().is_empty());
+        assert_eq!(bus.periph.usb.rx.iter().copied().collect::<Vec<_>>(), [0x11, 0x22]);
+        assert!(bus.periph.usb.tx_fifo.is_empty());
+        assert_eq!(bus.periph.usb.int_raw, 6);
+        assert_eq!(bus.periph.usb.int_ena, 0x1122_3344);
+
+        bus.write32(USB, 0x55).unwrap();
+        assert_eq!(bus.periph.usb.tx_fifo, [0x55]);
+        assert_eq!(bus.periph.usb.rx.len(), 2);
+        bus.write32(USB + 0x14, 2).unwrap();
+        assert_eq!(bus.periph.usb.int_raw, 4);
+        bus.write32(USB + 0x10, 0xabcd).unwrap();
+        assert_eq!(bus.periph.usb.int_ena, 0xabcd);
+    }
+
+    #[test]
+    fn unsupported_mmu_writes_do_not_change_mapping() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.write32(MMU_TABLE, 7).unwrap();
+        assert_eq!(bus.write8(MMU_TABLE, 9), Err(Fault::Prohibited));
+        assert_eq!(bus.write16(MMU_TABLE, 10), Err(Fault::Prohibited));
+        assert_eq!(bus.write32(MMU_TABLE + 1, 11), Err(Fault::Misaligned));
+        assert_eq!(bus.mmu[0], 7);
+    }
+
+    #[test]
+    fn mmio_read_flush_notifies_interrupt_changes_before_the_backstop() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.tick_budget = MAX_TICK_DEFER;
+        bus.periph.usb.int_ena = 1 << 1;
+        // Leave one cycle before the currently modelled SOF boundary. Reads
+        // then flush each short slice so no Bus::tick reaches its backstop.
+        bus.periph.usb.tick(crate::periph::CPU_HZ / 4000 - 1);
+        bus.irq_dirty = false;
+        assert_eq!(Bus::tick(&mut bus, 1), 0);
+        assert!(!bus.irq_dirty);
+        assert_eq!(bus.read32(0x6003_8008).unwrap() & 2, 2);
+        assert!(bus.periph.usb.irq());
+        assert!(bus.block_break());
+
+        for _ in 0..5 {
+            bus.irq_dirty = false;
+            assert_eq!(Bus::tick(&mut bus, 128), 0);
+            let _ = bus.read32(0x6003_8008).unwrap();
+            assert!(bus.block_break());
+        }
+    }
+
+    #[test]
+    fn empty_tick_flush_does_not_break_a_block() {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.flush_ticks();
+        assert!(!bus.block_break());
     }
 
     #[test]
