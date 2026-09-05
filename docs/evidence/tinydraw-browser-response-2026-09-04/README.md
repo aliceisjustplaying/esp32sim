@@ -1,5 +1,9 @@
 # TinyDraw browser CPU profile and drawing baseline
 
+Capture retention: summaries and compact results remain here. Full profiles, event
+streams, console logs and screenshots are available through the [capture archive](../ARCHIVE.md).
+For raw-file reproduction commands below, restore those files to their original paths first.
+
 The first visible drawing replay exposed a display-model bug that the battery's
 boolean gates did not detect. After fixing it, all three replayed strokes appeared
 at their expected coordinates and firmware reported all three committed successfully.
@@ -7,7 +11,7 @@ Queued pen-down to changed pixels submitted to the canvas measured **53.2, 64.2 
 65.2 ms**. This is a three-stroke diagnostic baseline, not a percentile claim or
 physical input-to-photon measurement.
 
-![Three strokes after the display fix](fixed-after.png)
+![Three strokes after the display fix](https://github.com/aliceisjustplaying/esp32sim/blob/6791daa7c68315e742b904366616e8f4ed9dda10/docs/evidence/tinydraw-browser-response-2026-09-04/fixed-after.png)
 
 ## Display fix
 
@@ -21,7 +25,7 @@ The existing combined-transfer cases remain covered.
 The broken run still reported three successful firmware commits, but the screenshot
 showed scattered pixels. Only one pen-down region changed, after 1.3 seconds; that
 number is invalid as a drawing-latency measurement because the pixels were misplaced.
-Compare [the broken image](broken-after.png) with the corrected image above. The small
+Compare [the broken image](https://github.com/aliceisjustplaying/esp32sim/blob/6791daa7c68315e742b904366616e8f4ed9dda10/docs/evidence/tinydraw-browser-response-2026-09-04/broken-after.png) with the corrected image above. The small
 multicolour patch at the upper left remains in the post-battery document; this test
 establishes correct placement of the three new strokes, not a full framebuffer oracle.
 
@@ -79,7 +83,7 @@ Any chaining experiment must retain instruction budgets, timer boundaries, inter
 MMIO effects, code invalidation, observer stops and peer-core visibility. The timing
 model remains instruction-count based; this work makes no hardware cycle-accuracy claim.
 
-Raw profiles: [ordinary build](production.cpuprofile), [diagnostic boundaries](boundaries.cpuprofile).
+Raw profiles: [ordinary build](https://github.com/aliceisjustplaying/esp32sim/blob/6791daa7c68315e742b904366616e8f4ed9dda10/docs/evidence/tinydraw-browser-response-2026-09-04/production.cpuprofile), [diagnostic boundaries](https://github.com/aliceisjustplaying/esp32sim/blob/6791daa7c68315e742b904366616e8f4ed9dda10/docs/evidence/tinydraw-browser-response-2026-09-04/boundaries.cpuprofile).
 Their result JSON, console events and textual summaries are archived alongside them.
 Both CPU profiles preceded the display fix. The drawing receipt uses the rebuilt fixed
 binary; [source hashes](source-sha256.json) identify the delivered Rust snapshot.

@@ -1,5 +1,9 @@
 # Browser JIT function entry and variable shifts
 
+Capture retention: summaries and compact results remain here. Full profiles, event
+streams, console logs and screenshots are available through the [capture archive](../ARCHIVE.md).
+For raw-file reproduction commands below, restore those files to their original paths first.
+
 Adding `Entry`, `Sll` and `Srl` reduced median TinyDraw battery time from
 **125.9141 to 123.8853 seconds: 1.61% less wall time** across three runs each.
 Every candidate was faster than every baseline in this local comparison.
@@ -44,7 +48,7 @@ WASM Clippy passed with `cpu-profile,jit-profile,jit-tests` and warnings denied.
 
 The production-worker drawing replay passed the 36 boot gates, committed all three
 strokes, and responded to all 24 movement points. The
-[screenshot](drawing/drawing-after.png) confirms correct placement of the new strokes;
+[screenshot](https://github.com/aliceisjustplaying/esp32sim/blob/c774a5b60144b5aee980a8f845ae7e8465088f4a/docs/evidence/tinydraw-browser-jit-entry-shifts-2026-09-05/drawing/drawing-after.png) confirms correct placement of the new strokes;
 the pre-existing upper-left multicolour patch remains outside that assertion.
 [The drawing receipt](drawing/drawing-response.json) records movement-to-canvas
 values of 41.7–73.7 ms. This single smoke replay has no matched drawing baseline
@@ -62,7 +66,7 @@ Firmware is the September 4 TinyDraw build identified in the preceding
 [priority report](../tinydraw-browser-jit-priorities-2026-09-05/README.md).
 [Input hashes](inputs.json) identify the exact binaries;
 [comparison data](comparison.json) records all runs and console hashes.
-Each run directory retains its result and gzip-compressed event stream.
+Each run directory retains its compact result; the capture archive links its event stream.
 The baseline was rebuilt from the preserved dirty tree before this compiler edit.
 The tested candidate was copied to `web/wasm/esp32sim.wasm`; the previous browser
 binary is retained at `target/browser-entry-shifts/production-before.wasm`.

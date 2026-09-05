@@ -112,3 +112,10 @@ python3 tools/browser-benchmark/summarize-jit.py target/cpu-profile/events.json 
 The join reports generated-block CPU samples and sampled instruction coverage separately.
 A missing-opcode bundle's percentage estimates newly eligible guest work, not wall-time
 savings. Resumed execution is attributed to the original decoder block head.
+
+## Retaining results
+
+Keep raw captures in the `target/` output directories used above. Commit compact
+results and reproduction details according to the [evidence retention policy](../../docs/evidence/README.md).
+Publish captures needed to substantiate a claim as fork release assets or in a separate
+evidence repository, then include verified links and SHA-256 hashes in the summary.

@@ -1,5 +1,9 @@
 # TinyDraw browser JIT comparison — 2026-09-04
 
+Capture retention: summaries and compact results remain here. Full profiles, event
+streams, console logs and screenshots are available through the [capture archive](../ARCHIVE.md).
+For raw-file reproduction commands below, restore those files to their original paths first.
+
 The scheduler-integrated WASM JIT runs the fresh TinyDraw battery correctly, but
 this first implementation shows no meaningful throughput improvement. Both runs
 passed all 36 final boolean gates, with byte-identical USB console output,
