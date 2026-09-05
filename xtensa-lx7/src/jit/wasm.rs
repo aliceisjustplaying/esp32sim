@@ -179,14 +179,22 @@ pub fn ready(cc: &CodeCache, code: u32) -> bool {
 pub struct Helpers {
     exec: usize,
     overflow: usize,
+    fused: usize,
 }
 impl Helpers {
     pub fn new<B: Bus>() -> Self {
         Self {
             exec: h_exec::<B> as *const () as usize,
             overflow: h_overflow as *const () as usize,
+            fused: h_fused as *const () as usize,
         }
     }
+}
+// Baseline WASM has no fused multiply-add opcode. Preserve Rust's single rounding
+// without spilling integer register locals or invoking the instruction dispatcher.
+extern "C" fn h_fused(s: u32, t: u32, r: u32, subtract: u32) -> u32 {
+    let s = f32::from_bits(s ^ if subtract != 0 { 0x8000_0000 } else { 0 });
+    s.mul_add(f32::from_bits(t), f32::from_bits(r)).to_bits()
 }
 extern "C" fn h_exec<B: Bus>(
     cpu: *mut Cpu,
