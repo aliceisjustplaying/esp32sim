@@ -5,6 +5,13 @@ edition.workspace = true
 license.workspace = true
 description = "WebAssembly code generation for receipt-priced ESP32-S3 LX7 blocks"
 
+[features]
+scheduled-experiment = []
+
+[[example]]
+name = "timed_pair"
+required-features = ["scheduled-experiment"]
+
 [dependencies]
 emu-core = { path = "../emu-core" }
 esp32s3 = { path = "../esp32s3" }

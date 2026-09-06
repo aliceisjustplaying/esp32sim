@@ -1,5 +1,8 @@
 //! WebAssembly code generation for receipt-priced ESP32-S3 LX7 SRAM blocks.
 
+#[cfg(feature = "scheduled-experiment")]
+pub mod scheduled;
+
 use emu_core::{
     CostModel, ExecutionFacts, LifecycleFacts, LifecycleKind, MemoryAccess, MemoryAccessKind,
     StepKind, StepOutcome,
