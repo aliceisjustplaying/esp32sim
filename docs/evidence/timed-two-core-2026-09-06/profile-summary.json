@@ -1,0 +1,189 @@
+[
+  {
+    "run": "run-1",
+    "rawTickCount": 135,
+    "wasmRanges": [
+      {
+        "size": 6124,
+        "start": "0x14000000a00",
+        "end": "0x140000021ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 1488,
+        "start": "0x14000008a00",
+        "end": "0x14000008fd0",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 5140,
+        "start": "0x14000002200",
+        "end": "0x14000003614",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 6124,
+        "start": "0x1400000ca00",
+        "end": "0x1400000e1ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 6124,
+        "start": "0x14000014a00",
+        "end": "0x140000161ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 6124,
+        "start": "0x1400001ca00",
+        "end": "0x1400001e1ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 1488,
+        "start": "0x14000024a00",
+        "end": "0x14000024fd0",
+        "nativePcSamples": 0
+      }
+    ],
+    "nativeInstructionsPrinted": 0,
+    "cdp": {
+      "samples": 7229,
+      "durationMicroseconds": 9080821,
+      "frames": [
+        {
+          "frame": {
+            "functionName": "(program)",
+            "scriptId": "0",
+            "url": "",
+            "lineNumber": -1,
+            "columnNumber": -1
+          },
+          "count": 5,
+          "weightedMicroseconds": 8664,
+          "sourceLines": []
+        },
+        {
+          "frame": {
+            "functionName": "(idle)",
+            "scriptId": "0",
+            "url": "",
+            "lineNumber": -1,
+            "columnNumber": -1
+          },
+          "count": 6,
+          "weightedMicroseconds": 8424,
+          "sourceLines": []
+        },
+        {
+          "frame": {
+            "functionName": "measure",
+            "scriptId": "4",
+            "url": "http://127.0.0.1:58557/runner.mjs",
+            "lineNumber": 75,
+            "columnNumber": 29
+          },
+          "count": 22,
+          "weightedMicroseconds": 20148,
+          "sourceLines": [
+            90,
+            84,
+            105,
+            94
+          ]
+        },
+        {
+          "frame": {
+            "functionName": "js-to-wasm:ii:i",
+            "scriptId": "6",
+            "url": "wasm://wasm/99bf0372",
+            "lineNumber": 0,
+            "columnNumber": 53
+          },
+          "count": 6457,
+          "weightedMicroseconds": 8108763,
+          "sourceLines": [
+            1
+          ]
+        },
+        {
+          "frame": {
+            "functionName": "wasm-function[0]",
+            "scriptId": "6",
+            "url": "wasm://wasm/99bf0372",
+            "lineNumber": 0,
+            "columnNumber": 53
+          },
+          "count": 734,
+          "weightedMicroseconds": 927844,
+          "sourceLines": [
+            1
+          ]
+        },
+        {
+          "frame": {
+            "functionName": "wasm-function[0]",
+            "scriptId": "6",
+            "url": "wasm://wasm/99bf0372",
+            "lineNumber": 0,
+            "columnNumber": 53
+          },
+          "count": 5,
+          "weightedMicroseconds": 6387,
+          "sourceLines": [
+            1
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "run": "run-native",
+    "rawTickCount": 7271,
+    "wasmRanges": [
+      {
+        "size": 6124,
+        "start": "0x14000000a00",
+        "end": "0x140000021ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 1488,
+        "start": "0x14000008a00",
+        "end": "0x14000008fd0",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 5140,
+        "start": "0x14000002200",
+        "end": "0x14000003614",
+        "nativePcSamples": 7198
+      },
+      {
+        "size": 6124,
+        "start": "0x1400000ca00",
+        "end": "0x1400000e1ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 6124,
+        "start": "0x14000014a00",
+        "end": "0x140000161ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 6124,
+        "start": "0x1400001ca00",
+        "end": "0x1400001e1ec",
+        "nativePcSamples": 0
+      },
+      {
+        "size": 1488,
+        "start": "0x14000024a00",
+        "end": "0x14000024fd0",
+        "nativePcSamples": 0
+      }
+    ],
+    "nativeInstructionsPrinted": 0
+  }
+]
