@@ -1,0 +1,1481 @@
+{
+ "board": "waveshare-esp32-s3-touch-amoled-1.8-v2",
+ "chip": "ESP32-S3 QFN56 rev v0.2",
+ "date": "2026-09-06",
+ "idf": "v6.1",
+ "romElfSha256": "c0ce0f338d1de1bdc6efbef1591779a2a42c1ab7d759d3c6ae8ae63a7dd34cfd",
+ "schemaVersion": 1,
+ "status": "evidence only; no price adopted",
+ "timedRegion": [
+  "rsr.ccount",
+  "movi.n a11,16",
+  "movi a10,0x123",
+  "callx8 a2",
+  "rsr.ccount"
+ ],
+ "v1": {
+  "appElfSha256": "476116ea8402f311",
+  "archive": "esp32s3-rom-fetch-ladder-20260906-184940",
+  "cyclesPerTimedCall": {
+   "boot1": {
+    "abs": {
+     "iram": 11,
+     "rom": 11
+    },
+    "clzdi2": {
+     "iram": 16,
+     "rom": [
+      16,
+      19
+     ]
+    },
+    "clzsi2": {
+     "iram": 11,
+     "rom": 11
+    },
+    "ctzdi2": {
+     "iram": 19,
+     "rom": 19
+    },
+    "ctzsi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "ffssi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "mulsi3": {
+     "iram": 11,
+     "rom": 11
+    },
+    "p_none": {
+     "iram": 10,
+     "rom": 10
+    },
+    "roundup2": {
+     "iram": 14,
+     "rom": 14
+    },
+    "temp_to_power": {
+     "iram": 12,
+     "rom": 12
+    }
+   },
+   "boot2": {
+    "abs": {
+     "iram": 11,
+     "rom": 11
+    },
+    "clzdi2": {
+     "iram": 16,
+     "rom": [
+      16,
+      19
+     ]
+    },
+    "clzsi2": {
+     "iram": 11,
+     "rom": 11
+    },
+    "ctzdi2": {
+     "iram": 19,
+     "rom": 19
+    },
+    "ctzsi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "ffssi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "mulsi3": {
+     "iram": 11,
+     "rom": 11
+    },
+    "p_none": {
+     "iram": 10,
+     "rom": 10
+    },
+    "roundup2": {
+     "iram": 14,
+     "rom": 14
+    },
+    "temp_to_power": {
+     "iram": 12,
+     "rom": 12
+    }
+   }
+  },
+  "verdict": {
+   "reason": "a fitting pair is missing or not constant in boot 1",
+   "tier": "unexplained"
+  }
+ },
+ "v1Baseline": {
+  "archive": "esp32s3-rom-fetch-ladder-20260906-191331",
+  "archivedElf": "476116ea8402f311",
+  "cyclesPerTimedCall": {
+   "boot1": {
+    "abs": {
+     "iram": 11,
+     "rom": 11
+    },
+    "clzdi2": {
+     "iram": 16,
+     "rom": [
+      16,
+      20
+     ]
+    },
+    "clzsi2": {
+     "iram": 11,
+     "rom": 11
+    },
+    "ctzdi2": {
+     "iram": 19,
+     "rom": 19
+    },
+    "ctzsi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "ffssi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "mulsi3": {
+     "iram": 11,
+     "rom": 11
+    },
+    "p_none": {
+     "iram": 10,
+     "rom": 10
+    },
+    "roundup2": {
+     "iram": 14,
+     "rom": 14
+    },
+    "temp_to_power": {
+     "iram": 12,
+     "rom": 12
+    }
+   },
+   "boot2": {
+    "abs": {
+     "iram": 11,
+     "rom": 11
+    },
+    "clzdi2": {
+     "iram": 16,
+     "rom": [
+      16,
+      19
+     ]
+    },
+    "clzsi2": {
+     "iram": 11,
+     "rom": 11
+    },
+    "ctzdi2": {
+     "iram": 19,
+     "rom": 19
+    },
+    "ctzsi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "ffssi2": {
+     "iram": 15,
+     "rom": 15
+    },
+    "mulsi3": {
+     "iram": 11,
+     "rom": 11
+    },
+    "p_none": {
+     "iram": 10,
+     "rom": 10
+    },
+    "roundup2": {
+     "iram": 14,
+     "rom": 14
+    },
+    "temp_to_power": {
+     "iram": 12,
+     "rom": 12
+    }
+   }
+  },
+  "flashedElf": "b622cde9269e6ba0 (code-identical rebuild; see FLASHED-BINARY-NOTE.md)",
+  "verdict": {
+   "reason": "a fitting pair is missing or not constant in boot 1",
+   "tier": "unexplained"
+  }
+ },
+ "v2": {
+  "rule": {
+   "boot_identities_distinct": true,
+   "dual_idle_rom_varying": [
+    [],
+    []
+   ],
+   "dual_iram_hammer_rom_varying": [
+    [
+     "rom_abs",
+     "rom_clzdi2",
+     "rom_clzdi2_first",
+     "rom_clzdi2_last",
+     "rom_clzsi2",
+     "rom_ctzdi2",
+     "rom_ctzsi2",
+     "rom_ffssi2",
+     "rom_mulsi3",
+     "rom_p_none",
+     "rom_roundup2",
+     "rom_temp_to_power"
+    ],
+    [
+     "rom_abs",
+     "rom_clzdi2",
+     "rom_clzdi2_first",
+     "rom_clzdi2_last",
+     "rom_clzsi2",
+     "rom_ctzdi2",
+     "rom_ctzsi2",
+     "rom_ffssi2",
+     "rom_mulsi3",
+     "rom_p_none",
+     "rom_roundup2",
+     "rom_temp_to_power"
+    ]
+   ],
+   "dual_rom_hammer_rom_varying": [
+    [
+     "rom_abs",
+     "rom_clzdi2",
+     "rom_clzdi2_first",
+     "rom_clzdi2_last",
+     "rom_clzsi2",
+     "rom_ctzdi2",
+     "rom_ctzsi2",
+     "rom_ffssi2",
+     "rom_mulsi3",
+     "rom_p_none",
+     "rom_roundup2",
+     "rom_temp_to_power"
+    ],
+    [
+     "rom_abs",
+     "rom_clzdi2",
+     "rom_clzdi2_first",
+     "rom_clzdi2_last",
+     "rom_clzsi2",
+     "rom_ctzdi2",
+     "rom_ctzsi2",
+     "rom_ffssi2",
+     "rom_mulsi3",
+     "rom_p_none",
+     "rom_roundup2",
+     "rom_temp_to_power"
+    ]
+   ],
+   "iram_hammer_shows_increase": true,
+   "iram_varies_anywhere": true,
+   "unicore_rom_varying": [
+    [],
+    []
+   ],
+   "variation_confined_to_one_position": false,
+   "verdict": "not attributed: the declared pattern was not observed"
+  },
+  "variants": {
+   "dual-idle": {
+    "boots": [
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191352",
+      "cells": {
+       "iram_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "iram_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "iram_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       },
+       "rom_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "rom_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "rom_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       }
+      },
+      "identity": {
+       "counter": 3190646457,
+       "random": "bac2e117",
+       "rtc_us": 1000986,
+       "variant": "dual-idle"
+      },
+      "iramVarying": [],
+      "romVarying": []
+     },
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191352",
+      "cells": {
+       "iram_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "iram_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "iram_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       },
+       "rom_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "rom_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "rom_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       }
+      },
+      "identity": {
+       "counter": 3205263033,
+       "random": "2d6a0597",
+       "rtc_us": 1000986,
+       "variant": "dual-idle"
+      },
+      "iramVarying": [],
+      "romVarying": []
+     }
+    ]
+   },
+   "dual-iram-hammer": {
+    "boots": [
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191459",
+      "cells": {
+       "iram_abs": {
+        "max": 18,
+        "min": 15,
+        "mode": 18
+       },
+       "iram_clzdi2": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_clzdi2_first": {
+        "max": 20,
+        "min": 18,
+        "mode": 19
+       },
+       "iram_clzdi2_last": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_clzsi2": {
+        "max": 18,
+        "min": 15,
+        "mode": 18
+       },
+       "iram_ctzdi2": {
+        "max": 23,
+        "min": 21,
+        "mode": 23
+       },
+       "iram_ctzsi2": {
+        "max": 24,
+        "min": 21,
+        "mode": 23
+       },
+       "iram_ffssi2": {
+        "max": 24,
+        "min": 21,
+        "mode": 23
+       },
+       "iram_mulsi3": {
+        "max": 18,
+        "min": 15,
+        "mode": 18
+       },
+       "iram_p_none": {
+        "max": 16,
+        "min": 10,
+        "mode": 16
+       },
+       "iram_roundup2": {
+        "max": 21,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_temp_to_power": {
+        "max": 19,
+        "min": 13,
+        "mode": 18
+       },
+       "rom_abs": {
+        "max": 15,
+        "min": 12,
+        "mode": 15
+       },
+       "rom_clzdi2": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_clzdi2_first": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_clzdi2_last": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_clzsi2": {
+        "max": 15,
+        "min": 12,
+        "mode": 15
+       },
+       "rom_ctzdi2": {
+        "max": 23,
+        "min": 21,
+        "mode": 23
+       },
+       "rom_ctzsi2": {
+        "max": 19,
+        "min": 16,
+        "mode": 19
+       },
+       "rom_ffssi2": {
+        "max": 19,
+        "min": 16,
+        "mode": 19
+       },
+       "rom_mulsi3": {
+        "max": 15,
+        "min": 12,
+        "mode": 15
+       },
+       "rom_p_none": {
+        "max": 14,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_roundup2": {
+        "max": 18,
+        "min": 17,
+        "mode": 18
+       },
+       "rom_temp_to_power": {
+        "max": 16,
+        "min": 14,
+        "mode": 15
+       }
+      },
+      "identity": {
+       "counter": 3121440698,
+       "random": "631c34d2",
+       "rtc_us": 1000984,
+       "variant": "dual-iram-hammer"
+      },
+      "iramVarying": [
+       "iram_abs",
+       "iram_clzdi2",
+       "iram_clzdi2_first",
+       "iram_clzdi2_last",
+       "iram_clzsi2",
+       "iram_ctzdi2",
+       "iram_ctzsi2",
+       "iram_ffssi2",
+       "iram_mulsi3",
+       "iram_p_none",
+       "iram_roundup2",
+       "iram_temp_to_power"
+      ],
+      "romVarying": [
+       "rom_abs",
+       "rom_clzdi2",
+       "rom_clzdi2_first",
+       "rom_clzdi2_last",
+       "rom_clzsi2",
+       "rom_ctzdi2",
+       "rom_ctzsi2",
+       "rom_ffssi2",
+       "rom_mulsi3",
+       "rom_p_none",
+       "rom_roundup2",
+       "rom_temp_to_power"
+      ]
+     },
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191459",
+      "cells": {
+       "iram_abs": {
+        "max": 18,
+        "min": 15,
+        "mode": 18
+       },
+       "iram_clzdi2": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_clzdi2_first": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_clzdi2_last": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_clzsi2": {
+        "max": 18,
+        "min": 15,
+        "mode": 18
+       },
+       "iram_ctzdi2": {
+        "max": 23,
+        "min": 21,
+        "mode": 23
+       },
+       "iram_ctzsi2": {
+        "max": 24,
+        "min": 21,
+        "mode": 23
+       },
+       "iram_ffssi2": {
+        "max": 24,
+        "min": 21,
+        "mode": 23
+       },
+       "iram_mulsi3": {
+        "max": 18,
+        "min": 15,
+        "mode": 18
+       },
+       "iram_p_none": {
+        "max": 16,
+        "min": 10,
+        "mode": 16
+       },
+       "iram_roundup2": {
+        "max": 21,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_temp_to_power": {
+        "max": 19,
+        "min": 12,
+        "mode": 18
+       },
+       "rom_abs": {
+        "max": 15,
+        "min": 12,
+        "mode": 15
+       },
+       "rom_clzdi2": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_clzdi2_first": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_clzdi2_last": {
+        "max": 20,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_clzsi2": {
+        "max": 15,
+        "min": 12,
+        "mode": 15
+       },
+       "rom_ctzdi2": {
+        "max": 23,
+        "min": 21,
+        "mode": 23
+       },
+       "rom_ctzsi2": {
+        "max": 19,
+        "min": 16,
+        "mode": 19
+       },
+       "rom_ffssi2": {
+        "max": 19,
+        "min": 16,
+        "mode": 19
+       },
+       "rom_mulsi3": {
+        "max": 15,
+        "min": 12,
+        "mode": 15
+       },
+       "rom_p_none": {
+        "max": 13,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_roundup2": {
+        "max": 18,
+        "min": 17,
+        "mode": 18
+       },
+       "rom_temp_to_power": {
+        "max": 16,
+        "min": 14,
+        "mode": 15
+       }
+      },
+      "identity": {
+       "counter": 3190646457,
+       "random": "f07a9960",
+       "rtc_us": 1000980,
+       "variant": "dual-iram-hammer"
+      },
+      "iramVarying": [
+       "iram_abs",
+       "iram_clzdi2",
+       "iram_clzdi2_first",
+       "iram_clzdi2_last",
+       "iram_clzsi2",
+       "iram_ctzdi2",
+       "iram_ctzsi2",
+       "iram_ffssi2",
+       "iram_mulsi3",
+       "iram_p_none",
+       "iram_roundup2",
+       "iram_temp_to_power"
+      ],
+      "romVarying": [
+       "rom_abs",
+       "rom_clzdi2",
+       "rom_clzdi2_first",
+       "rom_clzdi2_last",
+       "rom_clzsi2",
+       "rom_ctzdi2",
+       "rom_ctzsi2",
+       "rom_ffssi2",
+       "rom_mulsi3",
+       "rom_p_none",
+       "rom_roundup2",
+       "rom_temp_to_power"
+      ]
+     }
+    ]
+   },
+   "dual-rom-hammer": {
+    "boots": [
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191436",
+      "cells": {
+       "iram_abs": {
+        "max": 17,
+        "min": 15,
+        "mode": 16
+       },
+       "iram_clzdi2": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_clzdi2_first": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_clzdi2_last": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_clzsi2": {
+        "max": 17,
+        "min": 15,
+        "mode": 16
+       },
+       "iram_ctzdi2": {
+        "max": 22,
+        "min": 19,
+        "mode": 22
+       },
+       "iram_ctzsi2": {
+        "max": 22,
+        "min": 20,
+        "mode": 22
+       },
+       "iram_ffssi2": {
+        "max": 23,
+        "min": 19,
+        "mode": 22
+       },
+       "iram_mulsi3": {
+        "max": 17,
+        "min": 15,
+        "mode": 16
+       },
+       "iram_p_none": {
+        "max": 16,
+        "min": 10,
+        "mode": 15
+       },
+       "iram_roundup2": {
+        "max": 21,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_temp_to_power": {
+        "max": 17,
+        "min": 12,
+        "mode": 17
+       },
+       "rom_abs": {
+        "max": 14,
+        "min": 12,
+        "mode": 14
+       },
+       "rom_clzdi2": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "rom_clzdi2_first": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "rom_clzdi2_last": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "rom_clzsi2": {
+        "max": 14,
+        "min": 12,
+        "mode": 14
+       },
+       "rom_ctzdi2": {
+        "max": 22,
+        "min": 19,
+        "mode": 22
+       },
+       "rom_ctzsi2": {
+        "max": 19,
+        "min": 18,
+        "mode": 19
+       },
+       "rom_ffssi2": {
+        "max": 19,
+        "min": 18,
+        "mode": 19
+       },
+       "rom_mulsi3": {
+        "max": 14,
+        "min": 12,
+        "mode": 14
+       },
+       "rom_p_none": {
+        "max": 14,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_roundup2": {
+        "max": 18,
+        "min": 16,
+        "mode": 18
+       },
+       "rom_temp_to_power": {
+        "max": 15,
+        "min": 13,
+        "mode": 15
+       }
+      },
+      "identity": {
+       "counter": 3188549561,
+       "random": "9fd3fd37",
+       "rtc_us": 1000980,
+       "variant": "dual-rom-hammer"
+      },
+      "iramVarying": [
+       "iram_abs",
+       "iram_clzdi2",
+       "iram_clzdi2_first",
+       "iram_clzdi2_last",
+       "iram_clzsi2",
+       "iram_ctzdi2",
+       "iram_ctzsi2",
+       "iram_ffssi2",
+       "iram_mulsi3",
+       "iram_p_none",
+       "iram_roundup2",
+       "iram_temp_to_power"
+      ],
+      "romVarying": [
+       "rom_abs",
+       "rom_clzdi2",
+       "rom_clzdi2_first",
+       "rom_clzdi2_last",
+       "rom_clzsi2",
+       "rom_ctzdi2",
+       "rom_ctzsi2",
+       "rom_ffssi2",
+       "rom_mulsi3",
+       "rom_p_none",
+       "rom_roundup2",
+       "rom_temp_to_power"
+      ]
+     },
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191436",
+      "cells": {
+       "iram_abs": {
+        "max": 17,
+        "min": 15,
+        "mode": 16
+       },
+       "iram_clzdi2": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_clzdi2_first": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_clzdi2_last": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_clzsi2": {
+        "max": 17,
+        "min": 15,
+        "mode": 16
+       },
+       "iram_ctzdi2": {
+        "max": 22,
+        "min": 19,
+        "mode": 22
+       },
+       "iram_ctzsi2": {
+        "max": 22,
+        "min": 20,
+        "mode": 22
+       },
+       "iram_ffssi2": {
+        "max": 23,
+        "min": 19,
+        "mode": 22
+       },
+       "iram_mulsi3": {
+        "max": 17,
+        "min": 15,
+        "mode": 16
+       },
+       "iram_p_none": {
+        "max": 16,
+        "min": 10,
+        "mode": 15
+       },
+       "iram_roundup2": {
+        "max": 21,
+        "min": 18,
+        "mode": 20
+       },
+       "iram_temp_to_power": {
+        "max": 17,
+        "min": 12,
+        "mode": 17
+       },
+       "rom_abs": {
+        "max": 14,
+        "min": 12,
+        "mode": 14
+       },
+       "rom_clzdi2": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "rom_clzdi2_first": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "rom_clzdi2_last": {
+        "max": 20,
+        "min": 18,
+        "mode": 20
+       },
+       "rom_clzsi2": {
+        "max": 14,
+        "min": 12,
+        "mode": 14
+       },
+       "rom_ctzdi2": {
+        "max": 22,
+        "min": 19,
+        "mode": 22
+       },
+       "rom_ctzsi2": {
+        "max": 19,
+        "min": 18,
+        "mode": 19
+       },
+       "rom_ffssi2": {
+        "max": 19,
+        "min": 18,
+        "mode": 19
+       },
+       "rom_mulsi3": {
+        "max": 14,
+        "min": 12,
+        "mode": 14
+       },
+       "rom_p_none": {
+        "max": 14,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_roundup2": {
+        "max": 18,
+        "min": 16,
+        "mode": 18
+       },
+       "rom_temp_to_power": {
+        "max": 15,
+        "min": 13,
+        "mode": 15
+       }
+      },
+      "identity": {
+       "counter": 3190580921,
+       "random": "3ccbc9b4",
+       "rtc_us": 1000980,
+       "variant": "dual-rom-hammer"
+      },
+      "iramVarying": [
+       "iram_abs",
+       "iram_clzdi2",
+       "iram_clzdi2_first",
+       "iram_clzdi2_last",
+       "iram_clzsi2",
+       "iram_ctzdi2",
+       "iram_ctzsi2",
+       "iram_ffssi2",
+       "iram_mulsi3",
+       "iram_p_none",
+       "iram_roundup2",
+       "iram_temp_to_power"
+      ],
+      "romVarying": [
+       "rom_abs",
+       "rom_clzdi2",
+       "rom_clzdi2_first",
+       "rom_clzdi2_last",
+       "rom_clzsi2",
+       "rom_ctzdi2",
+       "rom_ctzsi2",
+       "rom_ffssi2",
+       "rom_mulsi3",
+       "rom_p_none",
+       "rom_roundup2",
+       "rom_temp_to_power"
+      ]
+     }
+    ]
+   },
+   "unicore": {
+    "boots": [
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191414",
+      "cells": {
+       "iram_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "iram_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "iram_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       },
+       "rom_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "rom_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "rom_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       }
+      },
+      "identity": {
+       "counter": 3207358393,
+       "random": "0d49dfee",
+       "rtc_us": 1001132,
+       "variant": "unicore"
+      },
+      "iramVarying": [],
+      "romVarying": []
+     },
+     {
+      "archive": "esp32s3-rom-fetch-ladder-v2-20260906-191414",
+      "cells": {
+       "iram_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "iram_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "iram_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "iram_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "iram_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "iram_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "iram_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       },
+       "rom_abs": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_clzdi2": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_first": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzdi2_last": {
+        "max": 16,
+        "min": 16,
+        "mode": 16
+       },
+       "rom_clzsi2": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_ctzdi2": {
+        "max": 19,
+        "min": 19,
+        "mode": 19
+       },
+       "rom_ctzsi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_ffssi2": {
+        "max": 15,
+        "min": 15,
+        "mode": 15
+       },
+       "rom_mulsi3": {
+        "max": 11,
+        "min": 11,
+        "mode": 11
+       },
+       "rom_p_none": {
+        "max": 10,
+        "min": 10,
+        "mode": 10
+       },
+       "rom_roundup2": {
+        "max": 14,
+        "min": 14,
+        "mode": 14
+       },
+       "rom_temp_to_power": {
+        "max": 12,
+        "min": 12,
+        "mode": 12
+       }
+      },
+      "identity": {
+       "counter": 3121440441,
+       "random": "f55b2ec9",
+       "rtc_us": 1001132,
+       "variant": "unicore"
+      },
+      "iramVarying": [],
+      "romVarying": []
+     }
+    ]
+   }
+  },
+  "verdict": "not attributed: the declared pattern was not observed"
+ }
+}

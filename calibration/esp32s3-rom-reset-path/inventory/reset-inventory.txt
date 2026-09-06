@@ -1,0 +1,25 @@
+instructions traced: 130317
+by fetch region: {'ROM': 130317}
+  ROM            {'alu': 55717, 'load': 23164, 'branch': 18212, 'store': 16392, 'literal-load': 4187, 'special': 2807, 'return': 2796, 'call': 2789, 'entry': 2786, 'jump': 1126, 'loop-setup': 341}
+ROM branch/jump next-PC metric (a j whose target is the next instruction counts as fallthrough): {('j', 'next PC != fallthrough'): 1115, ('branch', 'next PC != fallthrough'): 12390, ('branch', 'next PC == fallthrough'): 5822, ('j', 'next PC == fallthrough'): 11}
+ROM l32r literal regions: {'ROM': 4187}
+top ROM functions by instruction count (share of instructions, not time):
+    50710  38.9% ets_run_flash_bootloader
+    17344  13.3% memcpy
+     9166   7.0% ets_sha_process
+     6831   5.2% uart_tx_one_char_uart
+     6235   4.8% .stack_ok
+     5587   4.3% uart_tx_one_char
+     4671   3.6% ets_vprintf
+     4311   3.3% usb_uart_device_tx_one_char
+     4128   3.2% ets_sha_update
+     3150   2.4% alwaysunpack
+     2673   2.1% ets_write_char
+     2062   1.6% Cache_MMU_Init
+     1974   1.5% __umoddi3
+     1974   1.5% __udivdi3
+     1954   1.5% ets_write_char_uart
+     1502   1.2% _cvt
+     1015   0.8% ets_get_printf_channel
+      310   0.2% ets_printf
+load/store effective-address classes: NOT AVAILABLE from this trace (a0..a3 only)

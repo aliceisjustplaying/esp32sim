@@ -1,0 +1,381 @@
+{
+  "protocolVersion": 2,
+  "harnessVersion": "1.4.0",
+  "chipModel": "ESP32-S3",
+  "chipRevision": 2,
+  "runtimeConfiguration": {
+    "schemaVersion": "1.0.0",
+    "idfVersion": "v6.1",
+    "target": "esp32s3",
+    "cores": 2,
+    "cpuHz": 240000000,
+    "ccountHz": 240000000,
+    "samplesPerCell": 100,
+    "maxAttemptsPerCell": 200,
+    "recursionDepth": 1,
+    "probe": "rom-fetch-ladder-v2",
+    "emulatorChipRevision": 0
+  },
+  "cells": [
+    {
+      "id": "rom_clzdi2_first",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "nsau",
+        "add.n",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_clzdi2_first",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "nsau",
+        "add.n",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_p_none",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_p_none",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_abs",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "abs",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_abs",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "abs",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_mulsi3",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "mull",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_mulsi3",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "mull",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_clzsi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "nsau",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_clzsi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "nsau",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_temp_to_power",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "sub",
+        "extui",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_temp_to_power",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "sub",
+        "extui",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_roundup2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "addi.n",
+        "add.n",
+        "neg",
+        "and",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_roundup2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "addi.n",
+        "add.n",
+        "neg",
+        "and",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_ctzsi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "neg",
+        "and",
+        "nsau",
+        "addi",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_ctzsi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "neg",
+        "and",
+        "nsau",
+        "addi",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_ffssi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "neg",
+        "and",
+        "nsau",
+        "addi",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_ffssi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "neg",
+        "and",
+        "nsau",
+        "addi",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_clzdi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "nsau",
+        "add.n",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_clzdi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "nsau",
+        "add.n",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_ctzdi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "neg",
+        "and",
+        "nsau",
+        "sub",
+        "addi",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_ctzdi2",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "neg",
+        "and",
+        "nsau",
+        "sub",
+        "addi",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "rom_clzdi2_last",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "nsau",
+        "add.n",
+        "retw.n"
+      ]
+    },
+    {
+      "id": "iram_clzdi2_last",
+      "family": "instruction-fetch",
+      "samples": 100,
+      "variants": [
+        "normal"
+      ],
+      "knownTerms": [
+        "entry",
+        "movnez",
+        "movi.n",
+        "nsau",
+        "add.n",
+        "retw.n"
+      ]
+    }
+  ]
+}

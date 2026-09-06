@@ -1,0 +1,606 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pyserial==3.5"]
+# ///
+"""Capture one verified TinyDraw Tier-B image and emit a receipt sidecar."""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import hashlib
+import json
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+from ndjson import (
+    DBUS_FLASH_CLASSIFIER_ALIGNMENT,
+    DBUS_FLASH_CLASSIFIER_BYTES,
+    DEFAULT_MANIFEST,
+    REQUIRED_IDF_VERSION,
+    CaptureValidator,
+    ManifestContract,
+    ValidationError,
+    validate_calibration_lines,
+)
+
+
+READY = b"TINYDRAW_TIER_B_SELECT_READY"
+FAIL_MARKERS = (
+    b"Guru Meditation Error",
+    b"Stack canary watchpoint triggered",
+    b"assert failed:",
+    b"abort() was called",
+    b"TINYDRAW_TIER_B_FAILED",
+)
+RESTART_MARKERS = (
+    READY,
+    b"ESP-ROM:",
+    b"rst:",
+    b"Saved PC:",
+    b"Rebooting...",
+    b"Brownout detector was triggered",
+    b"CPU reset",
+    b"software reset",
+    b"hardware reset",
+    b"watchdog reset",
+)
+BUILD_KEYS = {
+    "ok",
+    "fixture",
+    "variant",
+    "idfVersion",
+    "spiramRodata",
+    "gitCommit",
+    "gitDirty",
+    "sdkconfigSha256",
+    "compilerVersion",
+    "elfSha256",
+    "manifestSha256",
+    "toolchain",
+    "dbusFlashClassifier",
+}
+GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def restart_marker(line: bytes, selection_sent: bool) -> bytes | None:
+    if not selection_sent:
+        return None
+    return next((marker for marker in RESTART_MARKERS if marker in line), None)
+
+
+def failure_marker(line: bytes) -> bytes | None:
+    return next((marker for marker in FAIL_MARKERS if marker in line), None)
+
+
+def stamp(line: bytes) -> bytes:
+    now = datetime.datetime.now().strftime("[%H:%M:%S] ").encode()
+    return now + line.rstrip(b"\r") + b"\n"
+
+
+def load_preflight(data: bytes, path: Path, variant: str, manifest_sha256: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(data)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValidationError(f"cannot load ELF preflight {path}: {error}") from error
+    if not isinstance(payload, dict) or BUILD_KEYS - payload.keys():
+        raise ValidationError("ELF preflight is missing receipt fields")
+    if payload["ok"] is not True:
+        raise ValidationError("ELF preflight did not pass")
+    if payload["fixture"] is not False:
+        raise ValidationError("fixture ELF preflight cannot authorize capture")
+    if payload["variant"] != variant:
+        raise ValidationError(
+            f"ELF preflight variant is {payload['variant']!r}, expected {variant!r}"
+        )
+    if payload["idfVersion"] != REQUIRED_IDF_VERSION:
+        raise ValidationError(
+            f"ELF preflight ESP-IDF is {payload['idfVersion']!r}, expected {REQUIRED_IDF_VERSION!r}"
+        )
+    if payload["spiramRodata"] is not False:
+        raise ValidationError("ELF preflight requires spiramRodata=false")
+    if payload["manifestSha256"] != manifest_sha256:
+        raise ValidationError("ELF preflight does not match the committed manifest")
+    if (
+        not isinstance(payload["gitCommit"], str)
+        or GIT_COMMIT.fullmatch(payload["gitCommit"]) is None
+    ):
+        raise ValidationError("ELF preflight gitCommit is not a full lowercase commit ID")
+    if not isinstance(payload["gitDirty"], bool):
+        raise ValidationError("ELF preflight gitDirty must be boolean")
+    for key in ("sdkconfigSha256", "elfSha256", "manifestSha256"):
+        if not isinstance(payload[key], str) or SHA256.fullmatch(payload[key]) is None:
+            raise ValidationError(f"ELF preflight {key} is not a lowercase SHA-256")
+    if not isinstance(payload["compilerVersion"], str) or not payload["compilerVersion"]:
+        raise ValidationError("ELF preflight compilerVersion is missing")
+    toolchain = payload["toolchain"]
+    toolchain_keys = {"compiler", "compilerVersion", "objdump", "objdumpVersion"}
+    if not isinstance(toolchain, dict) or set(toolchain) != toolchain_keys:
+        raise ValidationError("ELF preflight toolchain is malformed")
+    if any(not isinstance(toolchain[key], str) or not toolchain[key] for key in toolchain_keys):
+        raise ValidationError("ELF preflight toolchain fields must be non-empty strings")
+    if toolchain["compilerVersion"] != payload["compilerVersion"]:
+        raise ValidationError("ELF preflight compiler versions disagree")
+    classifier = payload["dbusFlashClassifier"]
+    classifier_keys = {
+        "alignmentBytes",
+        "end",
+        "section",
+        "sizeBytes",
+        "start",
+        "storage",
+        "symbol",
+        "xipPsram",
+    }
+    if not isinstance(classifier, dict) or set(classifier) != classifier_keys:
+        raise ValidationError("ELF preflight DBUS flash classifier is malformed")
+    start = classifier["start"]
+    end = classifier["end"]
+    if (
+        not isinstance(start, int)
+        or isinstance(start, bool)
+        or not isinstance(end, int)
+        or isinstance(end, bool)
+        or start == 0
+        or start % DBUS_FLASH_CLASSIFIER_ALIGNMENT != 0
+        or end - start + 1 != DBUS_FLASH_CLASSIFIER_BYTES
+        or classifier["sizeBytes"] != DBUS_FLASH_CLASSIFIER_BYTES
+        or classifier["alignmentBytes"] != DBUS_FLASH_CLASSIFIER_ALIGNMENT
+        or classifier["section"] != ".flash.rodata"
+        or classifier["storage"] != "flash-rodata"
+        or classifier["xipPsram"] is not False
+        or not isinstance(classifier["symbol"], str)
+        or not classifier["symbol"]
+        or (
+            classifier["symbol"] != "g_flash_pool"
+            and not classifier["symbol"].endswith("g_flash_poolE")
+        )
+    ):
+        raise ValidationError("ELF preflight DBUS flash classifier range is invalid")
+    return payload
+
+
+def write_receipt(
+    path: Path,
+    capture: Path,
+    manifest_sha256: str,
+    preflight_sha256: str,
+    archived_elf: Path,
+    preflight: dict[str, Any],
+    validator: CaptureValidator,
+    tally: dict[str, int | bool],
+) -> None:
+    assert validator.metadata is not None
+    payload = {
+        "schemaVersion": 1,
+        "suite": "tier-b",
+        "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "request": {"variant": validator.variant, "cells": validator.selected},
+        "manifestSha256": manifest_sha256,
+        "captureSha256": hashlib.sha256(capture.read_bytes()).hexdigest(),
+        "preflightSha256": preflight_sha256,
+        "archivedElf": str(archived_elf),
+        "elfVerification": preflight,
+        "runtimeMetadata": validator.metadata,
+        "bootIdentity": validator.metadata["bootId"],
+        "tally": tally,
+    }
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    temporary.replace(path)
+
+
+def legacy_main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("port")
+    parser.add_argument("output", type=Path)
+    parser.add_argument("timeout_s", type=float)
+    parser.add_argument("--variant", choices=("normal", "xip-psram"), required=True)
+    parser.add_argument("--preflight", type=Path, required=True)
+    parser.add_argument("--elf", type=Path, required=True)
+    parser.add_argument(
+        "--archive-dir", type=Path, default=Path("~/Archives/esp32s3/tier-b").expanduser()
+    )
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--cells", default="all", help="comma-separated cell IDs, or all")
+    parser.add_argument("--tail-s", type=float, default=2.0)
+    parser.add_argument("--no-reset", action="store_true")
+    args = parser.parse_args()
+
+    import serial
+
+    receipt = args.receipt or Path(str(args.output) + ".receipt.json")
+    try:
+        if args.output.resolve() == receipt.resolve():
+            raise ValidationError("capture and receipt paths must differ")
+        if args.output.exists() or receipt.exists():
+            raise ValidationError("refusing to overwrite capture or receipt")
+        manifest_data = args.manifest.read_bytes()
+        manifest_sha256 = hashlib.sha256(manifest_data).hexdigest()
+        contract = ManifestContract.from_bytes(manifest_data, str(args.manifest))
+        preflight_data = args.preflight.read_bytes()
+        preflight_sha256 = hashlib.sha256(preflight_data).hexdigest()
+        preflight = load_preflight(
+            preflight_data, args.preflight, args.variant, manifest_sha256
+        )
+        elf_data = args.elf.read_bytes()
+        elf_sha256 = hashlib.sha256(elf_data).hexdigest()
+        if elf_sha256 != preflight["elfSha256"]:
+            raise ValidationError("capture ELF does not match the verified preflight")
+        args.archive_dir.mkdir(parents=True, exist_ok=True)
+        archived_elf = args.archive_dir / f"tier-b-{args.variant}-{elf_sha256}.elf"
+        if archived_elf.exists():
+            if archived_elf.read_bytes() != elf_data:
+                raise ValidationError("archived ELF path contains different bytes")
+        else:
+            temporary_elf = archived_elf.with_name(archived_elf.name + ".tmp")
+            temporary_elf.write_bytes(elf_data)
+            temporary_elf.replace(archived_elf)
+        validator = CaptureValidator(contract, args.variant, args.cells, preflight)
+    except (OSError, ValidationError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True))
+        return 2
+
+    validation_error: str | None = None
+    hardware_failure = False
+    selection_sent = False
+    done_at: float | None = None
+    line_number = 0
+    buffer = b""
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    device = serial.Serial(args.port, 115200, timeout=0.25)
+    try:
+        if not args.no_reset:
+            device.dtr = False
+            device.rts = True
+            time.sleep(0.2)
+            device.rts = False
+        deadline = time.monotonic() + args.timeout_s
+        with args.output.open("wb") as output:
+            while time.monotonic() < deadline and validation_error is None:
+                if done_at is not None and time.monotonic() >= done_at + args.tail_s:
+                    break
+                data = device.read(4096)
+                if not data:
+                    continue
+                buffer += data
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    line_number += 1
+                    output.write(stamp(line))
+                    output.flush()
+                    failure = failure_marker(line)
+                    if failure is not None:
+                        hardware_failure = True
+                        validation_error = (
+                            "hardware failure marker: " + line.decode(errors="replace")
+                        )
+                        break
+                    restart = restart_marker(line, selection_sent)
+                    if restart is not None:
+                        hardware_failure = True
+                        validation_error = (
+                            "restart marker after selection: "
+                            + restart.decode(errors="replace")
+                        )
+                        break
+                    if not selection_sent and READY in line:
+                        device.write(f"TIER_B_SELECT {args.cells}\n".encode())
+                        device.flush()
+                        selection_sent = True
+                    try:
+                        if validator.feed_line(line.decode(), line_number):
+                            done_at = time.monotonic()
+                    except (UnicodeDecodeError, ValidationError) as error:
+                        validation_error = str(error)
+                        break
+
+            if buffer.strip():
+                line_number += 1
+                output.write(stamp(buffer))
+                failure = failure_marker(buffer)
+                if failure is not None:
+                    hardware_failure = True
+                    validation_error = (
+                        "hardware failure marker: " + buffer.decode(errors="replace")
+                    )
+                restart = restart_marker(buffer, selection_sent)
+                if restart is not None:
+                    hardware_failure = True
+                    validation_error = (
+                        "restart marker after selection: " + restart.decode(errors="replace")
+                    )
+                try:
+                    if validation_error is None:
+                        validator.feed_line(buffer.decode(), line_number)
+                except (UnicodeDecodeError, ValidationError) as error:
+                    validation_error = str(error)
+    finally:
+        device.close()
+
+    if not selection_sent and validation_error is None:
+        validation_error = "selection READY marker was not observed"
+    if validation_error is None:
+        try:
+            tally = validator.finalize()
+        except ValidationError as error:
+            validation_error = str(error)
+
+    if validation_error is not None or hardware_failure:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "output": str(args.output),
+                    "error": validation_error,
+                    "hardwareFailure": hardware_failure,
+                },
+                sort_keys=True,
+            )
+        )
+        return 2
+
+    tally_payload = tally.as_dict()
+    write_receipt(
+        receipt,
+        args.output,
+        manifest_sha256,
+        preflight_sha256,
+        archived_elf,
+        preflight,
+        validator,
+        tally_payload,
+    )
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "output": str(args.output),
+                "receipt": str(receipt),
+                **tally_payload,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _one_artifact(build: Path, suffix: str) -> Path:
+    matches = list(build.glob(f"*{suffix}"))
+    if len(matches) != 1:
+        raise ValidationError(
+            f"build directory must contain exactly one top-level {suffix} file"
+        )
+    return matches[0]
+
+
+IDF_PYTHON = Path("/Users/alice/.espressif/tools/python/v6.1/venv/bin/python")
+
+
+def _capture_boot(
+    port: str, output: Path, timeout_s: float, terminal_line: str
+) -> list[str]:
+    import serial
+
+    # 2026-09-06: on this board every reset driven through the USB serial/JTAG
+    # control lines (DTR/RTS, including esptool's hard reset) latched the boot
+    # strap low and entered ROM download mode; the RTC watchdog reset does not.
+    # Reset through esptool's watchdog path with the port closed, then open the
+    # port with both control lines deasserted so the open itself resets nothing.
+    subprocess.run(
+        [str(IDF_PYTHON), "-m", "esptool", "--port", port, "--chip", "esp32s3",
+         "--before", "default-reset", "--after", "watchdog-reset", "chip-id"],
+        check=True, capture_output=True,
+    )
+    device = serial.Serial()
+    device.port = port
+    device.baudrate = 115200
+    device.timeout = 0.25
+    device.dtr = False
+    device.rts = False
+    # The USB device re-enumerates briefly after the watchdog reset.
+    open_deadline = time.monotonic() + 10.0
+    while True:
+        try:
+            device.open()
+            break
+        except (OSError, serial.SerialException):
+            if time.monotonic() >= open_deadline:
+                raise
+            time.sleep(0.1)
+    lines: list[str] = []
+    buffer = b""
+    done_at: float | None = None
+    try:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if done_at is not None and time.monotonic() >= done_at + 1.0:
+                break
+            data = device.read(4096)
+            if not data:
+                continue
+            buffer += data
+            while b"\n" in buffer:
+                raw, buffer = buffer.split(b"\n", 1)
+                line = raw.decode(errors="strict").rstrip("\r")
+                lines.append(line)
+                if failure_marker(raw) is not None:
+                    raise ValidationError(f"hardware failure marker: {line}")
+                if terminal_line in line:
+                    done_at = time.monotonic()
+        if buffer.strip():
+            lines.append(buffer.decode(errors="strict").rstrip("\r"))
+    except UnicodeDecodeError as error:
+        raise ValidationError("serial capture is not valid UTF-8") from error
+    finally:
+        device.close()
+    output.write_text("".join(f"{line}\n" for line in lines))
+    return lines
+
+
+def _sha256sums(directory: Path) -> None:
+    entries = []
+    for path in sorted(item for item in directory.rglob("*") if item.is_file()):
+        if path.name == "SHA256SUMS":
+            continue
+        relative = path.relative_to(directory)
+        entries.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {relative}")
+    (directory / "SHA256SUMS").write_text("\n".join(entries) + "\n")
+
+
+def session_main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--image", type=Path, required=True)
+    parser.add_argument("--build", type=Path, required=True)
+    parser.add_argument("--boots", type=int, required=True)
+    parser.add_argument("--port", required=True)
+    parser.add_argument("--timeout-s", type=float, default=120.0)
+    parser.add_argument(
+        "--archive-root", type=Path, default=Path("~/Archives/esp32s3").expanduser()
+    )
+    args = parser.parse_args()
+    try:
+        if args.boots < 1:
+            raise ValidationError("--boots must be at least 1")
+        image = args.image.resolve(strict=True)
+        build = args.build.resolve(strict=True)
+        manifest = image / "probe-cells.json"
+        verifier = image / "verify_elf.py"
+        bootloader = build / "bootloader" / "bootloader.bin"
+        partition_table = build / "partition_table" / "partition-table.bin"
+        sdkconfig = build / "sdkconfig"
+        flasher_args = build / "flasher_args.json"
+        flash_args = build / "flash_args"
+        app_elf = _one_artifact(build, ".elf")
+        app_bin = app_elf.with_suffix(".bin")
+        for path in (
+            manifest,
+            verifier,
+            bootloader,
+            partition_table,
+            sdkconfig,
+            flasher_args,
+            flash_args,
+            app_bin,
+        ):
+            if not path.is_file():
+                raise ValidationError(f"missing capture input: {path}")
+        contract = ManifestContract.load(manifest)
+        stamp_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        archive = args.archive_root / f"{image.name}-{stamp_name}"
+        archive.mkdir(parents=True, exist_ok=False)
+        for path in (
+            manifest,
+            bootloader,
+            partition_table,
+            sdkconfig,
+            flasher_args,
+            flash_args,
+            app_bin,
+            app_elf,
+        ):
+            shutil.copy2(path, archive / path.name)
+        # Verify the ARCHIVED ELF with the archived sdkconfig beside it, so the
+        # verified identity and the flashed identity are the same files.
+        archived_elf = archive / app_elf.name
+        archived_bin = archive / app_bin.name
+        verification = archive / "elf-verification.json"
+        verify_command = (
+            f"python3 {shlex.quote(str(verifier))} {shlex.quote(str(archived_elf))} "
+            f"{shlex.quote(str(verification))} "
+            '--objdump "$(command -v xtensa-esp32s3-elf-objdump)" '
+            '--compiler "$(command -v xtensa-esp32s3-elf-gcc)"'
+        )
+        subprocess.run(["eim", "run", verify_command, "v6.1"], check=True)
+        receipt = json.loads(verification.read_text())
+        if not receipt.get("ok"):
+            raise ValidationError("archived ELF failed verification")
+        manifest_sha = hashlib.sha256((archive / manifest.name).read_bytes()).hexdigest()
+        if receipt.get("manifest", {}).get("manifestSha256") != manifest_sha:
+            raise ValidationError("verification receipt manifest hash differs from the archived manifest")
+        archived_elf_sha = hashlib.sha256(archived_elf.read_bytes()).hexdigest()
+        if receipt.get("appElfSha256") != archived_elf_sha:
+            raise ValidationError("verification receipt ELF hash differs from the archived ELF")
+        # The app image embeds the ELF SHA-256 in its descriptor (bytes 176..207):
+        # bind the binary to be written to the ELF that was verified.
+        embedded = archived_bin.read_bytes()[176:208].hex()
+        if embedded != archived_elf_sha:
+            raise ValidationError(
+                f"app image embeds ELF hash {embedded[:16]}..., archived ELF is {archived_elf_sha[:16]}...: stale or mismatched build"
+            )
+        # Flash the archived copies with esptool directly. `idf.py flash` rebuilds
+        # when sources changed (observed 2026-09-06), which silently flashes a
+        # binary other than the verified, archived one.
+        flasher = json.loads((archive / "flasher_args.json").read_text())
+        flash_files = []
+        seen = set()
+        for offset, name in flasher["flash_files"].items():
+            base = Path(name).name
+            if base in seen:
+                raise ValidationError(f"flash file basename {base!r} is ambiguous")
+            seen.add(base)
+            target = archive / base
+            if not target.is_file():
+                raise ValidationError(f"flash file {base!r} missing from the archive")
+            flash_files += [offset, str(target)]
+        esptool_command = [
+            str(IDF_PYTHON), "-m", "esptool", "--chip", "esp32s3", "--port", args.port,
+            "--baud", "460800", "--before", "default-reset", "--after", "hard-reset",
+            "write-flash", "--flash-mode", flasher["flash_settings"]["flash_mode"],
+            "--flash-freq", flasher["flash_settings"]["flash_freq"],
+            "--flash-size", flasher["flash_settings"]["flash_size"], *flash_files,
+        ]
+        (archive / "esptool-command.txt").write_text(" ".join(shlex.quote(a) for a in esptool_command) + "\n")
+        flash_result = subprocess.run(esptool_command, capture_output=True, text=True)
+        (archive / "esptool.log").write_text(flash_result.stdout + flash_result.stderr)
+        if flash_result.returncode != 0:
+            raise ValidationError(f"esptool write-flash failed with status {flash_result.returncode}; see esptool.log")
+        boots = []
+        for number in range(1, args.boots + 1):
+            capture = archive / f"boot-{number}.log"
+            lines = _capture_boot(
+                args.port, capture, args.timeout_s, contract.terminal_line
+            )
+            tally = validate_calibration_lines(lines, contract, "normal", "all", False)
+            boots.append(
+                {
+                    "boot": number,
+                    "capture": capture.name,
+                    "captureSha256": hashlib.sha256(capture.read_bytes()).hexdigest(),
+                    "tally": tally.as_dict(),
+                }
+            )
+        session = {
+            "schemaVersion": 1,
+            "image": image.name,
+            "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "boots": boots,
+        }
+        (archive / "session.json").write_text(
+            json.dumps(session, indent=2, sort_keys=True) + "\n"
+        )
+        _sha256sums(archive)
+    except (OSError, subprocess.CalledProcessError, ValidationError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True))
+        return 2
+    print(json.dumps({"ok": True, "archive": str(archive)}, sort_keys=True))
+    return 0
+
+
+def main() -> int:
+    if "--image" in sys.argv[1:]:
+        return session_main()
+    return legacy_main()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
