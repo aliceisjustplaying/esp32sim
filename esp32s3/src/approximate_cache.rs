@@ -40,12 +40,7 @@ impl CacheAccess {
         self.extra_cycles += other.extra_cycles;
     }
 }
-#[derive(Clone, Copy, Debug, Default)]
-struct Line {
-    tag: u32,
-    valid: bool,
-    dirty: bool,
-}
+use emu_core::bus::{FastCache, FastCacheLine as Line};
 
 /// Feed both CPUs' data accesses into one shared instance. Only pass cacheable
 /// external addresses. Virtual keys misrepresent MMU aliases; callers with
@@ -78,6 +73,12 @@ impl CacheTiming {
     pub fn stats(&self) -> CacheAccess {
         self.stats
     }
+    /// Fixed-geometry prototype; other configurations retain the helper path.
+    pub fn inline_view(&mut self) -> Option<FastCache> {
+        (self.config.capacity_bytes == 32768 && self.config.line_bytes == 64
+            && self.config.ways == 4 && self.config.hit_cycles == 0)
+            .then(|| FastCache { lines: self.lines.as_mut_ptr(), hits: &mut self.stats.hits })
+    }
     pub fn reset(&mut self) {
         self.lines.fill(Line::default());
         self.next_way.fill(0);
@@ -98,24 +99,24 @@ impl CacheTiming {
             let set = tag as usize % self.next_way.len();
             let start = set * self.config.ways;
             let ways = &mut self.lines[start..start + self.config.ways];
-            if let Some(line) = ways.iter_mut().find(|line| line.valid && line.tag == tag) {
-                line.dirty |= is_write;
+            if let Some(line) = ways.iter_mut().find(|line| line.valid != 0 && line.tag == tag) {
+                line.dirty |= u32::from(is_write);
                 result.hits += 1;
                 result.extra_cycles += self.config.hit_cycles as u64;
             } else {
                 let victim = ways
                     .iter()
-                    .position(|line| !line.valid)
+                    .position(|line| line.valid == 0)
                     .unwrap_or(self.next_way[set]);
-                let dirty = ways[victim].valid && ways[victim].dirty;
+                let dirty = ways[victim].valid != 0 && ways[victim].dirty != 0;
                 result.line_fills += 1;
                 result.dirty_writebacks += u64::from(dirty);
                 result.extra_cycles += self.config.fill_cycles as u64
                     + u64::from(dirty) * self.config.writeback_cycles as u64;
                 ways[victim] = Line {
                     tag,
-                    valid: true,
-                    dirty: is_write,
+                    dirty: u32::from(is_write),
+                    valid: 1,
                 };
                 self.next_way[set] = (victim + 1) % self.config.ways;
             }

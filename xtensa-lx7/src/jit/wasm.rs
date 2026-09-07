@@ -281,6 +281,8 @@ pub struct Helpers {
     loop_end: u32,
     version_ptrs: [*const u32; 2],
     versions: [u32; 2],
+    #[cfg(feature = "wasm-cache-inline")]
+    cache: *const emu_core::bus::FastCache,
 }
 impl Helpers {
     pub fn new<B: Bus>() -> Self {
@@ -291,6 +293,8 @@ impl Helpers {
             loop_end: 0,
             version_ptrs: [std::ptr::null(); 2],
             versions: [0; 2],
+            #[cfg(feature = "wasm-cache-inline")]
+            cache: std::ptr::null(),
         }
     }
 }
@@ -363,6 +367,12 @@ pub unsafe fn run<B: Bus>(
 ) -> u32 {
     type Run<B> =
         extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32, *const TlbEntry, *mut u32) -> u32;
+    #[cfg(feature = "wasm-cache-inline")]
+    let cache_view = bus.fast_cache();
+    #[cfg(feature = "wasm-cache-inline")]
+    let hinted = Helpers { cache: cache_view.as_ref().map_or(std::ptr::null(), |v| v), ..*h };
+    #[cfg(feature = "wasm-cache-inline")]
+    let h = &hinted;
     // SAFETY: host_jit_compile installs exactly this signature in the shared WASM table.
     let f: Run<B> = unsafe { std::mem::transmute(cc.blocks[code as usize].slot.get() as usize) };
     let (tlb, versions) = fm

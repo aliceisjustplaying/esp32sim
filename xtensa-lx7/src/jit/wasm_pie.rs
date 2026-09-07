@@ -170,6 +170,8 @@ fn vmem(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool, o: &Ops, st
     g.load(offset_of!(TlbEntry, lo));
     g.op(0x6b);
     g.set(REL);
+    #[cfg(feature = "wasm-cache-inline")]
+    emit_cache_hit(g, store, 4); // The reference PIE helper performs four words.
     if store {
         g.get(TLB);
         g.load(offset_of!(TlbEntry, base));

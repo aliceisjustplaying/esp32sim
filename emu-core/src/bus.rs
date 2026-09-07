@@ -40,6 +40,20 @@ unsafe impl Sync for TlbEntry {}
 #[derive(Clone, Copy)]
 pub struct FastMem { pub tlb: *const TlbEntry, pub page_ver: *mut u32 }
 
+/// Experimental generated-code view of a 32 KiB, 64-byte, four-way cache.
+/// The owner keeps both pointers live and unmoved during a generated call.
+/// Only zero-cost hits are admitted; misses return through ordinary bus helpers.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct FastCache { pub lines: *mut FastCacheLine, pub hits: *mut u64 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FastCacheLine { pub tag: u32, pub dirty: u32, pub valid: u32 }
+impl Default for FastCacheLine {
+    fn default() -> Self { Self { tag: u32::MAX, dirty: 0, valid: 0 } }
+}
+
 pub trait Bus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault>;
     fn read16(&mut self, addr: u32) -> Result<u16, Fault>;
@@ -67,6 +81,7 @@ pub trait Bus {
     fn block_break(&self) -> bool { false }
     /// Direct memory access for generated code, if the bus has a `TlbEntry` table.
     fn fast_mem(&mut self) -> Option<FastMem> { None }
+    fn fast_cache(&mut self) -> Option<FastCache> { None }
     /// Drain provisional synchronous data-access penalties for a fast-path timing experiment.
     /// The scheduler decides when to settle this batch; this does not imply access-level ordering.
     fn take_timing_penalty(&mut self) -> u32 { 0 }
