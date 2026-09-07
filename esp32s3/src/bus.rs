@@ -71,6 +71,9 @@ pub struct SocBus {
     pub cycles: u64,
     pub last_fault: Option<(u32, bool)>,
     pub spi2_dma_fault: Option<DmaDescriptorFault>,
+    /// Experimental register-derived SPI2 wire timing; disabled for baseline runs.
+    pub spi2_timing: bool,
+    spi2_scheduled: Option<(u64, Spi2DmaCompletion)>,
     /// set by any peripheral write: interrupt lines must be re-evaluated before the next instruction
     pub irq_dirty: bool,
     /// GPIO edges for observers, while one wants them: (cycle, pin, level)
@@ -109,12 +112,15 @@ use xtensa_lx7::bus::{FastMem, TlbEntry};
 fn tlb_idx(addr: u32) -> usize { xtensa_lx7::bus::tlb_index(addr) }
 
 impl SocBus {
+    pub(crate) fn cancel_spi2_timing(&mut self) { self.spi2_scheduled = None; }
+
     pub fn new(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self { Self::with_sizes(flash_size, psram_size, mac) }
     pub fn with_sizes(flash_size: usize, psram_size: usize, mac: [u8; 6]) -> Self {
         let bus_uninit = SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
+            spi2_timing: false, spi2_scheduled: None,
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
         };
         let mut b = bus_uninit;
@@ -252,6 +258,7 @@ impl SocBus {
         let a = addr & !3;
         if a == PERIPH_BASE + 0x24_000 && v & (1 << 24) != 0 {
             self.spi2_dma_fault = None;
+            self.spi2_scheduled = None;
         }
         let old_gpio_out = self.periph.gpio.out;
         self.periph.write32(a, v);
@@ -281,21 +288,26 @@ impl SocBus {
     }
 
     fn complete_spi2_dma(&mut self) {
+        if let Some((deadline, _)) = &self.spi2_scheduled {
+            if self.cycles < *deadline { return; }
+            let (_, completion) = self.spi2_scheduled.take().unwrap();
+            self.commit_spi2_dma(completion);
+            return;
+        }
         if self.periph.spi2.dma_tx_pending.is_none() {
             return;
         }
         let channel = self.periph.gdma.out_channel_for(0);
         match self.spi2_dma_completion() {
             Ok(Some(completion)) => {
-                for (descriptor, control) in completion.descriptor_writebacks {
-                    if let Err(fault) = self.write32(descriptor, control) {
-                        self.fail_spi2_dma(completion.channel, DmaDescriptorFault::Writeback { descriptor, fault });
-                        return;
-                    }
+                if self.spi2_timing {
+                    // Rough wire-time floor, assuming the normal 80 MHz SPI source.
+                    // Payload is snapshotted at submission; no progressive SRAM reads yet.
+                    let cycles = self.periph.spi2.wire_source_cycles() * (crate::periph::CPU_HZ / 80_000_000);
+                    self.spi2_scheduled = Some((self.cycles.saturating_add(cycles), completion));
+                } else {
+                    self.commit_spi2_dma(completion);
                 }
-                self.periph.gdma.out[completion.channel] = completion.final_channel;
-                self.periph.spi2.complete_dma_tx(&completion.payload);
-                self.irq_dirty = true;
             }
             Ok(None) => {}
             Err(fault) => {
@@ -304,6 +316,18 @@ impl SocBus {
                 }
             }
         }
+    }
+
+    fn commit_spi2_dma(&mut self, completion: Spi2DmaCompletion) {
+        for (descriptor, control) in completion.descriptor_writebacks {
+            if let Err(fault) = self.write32(descriptor, control) {
+                self.fail_spi2_dma(completion.channel, DmaDescriptorFault::Writeback { descriptor, fault });
+                return;
+            }
+        }
+        self.periph.gdma.out[completion.channel] = completion.final_channel;
+        self.periph.spi2.complete_dma_tx(&completion.payload);
+        self.irq_dirty = true;
     }
 
     fn fail_spi2_dma(&mut self, channel: usize, fault: DmaDescriptorFault) {
@@ -879,6 +903,10 @@ impl Bus for SocBus {
 impl SocBus {
     pub(crate) fn refresh_tick_budget(&mut self) {
         let mut budget = self.periph.cycles_until_timer().clamp(1, MAX_TICK_DEFER);
+        if let Some((deadline, _)) = &self.spi2_scheduled {
+            let until = u64::from(self.tick_pending).saturating_add(deadline.saturating_sub(self.cycles));
+            budget = budget.min(until.clamp(1, u64::from(MAX_TICK_DEFER)) as u32);
+        }
         if let Some(deadline) = self.board.next_deadline() {
             let until_deadline = u64::from(self.tick_pending)
                 .saturating_add(deadline.saturating_sub(self.cycles))
@@ -910,6 +938,7 @@ impl SocBus {
             self.irq_dirty |= old_input != self.periph.gpio.input;
         }
         self.complete_spi2_dma();
+        self.deliver_spi2_transfer();
         self.dma_i2s_step(cycles as u64);
         self.dma_cam_step(cycles as u64);
         self.dma_lcd_step(cycles as u64);
@@ -1070,6 +1099,33 @@ mod gp_spi_board_tests {
         assert_eq!(bus.periph.spi2.dma_tx_pending, None);
         assert_eq!(bus.periph.spi2.transfers, 1);
         assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[a5]:0"]);
+    }
+
+    #[test]
+    fn timed_spi2_dma_keeps_owner_and_interrupt_pending_until_wire_deadline() {
+        const DATA: u32 = 0x3fc9_0200;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut bus = dma_bus();
+        bus.spi2_timing = true;
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        bus.write32(DATA, 0x4433_2211).unwrap();
+        bus.write32(FIRST_DESC, 4 | (4 << 12) | (1 << 30) | (1 << 31)).unwrap();
+        bus.write32(FIRST_DESC + 4, DATA).unwrap();
+        bus.write32(FIRST_DESC + 8, 0).unwrap();
+        bus.periph.gdma.out[0].conf0 = 1 << 2;
+        bus.write32(SPI2 + 0x0c, 1 << 12).unwrap(); // 80 MHz / 2
+        start_dma(&mut bus, 32);
+        let deadline = (32 * crate::periph::CPU_HZ).div_ceil(40_000_000);
+        bus.tick(deadline as u32 - 1);
+        assert_eq!(bus.periph.spi2.transfers, 0);
+        assert_eq!(bus.read32(FIRST_DESC).unwrap() >> 31, 1);
+        assert_eq!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert!(events.lock().unwrap().is_empty());
+        bus.tick(1);
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_eq!(bus.read32(FIRST_DESC).unwrap() >> 31, 0);
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(&*events.lock().unwrap(), &["spi:2:[11, 22, 33, 44]:0"]);
     }
 
     #[test]

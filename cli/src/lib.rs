@@ -30,6 +30,7 @@ pub struct Opts {
     pub flash_image: Option<String>, pub flash_at: Vec<String>, pub boot: Option<String>, pub flash_mb: Option<usize>, pub psram_mb: Option<usize>,
     pub mac: Option<[u8; 6]>, pub strap: Option<u32>, pub reset_cause: Option<u32>, pub efuse_regs: Option<String>, pub regs_init: Option<String>,
     pub board: String, pub wifi: Option<String>, pub net: String, pub cam_image: Option<String>, pub cam_fps: f64,
+    pub spi2_timing: bool, pub measured_te: bool,
     pub max_insns: u64, pub max_seconds: Option<f64>, pub script: Option<String>, pub serial: Option<String>,
     pub console: Option<String>, pub console_prefix: bool, pub realtime: bool, pub web_port: Option<u16>, pub web_dir: Option<String>, pub no_reboot: bool,
     pub wav: Option<String>, pub tft_png: Option<String>, pub gram_png: Option<String>, pub dump: bool,
@@ -69,6 +70,8 @@ pub fn parse(args: &[String], default_chip: &str) -> Opts {
             "--efuse-regs" => o.efuse_regs = Some(next()),
             "--regs-init" => o.regs_init = Some(next()),
             "--board" => o.board = next(),
+            "--spi2-timing" => o.spi2_timing = true,
+            "--measured-te" => o.measured_te = true,
             "--wifi" => o.wifi = Some(next()),
             "--net" => o.net = next(),
             "--cam-image" => o.cam_image = Some(next()),
@@ -174,6 +177,11 @@ fn run_cooja(o: &mut Opts) {
 fn setup_s3(o: &Opts) -> esp32s3::Machine {
     let mut m = esp32s3::machine(o.mac.unwrap_or([0x44, 0x1b, 0xf6, 0x75, 0xdc, 0xe0]));
     m.bus.board = esp32s3::board::make_board(&o.board).unwrap_or_else(|| { eprintln!("unknown board '{}' (atech14, waveshare-cam, waveshare-lcd4b, waveshare-amoled18-v2, none)", o.board); std::process::exit(2) });
+    if o.measured_te {
+        assert_eq!(m.bus.board.name(), "waveshare-amoled18-v2", "--measured-te requires the AMOLED V2 board");
+        m.bus.board = Box::new(esp32s3::board::WaveshareAmoled18V2::with_measured_te());
+    }
+    m.bus.spi2_timing = o.spi2_timing;
     m.bus.attach_board_devices();
     if !o.debug.is_empty() { let mut f = esp_soc::DebugFlags::from_env(); for d in &o.debug { f.parse(d); } m.set_debug(&f); }
     if let Some(spec) = &o.wifi {

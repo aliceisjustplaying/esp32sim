@@ -780,6 +780,38 @@ pub unsafe extern "C" fn esp32sim_in_bin(e: *mut Emu, ptr: *const u8, len: usize
     if let Some(w) = e.m.web() { w.push_incoming_bin(input.to_vec()); }
 }
 
+/// Configure experimental SPI2 wire timing before boot. Returns 1 for unsupported chips or after boot.
+///
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_spi2_timing(e: *mut Emu, enabled: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    if e.booted { return 1; }
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    m.bus.spi2_timing = enabled != 0;
+    0
+}
+
+/// Select the measured CO5300 TE waveform before boot. Returns 1 for other boards or after boot.
+///
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_measured_te(e: *mut Emu, enabled: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    if e.booted { return 1; }
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    if m.bus.board.name() != "waveshare-amoled18-v2" { return 1; }
+    m.bus.board = Box::new(if enabled != 0 {
+        esp32s3::board::WaveshareAmoled18V2::with_measured_te()
+    } else {
+        esp32s3::board::WaveshareAmoled18V2::new()
+    });
+    m.bus.attach_board_devices();
+    0
+}
+
 /// Enable or disable the scheduler-integrated block JIT. The interpreter remains available.
 ///
 /// # Safety
