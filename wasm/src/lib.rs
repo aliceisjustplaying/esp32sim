@@ -834,6 +834,16 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_timing(e: *mut Emu, cpi: u
     unsafe { &mut *e }.m.approximate_jit_timing(cpi, quantum)
 }
 
+/// Select independent per-core block completion times for the rough JIT timing experiment.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_approximate_jit_frontiers(e: *mut Emu, enabled: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    e.m.as_any_mut().downcast_mut::<esp32s3::Machine>()
+        .map(|m| u32::from(m.set_approximate_jit_frontiers(enabled != 0).is_err())).unwrap_or(1)
+}
+
 /// Configure the rough shared data cache after approximate JIT timing, before execution.
 /// `fast_internal`=1 retains direct SRAM, 2 tries feature-gated inline cache hits.
 /// # Safety

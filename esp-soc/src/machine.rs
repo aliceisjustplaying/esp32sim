@@ -88,6 +88,7 @@ pub struct Machine<S: Soc> {
     cost: Option<Box<dyn CostModel>>,
     model_accesses: Vec<MemoryAccess>,
     approximate_jit_timing: Option<(u32, u32)>,
+    approximate_jit_frontiers: bool,
     model_ready_at: Vec<u64>,
     model_stop: Option<Stop>,
     model_attach_error: Option<&'static str>,
@@ -177,7 +178,7 @@ impl<S: Soc> Machine<S> {
             console: Console { all: Vec::new(), usb: Vec::new(), uart0: Vec::new(), mask: 3, prefix: false, capture: false },
             web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, grid_updates: Vec::new(), px_pending: 0, px_sent: 0, px_deferred: false, cam_pushed: u64::MAX, cam_sent: false },
             rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: false, log_last: None, log_insns: (0, 0) },
-            debug_rom: false, cost: None, model_accesses: Vec::new(), approximate_jit_timing: None, model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
+            debug_rom: false, cost: None, model_accesses: Vec::new(), approximate_jit_timing: None, approximate_jit_frontiers: false, model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
         }
     }
 
@@ -203,6 +204,14 @@ impl<S: Soc> Machine<S> {
         model.lifecycle(&LifecycleFacts { kind: LifecycleKind::Attach, chip: S::NAME, cores: S::CORES, cpu_hz: S::CPU_HZ })?;
         self.model_ready_at.fill(0);
         self.cost = Some(model);
+        Ok(())
+    }
+    /// Let cores resume independently after a priced block, instead of waiting for both batches.
+    /// Instructions inside each block still execute together, so ordering remains approximate.
+    pub fn set_approximate_jit_frontiers(&mut self, enabled: bool) -> Result<(), String> {
+        if self.approximate_jit_timing.is_none() || self.insns() != 0 { return Err("configure JIT timing before frontiers and before execution".into()); }
+        self.approximate_jit_frontiers = enabled;
+        self.model_ready_at.fill(self.bus.cycles());
         Ok(())
     }
     /// Uniform CPI and deadline-bounded instruction batches for an explicitly rough JIT experiment.
@@ -460,7 +469,7 @@ impl<S: Soc> Machine<S> {
     pub fn run(&mut self, max_insns: u64) -> Stop {
         self.web_poll_input();
         self.refresh_irq();
-        if self.cost.is_some() { self.run_modeled(max_insns) } else if self.approximate_jit_timing.is_some() { self.run_unmodeled::<true>(max_insns) } else { self.run_unmodeled::<false>(max_insns) }
+        if self.cost.is_some() { self.run_modeled(max_insns) } else if self.approximate_jit_frontiers { self.run_approximate_jit_frontiers(max_insns) } else if self.approximate_jit_timing.is_some() { self.run_unmodeled::<true>(max_insns) } else { self.run_unmodeled::<false>(max_insns) }
     }
 
     /// The complete unmodelled core-0 quantum a browser-side straight-line block may retire at
@@ -606,6 +615,52 @@ impl<S: Soc> Machine<S> {
             budget = budget.min(at.saturating_sub(self.bus.cycles()).max(1));
         }
         budget
+    }
+
+    fn run_approximate_jit_frontiers(&mut self, max_insns: u64) -> Stop {
+        let (cpi, quantum) = self.approximate_jit_timing.unwrap();
+        self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
+        self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
+        for core in &mut self.cores {
+            core.set_boundaries(self.stub_bloom | self.probe_bloom);
+            core.set_block_observation(self.probes.contains(Wants::BLOCK | Wants::TRAP_PC));
+        }
+        let trace = self.has_observer("trace");
+        let force_idle = self.probes.contains(Wants::NO_IDLE_SKIP);
+        let blocks = !self.probes.contains(Wants::INSN);
+        let mut on = [false; 4];
+        let mut instructions = 0;
+        loop {
+            if instructions >= max_insns { self.drain_console(); return Stop::MaxInsns; }
+            if let Err(stop) = self.settle_modeled_time(&mut on, trace, force_idle) { self.drain_console(); return stop; }
+            let now = self.bus.cycles();
+            let Some(core) = (0..S::CORES)
+                .filter(|&i| on[i] && (force_idle || !self.cores[i].waiting() || self.cores[i].irq_pending()))
+                .filter(|&i| self.model_ready_at[i] <= now)
+                .min_by_key(|&i| (self.model_ready_at[i], i))
+            else { self.drain_console(); return Stop::Halted; };
+            let mut cycles = u64::from(quantum) * u64::from(cpi);
+            if let Some(delta) = self.bus.next_deadline() { cycles = cycles.min(delta.max(1)); }
+            if let Some(&(at, _)) = self.script.events.get(self.script.pos) { cycles = cycles.min(at.saturating_sub(now).max(1)); }
+            for i in 0..S::CORES {
+                if i != core && on[i] && self.model_ready_at[i] > now {
+                    cycles = cycles.min(self.model_ready_at[i] - now);
+                }
+            }
+            cycles = cycles.min(self.max_cycles - now);
+            let budget = cycles.div_ceil(u64::from(cpi)).max(1) as u32;
+            let (used, stop) = if blocks { self.step_blocks(core, budget) } else {
+                let stop = self.step_core(core);
+                self.cores[core].advance_cycles(cpi - 1);
+                (1, stop)
+            };
+            if let Some(stop) = stop { self.drain_console(); return stop; }
+            let penalty = self.bus.take_timing_penalty();
+            self.cores[core].advance_cycles(penalty);
+            self.model_ready_at[core] = now + u64::from(used.max(1)) * u64::from(cpi) + u64::from(penalty);
+            instructions += u64::from(used.max(1));
+            if instructions & 0xffff < u64::from(used.max(1)) { self.drain_console(); }
+        }
     }
 
     fn run_modeled(&mut self, max_insns: u64) -> Stop {
