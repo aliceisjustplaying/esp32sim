@@ -97,6 +97,7 @@ pub struct SocBus {
     approximate_cache: Option<crate::approximate_cache::CacheTiming>,
     approximate_cache_pending: u32,
     approximate_cache_fast_internal: bool,
+    approximate_cache_inline: bool,
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
@@ -125,7 +126,7 @@ impl SocBus {
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             spi2_timing: false, spi2_scheduled: None,
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
-            approximate_cache: None, approximate_cache_pending: 0, approximate_cache_fast_internal: false,
+            approximate_cache: None, approximate_cache_pending: 0, approximate_cache_fast_internal: false, approximate_cache_inline: false,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -146,6 +147,15 @@ impl SocBus {
     pub fn set_approximate_cache_fast_internal(&mut self, enabled: bool) {
         self.approximate_cache_fast_internal = enabled;
         self.invalidate_tlb();
+    }
+
+    pub fn set_approximate_cache_inline(&mut self) -> bool {
+        if !cfg!(all(target_arch = "wasm32", feature = "cache-inline")) { return false; }
+        if self.approximate_cache.as_mut().and_then(|c| c.inline_view()).is_none() { return false; }
+        self.approximate_cache_inline = true;
+        self.approximate_cache_fast_internal = true;
+        self.invalidate_tlb();
+        true
     }
 
     pub fn take_approximate_cache_penalty(&mut self) -> u32 {
@@ -248,7 +258,7 @@ impl SocBus {
         e.base = unsafe { self.buf_mut(e.src as u8).as_mut_ptr().add(off) };
         // Do not publish external mappings to generated loads/stores while pricing cache accesses.
         // Returning the mapping still lets the slow accessor perform this one access.
-        if !(self.approximate_cache.is_some() && self.approximate_cache_fast_internal
+        if !(self.approximate_cache.is_some() && self.approximate_cache_fast_internal && !self.approximate_cache_inline
             && matches!(e.src as u8, SRC_FLASH | SRC_PSRAM)) {
             self.tlb[tlb_idx(addr)] = e;
         }
@@ -928,6 +938,9 @@ impl Bus for SocBus {
     fn note_pc(&mut self, pc: u32) { self.periph.misc.cur_pc = pc; }
     fn fast_mem(&mut self) -> Option<FastMem> { if self.approximate_cache.is_some() && !self.approximate_cache_fast_internal { None } else { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) } }
     fn take_timing_penalty(&mut self) -> u32 { self.take_approximate_cache_penalty() }
+    fn fast_cache(&mut self) -> Option<emu_core::bus::FastCache> {
+        if self.approximate_cache_inline { self.approximate_cache.as_mut().and_then(|c| c.inline_view()) } else { None }
+    }
     #[inline(always)]
     fn block_break(&self) -> bool { self.irq_dirty }
     fn code_page(&mut self, pc: u32) -> u32 {

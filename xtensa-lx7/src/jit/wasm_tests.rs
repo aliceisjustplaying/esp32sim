@@ -15,6 +15,10 @@ struct Ram {
     readonly: bool,
     noted: u32,
     slow: [u8; 256],
+    #[cfg(feature = "wasm-cache-inline")]
+    inline_cache: Option<(Vec<emu_core::bus::FastCacheLine>, u64)>,
+    #[cfg(feature = "wasm-cache-inline")]
+    helper_accesses: u32,
 }
 impl Ram {
     fn new(fast: bool, readonly: bool) -> Self {
@@ -40,6 +44,10 @@ impl Ram {
             readonly,
             noted: 0,
             slow: [0x5a; 256],
+            #[cfg(feature = "wasm-cache-inline")]
+            inline_cache: None,
+            #[cfg(feature = "wasm-cache-inline")]
+            helper_accesses: 0,
         }
     }
     fn wrote(&mut self, a: u32, n: u32) {
@@ -57,6 +65,8 @@ impl Bus for Ram {
         self.ram.read16(a)
     }
     fn read32(&mut self, a: u32) -> Result<u32, Fault> {
+        #[cfg(feature = "wasm-cache-inline")]
+        if self.inline_cache.is_some() { self.helper_accesses += 1; }
         self.ram.read32(a)
     }
     fn write8(&mut self, a: u32, v: u8) -> Result<(), Fault> {
@@ -77,6 +87,8 @@ impl Bus for Ram {
         Ok(())
     }
     fn write32(&mut self, a: u32, v: u32) -> Result<(), Fault> {
+        #[cfg(feature = "wasm-cache-inline")]
+        if self.inline_cache.is_some() { self.helper_accesses += 1; }
         if self.readonly {
             return Err(Fault::Prohibited);
         }
@@ -102,6 +114,51 @@ impl Bus for Ram {
     fn note_pc(&mut self, pc: u32) {
         self.noted = pc;
     }
+    #[cfg(feature = "wasm-cache-inline")]
+    fn fast_cache(&mut self) -> Option<emu_core::bus::FastCache> {
+        self.inline_cache.as_mut().map(|(lines, hits)| emu_core::bus::FastCache { lines: lines.as_mut_ptr(), hits })
+    }
+}
+
+#[cfg(feature = "wasm-cache-inline")]
+fn inline_cache_hits() -> u32 {
+    use emu_core::bus::FastCacheLine;
+    let mut tests = 0;
+    for store in [false, true] {
+        for way in 0..5 { // Every way, then a miss that must run the helper.
+            let mut ram = Ram::new(true, false);
+            ram.tlb[tlb_index(BASE)].src = 3;
+            let tag = (0x3000_0000u32 | 0x100) >> 6;
+            let slot = ((tag & 127) * 4) as usize;
+            let mut lines = vec![FastCacheLine::default(); 512];
+            if way < 4 { lines[slot + way] = FastCacheLine { tag, dirty: 0, valid: 1 }; }
+            ram.inline_cache = Some((lines, 0));
+            let mut block = [insn(if store { Op::S32i } else { Op::L32i })];
+            block[0].insn.imm = 0;
+            let mut cc = CodeCache::new(0).unwrap();
+            let code = queue(&mut cc, &mut block, BASE, true);
+            for _ in 0..HOT { ready(&cc, code); }
+            assert!(ready(&cc, code));
+            let mut c = cpu(0);
+            c.set_ar(4, BASE + 0x100);
+            c.set_ar(5, 0x1234_5678);
+            let fm = ram.fast_mem();
+            let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), 1, 0, fm) };
+            assert_eq!(result & 0xffff, 1);
+            let (lines, hits) = ram.inline_cache.as_ref().unwrap();
+            assert_eq!(*hits, u64::from(way < 4));
+            assert_eq!(ram.helper_accesses, u32::from(way == 4));
+            if store {
+                if way < 4 { assert_eq!(lines[slot + way].dirty, 1); }
+                assert_eq!(ram.versions[1], 1);
+                assert_eq!(ram.ram.read32(BASE + 0x100).unwrap(), 0x1234_5678);
+            } else {
+                assert_eq!(c.get_ar(5), ram.ram.read32(BASE + 0x100).unwrap());
+            }
+            tests += 1;
+        }
+    }
+    tests
 }
 fn cpu(seed: u32) -> Cpu {
     let mut c = Cpu::new(0);
@@ -1359,6 +1416,8 @@ pub fn run_tests() -> u32 {
         Bltui, Bgeui, Beq, Bne, Blt, Bge, Bltu, Bgeu, Bbci, Bbsi, Bbc, Bbs,
     ];
     let mut tests = 0;
+    #[cfg(feature = "wasm-cache-inline")]
+    { tests += inline_cache_hits(); }
     for op in ops {
         for seed in [0, 1, 15, 0xffff_ffff] {
             for entry in 0..3 {

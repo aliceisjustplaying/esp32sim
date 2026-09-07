@@ -835,7 +835,7 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_timing(e: *mut Emu, cpi: u
 }
 
 /// Configure the rough shared data cache after approximate JIT timing, before execution.
-/// `fast_internal` retains direct SRAM access, forcing external memory through priced helpers.
+/// `fast_internal`=1 retains direct SRAM, 2 tries feature-gated inline cache hits.
 /// # Safety
 /// `e` must be a live exclusively borrowed emulator.
 #[no_mangle]
@@ -845,6 +845,7 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u
     if m.insns() != 0 { return 1; }
     m.bus.enable_approximate_cache(esp32s3::approximate_cache::CacheConfig { fill_cycles: fill, writeback_cycles: writeback, ..Default::default() });
     m.bus.set_approximate_cache_fast_internal(fast_internal != 0);
+    if fast_internal == 2 && !m.bus.set_approximate_cache_inline() { return 1; }
     0
 }
 
