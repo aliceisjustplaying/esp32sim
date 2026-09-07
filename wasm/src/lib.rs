@@ -371,6 +371,20 @@ pub unsafe extern "C" fn esp32sim_boot(e: *mut Emu, app_direct: u32) -> u32 {
     e.booted = true; 0
 }
 
+/// Enable provisional per-instruction timing before ROM boot. Returns 1 on rejection.
+/// This selects the modeled interpreter, not the production browser JIT.
+/// # Safety
+/// `e` must point to a live emulator to which the caller has exclusive access.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_approximate_timing(e: *mut Emu) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1; };
+    match m.set_cost_model(Box::new(esp32s3::ApproximateCostModel::default())) {
+        Ok(()) => { log("[emu] APPROXIMATE timing enabled; accuracy unvalidated; ROM boot required"); 0 }
+        Err(reason) => { log(&format!("[emu] approximate timing: {reason}")); 1 }
+    }
+}
+
 /// Run for `cycles` more emulated cycles. Returns 0 while the machine can go on; otherwise a stop
 /// code: 2 unimplemented instruction, 3 breakpoint/ebreak, 4 exception limit, 5 semihosting call.
 /// A chip reset (esp_restart, watchdog) reboots through the ROM and keeps going, like the CLI.

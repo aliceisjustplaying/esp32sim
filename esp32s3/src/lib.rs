@@ -4,6 +4,8 @@ pub mod periph;
 pub mod i2c;
 pub mod soc;
 pub mod timing;
+pub mod approximate_timing;
+pub use approximate_timing::{ApproximateCostModel, ApproximateTimingConfig, ApproximateTimingStats};
 pub mod wifi;
 pub mod net;
 pub mod nat;

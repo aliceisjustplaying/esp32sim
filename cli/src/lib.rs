@@ -21,6 +21,7 @@ fn pair(s: &str, dflt: usize) -> (u32, usize) { match s.split_once(',') { Some((
 /// Everything the command line can say, chip-agnostic; `None` means "the chip's default".
 #[derive(Default)]
 pub struct Opts {
+    pub approximate_timing: bool,
     pub chip: String,
     pub rom: Option<PathBuf>, pub bootloader: Option<String>, pub ptable: Option<String>, pub app: Option<String>, pub elfs: Vec<String>,
     pub flash_image: Option<String>, pub flash_at: Vec<String>, pub boot: Option<String>, pub flash_mb: Option<usize>, pub psram_mb: Option<usize>,
@@ -44,6 +45,7 @@ pub fn parse(args: &[String], default_chip: &str) -> Opts {
         let a = args[i].as_str();
         let mut next = || { i += 1; args.get(i).cloned().unwrap_or_else(|| usage(default_chip)) };
         match a {
+            "--approximate-timing" => o.approximate_timing = true,
             "--chip" => o.chip = next().to_ascii_lowercase(),
             "--rom" => o.rom = Some(PathBuf::from(next())),
             "--bootloader" => o.bootloader = Some(next()),
@@ -243,6 +245,11 @@ fn setup_c6(o: &Opts) -> esp32c6::Machine {
 
 /// Everything after the chip is set up: images, boot, observers, the run, the reports.
 fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
+    let approximate = o.approximate_timing.then(esp32s3::ApproximateCostModel::default);
+    if let Some(model) = &approximate {
+        m.set_cost_model(Box::new(model.clone())).expect("approximate timing attachment");
+        eprintln!("[emu] APPROXIMATE timing: {:?}; use --boot rom; accuracy unvalidated", model.config);
+    }
     let boot = prepare(&mut m, o);
     let t0 = std::time::Instant::now();
     let stop = loop {
@@ -258,6 +265,7 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     };
     let dt = t0.elapsed().as_secs_f64();
     report(&mut m, o, stop, dt);
+    if let Some(model) = approximate { eprintln!("[emu] approximate timing totals: {:?}", model.stats()); }
 }
 
 /// Images, boot, observers, scripts: everything before the first instruction. Returns the boot mode.
