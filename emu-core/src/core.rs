@@ -203,6 +203,11 @@ pub struct LifecycleFacts {
 pub trait CostModel {
     fn lifecycle(&mut self, facts: &LifecycleFacts) -> Result<(), String>;
     fn cycles(&mut self, facts: &ExecutionFacts<'_>) -> Result<u32, String>;
+    /// Shared simulated time for models that account for resource occupancy.
+    /// Like `cycles`, this is called after instruction effects, not before memory access.
+    fn cycles_at(&mut self, facts: &ExecutionFacts<'_>, _now: u64) -> Result<u32, String> {
+        self.cycles(facts)
+    }
 }
 
 /// Bloom bit for a pc; the machine's stub/probe tables and the cores' block boundaries agree on it.

@@ -767,7 +767,7 @@ impl<S: Soc> Machine<S> {
         if self.exceptions >= self.dbg.stop_after_exceptions { return Err(Stop::Exceptions(self.exceptions)); }
 
         let facts = ExecutionFacts { core, outcome, accesses: &accesses };
-        let result = self.cost.as_mut().expect("modeled path requires an attached model").cycles(&facts);
+        let result = self.cost.as_mut().expect("modeled path requires an attached model").cycles_at(&facts, self.bus.cycles());
         self.model_accesses = accesses;
         match result {
             Ok(0) => Err(Stop::CostModel { core, pc, reason: "cost model returned zero cycles".into() }),
