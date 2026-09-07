@@ -24,6 +24,8 @@ if(frontiers && w.esp32sim_set_approximate_jit_frontiers(emu,frontiers))throw Er
 if(cache && w.esp32sim_set_approximate_jit_cache(emu,fill,Number(process.env.CACHE_WRITEBACK ?? 96),cache===3?2:cache===2?1:0))throw Error('cache config rejected');
 if(contention && w.esp32sim_set_approximate_cache_contention(emu,1))throw Error('contention config rejected');
 if(service!==fill && w.esp32sim_set_approximate_cache_fill_service(emu,service))throw Error('service config rejected');
+const pie=Number(process.env.PIE_TIMING ?? 0);
+if(pie && w.esp32sim_set_approximate_pie_timing(emu,pie))throw Error('PIE timing config rejected');
 if(w.esp32sim_boot(emu,0))throw Error('boot failed');
 w.esp32sim_set_jit(emu,1);
 const hz=w.esp32sim_cpu_hz(emu),start=performance.now();let stop=0;
@@ -47,5 +49,5 @@ const schema=JSON.parse(await fs.readFile(new URL('./browser-benchmark/verdict-s
 const verdict=completedVerdict(serial,schema),verdictValidation=validateVerdict(verdict,schema);
 const cacheCounters=cache?['hits','fills','writebacks','extraCycles'].map((name,i)=>[name,w.esp32sim_approximate_cache_counter(emu,i)]):[];
 const cacheWait=[0,1].map(core=>w.esp32sim_approximate_cache_wait(emu,core));
-console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,cache,frontiers,contention,fill,service,cacheWait,cacheCounters:Object.fromEntries(cacheCounters),stop,interrupted,verdict,verdictValidation,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
+console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,cache,frontiers,contention,fill,service,cacheWait,pie,pieCounters:pie?{events:w.esp32sim_approximate_pie_counter(emu,0),extraCycles:w.esp32sim_approximate_pie_counter(emu,1)}:null,cacheCounters:Object.fromEntries(cacheCounters),stop,interrupted,verdict,verdictValidation,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
 w.esp32sim_delete(emu);

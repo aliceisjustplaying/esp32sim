@@ -1005,6 +1005,9 @@ impl Bus for SocBus {
     fn note_pc(&mut self, pc: u32) { self.periph.misc.cur_pc = pc; }
     fn fast_mem(&mut self) -> Option<FastMem> { if self.approximate_cache.is_some() && !self.approximate_cache_fast_internal { None } else { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) } }
     fn take_timing_penalty(&mut self) -> u32 { self.take_approximate_cache_penalty() }
+    fn add_timing_penalty(&mut self, cycles: u32) {
+        self.approximate_cache_pending = self.approximate_cache_pending.saturating_add(cycles);
+    }
     fn fast_cache(&mut self) -> Option<emu_core::bus::FastCache> {
         if self.approximate_cache_inline { self.approximate_cache.as_mut().and_then(|c| c.inline_view()) } else { None }
     }

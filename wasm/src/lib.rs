@@ -863,6 +863,28 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u
     0
 }
 
+/// Select an uncalibrated PIE instruction-cost hypothesis before execution.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator, before execution.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_approximate_pie_timing(e: *mut Emu, mode: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    if m.insns() != 0 || mode > 2 { return 1; }
+    for cpu in &mut m.cores { cpu.approximate_pie_mode = mode; }
+    0
+}
+
+/// Provisional PIE counts: charged events (0), additional cycles (1).
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_approximate_pie_counter(e: *mut Emu, counter: u32) -> f64 {
+    let e = unsafe { &mut *e };
+    e.m.as_any_mut().downcast_mut::<esp32s3::Machine>()
+        .map(|m| m.cores.iter().map(|c| if counter == 0 { c.approximate_pie_events } else { c.approximate_pie_cycles }).sum::<u64>() as f64).unwrap_or(0.0)
+}
+
 /// Cache experiment counters: hits, line fills, writebacks and extra cycles.
 /// # Safety
 /// `e` must be a live exclusively borrowed emulator, before execution begins.
