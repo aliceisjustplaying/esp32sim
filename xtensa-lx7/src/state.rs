@@ -98,6 +98,8 @@ pub struct Cpu {
     pub interrupt: u32,
     pub intenable: u32,
     pub ccount: u32,
+    /// Provisional uniform fast-path cost, not a calibrated silicon price.
+    pub approximate_cpi: u32,
     pub ccompare: [u32; 3],
     pub cpenable: u32,
     pub prid: u32,
@@ -152,7 +154,7 @@ impl Cpu {
             ar: [0; NUM_AREGS], windowbase: 0, windowstart: 1,
             ps: 0x1f, sar: 0, lbeg: 0, lend: 0, lcount: 0, br: 0, scompare1: 0, acclo: 0, acchi: 0, m: [0; 4],
             epc: [0; 8], eps: [0; 8], excsave: [0; 8], depc: 0, vecbase: 0x4000_0000, exccause: 0, excvaddr: 0, debugcause: 0,
-            interrupt: 0, intenable: 0, ccount: 0, ccompare: [0; 3], cpenable: 0, prid, threadptr: 0, misc: [0; 4],
+            interrupt: 0, intenable: 0, ccount: 0, approximate_cpi: 1, ccompare: [0; 3], cpenable: 0, prid, threadptr: 0, misc: [0; 4],
             icount: 0, icountlevel: 0, ibreakenable: 0, ibreaka: [0; 2], dbreaka: [0; 2], dbreakc: [0; 2], memctl: 0, atomctl: 0, ddr: 0,
             configid: [0xC2ECFAFE, 0x22F86EDF],   // reported by real S3 (informational)
             fr: [0; 16], fcr: 0, fsr: 0,

@@ -87,6 +87,7 @@ pub struct Machine<S: Soc> {
     debug_rom: bool,
     cost: Option<Box<dyn CostModel>>,
     model_accesses: Vec<MemoryAccess>,
+    approximate_jit_timing: Option<(u32, u32)>,
     model_ready_at: Vec<u64>,
     model_stop: Option<Stop>,
     model_attach_error: Option<&'static str>,
@@ -176,7 +177,7 @@ impl<S: Soc> Machine<S> {
             console: Console { all: Vec::new(), usb: Vec::new(), uart0: Vec::new(), mask: 3, prefix: false, capture: false },
             web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, grid_updates: Vec::new(), px_pending: 0, px_sent: 0, px_deferred: false, cam_pushed: u64::MAX, cam_sent: false },
             rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: false, log_last: None, log_insns: (0, 0) },
-            debug_rom: false, cost: None, model_accesses: Vec::new(), model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
+            debug_rom: false, cost: None, model_accesses: Vec::new(), approximate_jit_timing: None, model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
         }
     }
 
@@ -194,7 +195,7 @@ impl<S: Soc> Machine<S> {
     }
     /// Attach a timing model before the machine has executed or reset.
     pub fn set_cost_model(&mut self, mut model: Box<dyn CostModel>) -> Result<(), String> {
-        if self.cost.is_some() { return Err("a cost model is already attached".into()); }
+        if self.cost.is_some() || self.approximate_jit_timing.is_some() { return Err("a timing model is already attached".into()); }
         if let Some(reason) = self.model_attach_error { return Err(reason.into()); }
         if self.bus.cycles() != 0 || self.reboots != 0 || self.cores.iter().any(|core| core.insn_count() != 0) {
             return Err("cost model attachment requires a pristine machine with no execution or reset".into());
@@ -202,6 +203,15 @@ impl<S: Soc> Machine<S> {
         model.lifecycle(&LifecycleFacts { kind: LifecycleKind::Attach, chip: S::NAME, cores: S::CORES, cpu_hz: S::CPU_HZ })?;
         self.model_ready_at.fill(0);
         self.cost = Some(model);
+        Ok(())
+    }
+    /// Uniform CPI and deadline-bounded instruction batches for an explicitly rough JIT experiment.
+    /// Within-batch memory ordering and memory latency are not modeled by this setting.
+    pub fn set_approximate_jit_timing(&mut self, cpi: u32, quantum: u32) -> Result<(), String> {
+        if self.cost.is_some() || self.insns() != 0 { return Err("configure approximate JIT timing before execution, without CostModel".into()); }
+        if !(1..=256).contains(&cpi) || !(1..=4096).contains(&quantum) { return Err("CPI must be 1..256 and quantum 1..4096".into()); }
+        self.approximate_jit_timing = Some((cpi, quantum));
+        for core in &mut self.cores { core.set_approximate_cpi(cpi); }
         Ok(())
     }
     pub fn has_observer(&self, name: &str) -> bool { self.observers.iter().any(|o| o.name() == name) }
@@ -450,7 +460,7 @@ impl<S: Soc> Machine<S> {
     pub fn run(&mut self, max_insns: u64) -> Stop {
         self.web_poll_input();
         self.refresh_irq();
-        if self.cost.is_some() { self.run_modeled(max_insns) } else { self.run_unmodeled(max_insns) }
+        if self.cost.is_some() { self.run_modeled(max_insns) } else if self.approximate_jit_timing.is_some() { self.run_unmodeled::<true>(max_insns) } else { self.run_unmodeled::<false>(max_insns) }
     }
 
     /// The complete unmodelled core-0 quantum a browser-side straight-line block may retire at
@@ -461,6 +471,7 @@ impl<S: Soc> Machine<S> {
     pub fn browser_external_block_budget(&self, requested: u32) -> Option<u32> {
         if requested == 0
             || self.cost.is_some()
+            || self.approximate_jit_timing.is_some()
             || self.probes.0 != 0
             || !self.stubs.is_empty()
             || !self.fn_probes.is_empty()
@@ -487,7 +498,8 @@ impl<S: Soc> Machine<S> {
         None
     }
 
-    fn run_unmodeled(&mut self, max_insns: u64) -> Stop {
+    fn run_unmodeled<const APPROXIMATE: bool>(&mut self, max_insns: u64) -> Stop {
+        let (cpi, max_quantum) = if APPROXIMATE { self.approximate_jit_timing.unwrap() } else { (1, QUANTUM as u32) };
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
         for c in &mut self.cores {
@@ -530,10 +542,16 @@ impl<S: Soc> Machine<S> {
                 if n & 0xffff < chunk { self.drain_console(); }
                 continue;
             }
+            let quantum = if APPROXIMATE {
+                // An instruction can overrun the deadline by at most CPI-1 cycles.
+                self.idle_budget(u64::from(max_quantum) * u64::from(cpi), &on)
+                    .min(self.max_cycles - self.bus.cycles()).div_ceil(u64::from(cpi)).max(1)
+            } else { QUANTUM };
+            let elapsed = quantum * u64::from(cpi);
             for i in 0..S::CORES {
                 if !on[i] { continue; }
-                if idle[i] && !slow_path { self.cores[i].idle_advance(QUANTUM as u32); } else if blocks {
-                    let mut left = QUANTUM as u32;
+                if idle[i] && !slow_path { self.cores[i].idle_advance(elapsed as u32); } else if blocks {
+                    let mut left = quantum as u32;
                     while left > 0 {
                         let (used, stop) = self.step_blocks(i, left);
                         if let Some(stop) = stop { self.drain_console(); return stop; }
@@ -543,17 +561,18 @@ impl<S: Soc> Machine<S> {
                         if self.bus.sw_reset() { break; }
                     }
                 } else {
-                    for _ in 0..QUANTUM {
+                    for _ in 0..quantum {
                         if let Some(stop) = self.step_core(i) { self.drain_console(); return stop; }
+                        if APPROXIMATE { self.cores[i].advance_cycles(cpi - 1); }
                         if self.bus.sw_reset() { break; }
                     }
                 }
-                if i == 0 { n += QUANTUM; }
+                if i == 0 { n += quantum; }
             }
-            self.after_round(QUANTUM);
+            self.after_round(elapsed);
             if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
             if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Stop::Halted; }
-            if n & 0xffff < QUANTUM { self.drain_console(); }
+            if n & 0xffff < quantum { self.drain_console(); }
         }
     }
 

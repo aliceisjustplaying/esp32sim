@@ -202,7 +202,7 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
 #[cfg_attr(all(target_arch = "wasm32", feature = "wasm-cpu-profile"), inline(never))]
 fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
     if let Some(t) = cpu.check_interrupts() { return (1, Some(t)); }
-    if cpu.waiting { cpu.advance_ccount(1); return (1, None); }
+    if cpu.waiting { cpu.advance_ccount(cpu.approximate_cpi); return (1, None); }
     let pc = cpu.pc;
 
     // find the block: a pending continuation, a cached block, or a fresh decode
@@ -227,7 +227,11 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
     // loop or a region may continue past the block, under the same CCOMPARE deadline.
     #[cfg(target_arch = "wasm32")]
     let mut limit = budget.min(0xffff);
-    for i in 0..3 { let d = cpu.ccompare[i].wrapping_sub(cpu.ccount); if d != 0 && d < limit { limit = d; } }
+    for i in 0..3 {
+        let d = cpu.ccompare[i].wrapping_sub(cpu.ccount);
+        let d = if cpu.approximate_cpi == 1 { d } else { d.div_ceil(cpu.approximate_cpi) };
+        if d != 0 && d < limit { limit = d; }
+    }
 
     let code = cpu.blocks.entries[ei as usize].code;
     if code != crate::jit::NONE && cpu.blocks.jit_enabled && crate::jit::ready(cpu.blocks.code.as_ref().unwrap(), code) {
@@ -260,7 +264,7 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         let (done, exit) = (r & 0xffff, r >> 16);
         cpu.blocks.jit_instructions += done as u64;
         cpu.insn_count += done as u64;
-        cpu.advance_ccount(done);
+        cpu.advance_ccount(done * cpu.approximate_cpi);
         return match exit {
             crate::jit::CODE_TRAP => (done, cpu.jit_trap.take()),
             crate::jit::CODE_TRAP_PRE => (done + 1, cpu.jit_trap.take()),
@@ -297,7 +301,7 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         if cpu.pc != expected || bus.block_break() { broke = true; break; }
     }
     cpu.insn_count += done as u64;
-    cpu.advance_ccount(done);
+    cpu.advance_ccount(done * cpu.approximate_cpi);
     // cut short by the budget or a timer deadline while still inside the block: resume there
     if trap.is_none() && !broke && k < end { cpu.blocks.resume = (ei, k, cpu.pc); }
     (done + pre as u32, trap)

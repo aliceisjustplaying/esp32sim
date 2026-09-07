@@ -31,6 +31,7 @@ trait MachineApi {
     fn observer(&mut self, name: &str, arg: &str) -> u32;
     fn reports(&mut self) -> String;
     fn set_jit(&mut self, enabled: bool);
+    fn approximate_jit_timing(&mut self, cpi: u32, quantum: u32) -> u32;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
@@ -92,6 +93,9 @@ impl<S: Soc> MachineApi for Machine<S> {
         }
     }
     fn reports(&mut self) -> String { Machine::reports(self) }
+    fn approximate_jit_timing(&mut self, cpi: u32, quantum: u32) -> u32 {
+        match self.set_approximate_jit_timing(cpi, quantum) { Ok(()) => 0, Err(reason) => { log(&reason); 1 } }
+    }
     fn set_jit(&mut self, enabled: bool) { for core in &mut self.cores { xtensa_lx7::Core::set_jit(core, enabled); } }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }
@@ -820,6 +824,14 @@ pub unsafe extern "C" fn esp32sim_set_measured_te(e: *mut Emu, enabled: u32) -> 
 pub unsafe extern "C" fn esp32sim_set_jit(e: *mut Emu, enabled: u32) {
     // SAFETY: The ABI caller guarantees a live exclusive handle.
     unsafe { &mut *e }.m.set_jit(enabled != 0);
+}
+
+/// Configure provisional uniform CPU cost and deadline-bounded batches before execution.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_approximate_jit_timing(e: *mut Emu, cpi: u32, quantum: u32) -> u32 {
+    unsafe { &mut *e }.m.approximate_jit_timing(cpi, quantum)
 }
 
 /// Guest instructions retired by compiled blocks, including interpreter helpers.
