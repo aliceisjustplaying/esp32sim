@@ -86,6 +86,7 @@ pub struct Machine<S: Soc> {
     pub rt: Realtime,
     debug_rom: bool,
     cost: Option<Box<dyn CostModel>>,
+    model_accesses: Vec<MemoryAccess>,
     model_ready_at: Vec<u64>,
     model_stop: Option<Stop>,
     model_attach_error: Option<&'static str>,
@@ -98,7 +99,10 @@ const QUANTUM: u64 = 64;
 struct RecordingBus<'a, B> { bus: &'a mut B, accesses: Vec<MemoryAccess> }
 
 impl<'a, B> RecordingBus<'a, B> {
-    fn new(bus: &'a mut B) -> Self { Self { bus, accesses: Vec::new() } }
+    fn new(bus: &'a mut B, mut accesses: Vec<MemoryAccess>) -> Self {
+        accesses.clear();
+        Self { bus, accesses }
+    }
 
     fn finish(mut self, bytes: Option<[u8; 4]>, pc: u32) -> Vec<MemoryAccess> {
         if let Some(bytes) = bytes {
@@ -172,7 +176,7 @@ impl<S: Soc> Machine<S> {
             console: Console { all: Vec::new(), usb: Vec::new(), uart0: Vec::new(), mask: 3, prefix: false, capture: false },
             web: None, ws: WebState { last_push_cycles: 0, audio_sent: 0, ring_updates: 0, grid_updates: Vec::new(), px_pending: 0, px_sent: 0, px_deferred: false, cam_pushed: u64::MAX, cam_sent: false },
             rt: Realtime { enabled: false, wall_start: None, last_check: 0, behind: 0.0, resyncs: 0, log: false, log_last: None, log_insns: (0, 0) },
-            debug_rom: false, cost: None, model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
+            debug_rom: false, cost: None, model_accesses: Vec::new(), model_ready_at: vec![0; S::CORES], model_stop: None, model_attach_error: None,
         }
     }
 
@@ -724,7 +728,7 @@ impl<S: Soc> Machine<S> {
 
         self.bus.note_pc(pc);
         let (outcome, accesses) = {
-            let mut bus = RecordingBus::new(&mut self.bus);
+            let mut bus = RecordingBus::new(&mut self.bus, std::mem::take(&mut self.model_accesses));
             let mut outcome = self.cores[core].step(&mut bus);
             // A control operation is an occurrence, not a decoded intention. Current cores can
             // report it before a privilege or execution failure, so only retirement commits it.
@@ -764,6 +768,7 @@ impl<S: Soc> Machine<S> {
 
         let facts = ExecutionFacts { core, outcome, accesses: &accesses };
         let result = self.cost.as_mut().expect("modeled path requires an attached model").cycles(&facts);
+        self.model_accesses = accesses;
         match result {
             Ok(0) => Err(Stop::CostModel { core, pc, reason: "cost model returned zero cycles".into() }),
             Ok(cycles) => Ok(cycles),
