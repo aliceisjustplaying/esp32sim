@@ -1,0 +1,116 @@
+[emu] APPROXIMATE timing: ApproximateTimingConfig { issue: 1, taken_branch: 3, trap: 3, external_extra: 0, mmio_extra: 0, data_cache: Some(CacheConfig { capacity_bytes: 32768, line_bytes: 64, ways: 4, hit_cycles: 0, fill_cycles: 120, writeback_cycles: 96 }) }; use --boot rom; accuracy unvalidated
+[emu] ROM loaded from /Users/alice/src/a/esp32sim/target/performance-review-latest-main-2026-09-06/esp32sim-performance-review-latest-main-2026-09-06/assets/rom.elf
+[emu] ROM boot from reset vector 0x40000400
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0xf (SPI_FAST_FLASH_BOOT)
+configspi:0x00000008
+SPIWP:0x00
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x1664
+load:0x403c8700,len:0xf38
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0xf (SPI_FAST_FLASH_BOOT)
+configspi:0x00000008
+SPIWP:0x00
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x1664
+load:0x403c8700,len:0xf38
+load:0x403cb700,len:0x31e8
+load:0x403cb700,len:0x31e8
+entry 0x403c8930
+I (11) boot: ESP-IDF v6.0.2 2nd stage bootloader
+I (12) boot: compile time Sep  4 2026 20:35:10
+I (12) boot: Multicore bootloader
+I (12) boot: chip revision: v0.0
+I (12) boot: efuse block revision: v1.0
+I (12) qio_mode: Enabling default flash chip QIO
+entry 0x403c8930
+I (11) boot: ESP-IDF v6.0.2 2nd stage bootloader
+I (12) boot: compile time Sep  4 2026 20:35:10
+I (12) boot: Multicore bootloader
+I (12) boot: chip revision: v0.0
+I (12) boot: efuse block revision: v1.0
+I (12) qio_mode: Enabling default flash chip QIO
+I (12) boot.esp32s3: Boot SPI Speed : 80MHz
+I (12) boot.esp32s3: SPI Mode       : QIO
+I (12) boot.esp32s3: SPI Flash Size : 16MB
+I (12) boot: Enabling RNG early entropy source...
+I (13) boot: Partition Table:
+I (13) boot: ## Label            Usage          Type ST Offset   Length
+I (13) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (13) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (12) boot.esp32s3: Boot SPI Speed : 80MHz
+I (12) boot.esp32s3: SPI Mode       : QIO
+I (12) boot.esp32s3: SPI Flash Size : 16MB
+I (12) boot: Enabling RNG early entropy source...
+I (13) boot: Partition Table:
+I (13) boot: ## Label            Usage          Type ST Offset   Length
+I (13) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (13) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (13) boot:  2 factory          factory app      00 00 I (13) boot:  2 factory          factory app      00 00 00010000 001c0000
+I (13) boot:  3 drawing          Unknown data     01 40 001d0000 00400000
+I (14) boot:  4 export           Unknown data     01 41 005d0000 00a20000
+I (14) boot:  5 coredump         Unknown data     01 03 00ff0000 00010000
+I (14) boot: End of partition table
+I (14) esp_image: segment 0: paddr=00010020 vaddr=3c070020 size=34c7ch (216188) map
+00010000 001c0000
+I (13) boot:  3 drawing          Unknown data     01 40 001d0000 00400000
+I (14) boot:  4 export           Unknown data     01 41 005d0000 00a20000
+I (14) boot:  5 coredump         Unknown data     01 03 00ff0000 00010000
+I (14) boot: End of partition table
+I (14) esp_image: segment 0: paddr=00010020 vaddr=3c070020 size=34c7ch (216188) map
+I (39) esp_image: segment 1: paddr=00044ca4 vaddr=3fc9d000 size=03794h ( 14228) load
+I (39) esp_image: segment 1: paddr=00044ca4 vaddr=3fc9d000 size=03794h ( 14228) load
+I (42) esp_image: segment 2: paddr=00048440 vaddr=40374000 size=07bd8h ( 31704) load
+I (42) esp_image: segment 2: paddr=00048440 vaddr=40374000 size=07bd8h ( 31704) load
+I (46) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=602fch (393980) map
+I (46) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=602fch (393980) map
+I (92) esp_image: segment 4: paddr=000b0324 vaddr=4037bbd8 size=11360h ( 70496) load
+I (92) esp_image: segment 4: paddr=000b0324 vaddr=4037bbd8 size=11360h ( 70496) load
+I (102) esp_image: segment 5: paddr=000c168c vaddr=50000000 size=00024h (    36) load
+I (102) esp_image: segment 5: paddr=000c168c vaddr=50000000 size=00024h (    36) load
+I (107) boot: Loaded app from partition at offset 0x10000
+I (108) boot: Disabling RNG early entropy source...
+I (108) octal_psram: vendor id    : 0x0d (AP)
+I (107) boot: Loaded app from partition at offset 0x10000
+I (108) boot: Disabling RNG early entropy source...
+I (108) octal_psram: vendor id    : 0x0d (AP)
+I (108) octalI (108) octal_psram: dev id       : 0x01 (generation 2)
+I (108) octal_psram: density      : 0x03 (64 Mbit)
+I (108) octal_psram: good-die     : 0x01 (Pass)
+I (109) octal_psram: Latency      : 0x01 (Fixed)
+I (109) octal_psram: VCC          : 0x00 (1.8V)
+I (109) octal_psram: SRF          : 0x00 (Slow Refresh)
+I (109) octal_psram: BurstType    : 0x00 ( Wrap)
+I (109) octal_psram: BurstLen     : 0x03 (1024 Byte)
+I (109) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (109) octal_psram: DriveStrength: 0x00 (1/1)
+_psram: dev id       : 0x01 (generation 2)
+I (108) octal_psram: density      : 0x03 (64 Mbit)
+I (108) octal_psram: good-die     : 0x01 (Pass)
+I (109) octal_psram: Latency      : 0x01 (Fixed)
+I (109) octal_psram: VCC          : 0x00 (1.8V)
+I (109) octal_psram: SRF          : 0x00 (Slow Refresh)
+I (109) octal_psram: BurstType    : 0x00 ( Wrap)
+I (109) octal_psram: BurstLen     : 0x03 (1024 Byte)
+I (109) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (109) octal_psram: DriveStrength: 0x00 (1/1)
+I (109) MSPI Timing: Enter psram I (109) MSPI Timing: Enter psram timing tuning
+W MSPI Timing: tuning fail, best point is fallen back to index 5
+I (110) esp_psram: Found 8MB PSRAM device
+I (110) esp_psram: Speed: 80MHz
+I (110) cpu_start: Multicore app
+timing tuning
+W MSPI Timing: tuning fail, best point is fallen back to index 5
+I (110) esp_psram: Found 8MB PSRAM device
+I (110) esp_psram: Speed: 80MHz
+I (110) cpu_start: Multicore app
+
+[emu] stop: MaxInsns — core0 5317381 + core1 4682534 insns in 1.2s wall = 8.1 Minsn/s; emulated 0.067s (15981211 cycles); 163 exceptions, 0 interrupts
+[irq] per core, cpu-int: count (peripheral sources mapped to it)
+
+[emu] i2s frames out: 0 (i2s0 @ 44100 Hz) 0 (i2s1 @ 44100 Hz)
+[emu] crypto: 0 AES blocks, 11708 SHA blocks, 0 RSA/MPI operations
+[emu] approximate timing totals: ApproximateTimingStats { events: [5317466, 4682534], cycles: [15981302, 7802981], traps: 163, controls: 65, opcode_fallbacks: 9980779, external_fetches: 342266, external_data: 437629, mmio: 251887, other_addresses: 0, faults: 0, data_cache: CacheAccess { hits: 391788, line_fills: 45841, dirty_writebacks: 33558, extra_cycles: 8722488 } }

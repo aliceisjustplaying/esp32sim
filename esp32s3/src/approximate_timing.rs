@@ -3,6 +3,7 @@
 use emu_core::{CostModel, ExecutionFacts, LifecycleFacts, LifecycleKind, MemoryAccessKind, StepKind};
 use std::{cell::RefCell, rc::Rc};
 use xtensa_lx7::Op;
+use crate::approximate_cache::{CacheAccess, CacheConfig, CacheTiming};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ApproximateTimingConfig {
@@ -13,11 +14,13 @@ pub struct ApproximateTimingConfig {
     /// Zero assumes a warm cache. It does not model cache misses or contention.
     pub external_extra: u32,
     pub mmio_extra: u32,
+    /// Data cache only; virtual tags, provisional geometry/prices, no maintenance.
+    pub data_cache: Option<CacheConfig>,
 }
 
 impl Default for ApproximateTimingConfig {
     fn default() -> Self {
-        Self { issue: 1, taken_branch: 3, trap: 3, external_extra: 0, mmio_extra: 0 }
+        Self { issue: 1, taken_branch: 3, trap: 3, external_extra: 0, mmio_extra: 0, data_cache: None }
     }
 }
 
@@ -33,12 +36,14 @@ pub struct ApproximateTimingStats {
     pub mmio: u64,
     pub other_addresses: u64,
     pub faults: u64,
+    pub data_cache: CacheAccess,
 }
 
 #[derive(Clone, Debug)]
 pub struct ApproximateCostModel {
     pub config: ApproximateTimingConfig,
     stats: Rc<RefCell<ApproximateTimingStats>>,
+    data_cache: Rc<RefCell<Option<CacheTiming>>>,
 }
 
 impl Default for ApproximateCostModel {
@@ -47,7 +52,8 @@ impl Default for ApproximateCostModel {
 
 impl ApproximateCostModel {
     pub fn new(config: ApproximateTimingConfig) -> Self {
-        Self { config, stats: Rc::new(RefCell::new(ApproximateTimingStats::default())) }
+        Self { config, stats: Rc::new(RefCell::new(ApproximateTimingStats::default())),
+            data_cache: Rc::new(RefCell::new(config.data_cache.map(CacheTiming::new))) }
     }
     pub fn stats(&self) -> ApproximateTimingStats { *self.stats.borrow() }
 }
@@ -58,6 +64,9 @@ impl CostModel for ApproximateCostModel {
             return Err("approximate timing supports ESP32-S3 only".into());
         }
         if facts.kind == LifecycleKind::Attach { *self.stats.borrow_mut() = ApproximateTimingStats::default(); }
+        if matches!(facts.kind, LifecycleKind::Attach | LifecycleKind::ChipReset) {
+            if let Some(cache) = self.data_cache.borrow_mut().as_mut() { cache.reset(); }
+        }
         Ok(())
     }
 
@@ -90,7 +99,13 @@ impl CostModel for ApproximateCostModel {
                 0x3c00_0000..=0x3dff_ffff | 0x4200_0000..=0x43ff_ffff => {
                     if access.kind == MemoryAccessKind::Fetch { stats.external_fetches += 1; }
                     else { stats.external_data += 1; }
-                    cycles = cycles.saturating_add(self.config.external_extra);
+                    if access.kind != MemoryAccessKind::Fetch && access.fault.is_none() {
+                        if let Some(cache) = self.data_cache.borrow_mut().as_mut() {
+                            let cost = cache.access(access.address, u32::from(access.width), access.kind == MemoryAccessKind::Write);
+                            cycles = cycles.saturating_add(cost.extra_cycles.min(u32::MAX as u64) as u32);
+                            stats.data_cache = cache.stats();
+                        } else { cycles = cycles.saturating_add(self.config.external_extra); }
+                    } else { cycles = cycles.saturating_add(self.config.external_extra); }
                 }
                 0x6000_0000..=0x600f_dfff => {
                     stats.mmio += 1;

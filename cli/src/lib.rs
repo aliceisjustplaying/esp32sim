@@ -24,6 +24,7 @@ pub struct Opts {
     pub approximate_timing: bool,
     pub approximate_memory: Option<u32>,
     pub memory_contention: bool,
+    pub approximate_cache: bool,
     pub chip: String,
     pub rom: Option<PathBuf>, pub bootloader: Option<String>, pub ptable: Option<String>, pub app: Option<String>, pub elfs: Vec<String>,
     pub flash_image: Option<String>, pub flash_at: Vec<String>, pub boot: Option<String>, pub flash_mb: Option<usize>, pub psram_mb: Option<usize>,
@@ -50,6 +51,7 @@ pub fn parse(args: &[String], default_chip: &str) -> Opts {
             "--approximate-timing" => o.approximate_timing = true,
             "--approximate-memory" => { o.approximate_timing = true; o.approximate_memory = Some(next().parse().expect("memory extra cycles")); }
             "--memory-contention" => o.memory_contention = true,
+            "--approximate-cache" => { o.approximate_timing = true; o.approximate_cache = true; },
             "--chip" => o.chip = next().to_ascii_lowercase(),
             "--rom" => o.rom = Some(PathBuf::from(next())),
             "--bootloader" => o.bootloader = Some(next()),
@@ -249,10 +251,20 @@ fn setup_c6(o: &Opts) -> esp32c6::Machine {
 
 /// Everything after the chip is set up: images, boot, observers, the run, the reports.
 fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
-    let approximate = o.approximate_timing.then(esp32s3::ApproximateCostModel::default);
+    let approximate = o.approximate_timing.then(|| {
+        let mut config = esp32s3::ApproximateTimingConfig::default();
+        if o.approximate_cache {
+            let mut cache = esp32s3::approximate_cache::CacheConfig::default();
+            if let Ok(value) = std::env::var("ESP32SIM_CACHE_FILL") { cache.fill_cycles = value.parse().expect("ESP32SIM_CACHE_FILL cycles"); }
+            if let Ok(value) = std::env::var("ESP32SIM_CACHE_WRITEBACK") { cache.writeback_cycles = value.parse().expect("ESP32SIM_CACHE_WRITEBACK cycles"); }
+            config.data_cache = Some(cache);
+        }
+        esp32s3::ApproximateCostModel::new(config)
+    });
     let memory_model = o.approximate_memory.map(|extra| {
         use esp32s3::rough_memory::{MemoryConfig, MemoryPrice};
         assert_eq!(o.boot.as_deref(), Some("rom"), "memory MMU shadow requires --boot rom");
+        assert!(!o.approximate_cache, "choose fixed memory or cache timing for this experiment");
         let external = MemoryPrice { latency: extra, ..MemoryPrice::FREE };
         esp32s3::memory_cost_model::MemoryCostModel::new(approximate.as_ref().unwrap().clone(),
             MemoryConfig { flash: external, psram: external, contention: o.memory_contention, ..Default::default() })
