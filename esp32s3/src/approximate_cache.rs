@@ -15,8 +15,14 @@ pub struct CacheConfig {
 }
 impl Default for CacheConfig {
     fn default() -> Self {
-        Self { capacity_bytes: 32768, line_bytes: 64, ways: 4,
-            hit_cycles: 0, fill_cycles: 120, writeback_cycles: 96 }
+        Self {
+            capacity_bytes: 32768,
+            line_bytes: 64,
+            ways: 4,
+            hit_cycles: 0,
+            fill_cycles: 120,
+            writeback_cycles: 96,
+        }
     }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -35,7 +41,11 @@ impl CacheAccess {
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
-struct Line { tag: u32, valid: bool, dirty: bool }
+struct Line {
+    tag: u32,
+    valid: bool,
+    dirty: bool,
+}
 
 /// Feed both CPUs' data accesses into one shared instance. Only pass cacheable
 /// external addresses. Virtual keys misrepresent MMU aliases; callers with
@@ -55,11 +65,19 @@ impl CacheTiming {
         assert!(config.capacity_bytes >= bytes_per_set);
         assert_eq!(config.capacity_bytes % bytes_per_set, 0);
         let sets = config.capacity_bytes / bytes_per_set;
-        Self { config, lines: vec![Line::default(); sets * config.ways],
-            next_way: vec![0; sets], stats: CacheAccess::default() }
+        Self {
+            config,
+            lines: vec![Line::default(); sets * config.ways],
+            next_way: vec![0; sets],
+            stats: CacheAccess::default(),
+        }
     }
-    pub fn config(&self) -> CacheConfig { self.config }
-    pub fn stats(&self) -> CacheAccess { self.stats }
+    pub fn config(&self) -> CacheConfig {
+        self.config
+    }
+    pub fn stats(&self) -> CacheAccess {
+        self.stats
+    }
     pub fn reset(&mut self) {
         self.lines.fill(Line::default());
         self.next_way.fill(0);
@@ -70,7 +88,9 @@ impl CacheTiming {
     /// resource model. Charging both would double-count external traffic.
     pub fn access(&mut self, address: u32, width: u32, is_write: bool) -> CacheAccess {
         let mut result = CacheAccess::default();
-        if width == 0 { return result; }
+        if width == 0 {
+            return result;
+        }
         let first = address as u64 / self.config.line_bytes as u64;
         let last = (address as u64 + width as u64 - 1) / self.config.line_bytes as u64;
         for line_number in first..=last {
@@ -83,14 +103,20 @@ impl CacheTiming {
                 result.hits += 1;
                 result.extra_cycles += self.config.hit_cycles as u64;
             } else {
-                let victim = ways.iter().position(|line| !line.valid)
+                let victim = ways
+                    .iter()
+                    .position(|line| !line.valid)
                     .unwrap_or(self.next_way[set]);
                 let dirty = ways[victim].valid && ways[victim].dirty;
                 result.line_fills += 1;
                 result.dirty_writebacks += u64::from(dirty);
                 result.extra_cycles += self.config.fill_cycles as u64
                     + u64::from(dirty) * self.config.writeback_cycles as u64;
-                ways[victim] = Line { tag, valid: true, dirty: is_write };
+                ways[victim] = Line {
+                    tag,
+                    valid: true,
+                    dirty: is_write,
+                };
                 self.next_way[set] = (victim + 1) % self.config.ways;
             }
         }
@@ -104,17 +130,24 @@ mod tests {
     #[test]
     fn sequential_words_amortize_fill() {
         let mut c = CacheTiming::new(CacheConfig::default());
-        for a in (0..32768).step_by(4) { c.access(a, 4, false); }
+        for a in (0..32768).step_by(4) {
+            c.access(a, 4, false);
+        }
         assert_eq!(c.stats().line_fills, 512);
         assert_eq!(c.stats().hits, 7680);
-        for a in (0..32768).step_by(4) { c.access(a, 4, false); }
+        for a in (0..32768).step_by(4) {
+            c.access(a, 4, false);
+        }
         assert_eq!(c.stats().line_fills, 512);
         assert_eq!(c.stats().dirty_writebacks, 0);
     }
     #[test]
     fn dirty_conflict_costs_more() {
-        let mut c = CacheTiming::new(CacheConfig { capacity_bytes: 128,
-            ways: 2, ..CacheConfig::default() });
+        let mut c = CacheTiming::new(CacheConfig {
+            capacity_bytes: 128,
+            ways: 2,
+            ..CacheConfig::default()
+        });
         c.access(0, 4, true);
         c.access(64, 4, false);
         let eviction = c.access(128, 4, false);
