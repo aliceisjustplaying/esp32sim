@@ -653,6 +653,7 @@ impl<S: Soc> Machine<S> {
             // block, exposing the stall to the other CPU without settling devices per ALU block.
             let mut used = 0;
             let penalty = loop {
+                self.bus.begin_timing_batch(core, now + u64::from(used) * u64::from(cpi));
                 let (done, stop) = if blocks { self.step_blocks(core, budget - used) } else {
                     let stop = self.step_core(core);
                     self.cores[core].advance_cycles(cpi - 1);
