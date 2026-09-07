@@ -261,7 +261,7 @@ fn setup_c6(o: &Opts) -> esp32c6::Machine {
 fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     let approximate = o.approximate_timing.then(|| {
         let mut config = esp32s3::ApproximateTimingConfig::default();
-        if o.approximate_cache {
+        if o.approximate_cache && o.approximate_memory.is_none() {
             let mut cache = esp32s3::approximate_cache::CacheConfig::default();
             if let Ok(value) = std::env::var("ESP32SIM_CACHE_FILL") { cache.fill_cycles = value.parse().expect("ESP32SIM_CACHE_FILL cycles"); }
             if let Ok(value) = std::env::var("ESP32SIM_CACHE_WRITEBACK") { cache.writeback_cycles = value.parse().expect("ESP32SIM_CACHE_WRITEBACK cycles"); }
@@ -272,10 +272,10 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     let memory_model = o.approximate_memory.map(|extra| {
         use esp32s3::rough_memory::{MemoryConfig, MemoryPrice};
         assert_eq!(o.boot.as_deref(), Some("rom"), "memory MMU shadow requires --boot rom");
-        assert!(!o.approximate_cache, "choose fixed memory or cache timing for this experiment");
         let external = MemoryPrice { latency: extra, ..MemoryPrice::FREE };
-        esp32s3::memory_cost_model::MemoryCostModel::new(approximate.as_ref().unwrap().clone(),
-            MemoryConfig { flash: external, psram: external, contention: o.memory_contention, ..Default::default() })
+        let model = esp32s3::memory_cost_model::MemoryCostModel::new(approximate.as_ref().unwrap().clone(),
+            MemoryConfig { flash: external, psram: external, contention: o.memory_contention, ..Default::default() });
+        if o.approximate_cache { model.with_cache(esp32s3::approximate_cache::CacheConfig::default()) } else { model }
     });
     if let Some(model) = &approximate {
         let cost: Box<dyn emu_core::CostModel> = match &memory_model {
@@ -300,7 +300,10 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     let dt = t0.elapsed().as_secs_f64();
     report(&mut m, o, stop, dt);
     if let Some(model) = approximate { eprintln!("[emu] approximate timing totals: {:?}", model.stats()); }
-    if let Some(model) = memory_model { eprintln!("[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: {:?}", model.memory.borrow().stats); }
+    if let Some(model) = memory_model {
+        eprintln!("[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: {:?}", model.memory.borrow().stats);
+        if let Some(cache) = &model.cache { eprintln!("[emu] approximate physical data cache: {:?}", cache.borrow().stats()); }
+    }
 }
 
 /// Images, boot, observers, scripts: everything before the first instruction. Returns the boot mode.

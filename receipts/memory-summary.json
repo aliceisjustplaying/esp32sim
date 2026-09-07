@@ -1,0 +1,51 @@
+{
+  "event_budget": 100000000,
+  "accuracy": "provisional, after-effect timing, no DMA memory scheduling, warm instruction cache in cache mode",
+  "results": [
+    {
+      "receipt": "receipts/memory-0.log",
+      "guest_cycles": 204756469,
+      "guest_seconds_rounded": 0.853,
+      "startup_pass": true,
+      "bus_faults": 0,
+      "memory_stats": "[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: [MemoryStats { transactions: 35107489, bytes: 120808329, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 9547636, bytes: 38082401, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 73561370, bytes: 294233859, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 16234609, bytes: 41765462, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 345634, bytes: 1382536, service_cycles: 0, wait_cycles: 0 }]",
+      "cache_stats": null
+    },
+    {
+      "receipt": "receipts/memory-1.log",
+      "guest_cycles": 278626562,
+      "guest_seconds_rounded": 1.161,
+      "startup_pass": true,
+      "bus_faults": 0,
+      "memory_stats": "[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: [MemoryStats { transactions: 38171792, bytes: 134711958, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 12274544, bytes: 48990027, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 67954227, bytes: 271805287, service_cycles: 67954227, wait_cycles: 711006 }, MemoryStats { transactions: 15600987, bytes: 40894731, service_cycles: 15600987, wait_cycles: 148002 }, MemoryStats { transactions: 378140, bytes: 1512560, service_cycles: 0, wait_cycles: 0 }]",
+      "cache_stats": null
+    },
+    {
+      "receipt": "receipts/memory-8.log",
+      "guest_cycles": 557229777,
+      "guest_seconds_rounded": 2.322,
+      "startup_pass": true,
+      "bus_faults": 0,
+      "memory_stats": "[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: [MemoryStats { transactions: 49436332, bytes: 187971122, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 29651163, bytes: 118496446, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 38993500, bytes: 155962379, service_cycles: 311948000, wait_cycles: 75488173 }, MemoryStats { transactions: 12198838, bytes: 35551953, service_cycles: 97590704, wait_cycles: 6676692 }, MemoryStats { transactions: 491472, bytes: 1965888, service_cycles: 0, wait_cycles: 0 }]",
+      "cache_stats": null
+    },
+    {
+      "receipt": "receipts/memory-cache-120-independent.log",
+      "guest_cycles": 261030293,
+      "guest_seconds_rounded": 1.088,
+      "startup_pass": true,
+      "bus_faults": 0,
+      "memory_stats": "[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: [MemoryStats { transactions: 31605324, bytes: 114367823, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 37874476, bytes: 151389701, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 20357, bytes: 1302848, service_cycles: 2442840, wait_cycles: 0 }, MemoryStats { transactions: 767670, bytes: 49130880, service_cycles: 92120400, wait_cycles: 0 }, MemoryStats { transactions: 347465, bytes: 1389860, service_cycles: 0, wait_cycles: 0 }]",
+      "cache_stats": "[emu] approximate physical data cache: CacheAccess { hits: 12356218, line_fills: 618462, dirty_writebacks: 169565, extra_cycles: 0 }"
+    },
+    {
+      "receipt": "receipts/memory-cache-120.log",
+      "guest_cycles": 261453034,
+      "guest_seconds_rounded": 1.089,
+      "startup_pass": true,
+      "bus_faults": 0,
+      "memory_stats": "[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: [MemoryStats { transactions: 31627215, bytes: 114463037, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 37878020, bytes: 151403877, service_cycles: 0, wait_cycles: 0 }, MemoryStats { transactions: 20412, bytes: 1306368, service_cycles: 2449440, wait_cycles: 228822 }, MemoryStats { transactions: 767564, bytes: 49124096, service_cycles: 92107680, wait_cycles: 780178 }, MemoryStats { transactions: 347691, bytes: 1390764, service_cycles: 0, wait_cycles: 0 }]",
+      "cache_stats": "[emu] approximate physical data cache: CacheAccess { hits: 12354164, line_fills: 618402, dirty_writebacks: 169574, extra_cycles: 0 }"
+    }
+  ]
+}

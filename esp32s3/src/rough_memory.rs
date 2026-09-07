@@ -102,7 +102,7 @@ impl MemoryTiming {
         if bytes == 0 { return MemoryCharge { finish: now, ..Default::default() }; }
         let start = if self.config.contention { now.max(self.busy_until[resource]) } else { now };
         let finish = start.saturating_add(service);
-        if self.config.contention { self.busy_until[resource] = finish; }
+        if self.config.contention && service != 0 { self.busy_until[resource] = finish; }
         let wait = start - now;
         let stats = &mut self.stats[kind as usize];
         stats.transactions += 1;
@@ -144,5 +144,13 @@ mod tests {
         mmu[0] = MMU_SPIRAM;
         assert_eq!(memory_kind(IBUS_LOW, &mmu), Some(MemoryKind::Psram));
         assert_eq!(memory_kind(DRAM_LOW, &mmu), Some(MemoryKind::Internal));
+    }
+    #[test]
+    fn free_access_at_later_instruction_phase_does_not_reserve_future_time() {
+        let mut timing = MemoryTiming::new(MemoryConfig { contention: true, ..Default::default() });
+        timing.access(100, MemoryKind::Internal, 4);
+        assert_eq!(timing.access(1, MemoryKind::Internal, 4).wait_cycles, 0);
+        timing.reserve(10, MemoryKind::Internal, 4, 5);
+        assert_eq!(timing.access(12, MemoryKind::Internal, 4).wait_cycles, 3);
     }
 }
