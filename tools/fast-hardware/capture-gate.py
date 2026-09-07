@@ -12,6 +12,8 @@ p = argparse.ArgumentParser()
 p.add_argument("output", type=Path)
 p.add_argument("--port", default="/dev/cu.usbmodem101")
 p.add_argument("--timeout", type=float, default=300)
+p.add_argument("--done-marker", default="TINYDRAW_GATE1_AUTOMATED_DONE")
+p.add_argument("--ready-marker", default="TINYDRAW_VECTOR_V2_READY")
 a = p.parse_args()
 t0 = time.monotonic_ns()
 reset = subprocess.run([sys.executable, "-m", "esptool", "--chip", "esp32s3", "--port", a.port,
@@ -41,9 +43,9 @@ with a.output.open("wb") as out, a.output.with_suffix(".timestamps.jsonl").open(
         out.flush()
         stamps.write(json.dumps({"hostSinceResetCommandNs": ns - t0, "line": line.decode(errors="replace").rstrip()}) + "\n")
         stamps.flush()
-        if b"TINYDRAW_GATE1_AUTOMATED_DONE" in line:
+        if a.done_marker.encode() in line:
             done = True
-        if b"TINYDRAW_VECTOR_V2_READY" in line:
+        if a.ready_marker.encode() in line:
             ready = True
             deadline = time.monotonic() + 2
 device.close()
