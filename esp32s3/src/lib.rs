@@ -8,6 +8,7 @@ pub mod rough_memory;
 pub mod memory_cost_model;
 pub mod approximate_timing;
 pub use approximate_timing::{ApproximateCostModel, ApproximateTimingConfig, ApproximateTimingStats};
+pub mod approximate_cache;
 pub mod wifi;
 pub mod net;
 pub mod nat;
