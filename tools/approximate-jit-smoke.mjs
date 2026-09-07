@@ -1,6 +1,7 @@
 // Functional TinyDraw probe. Node/V8 execution is not a browser performance receipt.
 import fs from 'node:fs/promises';
 import {createJitHost} from '../web/wasm/jit.mjs';
+import {completedVerdict,validateVerdict} from './browser-benchmark/verdict.mjs';
 const [assetPath,cpiText='2',quantumText='64',secondsText='10'] = process.argv.slice(2);
 const assets=JSON.parse(await fs.readFile(assetPath,'utf8'));
 const cpi=Number(cpiText), quantum=Number(quantumText), seconds=Number(secondsText);
@@ -31,5 +32,7 @@ while(w.esp32sim_cycles(emu)<hz*seconds && performance.now()-start<120000){
  if(stop || /Guru Meditation|stack overflow|task_wdt/.test(serial) || logs.some(l=>/chip reset|panic/i.test(l)))break;
  if(/TINYDRAW_GATE1_AUTOMATED_DONE[^\r\n]*[\r\n]/.test(serial))break;
 }
-console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,stop,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
+const schema=JSON.parse(await fs.readFile(new URL('./browser-benchmark/verdict-schema.json',import.meta.url),'utf8'));
+const verdict=completedVerdict(serial,schema),verdictValidation=validateVerdict(verdict,schema);
+console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,stop,verdict,verdictValidation,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
 w.esp32sim_delete(emu);

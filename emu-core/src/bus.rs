@@ -67,6 +67,9 @@ pub trait Bus {
     fn block_break(&self) -> bool { false }
     /// Direct memory access for generated code, if the bus has a `TlbEntry` table.
     fn fast_mem(&mut self) -> Option<FastMem> { None }
+    /// Drain provisional synchronous data-access penalties for a fast-path timing experiment.
+    /// The scheduler decides when to settle this batch; this does not imply access-level ordering.
+    fn take_timing_penalty(&mut self) -> u32 { 0 }
     /// Called after every executed instruction with the cycle estimate; lets the
     /// SoC advance timers and DMA. Return pending external level-interrupt lines.
     fn tick(&mut self, cycles: u32) -> u32 { let _ = cycles; 0 }

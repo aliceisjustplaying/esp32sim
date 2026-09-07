@@ -548,6 +548,7 @@ impl<S: Soc> Machine<S> {
                     .min(self.max_cycles - self.bus.cycles()).div_ceil(u64::from(cpi)).max(1)
             } else { QUANTUM };
             let elapsed = quantum * u64::from(cpi);
+            let mut stalls = [0u64; 4];
             for i in 0..S::CORES {
                 if !on[i] { continue; }
                 if idle[i] && !slow_path { self.cores[i].idle_advance(elapsed as u32); } else if blocks {
@@ -555,6 +556,11 @@ impl<S: Soc> Machine<S> {
                     while left > 0 {
                         let (used, stop) = self.step_blocks(i, left);
                         if let Some(stop) = stop { self.drain_console(); return stop; }
+                        if APPROXIMATE {
+                            let penalty = self.bus.take_timing_penalty();
+                            self.cores[i].advance_cycles(penalty);
+                            stalls[i] += u64::from(penalty);
+                        }
                         left -= used.min(left);
                         // a reset takes effect at the instruction that requested it: the core's
                         // run already stopped there (the register write broke the block)
@@ -563,13 +569,25 @@ impl<S: Soc> Machine<S> {
                 } else {
                     for _ in 0..quantum {
                         if let Some(stop) = self.step_core(i) { self.drain_console(); return stop; }
-                        if APPROXIMATE { self.cores[i].advance_cycles(cpi - 1); }
+                        if APPROXIMATE {
+                            let penalty = self.bus.take_timing_penalty();
+                            self.cores[i].advance_cycles(cpi - 1 + penalty);
+                            stalls[i] += u64::from(penalty);
+                        }
                         if self.bus.sw_reset() { break; }
                     }
                 }
                 if i == 0 { n += quantum; }
             }
-            self.after_round(elapsed);
+            let stall = if APPROXIMATE { *stalls[..S::CORES].iter().max().unwrap() } else { 0 };
+            if APPROXIMATE {
+                // Coarse lockstep approximation: both cores meet again after the slower batch.
+                // This intentionally exposes memory costs before access-level scheduling exists.
+                for i in 0..S::CORES {
+                    if on[i] { self.cores[i].advance_cycles((stall - stalls[i]) as u32); }
+                }
+            }
+            self.after_round(elapsed + stall);
             if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
             if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Stop::Halted; }
             if n & 0xffff < quantum { self.drain_console(); }
