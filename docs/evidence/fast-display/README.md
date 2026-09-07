@@ -1,10 +1,21 @@
 # TinyDraw with delayed SPI2 completion and measured TE
 
-Initial result: TinyDraw boots and reaches `TINYDRAW_GATE1_TILE_PUBLISH pass=1`
-with both experiments enabled. The five-second simulated run records startup
-`transfer_wait_us=18161` and `tear_edge_timeout=0`.
-See [the native boot log](tinydraw-timed-boot.log).
-This is a functional smoke, not a completed drawing battery or a speed comparison.
+The complete frozen TinyDraw battery passes all 36 final gates with both
+experiments enabled, ending with `ssaa_receipt=yellow`.
+See [the full native run](tinydraw-timed-full.json) and [raw log](tinydraw-timed-full.log).
+The run continued to 75 simulated seconds, including an idle tail, in 72.8 seconds
+wall time on a busy host. This is a functional result, not a browser speed comparison.
+
+Across 15 matched paced-cold records, median presentation time is 0.601 times
+the hardware timer value; the preceding baseline comparison was 0.284.
+Median compute time remains 0.726 times hardware.
+For `overlap zoom=50`, presentation changes from the preceding baseline's 20,048 us
+to 40,313 us, versus hardware's 73,917 us.
+Ring PIE staging remains 25,428 us versus hardware's 165,815 us: this experiment
+does not address that memory/CPU mismatch.
+See [the paired fields](hardware-comparison.json). The hardware boot restored
+drawing state while this simulator run started with erased data partitions, so
+matching selected workload fields does not establish complete state equality.
 
 Two independent switches:
 
@@ -22,8 +33,7 @@ Wire timing uses SPI command/address/data lane flags, phase lengths and the cloc
 divider, with an assumed 80 MHz source clock. DMA payload is snapshotted at
 submission. There is no progressive memory access, contention, DMA setup cost,
 CS setup/hold cost or optical scanout model. CPU-fed SPI transfers remain immediate.
-The initial boot receipt precedes the final change making `CMD.USR` read busy while
-a transfer is pending; the separate unit test covers that change.
+`CMD.USR` reads busy while a transfer is pending.
 
 [Tests](tests.log): 49 esp32s3 tests and 14 esp-periph tests pass, including delayed
 owner/interrupt/pixel delivery, waveform edge timestamps and SPI wire-clock decoding.
@@ -39,3 +49,7 @@ Firmware inputs: `/Users/alice/src/a/esp32sim/work/perf-pie-confirm/candidate/as
 CLI smoke used its ROM, bootloader, partition table, application and ELF with
 `--board waveshare-amoled18-v2 --flash-mb 16 --psram-mb 8 --boot rom
 --spi2-timing --measured-te --max-seconds 5 --no-dump`.
+
+Reproduce the full run with `node docs/evidence/fast-display/run-native.mjs`, then
+`node docs/evidence/fast-display/compare-hardware.mjs`. The latter reads the
+hardware agent's `summary-1.json` in its sibling `fast-hardware` checkout.
