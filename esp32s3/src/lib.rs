@@ -5,6 +5,7 @@ pub mod i2c;
 pub mod soc;
 pub mod timing;
 pub mod rough_memory;
+pub mod memory_cost_model;
 pub mod approximate_timing;
 pub use approximate_timing::{ApproximateCostModel, ApproximateTimingConfig, ApproximateTimingStats};
 pub mod wifi;

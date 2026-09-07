@@ -80,13 +80,14 @@ pub struct MemoryTiming {
     pub config: MemoryConfig,
     // Internal, ROM, external, MMIO.
     busy_until: [u64; 4],
-    pub stats: [MemoryStats; 4],
+    /// Internal, ROM, flash, PSRAM, MMIO; flash and PSRAM still share occupancy.
+    pub stats: [MemoryStats; 5],
 }
 impl MemoryTiming {
     pub fn new(config: MemoryConfig) -> Self {
-        Self { config, busy_until: [0; 4], stats: [MemoryStats::default(); 4] }
+        Self { config, busy_until: [0; 4], stats: [MemoryStats::default(); 5] }
     }
-    pub fn reset(&mut self) { self.busy_until = [0; 4]; self.stats = [MemoryStats::default(); 4]; }
+    pub fn reset(&mut self) { self.busy_until = [0; 4]; self.stats = [MemoryStats::default(); 5]; }
     pub fn access(&mut self, now: u64, kind: MemoryKind, bytes: u32) -> MemoryCharge {
         let price = match kind { MemoryKind::Internal => self.config.internal,
             MemoryKind::Rom => self.config.rom, MemoryKind::Flash => self.config.flash,
@@ -103,7 +104,7 @@ impl MemoryTiming {
         let finish = start.saturating_add(service);
         if self.config.contention { self.busy_until[resource] = finish; }
         let wait = start - now;
-        let stats = &mut self.stats[resource];
+        let stats = &mut self.stats[kind as usize];
         stats.transactions += 1;
         stats.bytes += u64::from(bytes);
         stats.service_cycles = stats.service_cycles.saturating_add(service);

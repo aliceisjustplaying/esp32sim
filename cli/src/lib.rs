@@ -22,6 +22,8 @@ fn pair(s: &str, dflt: usize) -> (u32, usize) { match s.split_once(',') { Some((
 #[derive(Default)]
 pub struct Opts {
     pub approximate_timing: bool,
+    pub approximate_memory: Option<u32>,
+    pub memory_contention: bool,
     pub chip: String,
     pub rom: Option<PathBuf>, pub bootloader: Option<String>, pub ptable: Option<String>, pub app: Option<String>, pub elfs: Vec<String>,
     pub flash_image: Option<String>, pub flash_at: Vec<String>, pub boot: Option<String>, pub flash_mb: Option<usize>, pub psram_mb: Option<usize>,
@@ -46,6 +48,8 @@ pub fn parse(args: &[String], default_chip: &str) -> Opts {
         let mut next = || { i += 1; args.get(i).cloned().unwrap_or_else(|| usage(default_chip)) };
         match a {
             "--approximate-timing" => o.approximate_timing = true,
+            "--approximate-memory" => { o.approximate_timing = true; o.approximate_memory = Some(next().parse().expect("memory extra cycles")); }
+            "--memory-contention" => o.memory_contention = true,
             "--chip" => o.chip = next().to_ascii_lowercase(),
             "--rom" => o.rom = Some(PathBuf::from(next())),
             "--bootloader" => o.bootloader = Some(next()),
@@ -246,8 +250,18 @@ fn setup_c6(o: &Opts) -> esp32c6::Machine {
 /// Everything after the chip is set up: images, boot, observers, the run, the reports.
 fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     let approximate = o.approximate_timing.then(esp32s3::ApproximateCostModel::default);
+    let memory_model = o.approximate_memory.map(|extra| {
+        use esp32s3::rough_memory::{MemoryConfig, MemoryPrice};
+        assert_eq!(o.boot.as_deref(), Some("rom"), "memory MMU shadow requires --boot rom");
+        let external = MemoryPrice { latency: extra, ..MemoryPrice::FREE };
+        esp32s3::memory_cost_model::MemoryCostModel::new(approximate.as_ref().unwrap().clone(),
+            MemoryConfig { flash: external, psram: external, contention: o.memory_contention, ..Default::default() })
+    });
     if let Some(model) = &approximate {
-        m.set_cost_model(Box::new(model.clone())).expect("approximate timing attachment");
+        let cost: Box<dyn emu_core::CostModel> = match &memory_model {
+            Some(memory) => Box::new(memory.clone()), None => Box::new(model.clone()),
+        };
+        m.set_cost_model(cost).expect("approximate timing attachment");
         eprintln!("[emu] APPROXIMATE timing: {:?}; use --boot rom; accuracy unvalidated", model.config);
     }
     let boot = prepare(&mut m, o);
@@ -266,6 +280,7 @@ fn run<S: Soc>(mut m: Machine<S>, o: &Opts) {
     let dt = t0.elapsed().as_secs_f64();
     report(&mut m, o, stop, dt);
     if let Some(model) = approximate { eprintln!("[emu] approximate timing totals: {:?}", model.stats()); }
+    if let Some(model) = memory_model { eprintln!("[emu] approximate memory totals [internal, ROM, flash, PSRAM, MMIO]: {:?}", model.memory.borrow().stats); }
 }
 
 /// Images, boot, observers, scripts: everything before the first instruction. Returns the boot mode.
