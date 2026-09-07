@@ -96,6 +96,7 @@ pub struct SocBus {
     tick_pending: u32, tick_budget: u32,
     approximate_cache: Option<crate::approximate_cache::CacheTiming>,
     approximate_cache_pending: u32,
+    approximate_cache_fast_internal: bool,
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
@@ -124,7 +125,7 @@ impl SocBus {
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             spi2_timing: false, spi2_scheduled: None,
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
-            approximate_cache: None, approximate_cache_pending: 0,
+            approximate_cache: None, approximate_cache_pending: 0, approximate_cache_fast_internal: false,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -140,6 +141,11 @@ impl SocBus {
 
     pub fn approximate_cache_stats(&self) -> Option<crate::approximate_cache::CacheAccess> {
         self.approximate_cache.as_ref().map(|cache| cache.stats())
+    }
+    /// Keep internal SRAM on the generated direct path while external data uses priced helpers.
+    pub fn set_approximate_cache_fast_internal(&mut self, enabled: bool) {
+        self.approximate_cache_fast_internal = enabled;
+        self.invalidate_tlb();
     }
 
     pub fn take_approximate_cache_penalty(&mut self) -> u32 {
@@ -240,7 +246,12 @@ impl SocBus {
         e.vbase = self.ver_base[e.src as usize] + (e.off as usize >> VPAGE_SHIFT) as u32;
         let off = e.off as usize;
         e.base = unsafe { self.buf_mut(e.src as u8).as_mut_ptr().add(off) };
-        self.tlb[tlb_idx(addr)] = e;
+        // Do not publish external mappings to generated loads/stores while pricing cache accesses.
+        // Returning the mapping still lets the slow accessor perform this one access.
+        if !(self.approximate_cache.is_some() && self.approximate_cache_fast_internal
+            && matches!(e.src as u8, SRC_FLASH | SRC_PSRAM)) {
+            self.tlb[tlb_idx(addr)] = e;
+        }
         Some(e)
     }
 
@@ -915,7 +926,8 @@ impl Bus for SocBus {
     fn page_versions(&self) -> &[u32] { &self.page_ver }
     #[inline(always)]
     fn note_pc(&mut self, pc: u32) { self.periph.misc.cur_pc = pc; }
-    fn fast_mem(&mut self) -> Option<FastMem> { if self.approximate_cache.is_some() { None } else { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) } }
+    fn fast_mem(&mut self) -> Option<FastMem> { if self.approximate_cache.is_some() && !self.approximate_cache_fast_internal { None } else { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) } }
+    fn take_timing_penalty(&mut self) -> u32 { self.take_approximate_cache_penalty() }
     #[inline(always)]
     fn block_break(&self) -> bool { self.irq_dirty }
     fn code_page(&mut self, pc: u32) -> u32 {
@@ -1014,6 +1026,28 @@ impl SocBus {
 mod gp_spi_board_tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn approximate_cache_keeps_only_internal_mappings_direct() {
+        let mut bus = SocBus::new(65536, 65536, [0; 6]);
+        bus.mmu[0] = MMU_SPIRAM;
+        bus.enable_approximate_cache(Default::default());
+        bus.set_approximate_cache_fast_internal(true);
+        assert!(bus.fast_mem().is_some());
+        bus.write32(DRAM_LOW, 42).unwrap();
+        assert_eq!(bus.tlb[tlb_idx(DRAM_LOW)].lo, DRAM_LOW);
+        bus.write32(DBUS_LOW, 43).unwrap();
+        let e = bus.tlb[tlb_idx(DBUS_LOW)];
+        assert!(!(DBUS_LOW >= e.lo && DBUS_LOW < e.hi));
+        assert_eq!(bus.take_timing_penalty(), 120);
+        assert_eq!(bus.read32(DBUS_LOW).unwrap(), 43);
+        assert_eq!(bus.take_timing_penalty(), 0);
+        let stats = bus.approximate_cache_stats().unwrap();
+        assert_eq!((stats.line_fills, stats.hits), (1, 1));
+        // Fetches do not enter the data cache even when they use external memory.
+        bus.fetch(IBUS_LOW).unwrap();
+        assert_eq!(bus.approximate_cache_stats().unwrap(), stats);
+    }
 
     const SPI2: u32 = 0x6002_4000;
     const GDMA: u32 = 0x6003_f000;

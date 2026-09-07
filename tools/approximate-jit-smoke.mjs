@@ -2,9 +2,9 @@
 import fs from 'node:fs/promises';
 import {createJitHost} from '../web/wasm/jit.mjs';
 import {completedVerdict,validateVerdict} from './browser-benchmark/verdict.mjs';
-const [assetPath,cpiText='2',quantumText='64',secondsText='10'] = process.argv.slice(2);
+const [assetPath,cpiText='2',quantumText='64',secondsText='10',cacheText='0'] = process.argv.slice(2);
 const assets=JSON.parse(await fs.readFile(assetPath,'utf8'));
-const cpi=Number(cpiText), quantum=Number(quantumText), seconds=Number(secondsText);
+const cpi=Number(cpiText), quantum=Number(quantumText), seconds=Number(secondsText), cache=Number(cacheText);
 const enc=new TextEncoder(), dec=new TextDecoder();
 let w, serial='', frames=0;
 const host=createJitHost(()=>w);
@@ -17,10 +17,14 @@ for(const [name,kind] of [['rom',0],['bootloader',1],['ptable',2],['app',3],['el
   const rc=bytes(await fs.readFile(assets[name]),(p,n)=>w.esp32sim_load(emu,kind,p,n));if(rc)throw Error(`${name}: ${rc}`);
 }
 if(cpi && w.esp32sim_set_approximate_jit_timing(emu,cpi,quantum))throw Error('timing config rejected');
+if(cache && w.esp32sim_set_approximate_jit_cache(emu,120,96,cache===2?1:0))throw Error('cache config rejected');
 if(w.esp32sim_boot(emu,0))throw Error('boot failed');
 w.esp32sim_set_jit(emu,1);
 const hz=w.esp32sim_cpu_hz(emu),start=performance.now();let stop=0;
-while(w.esp32sim_cycles(emu)<hz*seconds && performance.now()-start<120000){
+let interrupted=false,slices=0;
+process.on('SIGTERM',()=>{interrupted=true;});
+process.on('SIGINT',()=>{interrupted=true;});
+while(!interrupted && w.esp32sim_cycles(emu)<hz*seconds && performance.now()-start<120000){
  stop=w.esp32sim_run(emu,2000000,Date.now());
  const n=w.esp32sim_out_take(emu);
  for(let i=0;i<n;i++){
@@ -31,8 +35,10 @@ while(w.esp32sim_cycles(emu)<hz*seconds && performance.now()-start<120000){
  }
  if(stop || /Guru Meditation|stack overflow|task_wdt/.test(serial) || logs.some(l=>/chip reset|panic/i.test(l)))break;
  if(/TINYDRAW_GATE1_AUTOMATED_DONE[^\r\n]*[\r\n]/.test(serial))break;
+ if(++slices%64===0)await new Promise(setImmediate);
 }
 const schema=JSON.parse(await fs.readFile(new URL('./browser-benchmark/verdict-schema.json',import.meta.url),'utf8'));
 const verdict=completedVerdict(serial,schema),verdictValidation=validateVerdict(verdict,schema);
-console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,stop,verdict,verdictValidation,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
+const cacheCounters=cache?['hits','fills','writebacks','extraCycles'].map((name,i)=>[name,w.esp32sim_approximate_cache_counter(emu,i)]):[];
+console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,cache,cacheCounters:Object.fromEntries(cacheCounters),stop,interrupted,verdict,verdictValidation,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
 w.esp32sim_delete(emu);

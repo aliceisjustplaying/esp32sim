@@ -834,6 +834,30 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_timing(e: *mut Emu, cpi: u
     unsafe { &mut *e }.m.approximate_jit_timing(cpi, quantum)
 }
 
+/// Configure the rough shared data cache after approximate JIT timing, before execution.
+/// `fast_internal` retains direct SRAM access, forcing external memory through priced helpers.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u32, writeback: u32, fast_internal: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    if m.insns() != 0 { return 1; }
+    m.bus.enable_approximate_cache(esp32s3::approximate_cache::CacheConfig { fill_cycles: fill, writeback_cycles: writeback, ..Default::default() });
+    m.bus.set_approximate_cache_fast_internal(fast_internal != 0);
+    0
+}
+
+/// Cache experiment counters: hits, line fills, writebacks and extra cycles.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_approximate_cache_counter(e: *mut Emu, counter: u32) -> f64 {
+    let e = unsafe { &mut *e };
+    e.m.as_any_mut().downcast_mut::<esp32s3::Machine>().and_then(|m| m.bus.approximate_cache_stats())
+        .map(|s| match counter { 0 => s.hits, 1 => s.line_fills, 2 => s.dirty_writebacks, _ => s.extra_cycles } as f64).unwrap_or(0.0)
+}
+
 /// Guest instructions retired by compiled blocks, including interpreter helpers.
 ///
 /// # Safety
