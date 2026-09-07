@@ -111,6 +111,7 @@ struct CacheResource {
     cursor: u64,
     core: usize,
     fill_cycles: u32,
+    fill_service_cycles: u32,
     writeback_cycles: u32,
     wait_cycles: [u64; 2],
 }
@@ -154,6 +155,7 @@ impl SocBus {
     /// writes visit cache state. Enable before execution. No instruction costs.
     pub fn enable_approximate_cache(&mut self, config: crate::approximate_cache::CacheConfig) {
         self.cache_resource.fill_cycles = config.fill_cycles;
+        self.cache_resource.fill_service_cycles = config.fill_cycles;
         self.cache_resource.writeback_cycles = config.writeback_cycles;
         self.approximate_cache = Some(crate::approximate_cache::CacheTiming::new(config));
         self.approximate_cache_pending = 0;
@@ -193,6 +195,13 @@ impl SocBus {
         self.cache_resource.wait_cycles = [0; 2];
     }
     pub fn approximate_cache_wait_cycles(&self) -> [u64; 2] { self.cache_resource.wait_cycles }
+    /// Hypothesis: requested data can be ready before the external line burst finishes.
+    /// CPU readiness remains CacheConfig.fill_cycles; default service equals readiness.
+    pub fn set_approximate_cache_fill_service(&mut self, cycles: u32) -> bool {
+        if cycles < self.cache_resource.fill_cycles { return false; }
+        self.cache_resource.fill_service_cycles = cycles;
+        true
+    }
 
     #[inline]
     fn price_cached_data(&mut self, entry: TlbEntry, address: u32, width: u32, write: bool) {
@@ -203,15 +212,17 @@ impl SocBus {
             let key = ((entry.src as u32) << 28) | (entry.off + address - entry.lo);
             let result = cache.access(key, width, write);
             let resource = &mut self.cache_resource;
-            let service = result.line_fills * u64::from(resource.fill_cycles)
-                + result.dirty_writebacks * u64::from(resource.writeback_cycles);
-            if resource.enabled && service != 0 {
-                let start = resource.cursor.max(resource.busy_until);
-                let wait = start - resource.cursor;
-                resource.cursor = start.saturating_add(service);
-                resource.busy_until = resource.cursor;
+            if resource.enabled {
+                let mut wait = 0u64;
+                // Dirty victims finish before refill. Writes do not have an early-ready split.
+                for _ in 0..result.dirty_writebacks {
+                    wait = wait.saturating_add(resource.reserve(resource.writeback_cycles, resource.writeback_cycles));
+                }
+                for _ in 0..result.line_fills {
+                    wait = wait.saturating_add(resource.reserve(resource.fill_cycles, resource.fill_service_cycles));
+                }
                 resource.wait_cycles[resource.core] = resource.wait_cycles[resource.core].saturating_add(wait);
-                // Service is already included in extra_cycles below: only add queued wait.
+                // Requested-data readiness is already included in extra_cycles below.
                 self.approximate_cache_pending = self.approximate_cache_pending
                     .saturating_add(wait.min(u32::MAX as u64) as u32);
             }
@@ -912,6 +923,17 @@ impl SocBus {
     }
 }
 
+impl CacheResource {
+    fn reserve(&mut self, ready: u32, service: u32) -> u64 {
+        if service == 0 { return 0; }
+        let start = self.cursor.max(self.busy_until);
+        let wait = start - self.cursor;
+        self.cursor = start.saturating_add(u64::from(ready));
+        self.busy_until = start.saturating_add(u64::from(service));
+        wait
+    }
+}
+
 impl Bus for SocBus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault> {
         if Self::is_periph(addr) { self.last_fault = Some((addr, false)); return Err(Fault::Prohibited); }
@@ -1107,6 +1129,30 @@ mod gp_spi_board_tests {
         bus.begin_timing_batch(0, 340);
         bus.read32(DBUS_LOW + 128).unwrap();
         assert_eq!(bus.take_timing_penalty(), 120);
+    }
+
+    #[test]
+    fn demand_ready_can_precede_resource_release() {
+        let mut bus = SocBus::new(65536, 65536, [0; 6]);
+        bus.mmu[0] = MMU_SPIRAM;
+        bus.enable_approximate_cache(crate::approximate_cache::CacheConfig {
+            fill_cycles: 96, ..Default::default()
+        });
+        bus.set_approximate_cache_contention(true);
+        assert!(!bus.set_approximate_cache_fill_service(95));
+        assert!(bus.set_approximate_cache_fill_service(160));
+        bus.begin_timing_batch(0, 100);
+        bus.read32(DBUS_LOW).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 96);
+        // Data is ready at196. 20 cycles of CPU work hide20 of the64 remaining service.
+        bus.begin_timing_batch(0, 216);
+        bus.read32(DBUS_LOW + 64).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 44 + 96);
+        // First resource burst100..260; second260..420. No extra wait after420.
+        bus.begin_timing_batch(1, 420);
+        bus.read32(DBUS_LOW + 128).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 96);
+        assert_eq!(bus.approximate_cache_wait_cycles(), [44, 0]);
     }
 
     #[test]

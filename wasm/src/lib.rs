@@ -875,6 +875,17 @@ pub unsafe extern "C" fn esp32sim_set_approximate_cache_contention(e: *mut Emu, 
     0
 }
 
+/// Set full refill service separately from requested-data readiness.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator, configured before execution.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_approximate_cache_fill_service(e: *mut Emu, cycles: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    if m.insns() != 0 { return 1; }
+    u32::from(!m.bus.set_approximate_cache_fill_service(cycles))
+}
+
 /// Per-core queued wait in provisional shared memory service.
 /// # Safety
 /// `e` must be a live exclusively borrowed emulator.

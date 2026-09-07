@@ -2,10 +2,12 @@
 import fs from 'node:fs/promises';
 import {createJitHost} from '../web/wasm/jit.mjs';
 import {completedVerdict,validateVerdict} from './browser-benchmark/verdict.mjs';
-const [assetPath,cpiText='1',quantumText='64',secondsText='10',cacheText='0',frontiersText='0'] = process.argv.slice(2);
+const [assetPath,cpiText='1',quantumText='64',secondsText='10',cacheText='0',frontiersText='0',contentionText='0',fillText=(process.env.CACHE_FILL ?? '120'),serviceText=fillText] = process.argv.slice(2);
 const assets=JSON.parse(await fs.readFile(assetPath,'utf8'));
 const cpi=Number(cpiText), quantum=Number(quantumText), seconds=Number(secondsText), cache=Number(cacheText);
 const frontiers=Number(frontiersText);
+const contention=Number(contentionText);
+const fill=Number(fillText),service=Number(serviceText);
 const enc=new TextEncoder(), dec=new TextDecoder();
 let w, serial='', frames=0;
 const host=createJitHost(()=>w);
@@ -19,7 +21,9 @@ for(const [name,kind] of [['rom',0],['bootloader',1],['ptable',2],['app',3],['el
 }
 if(cpi && w.esp32sim_set_approximate_jit_timing(emu,cpi,quantum))throw Error('timing config rejected');
 if(frontiers && w.esp32sim_set_approximate_jit_frontiers(emu,frontiers))throw Error('frontiers config rejected');
-if(cache && w.esp32sim_set_approximate_jit_cache(emu,Number(process.env.CACHE_FILL ?? 120),Number(process.env.CACHE_WRITEBACK ?? 96),cache===3?2:cache===2?1:0))throw Error('cache config rejected');
+if(cache && w.esp32sim_set_approximate_jit_cache(emu,fill,Number(process.env.CACHE_WRITEBACK ?? 96),cache===3?2:cache===2?1:0))throw Error('cache config rejected');
+if(contention && w.esp32sim_set_approximate_cache_contention(emu,1))throw Error('contention config rejected');
+if(service!==fill && w.esp32sim_set_approximate_cache_fill_service(emu,service))throw Error('service config rejected');
 if(w.esp32sim_boot(emu,0))throw Error('boot failed');
 w.esp32sim_set_jit(emu,1);
 const hz=w.esp32sim_cpu_hz(emu),start=performance.now();let stop=0;
@@ -42,5 +46,6 @@ while(!interrupted && w.esp32sim_cycles(emu)<hz*seconds && performance.now()-sta
 const schema=JSON.parse(await fs.readFile(new URL('./browser-benchmark/verdict-schema.json',import.meta.url),'utf8'));
 const verdict=completedVerdict(serial,schema),verdictValidation=validateVerdict(verdict,schema);
 const cacheCounters=cache?['hits','fills','writebacks','extraCycles'].map((name,i)=>[name,w.esp32sim_approximate_cache_counter(emu,i)]):[];
-console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,cache,frontiers,cacheCounters:Object.fromEntries(cacheCounters),stop,interrupted,verdict,verdictValidation,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
+const cacheWait=[0,1].map(core=>w.esp32sim_approximate_cache_wait(emu,core));
+console.log(JSON.stringify({mode:'Node functional smoke, not performance evidence',cpi,quantum,cache,frontiers,contention,fill,service,cacheWait,cacheCounters:Object.fromEntries(cacheCounters),stop,interrupted,verdict,verdictValidation,guestSeconds:w.esp32sim_cycles(emu)/hz,wallSeconds:(performance.now()-start)/1000,instructions:w.esp32sim_insns(emu),jitInstructions:w.esp32sim_block_jit_insns(emu),jit:host.stats,frames,logs,serial},null,2));
 w.esp32sim_delete(emu);
