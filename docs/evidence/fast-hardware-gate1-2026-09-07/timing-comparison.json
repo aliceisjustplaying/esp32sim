@@ -1,0 +1,850 @@
+{
+  "caveat": "One hardware run, restored drawing differs. WorkloadDifferences flags selected count differences, not proof of complete state equality. Ratios are firmware timer ratios, not execution throughput.",
+  "rows": [
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "ring_pie_us",
+      "hardwareUs": 165815,
+      "baselineUs": 25425,
+      "cpi2Us": 51346,
+      "baselineOverHardware": 0.1533,
+      "cpi2OverHardware": 0.3097,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=50",
+      "field": "present_us",
+      "hardwareUs": 73917,
+      "baselineUs": 20048,
+      "cpi2Us": 40516,
+      "baselineOverHardware": 0.2712,
+      "cpi2OverHardware": 0.5481,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=400",
+      "field": "present_us",
+      "hardwareUs": 67266,
+      "baselineUs": 18545,
+      "cpi2Us": 37485,
+      "baselineOverHardware": 0.2757,
+      "cpi2OverHardware": 0.5573,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=100",
+      "field": "present_us",
+      "hardwareUs": 69365,
+      "baselineUs": 19206,
+      "cpi2Us": 38767,
+      "baselineOverHardware": 0.2769,
+      "cpi2OverHardware": 0.5589,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=200",
+      "field": "present_us",
+      "hardwareUs": 68614,
+      "baselineUs": 19177,
+      "cpi2Us": 38742,
+      "baselineOverHardware": 0.2795,
+      "cpi2OverHardware": 0.5646,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=seed7 zoom=400",
+      "field": "present_us",
+      "hardwareUs": 71104,
+      "baselineUs": 19883,
+      "cpi2Us": 40142,
+      "baselineOverHardware": 0.2796,
+      "cpi2OverHardware": 0.5646,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=100",
+      "field": "present_us",
+      "hardwareUs": 66713,
+      "baselineUs": 18664,
+      "cpi2Us": 37710,
+      "baselineOverHardware": 0.2798,
+      "cpi2OverHardware": 0.5653,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=400",
+      "field": "present_us",
+      "hardwareUs": 63888,
+      "baselineUs": 18135,
+      "cpi2Us": 36622,
+      "baselineOverHardware": 0.2839,
+      "cpi2OverHardware": 0.5732,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=400",
+      "field": "present_us",
+      "hardwareUs": 64824,
+      "baselineUs": 18403,
+      "cpi2Us": 37176,
+      "baselineOverHardware": 0.2839,
+      "cpi2OverHardware": 0.5735,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=100",
+      "field": "present_us",
+      "hardwareUs": 56496,
+      "baselineUs": 16361,
+      "cpi2Us": 33064,
+      "baselineOverHardware": 0.2896,
+      "cpi2OverHardware": 0.5852,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=100",
+      "field": "present_us",
+      "hardwareUs": 60117,
+      "baselineUs": 17577,
+      "cpi2Us": 35521,
+      "baselineOverHardware": 0.2924,
+      "cpi2OverHardware": 0.5909,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=50",
+      "field": "present_us",
+      "hardwareUs": 55226,
+      "baselineUs": 16265,
+      "cpi2Us": 32856,
+      "baselineOverHardware": 0.2945,
+      "cpi2OverHardware": 0.5949,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=200",
+      "field": "present_us",
+      "hardwareUs": 56939,
+      "baselineUs": 16821,
+      "cpi2Us": 33983,
+      "baselineOverHardware": 0.2954,
+      "cpi2OverHardware": 0.5968,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=50",
+      "field": "present_us",
+      "hardwareUs": 61254,
+      "baselineUs": 18193,
+      "cpi2Us": 36744,
+      "baselineOverHardware": 0.297,
+      "cpi2OverHardware": 0.5999,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=400",
+      "field": "present_us",
+      "hardwareUs": 56633,
+      "baselineUs": 16896,
+      "cpi2Us": 34147,
+      "baselineOverHardware": 0.2983,
+      "cpi2OverHardware": 0.603,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=200",
+      "field": "present_us",
+      "hardwareUs": 57186,
+      "baselineUs": 17085,
+      "cpi2Us": 34512,
+      "baselineOverHardware": 0.2988,
+      "cpi2OverHardware": 0.6035,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 118984,
+      "baselineUs": 49746,
+      "cpi2Us": 97761,
+      "baselineOverHardware": 0.4181,
+      "cpi2OverHardware": 0.8216,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_WORKLOAD kind=realistic",
+      "field": "load_us",
+      "hardwareUs": 558052,
+      "baselineUs": 239758,
+      "cpi2Us": 484416,
+      "baselineOverHardware": 0.4296,
+      "cpi2OverHardware": 0.868,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=100 trace=scribble-multistroke",
+      "field": "e2d_p95",
+      "hardwareUs": 6312,
+      "baselineUs": 2878,
+      "cpi2Us": 5313,
+      "baselineOverHardware": 0.456,
+      "cpi2OverHardware": 0.8417,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 714,
+          "baseline": 801,
+          "cpi2": 745
+        },
+        "coalesced": {
+          "hardware": 134,
+          "baseline": 47,
+          "cpi2": 103
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=50",
+      "field": "wall_us",
+      "hardwareUs": 90971,
+      "baselineUs": 41561,
+      "cpi2Us": 82615,
+      "baselineOverHardware": 0.4569,
+      "cpi2OverHardware": 0.9081,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=100 trace=slow-precise-100",
+      "field": "e2c_p95",
+      "hardwareUs": 1073,
+      "baselineUs": 502,
+      "cpi2Us": 506,
+      "baselineOverHardware": 0.4678,
+      "cpi2OverHardware": 0.4716,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 711,
+          "baseline": 686,
+          "cpi2": 688
+        },
+        "coalesced": {
+          "hardware": 30,
+          "baseline": 55,
+          "cpi2": 53
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 104489,
+      "baselineUs": 50900,
+      "cpi2Us": 101813,
+      "baselineOverHardware": 0.4871,
+      "cpi2OverHardware": 0.9744,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_HARD zoom=400 operations=1008 samples=19852",
+      "field": "total_us",
+      "hardwareUs": 135180,
+      "baselineUs": 66330,
+      "cpi2Us": 133988,
+      "baselineOverHardware": 0.4907,
+      "cpi2OverHardware": 0.9912,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_EXPORT",
+      "field": "elapsed_us",
+      "hardwareUs": 9606592,
+      "baselineUs": 4726624,
+      "cpi2Us": null,
+      "baselineOverHardware": 0.492,
+      "cpi2OverHardware": null,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=100 trace=slow-precise-100",
+      "field": "e2d_p95",
+      "hardwareUs": 2366,
+      "baselineUs": 1173,
+      "cpi2Us": 1853,
+      "baselineOverHardware": 0.4958,
+      "cpi2OverHardware": 0.7832,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 711,
+          "baseline": 686,
+          "cpi2": 688
+        },
+        "coalesced": {
+          "hardware": 30,
+          "baseline": 55,
+          "cpi2": 53
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=seed7 zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 171981,
+      "baselineUs": 86444,
+      "cpi2Us": 171493,
+      "baselineOverHardware": 0.5026,
+      "cpi2OverHardware": 0.9972,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=400 trace=fast-curve-400",
+      "field": "e2d_p95",
+      "hardwareUs": 4260,
+      "baselineUs": 2156,
+      "cpi2Us": 3842,
+      "baselineOverHardware": 0.5061,
+      "cpi2OverHardware": 0.9019,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 380,
+          "baseline": 411,
+          "cpi2": 392
+        },
+        "coalesced": {
+          "hardware": 34,
+          "baseline": 3,
+          "cpi2": 22
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 158978,
+      "baselineUs": 80814,
+      "cpi2Us": 161919,
+      "baselineOverHardware": 0.5083,
+      "cpi2OverHardware": 1.0185,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=25 trace=fast-curve-dense-25",
+      "field": "e2d_p95",
+      "hardwareUs": 3552,
+      "baselineUs": 1815,
+      "cpi2Us": 3162,
+      "baselineOverHardware": 0.511,
+      "cpi2OverHardware": 0.8902,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 388,
+          "baseline": 408,
+          "cpi2": 398
+        },
+        "coalesced": {
+          "hardware": 23,
+          "baseline": 3,
+          "cpi2": 13
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=400 trace=fast-curve-400",
+      "field": "drain_total_us",
+      "hardwareUs": 10810,
+      "baselineUs": 5583,
+      "cpi2Us": 11302,
+      "baselineOverHardware": 0.5165,
+      "cpi2OverHardware": 1.0455,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 380,
+          "baseline": 411,
+          "cpi2": 392
+        },
+        "coalesced": {
+          "hardware": 34,
+          "baseline": 3,
+          "cpi2": 22
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=200",
+      "field": "wall_us",
+      "hardwareUs": 190980,
+      "baselineUs": 100467,
+      "cpi2Us": 201382,
+      "baselineOverHardware": 0.5261,
+      "cpi2OverHardware": 1.0545,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 186983,
+      "baselineUs": 99021,
+      "cpi2Us": 196470,
+      "baselineOverHardware": 0.5296,
+      "cpi2OverHardware": 1.0507,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=400 trace=fast-curve-400-xl",
+      "field": "e2d_p95",
+      "hardwareUs": 4940,
+      "baselineUs": 2643,
+      "cpi2Us": 4830,
+      "baselineOverHardware": 0.535,
+      "cpi2OverHardware": 0.9777,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 1909,
+          "baseline": 2071,
+          "cpi2": 1998
+        },
+        "coalesced": {
+          "hardware": 387,
+          "baseline": 225,
+          "cpi2": 298
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 215957,
+      "baselineUs": 121396,
+      "cpi2Us": 243472,
+      "baselineOverHardware": 0.5621,
+      "cpi2OverHardware": 1.1274,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=200",
+      "field": "wall_us",
+      "hardwareUs": 149963,
+      "baselineUs": 84292,
+      "cpi2Us": 170255,
+      "baselineOverHardware": 0.5621,
+      "cpi2OverHardware": 1.1353,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 49574,
+      "baselineUs": 28591,
+      "cpi2Us": 57736,
+      "baselineOverHardware": 0.5767,
+      "cpi2OverHardware": 1.1646,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 253976,
+      "baselineUs": 155154,
+      "cpi2Us": 309579,
+      "baselineOverHardware": 0.6109,
+      "cpi2OverHardware": 1.2189,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_HARD zoom=100 operations=1000 samples=19844",
+      "field": "total_us",
+      "hardwareUs": 249589,
+      "baselineUs": 157026,
+      "cpi2Us": 317225,
+      "baselineOverHardware": 0.6291,
+      "cpi2OverHardware": 1.271,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=50",
+      "field": "wall_us",
+      "hardwareUs": 371705,
+      "baselineUs": 235947,
+      "cpi2Us": 470572,
+      "baselineOverHardware": 0.6348,
+      "cpi2OverHardware": 1.266,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=50",
+      "field": "wall_us",
+      "hardwareUs": 302975,
+      "baselineUs": 194290,
+      "cpi2Us": 388239,
+      "baselineOverHardware": 0.6413,
+      "cpi2OverHardware": 1.2814,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 301397,
+      "baselineUs": 194464,
+      "cpi2Us": 389677,
+      "baselineOverHardware": 0.6452,
+      "cpi2OverHardware": 1.2929,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=seed7 zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 96934,
+      "baselineUs": 63843,
+      "cpi2Us": 128994,
+      "baselineOverHardware": 0.6586,
+      "cpi2OverHardware": 1.3307,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 115822,
+      "baselineUs": 77165,
+      "cpi2Us": 155897,
+      "baselineOverHardware": 0.6662,
+      "cpi2OverHardware": 1.346,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=200",
+      "field": "wall_us",
+      "hardwareUs": 374354,
+      "baselineUs": 250060,
+      "cpi2Us": 503650,
+      "baselineOverHardware": 0.668,
+      "cpi2OverHardware": 1.3454,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 89160,
+      "baselineUs": 59799,
+      "cpi2Us": 120755,
+      "baselineOverHardware": 0.6707,
+      "cpi2OverHardware": 1.3544,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=200",
+      "field": "compute_us",
+      "hardwareUs": 116314,
+      "baselineUs": 78833,
+      "cpi2Us": 159258,
+      "baselineOverHardware": 0.6778,
+      "cpi2OverHardware": 1.3692,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 400957,
+      "baselineUs": 273068,
+      "cpi2Us": 544290,
+      "baselineOverHardware": 0.681,
+      "cpi2OverHardware": 1.3575,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=25 trace=fast-curve-dense-25",
+      "field": "drain_total_us",
+      "hardwareUs": 40312,
+      "baselineUs": 27945,
+      "cpi2Us": 40191,
+      "baselineOverHardware": 0.6932,
+      "cpi2OverHardware": 0.997,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 388,
+          "baseline": 408,
+          "cpi2": 398
+        },
+        "coalesced": {
+          "hardware": 23,
+          "baseline": 3,
+          "cpi2": 13
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "ring_scalar_us",
+      "hardwareUs": 302845,
+      "baselineUs": 210268,
+      "cpi2Us": 424732,
+      "baselineOverHardware": 0.6943,
+      "cpi2OverHardware": 1.4025,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 140821,
+      "baselineUs": 99024,
+      "cpi2Us": 200086,
+      "baselineOverHardware": 0.7032,
+      "cpi2OverHardware": 1.4209,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=100 trace=scribble-multistroke",
+      "field": "drain_total_us",
+      "hardwareUs": 69579,
+      "baselineUs": 49335,
+      "cpi2Us": 71231,
+      "baselineOverHardware": 0.7091,
+      "cpi2OverHardware": 1.0237,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 714,
+          "baseline": 801,
+          "cpi2": 745
+        },
+        "coalesced": {
+          "hardware": 134,
+          "baseline": 47,
+          "cpi2": 103
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 184612,
+      "baselineUs": 132880,
+      "cpi2Us": 268462,
+      "baselineOverHardware": 0.7198,
+      "cpi2OverHardware": 1.4542,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=50",
+      "field": "compute_us",
+      "hardwareUs": 235609,
+      "baselineUs": 170972,
+      "cpi2Us": 345384,
+      "baselineOverHardware": 0.7257,
+      "cpi2OverHardware": 1.4659,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=50",
+      "field": "compute_us",
+      "hardwareUs": 289558,
+      "baselineUs": 210406,
+      "cpi2Us": 425030,
+      "baselineOverHardware": 0.7266,
+      "cpi2OverHardware": 1.4679,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 236128,
+      "baselineUs": 172280,
+      "cpi2Us": 348020,
+      "baselineOverHardware": 0.7296,
+      "cpi2OverHardware": 1.4739,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=200",
+      "field": "compute_us",
+      "hardwareUs": 89199,
+      "baselineUs": 65179,
+      "cpi2Us": 131692,
+      "baselineOverHardware": 0.7307,
+      "cpi2OverHardware": 1.4764,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 44328,
+      "baselineUs": 32431,
+      "cpi2Us": 65520,
+      "baselineOverHardware": 0.7316,
+      "cpi2OverHardware": 1.4781,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=50",
+      "field": "compute_us",
+      "hardwareUs": 31803,
+      "baselineUs": 23276,
+      "cpi2Us": 47033,
+      "baselineOverHardware": 0.7319,
+      "cpi2OverHardware": 1.4789,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=200",
+      "field": "compute_us",
+      "hardwareUs": 309585,
+      "baselineUs": 227680,
+      "cpi2Us": 459976,
+      "baselineOverHardware": 0.7354,
+      "cpi2OverHardware": 1.4858,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 334074,
+      "baselineUs": 247997,
+      "cpi2Us": 500927,
+      "baselineOverHardware": 0.7423,
+      "cpi2OverHardware": 1.4994,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=100 trace=slow-precise-100",
+      "field": "drain_total_us",
+      "hardwareUs": 22731,
+      "baselineUs": 17099,
+      "cpi2Us": 22723,
+      "baselineOverHardware": 0.7522,
+      "cpi2OverHardware": 0.9996,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 711,
+          "baseline": 686,
+          "cpi2": 688
+        },
+        "coalesced": {
+          "hardware": 30,
+          "baseline": 55,
+          "cpi2": 53
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=25 trace=fast-curve-dense-25",
+      "field": "e2c_p95",
+      "hardwareUs": 638,
+      "baselineUs": 502,
+      "cpi2Us": 511,
+      "baselineOverHardware": 0.7868,
+      "cpi2OverHardware": 0.8009,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 388,
+          "baseline": 408,
+          "cpi2": 398
+        },
+        "coalesced": {
+          "hardware": 23,
+          "baseline": 3,
+          "cpi2": 13
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=400 trace=fast-curve-400",
+      "field": "e2c_p95",
+      "hardwareUs": 618,
+      "baselineUs": 502,
+      "cpi2Us": 613,
+      "baselineOverHardware": 0.8123,
+      "cpi2OverHardware": 0.9919,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 380,
+          "baseline": 411,
+          "cpi2": 392
+        },
+        "coalesced": {
+          "hardware": 34,
+          "baseline": 3,
+          "cpi2": 22
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=100 trace=scribble-multistroke",
+      "field": "e2c_p95",
+      "hardwareUs": 615,
+      "baselineUs": 502,
+      "cpi2Us": 506,
+      "baselineOverHardware": 0.8163,
+      "cpi2OverHardware": 0.8228,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 714,
+          "baseline": 801,
+          "cpi2": 745
+        },
+        "coalesced": {
+          "hardware": 134,
+          "baseline": 47,
+          "cpi2": 103
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "linear_pie_us",
+      "hardwareUs": 12640,
+      "baselineUs": 10608,
+      "cpi2Us": 21421,
+      "baselineOverHardware": 0.8392,
+      "cpi2OverHardware": 1.6947,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=400 trace=fast-curve-400-xl",
+      "field": "e2c_p95",
+      "hardwareUs": 612,
+      "baselineUs": 532,
+      "cpi2Us": 565,
+      "baselineOverHardware": 0.8693,
+      "cpi2OverHardware": 0.9232,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 1909,
+          "baseline": 2071,
+          "cpi2": 1998
+        },
+        "coalesced": {
+          "hardware": 387,
+          "baseline": 225,
+          "cpi2": 298
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_INKTRACE zoom=400 trace=fast-curve-400-xl",
+      "field": "drain_total_us",
+      "hardwareUs": 26860,
+      "baselineUs": 27372,
+      "cpi2Us": 27588,
+      "baselineOverHardware": 1.0191,
+      "cpi2OverHardware": 1.0271,
+      "workloadDifferences": {
+        "consumed": {
+          "hardware": 1909,
+          "baseline": 2071,
+          "cpi2": 1998
+        },
+        "coalesced": {
+          "hardware": 387,
+          "baseline": 225,
+          "cpi2": 298
+        }
+      }
+    },
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "linear_scalar_us",
+      "hardwareUs": 68151,
+      "baselineUs": 67397,
+      "cpi2Us": 136136,
+      "baselineOverHardware": 0.9889,
+      "cpi2OverHardware": 1.9976,
+      "workloadDifferences": {}
+    }
+  ]
+}
