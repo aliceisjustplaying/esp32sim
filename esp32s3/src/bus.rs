@@ -98,6 +98,20 @@ pub struct SocBus {
     approximate_cache_pending: u32,
     approximate_cache_fast_internal: bool,
     approximate_cache_inline: bool,
+    cache_resource: CacheResource,
+}
+
+/// One shared external resource, occupied only by priced fills/writebacks.
+/// Requests within a compiled batch are serialized at its supplied start time.
+#[derive(Default)]
+struct CacheResource {
+    enabled: bool,
+    busy_until: u64,
+    cursor: u64,
+    core: usize,
+    fill_cycles: u32,
+    writeback_cycles: u32,
+    wait_cycles: [u64; 2],
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
@@ -127,6 +141,7 @@ impl SocBus {
             spi2_timing: false, spi2_scheduled: None,
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
             approximate_cache: None, approximate_cache_pending: 0, approximate_cache_fast_internal: false, approximate_cache_inline: false,
+            cache_resource: CacheResource::default(),
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -136,6 +151,8 @@ impl SocBus {
     /// Rough helper-path experiment. Disables direct memory access so reads and
     /// writes visit cache state. Enable before execution. No instruction costs.
     pub fn enable_approximate_cache(&mut self, config: crate::approximate_cache::CacheConfig) {
+        self.cache_resource.fill_cycles = config.fill_cycles;
+        self.cache_resource.writeback_cycles = config.writeback_cycles;
         self.approximate_cache = Some(crate::approximate_cache::CacheTiming::new(config));
         self.approximate_cache_pending = 0;
     }
@@ -162,6 +179,15 @@ impl SocBus {
         std::mem::take(&mut self.approximate_cache_pending)
     }
 
+    /// Enable before execution, together with the earliest-ready compiled scheduler.
+    pub fn set_approximate_cache_contention(&mut self, enabled: bool) {
+        self.cache_resource.enabled = enabled;
+        self.cache_resource.busy_until = self.cycles;
+        self.cache_resource.cursor = self.cycles;
+        self.cache_resource.wait_cycles = [0; 2];
+    }
+    pub fn approximate_cache_wait_cycles(&self) -> [u64; 2] { self.cache_resource.wait_cycles }
+
     #[inline]
     fn price_cached_data(&mut self, entry: TlbEntry, address: u32, width: u32, write: bool) {
         if !matches!(entry.src as u8, SRC_FLASH | SRC_PSRAM) { return; }
@@ -170,6 +196,19 @@ impl SocBus {
             // recognizes virtual aliases. Both cores share this bus/cache.
             let key = ((entry.src as u32) << 28) | (entry.off + address - entry.lo);
             let result = cache.access(key, width, write);
+            let resource = &mut self.cache_resource;
+            let service = result.line_fills * u64::from(resource.fill_cycles)
+                + result.dirty_writebacks * u64::from(resource.writeback_cycles);
+            if resource.enabled && service != 0 {
+                let start = resource.cursor.max(resource.busy_until);
+                let wait = start - resource.cursor;
+                resource.cursor = start.saturating_add(service);
+                resource.busy_until = resource.cursor;
+                resource.wait_cycles[resource.core] = resource.wait_cycles[resource.core].saturating_add(wait);
+                // Service is already included in extra_cycles below: only add queued wait.
+                self.approximate_cache_pending = self.approximate_cache_pending
+                    .saturating_add(wait.min(u32::MAX as u64) as u32);
+            }
             self.approximate_cache_pending = self.approximate_cache_pending
                 .saturating_add(result.extra_cycles.min(u32::MAX as u64) as u32);
         }
@@ -941,6 +980,10 @@ impl Bus for SocBus {
     fn fast_cache(&mut self) -> Option<emu_core::bus::FastCache> {
         if self.approximate_cache_inline { self.approximate_cache.as_mut().and_then(|c| c.inline_view()) } else { None }
     }
+    fn begin_timing_batch(&mut self, core: usize, now: u64) {
+        self.cache_resource.core = core.min(1);
+        self.cache_resource.cursor = now;
+    }
     #[inline(always)]
     fn block_break(&self) -> bool { self.irq_dirty }
     fn code_page(&mut self, pc: u32) -> u32 {
@@ -1039,6 +1082,26 @@ impl SocBus {
 mod gp_spi_board_tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn shared_cache_misses_queue_without_charging_hits_or_service_twice() {
+        let mut bus = SocBus::new(65536, 65536, [0; 6]);
+        bus.mmu[0] = MMU_SPIRAM;
+        bus.enable_approximate_cache(Default::default());
+        bus.set_approximate_cache_contention(true);
+        bus.begin_timing_batch(0, 100);
+        bus.read32(DBUS_LOW).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 120);
+        bus.begin_timing_batch(1, 100);
+        bus.read32(DBUS_LOW).unwrap(); // hit while the other core's resource is occupied
+        assert_eq!(bus.take_timing_penalty(), 0);
+        bus.read32(DBUS_LOW + 64).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 240); // 120 service + 120 queued
+        assert_eq!(bus.approximate_cache_wait_cycles(), [0, 120]);
+        bus.begin_timing_batch(0, 340);
+        bus.read32(DBUS_LOW + 128).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 120);
+    }
 
     #[test]
     fn approximate_cache_keeps_only_internal_mappings_direct() {

@@ -861,6 +861,28 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u
 
 /// Cache experiment counters: hits, line fills, writebacks and extra cycles.
 /// # Safety
+/// `e` must be a live exclusively borrowed emulator, before execution begins.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_approximate_cache_contention(e: *mut Emu, enabled: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    if m.insns() != 0 { return 1; }
+    m.bus.set_approximate_cache_contention(enabled != 0);
+    0
+}
+
+/// Per-core queued wait in provisional shared memory service.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_approximate_cache_wait(e: *mut Emu, core: u32) -> f64 {
+    let e = unsafe { &mut *e };
+    e.m.as_any_mut().downcast_mut::<esp32s3::Machine>()
+        .map(|m| m.bus.approximate_cache_wait_cycles()[core.min(1) as usize] as f64).unwrap_or(0.0)
+}
+
+/// Cache experiment counters: hits, line fills, writebacks and extra cycles.
+/// # Safety
 /// `e` must be a live exclusively borrowed emulator.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_approximate_cache_counter(e: *mut Emu, counter: u32) -> f64 {

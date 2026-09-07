@@ -85,6 +85,9 @@ pub trait Bus {
     /// Drain provisional synchronous data-access penalties for a fast-path timing experiment.
     /// The scheduler decides when to settle this batch; this does not imply access-level ordering.
     fn take_timing_penalty(&mut self) -> u32 { 0 }
+    /// Start a compiled batch's provisional memory-service cursor in shared CPU cycles.
+    /// Access effects are still immediate; this is not instruction-level interleaving.
+    fn begin_timing_batch(&mut self, _core: usize, _now: u64) {}
     /// Called after every executed instruction with the cycle estimate; lets the
     /// SoC advance timers and DMA. Return pending external level-interrupt lines.
     fn tick(&mut self, cycles: u32) -> u32 { let _ = cycles; 0 }
