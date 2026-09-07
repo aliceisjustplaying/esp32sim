@@ -1,0 +1,34 @@
+
+target/performance-review-latest-main-2026-09-06/esp32sim-performance-review-latest-main-2026-09-06/assets/rom.elf:     file format elf32-xtensa-le
+
+
+Disassembly of section .text:
+
+4004e2ec <Cache_Set_DCache_Mode>:
+4004e2ec:	004136        	entry	a1, 32
+4004e2ef:	f5d181        	l32r	a8, 4004ba34 <spi_flash_restore_cache+0x18> (600c4000 <_iram1_text_end+0xa2f00>)
+4004e2f2:	0020c0        	memw
+4004e2f5:	0898      	l32i.n	a9, a8, 0
+4004e2f7:	628c      	beqz.n	a2, 4004e301 <Cache_Set_DCache_Mode+0x15>
+4004e2f9:	4a0c      	movi.n	a10, 4
+4004e2fb:	2099a0        	or	a9, a9, a10
+4004e2fe:	000106        	j	4004e306 <Cache_Set_DCache_Mode+0x1a>
+4004e301:	ba7c      	movi.n	a10, -5
+4004e303:	1099a0        	and	a9, a9, a10
+4004e306:	0020c0        	memw
+4004e309:	0899      	s32i.n	a9, a8, 0
+4004e30b:	f5ca81        	l32r	a8, 4004ba34 <spi_flash_restore_cache+0x18> (600c4000 <_iram1_text_end+0xa2f00>)
+4004e30e:	7a6c      	movi.n	a10, -25
+4004e310:	0020c0        	memw
+4004e313:	0898      	l32i.n	a9, a8, 0
+4004e315:	1099a0        	and	a9, a9, a10
+4004e318:	14cc      	bnez.n	a4, 4004e31d <Cache_Set_DCache_Mode+0x31>
+4004e31a:	000306        	j	4004e32a <Cache_Set_DCache_Mode+0x3e>
+4004e31d:	041466        	bnei	a4, 1, 4004e325 <Cache_Set_DCache_Mode+0x39>
+4004e320:	840c      	movi.n	a4, 8
+4004e322:	000046        	j	4004e327 <Cache_Set_DCache_Mode+0x3b>
+4004e325:	041c      	movi.n	a4, 16
+4004e327:	209940        	or	a9, a9, a4
+4004e32a:	0020c0        	memw
+4004e32d:	0899      	s32i.n	a9, a8, 0
+4004e32f:	1d          	.byte	0x1d

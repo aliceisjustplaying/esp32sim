@@ -1,0 +1,33 @@
+
+target/performance-review-latest-main-2026-09-06/esp32sim-performance-review-latest-main-2026-09-06/assets/rom.elf:     file format elf32-xtensa-le
+
+
+Disassembly of section .text:
+
+4004bb34 <rom_config_data_cache_mode>:
+4004bb34:	004136        	entry	a1, 32
+4004bb37:	a90281        	l32r	a8, 40035f40 <rom_dac_rate_set+0x94> (8000 <xthals_release_major+0x5120>)
+4004bb3a:	743030        	extui	a3, a3, 0, 8
+4004bb3d:	744040        	extui	a4, a4, 0, 8
+4004bb40:	0e9287        	bne	a2, a8, 4004bb52 <rom_config_data_cache_mode+0x1e>
+4004bb43:	02a0a2        	movi	a10, 2
+4004bb46:	00a0b2        	movi	a11, 0
+4004bb49:	03b5e5        	call8	4004f6a8 <Cache_Occupy_DCache_MEMORY>
+4004bb4c:	00a0a2        	movi	a10, 0
+4004bb4f:	0002c6        	j	4004bb5e <rom_config_data_cache_mode+0x2a>
+4004bb52:	02a0a2        	movi	a10, 2
+4004bb55:	01a0b2        	movi	a11, 1
+4004bb58:	03b4e5        	call8	4004f6a8 <Cache_Occupy_DCache_MEMORY>
+4004bb5b:	01a0a2        	movi	a10, 1
+4004bb5e:	0c0c      	movi.n	a12, 0
+4004bb60:	fcc332        	addi	a3, a3, -4
+4004bb63:	180c      	movi.n	a8, 1
+4004bb65:	0cbd      	mov.n	a11, a12
+4004bb67:	93b830        	movnez	a11, a8, a3
+4004bb6a:	07b426        	beqi	a4, 16, 4004bb75 <rom_config_data_cache_mode+0x41>
+4004bb6d:	e0c442        	addi	a4, a4, -32
+4004bb70:	2c0c      	movi.n	a12, 2
+4004bb72:	83c840        	moveqz	a12, a8, a4
+4004bb75:	027765        	call8	4004e2ec <Cache_Set_DCache_Mode>
+4004bb78:	02f4a5        	call8	4004eac4 <Cache_Invalidate_DCache_All>
+4004bb7b:	f01d      	retw.n
