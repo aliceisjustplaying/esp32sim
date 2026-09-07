@@ -94,6 +94,8 @@ pub struct SocBus {
     /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
     /// have passed — so guest-visible time is exact while idle rounds cost nothing.
     tick_pending: u32, tick_budget: u32,
+    approximate_cache: Option<crate::approximate_cache::CacheTiming>,
+    approximate_cache_pending: u32,
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
@@ -122,10 +124,39 @@ impl SocBus {
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
             spi2_timing: false, spi2_scheduled: None,
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
+            approximate_cache: None, approximate_cache_pending: 0,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
         b
+    }
+
+    /// Rough helper-path experiment. Disables direct memory access so reads and
+    /// writes visit cache state. Enable before execution. No instruction costs.
+    pub fn enable_approximate_cache(&mut self, config: crate::approximate_cache::CacheConfig) {
+        self.approximate_cache = Some(crate::approximate_cache::CacheTiming::new(config));
+        self.approximate_cache_pending = 0;
+    }
+
+    pub fn approximate_cache_stats(&self) -> Option<crate::approximate_cache::CacheAccess> {
+        self.approximate_cache.as_ref().map(|cache| cache.stats())
+    }
+
+    pub fn take_approximate_cache_penalty(&mut self) -> u32 {
+        std::mem::take(&mut self.approximate_cache_pending)
+    }
+
+    #[inline]
+    fn price_cached_data(&mut self, entry: TlbEntry, address: u32, width: u32, write: bool) {
+        if !matches!(entry.src as u8, SRC_FLASH | SRC_PSRAM) { return; }
+        if let Some(cache) = &mut self.approximate_cache {
+            // Physical offset plus resource distinguishes flash from PSRAM and
+            // recognizes virtual aliases. Both cores share this bus/cache.
+            let key = ((entry.src as u32) << 28) | (entry.off + address - entry.lo);
+            let result = cache.access(key, width, write);
+            self.approximate_cache_pending = self.approximate_cache_pending
+                .saturating_add(result.extra_cycles.min(u32::MAX as u64) as u32);
+        }
     }
 
     /// Attach fresh peripheral-side devices and restore the levels driven by the persistent board.
@@ -819,12 +850,13 @@ impl Bus for SocBus {
     fn read8(&mut self, addr: u32) -> Result<u8, Fault> {
         if Self::is_periph(addr) { self.last_fault = Some((addr, false)); return Err(Fault::Prohibited); }
         let Some(e) = self.lookup(addr) else { self.last_fault = Some((addr, false)); return Err(Fault::Unmapped) };
+        self.price_cached_data(e, addr, 1, false);
         Ok(self.buf(e.src as u8)[e.off as usize + (addr - e.lo) as usize])
     }
     fn read16(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { self.last_fault = Some((addr, false)); return Err(Fault::Prohibited); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(2) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(2) <= e.hi => { self.price_cached_data(e, addr, 2, false); let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
             Some(_) => Ok(u16::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?])),       // straddles a page
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -835,7 +867,7 @@ impl Bus for SocBus {
             return Ok(self.periph_read(addr));
         }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(4) <= e.hi => { let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
+            Some(e) if addr.wrapping_add(4) <= e.hi => { self.price_cached_data(e, addr, 4, false); let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
             Some(_) => Ok(u32::from_le_bytes([self.read8(addr)?, self.read8(addr + 1)?, self.read8(addr + 2)?, self.read8(addr + 3)?])),
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -846,14 +878,14 @@ impl Bus for SocBus {
         // This is an explicit emulator policy, not a model of optional PMS IRQs.
         if Self::is_periph(addr) { self.last_fault = Some((addr, true)); return Err(Fault::Prohibited); }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 => { let rel = (addr - e.lo) as usize; self.buf_mut(e.src as u8)[e.off as usize + rel] = v; self.bump(e.vbase, rel, 1); Ok(()) }
+            Some(e) if e.writable != 0 => { self.price_cached_data(e, addr, 1, true); let rel = (addr - e.lo) as usize; self.buf_mut(e.src as u8)[e.off as usize + rel] = v; self.bump(e.vbase, rel, 1); Ok(()) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
     }
     fn write16(&mut self, addr: u32, v: u16) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.last_fault = Some((addr, true)); return Err(Fault::Prohibited); }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 && addr.wrapping_add(2) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
+            Some(e) if e.writable != 0 && addr.wrapping_add(2) <= e.hi => { self.price_cached_data(e, addr, 2, true); let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
             Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); self.write8(addr, b[0])?; self.write8(addr + 1, b[1]) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
@@ -864,7 +896,7 @@ impl Bus for SocBus {
             self.periph_write(addr, v); return Ok(());
         }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 && addr.wrapping_add(4) <= e.hi => { let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
+            Some(e) if e.writable != 0 && addr.wrapping_add(4) <= e.hi => { self.price_cached_data(e, addr, 4, true); let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
             Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); for i in 0..4 { self.write8(addr + i, b[i as usize])?; } Ok(()) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
@@ -883,7 +915,7 @@ impl Bus for SocBus {
     fn page_versions(&self) -> &[u32] { &self.page_ver }
     #[inline(always)]
     fn note_pc(&mut self, pc: u32) { self.periph.misc.cur_pc = pc; }
-    fn fast_mem(&mut self) -> Option<FastMem> { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) }
+    fn fast_mem(&mut self) -> Option<FastMem> { if self.approximate_cache.is_some() { None } else { Some(FastMem { tlb: self.tlb.as_ptr(), page_ver: self.page_ver.as_mut_ptr() }) } }
     #[inline(always)]
     fn block_break(&self) -> bool { self.irq_dirty }
     fn code_page(&mut self, pc: u32) -> u32 {
