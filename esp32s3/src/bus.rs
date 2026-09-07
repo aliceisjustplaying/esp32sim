@@ -98,6 +98,7 @@ pub struct SocBus {
     approximate_cache_pending: u32,
     approximate_cache_fast_internal: bool,
     approximate_cache_inline: bool,
+    approximate_cache_yield_miss: bool,
     cache_resource: CacheResource,
 }
 
@@ -141,6 +142,7 @@ impl SocBus {
             spi2_timing: false, spi2_scheduled: None,
             tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
             approximate_cache: None, approximate_cache_pending: 0, approximate_cache_fast_internal: false, approximate_cache_inline: false,
+            approximate_cache_yield_miss: false,
             cache_resource: CacheResource::default(),
         };
         let mut b = bus_uninit;
@@ -164,6 +166,10 @@ impl SocBus {
     pub fn set_approximate_cache_fast_internal(&mut self, enabled: bool) {
         self.approximate_cache_fast_internal = enabled;
         self.invalidate_tlb();
+    }
+    /// Reuse the existing compiled helper exit to schedule the first cache miss promptly.
+    pub fn set_approximate_cache_yield_miss(&mut self, enabled: bool) {
+        self.approximate_cache_yield_miss = enabled;
     }
 
     pub fn set_approximate_cache_inline(&mut self) -> bool {
@@ -985,7 +991,7 @@ impl Bus for SocBus {
         self.cache_resource.cursor = now;
     }
     #[inline(always)]
-    fn block_break(&self) -> bool { self.irq_dirty }
+    fn block_break(&self) -> bool { self.irq_dirty || (self.approximate_cache_yield_miss && self.approximate_cache_pending != 0) }
     fn code_page(&mut self, pc: u32) -> u32 {
         match self.lookup(pc) { Some(e) => e.vbase + ((pc - e.lo) >> VPAGE_SHIFT), None => self.page_ver.len() as u32 - 1 }
     }
@@ -1123,6 +1129,13 @@ mod gp_spi_board_tests {
         // Fetches do not enter the data cache even when they use external memory.
         bus.fetch(IBUS_LOW).unwrap();
         assert_eq!(bus.approximate_cache_stats().unwrap(), stats);
+        bus.irq_dirty = false;
+        bus.set_approximate_cache_yield_miss(true);
+        assert!(!bus.block_break());
+        bus.read32(DBUS_LOW + 64).unwrap();
+        assert!(bus.block_break());
+        assert_eq!(bus.take_timing_penalty(), 120);
+        assert!(!bus.block_break());
     }
 
     const SPI2: u32 = 0x6002_4000;

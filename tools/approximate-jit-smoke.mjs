@@ -18,7 +18,7 @@ for(const [name,kind] of [['rom',0],['bootloader',1],['ptable',2],['app',3],['el
   const rc=bytes(await fs.readFile(assets[name]),(p,n)=>w.esp32sim_load(emu,kind,p,n));if(rc)throw Error(`${name}: ${rc}`);
 }
 if(cpi && w.esp32sim_set_approximate_jit_timing(emu,cpi,quantum))throw Error('timing config rejected');
-if(frontiers && w.esp32sim_set_approximate_jit_frontiers(emu,1))throw Error('frontiers config rejected');
+if(frontiers && w.esp32sim_set_approximate_jit_frontiers(emu,frontiers))throw Error('frontiers config rejected');
 if(cache && w.esp32sim_set_approximate_jit_cache(emu,Number(process.env.CACHE_FILL ?? 120),Number(process.env.CACHE_WRITEBACK ?? 96),cache===3?2:cache===2?1:0))throw Error('cache config rejected');
 if(w.esp32sim_boot(emu,0))throw Error('boot failed');
 w.esp32sim_set_jit(emu,1);
