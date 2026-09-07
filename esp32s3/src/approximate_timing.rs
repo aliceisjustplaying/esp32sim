@@ -31,6 +31,7 @@ pub struct ApproximateTimingStats {
     pub traps: u64,
     pub controls: u64,
     pub opcode_fallbacks: u64,
+    pub zero_overhead_loop_edges: u64,
     pub external_fetches: u64,
     pub external_data: u64,
     pub mmio: u64,
@@ -87,8 +88,10 @@ impl CostModel for ApproximateCostModel {
                 _ => {
                     stats.opcode_fallbacks += 1;
                     if facts.outcome.next_pc != facts.outcome.pc.wrapping_add(facts.outcome.length as u32) {
-                        self.config.taken_branch.max(1)
-                    } else { cycles }
+                        if changes_pc(op) { cycles = self.config.taken_branch.max(1); }
+                        else { stats.zero_overhead_loop_edges += 1; }
+                    }
+                    cycles
                 }
             };
         }
@@ -121,4 +124,13 @@ impl CostModel for ApproximateCostModel {
         stats.cycles[facts.core] += u64::from(cycles);
         Ok(cycles)
     }
+}
+
+fn changes_pc(op: Op) -> bool {
+    use Op::*;
+    matches!(op,
+        J | Call0 | Call4 | Call8 | Call12 | Callx0 | Callx4 | Callx8 | Callx12 |
+        Ret | RetN | Retw | RetwN | Rfe | Rfue | Rfde | Rfwo | Rfwu | Rfi | Rfme |
+        Beqz | Bnez | Bltz | Bgez | BeqzN | BnezN | Beqi | Bnei | Blti | Bgei | Bltui | Bgeui |
+        Bnone | Beq | Blt | Bltu | Ball | Bbc | Bbci | Bany | Bne | Bge | Bgeu | Bnall | Bbs | Bbsi | Bf | Bt)
 }
