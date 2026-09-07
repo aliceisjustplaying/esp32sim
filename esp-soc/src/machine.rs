@@ -649,13 +649,20 @@ impl<S: Soc> Machine<S> {
             }
             cycles = cycles.min(self.max_cycles - now);
             let budget = cycles.div_ceil(u64::from(cpi)).max(1) as u32;
-            let (used, stop) = if blocks { self.step_blocks(core, budget) } else {
-                let stop = self.step_core(core);
-                self.cores[core].advance_cycles(cpi - 1);
-                (1, stop)
+            // Keep cheap blocks together. A priced memory access yields immediately after its
+            // block, exposing the stall to the other CPU without settling devices per ALU block.
+            let mut used = 0;
+            let penalty = loop {
+                let (done, stop) = if blocks { self.step_blocks(core, budget - used) } else {
+                    let stop = self.step_core(core);
+                    self.cores[core].advance_cycles(cpi - 1);
+                    (1, stop)
+                };
+                if let Some(stop) = stop { self.drain_console(); return stop; }
+                used += done.max(1);
+                let penalty = self.bus.take_timing_penalty();
+                if penalty != 0 || used >= budget || self.cores[core].waiting() { break penalty; }
             };
-            if let Some(stop) = stop { self.drain_console(); return stop; }
-            let penalty = self.bus.take_timing_penalty();
             self.cores[core].advance_cycles(penalty);
             self.model_ready_at[core] = now + u64::from(used.max(1)) * u64::from(cpi) + u64::from(penalty);
             instructions += u64::from(used.max(1));
