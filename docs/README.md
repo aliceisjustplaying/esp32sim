@@ -6,6 +6,7 @@ cover the RISC-V side.
 
 | Document | What it covers |
 | --- | --- |
+| [experiments.md](experiments.md) | Start here for S3/TinyDraw experiment outcomes, known aliases, adoption, unfinished work and old-plan disposition |
 | [architecture.md](architecture.md) | How the emulator is built: crates, CPU core, SoC bus, scheduling, boards, UI |
 | [peripherals.md](peripherals.md) | Every modelled block, what part of it is modelled, what is missing |
 | [boards.md](boards.md) | The `BoardModel` trait, the three boards, pin maps, how to add one |

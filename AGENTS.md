@@ -1,3 +1,10 @@
+# Experiment history
+
+- Before proposing, implementing or benchmarking an ESP32-S3/TinyDraw execution, browser or timing experiment, search [docs/experiments.md](docs/experiments.md) by mechanism and aliases.
+- Cite the existing experiment ID and explain what materially differs before retrying: mechanism, workload, correctness contract or measurement quality. A renamed branch is not a new experiment. Inspect preserved patches before rebuilding them.
+- Update the same entry after a retry, preserving earlier outcomes. Record runtime, baseline/candidate revisions, inputs, exact work/output checks, conditions, uncertainty, adoption and a receipt. Use a new stable ID only for a materially different idea and cross-reference related IDs.
+- Treat archived plans as historical context, not current status or authorization. Keep current experiment status in that one list.
+
 # GitHub pull request stacks
 
 - Use `gh stack` when one pull request depends on another. Setting a PR's base branch alone does not register a native GitHub stack.

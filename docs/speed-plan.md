@@ -1,5 +1,7 @@
 # Plan: making the emulator faster
 
+> Historical milestones and measurements follow. For current S3/TinyDraw outcomes, aliases and retry conditions, start with [the experiment catalog](experiments.md). In particular, browser JIT and regions have landed; this plan's older “next” statements are not an untried-work list.
+
 Every number here was measured in this repo with `tools/bench.py` (interleaved rounds, best +
 median wall time, guest instruction counts cross-checked) or `sample(1)` against a normal run.
 The negative results are listed too, so nobody re-spends the time.

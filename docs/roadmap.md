@@ -1,5 +1,7 @@
 # Roadmap
 
+> For current S3/TinyDraw browser, execution and timing investigations, use [the experiment catalog](experiments.md). The interpreter/JIT and browser items below retain earlier milestones; their “left” lists are historical. The original upstream “not planned” timing scope below does not describe the separate timing experiments. Other chip, networking and peripheral plans keep their own scope.
+
 Ordered by value; each item links to its plan where one exists.
 
 1. **WiFi (full, unmodified)** — done: open and WPA2-PSK both associate through the closed blob,
