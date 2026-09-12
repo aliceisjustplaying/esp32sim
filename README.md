@@ -187,8 +187,13 @@ describe how the MAC model and the packet path work.
 ## In the browser (WebAssembly)
 
 ```sh
-tools/wasm-build.sh && python3 -m http.server -d web 8790     # then open http://127.0.0.1:8790/?wasm
+tools/wasm-build.sh                  # the module -> web/wasm/esp32sim.wasm
+tools/fetch-demo-assets.sh           # mask ROMs, xterm.js and the Linux image (--no-linux skips its 16 MB)
+python3 -m http.server -d web 8790   # then open http://127.0.0.1:8790/?wasm&fw=hello
 ```
+
+The demo firmware is committed; the mask ROMs, xterm.js and the Linux image are not, and every demo
+boots from the ROM, so run the fetch once. It gets the same files the Pages site serves.
 
 The same emulator compiled to WebAssembly, running inside the page in a Web Worker: pick a board,
 load the ROM ELF and firmware from disk (or `?wasm&fw=<name>` for a hosted manifest), press Boot.
