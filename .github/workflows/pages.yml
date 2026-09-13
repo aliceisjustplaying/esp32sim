@@ -28,13 +28,11 @@ jobs:
         run: tools/wasm-build.sh
       - name: Fetch the demo assets (mask ROM ELFs, xterm.js, the Linux-on-esp32-S3 image)
         run: tools/fetch-demo-assets.sh
-      # pocket-tank's firmware comes from its author's installer site, pinned by hash: if that host
-      # is down or the bytes change, publish the rest and let that one demo report the missing file.
-      - name: Fetch pocket-tank (MIT, mediacutlet/pocket-tank, pinned by SHA-256)
-        continue-on-error: true
-        run: |
-          tools/fetch-pocket-tank.sh
-          rm -f web/wasm/fw/local/pocket-tank-assets.json
+      # pocket-tank's bootloader, partition table and app are committed under web/wasm/fw/public/ (its
+      # installer site answers runners with other bytes); this checks their hashes and fetches the model
+      # from GitHub.
+      - name: Fetch the pocket-tank model (MIT, mediacutlet/pocket-tank, pinned by SHA-256)
+        run: tools/fetch-pocket-tank.sh
       - name: Version-stamp the script and module URLs (Pages caches for 10 minutes)
         run: |
           v=${GITHUB_SHA::8}
