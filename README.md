@@ -29,8 +29,8 @@ cache controller and interrupt matrix; the C6 reuses the same models again, with
 map, PLIC front-end, L1 cache, PCR and always-on LP blocks. Only the CPU crates are genuinely
 separate.
 
-**Try it in a browser, no install:** <https://joakimeriksson.github.io/esp32sim/> — the
-Touch-LCD-4B panel with its SID player, and the C3 booting hello_world.
+**Try it in a browser, no install:** <https://joakimeriksson.github.io/esp32sim/> — Linux on the
+S3, the Touch-LCD-4B panel with its SID player, the pocket-tank LLM aquarium, and the C3 and C6 demos.
 
 ```
 esp32sim/
@@ -205,7 +205,9 @@ ESP32-C6 all run at real time in Chrome; there is no NAT (the browser has no soc
 a WebAssembly JIT of its own (hot blocks and regions, PIE on WASM SIMD). See [docs/wasm.md](docs/wasm.md).
 **Live: https://joakimeriksson.github.io/esp32sim/** — Linux 6.11 on the ESP32-S3
 ([svermigo/Linux-on-esp32-S3](https://github.com/svermigo/Linux-on-esp32-S3), log in and type on the
-console), the Touch-LCD-4B panel with its SID player, the Atech board, and the ESP32-C3 and C6
+console), the Touch-LCD-4B panel with its SID player, the Atech board,
+[pocket-tank](https://github.com/mediacutlet/pocket-tank) (a 4-bit transformer steering the fish on
+the Touch-AMOLED-1.8), and the ESP32-C3 and C6
 booting hello_world; or load your own firmware for any chip from disk (pick the board, or
 `esp32c3` / `esp32c6`).
 
