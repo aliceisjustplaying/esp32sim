@@ -13,10 +13,13 @@
   // failure, and the module finishing its download must not replace it with "wasm loaded".
   let failure = '';
   const fail = (msg) => { failure = msg; setStatus(msg); };
-  // A demo file the checkout lacks: name the script that fetches it (the Pages site has them all).
+  // A demo file a checkout lacks: name the script that fetches it. The Pages site should have them
+  // all, so there a 404 is a deploy problem and gets no checkout advice.
+  const checkout = !location.hostname.endsWith('github.io');
   const missing = (u, status) => `${u}: ${status}` + (status !== 404 ? ''
+    : !checkout ? ' — missing from this site'
     : /_rom\.elf$|^linux-esp32s3-native-full\.bin$/.test(u) ? ' — not in this checkout: run tools/fetch-demo-assets.sh'
-    : /^local\/(pt-|pocket_tank|model_q4)/.test(u) ? ' — not in this checkout: run tools/fetch-pocket-tank.sh'
+    : /^local\/model_q4\.bin$/.test(u) ? ' — not in this checkout: run tools/fetch-pocket-tank.sh'
     : '');
   const KINDS = { rom: 0, bootloader: 1, ptable: 2, app: 3, elf: 4, flash: 5, script: 6, picture: 7 };
   const pending = new Map();

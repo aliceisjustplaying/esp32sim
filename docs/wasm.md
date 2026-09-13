@@ -37,13 +37,14 @@ xterm.js, the Linux image), and publishes `web/` — so the page at
 `web/wasm/fw/demos.json` — hello_world, the Touch-LCD-4B energy panel with its SID player, the Atech
 Pocket Synth, and the C3 and C6 demos — one click away and the file inputs for anyone's own firmware. It
 also runs `tools/fetch-pocket-tank.sh` for the **pocket-tank** demo ([mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank),
-MIT: the installer's bootloader, partition table and app plus the 7.56 MB model, pinned by SHA-256); that
-step may fail without failing the deploy, in which case only that demo reports its missing files. The workflow also fetches the **Linux-on-esp32-S3** flash image
+MIT): it checks the committed bootloader, partition table and app in `web/wasm/fw/public/` (the bytes of
+the project's browser installer, whose host answers GitHub's runners with something else) and fetches the
+7.56 MB model from the repository, all pinned by SHA-256. The workflow also fetches the **Linux-on-esp32-S3** flash image
 (GPL-3.0, [svermigo/Linux-on-esp32-S3](https://github.com/svermigo/Linux-on-esp32-S3), release 0.7,
 pinned by commit and SHA-256 in `pages.yml`) so the `linux` demos boot it — `linux-term` opens on the
 xterm.js terminal tab (manifest `terminal: true`), where `vi`, `top` and colours render properly; the image is never
 committed here — the source for everything in it is that repository. On a `github.io` host the page starts in wasm mode without
-`?wasm`. Only firmware whose code is ours is committed under `web/wasm/fw/public/`; the panel is a
+`?wasm`. Firmware committed under `web/wasm/fw/public/` is ours, except pocket-tank's three MIT parts next to its license; the panel is a
 separate build with placeholder `secrets.h` values (checked with `strings` against the real ones).
 
 **Demo data without a rebuild.** The panel firmware has a `demo` data partition (0x610000,
