@@ -9,10 +9,13 @@ to the page) and executed in the tab.
 
 ```sh
 tools/wasm-build.sh                      # -> web/wasm/esp32sim.wasm (needs the wasm32-unknown-unknown target)
-tools/fetch-web-vendor.sh                # xterm.js for the Terminal tab (optional; the page works without it)
+tools/fetch-demo-assets.sh               # mask ROM ELFs, xterm.js, the Linux image (--no-linux skips its 16 MB)
 python3 -m http.server -d web 8790       # any static server; file:// will not do (workers, fetch)
-open http://127.0.0.1:8790/?wasm
+open 'http://127.0.0.1:8790/?wasm&fw=hello'
 ```
+
+Every demo in `web/wasm/fw/demos.json` boots from the mask ROM, which is not committed: without the
+fetch the page stops at `esp32s3_rev0_rom.elf: 404`. xterm.js is only for the Terminal tab.
 
 `?wasm` switches `web/index.html` from its WebSocket transport to the worker; the page gains a
 firmware panel: board, flash/PSRAM size, an optional WiFi spec, function stubs, and file inputs
@@ -21,13 +24,15 @@ for the mask-ROM ELF, `bootloader.bin`, `partition-table.bin`, the app image, it
 display, touch, buttons, knob, audio, camera — is the same UI the native emulator serves.
 
 For your own demos, `?wasm&fw=<name>` loads `web/wasm/fw/<name>.json` and boots it without
-clicking (format in `web/wasm/fw/README.md`). Everything in that directory is git-ignored: the
-mask ROM is Espressif's and the firmware is whoever built it; host them only where you may.
+clicking (format in `web/wasm/fw/README.md`). Everything in that directory except the manifests
+and `public/` (our own demo firmware) is git-ignored: the mask ROM is Espressif's and other firmware
+is whoever built it; host them only where you may.
 
 ## On GitHub Pages
 
-`.github/workflows/pages.yml` builds the module on every push to `main`, fetches the mask-ROM ELF
-from the Apache-2.0 `espressif/esp-rom-elfs` release, and publishes `web/` — so the page at
+`.github/workflows/pages.yml` builds the module on every push to `main`, runs
+`tools/fetch-demo-assets.sh` (the mask-ROM ELFs from the Apache-2.0 `espressif/esp-rom-elfs` release,
+xterm.js, the Linux image), and publishes `web/` — so the page at
 **https://joakimeriksson.github.io/esp32sim/** is the emulator, with the demos in
 `web/wasm/fw/demos.json` — hello_world, the Touch-LCD-4B energy panel with its SID player, the Atech
 Pocket Synth, and the C3 and C6 demos — one click away and the file inputs for anyone's own firmware. The workflow also fetches the **Linux-on-esp32-S3** flash image

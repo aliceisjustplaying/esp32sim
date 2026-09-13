@@ -1,8 +1,9 @@
 name: pages
 # Build the WebAssembly emulator and publish web/ to GitHub Pages: the emulator, the public demo
-# firmware under web/wasm/fw/public, the mask ROM ELFs (Apache-2.0, espressif/esp-rom-elfs),
-# xterm.js for the Terminal tab (MIT, pinned by version and hash) and the Linux-on-esp32-S3 flash
-# image (GPL-3.0, svermigo/Linux-on-esp32-S3, pinned by commit and hash).
+# firmware under web/wasm/fw/public, and what tools/fetch-demo-assets.sh fetches, the same files a
+# local checkout needs: the mask ROM ELFs (Apache-2.0, espressif/esp-rom-elfs), xterm.js for the
+# Terminal tab (MIT, pinned by version and hash) and the Linux-on-esp32-S3 flash image (GPL-3.0,
+# svermigo/Linux-on-esp32-S3, pinned by commit and hash).
 on:
   push:
     branches: [main]
@@ -25,23 +26,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build the wasm module
         run: tools/wasm-build.sh
-      - name: Fetch the ESP32-S3, ESP32-C3 and ESP32-C6 mask ROM ELFs
-        run: |
-          set -e
-          url=$(curl -sL --retry 5 --retry-all-errors --retry-delay 5 https://api.github.com/repos/espressif/esp-rom-elfs/releases/latest | python3 -c 'import json,sys; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".tar.gz")))')
-          curl -sL --retry 5 --retry-all-errors --retry-delay 5 "$url" -o rom.tar.gz
-          tar -xzf rom.tar.gz --wildcards '*esp32s3_rev0_rom.elf' '*esp32c3_rev3_rom.elf' '*esp32c6_rev0_rom.elf'
-          find . -name esp32s3_rev0_rom.elf -exec cp {} web/wasm/fw/ \;
-          find . -name esp32c3_rev3_rom.elf -exec cp {} web/wasm/fw/ \;
-          find . -name esp32c6_rev0_rom.elf -exec cp {} web/wasm/fw/ \;
-          ls -la web/wasm/fw/esp32s3_rev0_rom.elf web/wasm/fw/esp32c3_rev3_rom.elf web/wasm/fw/esp32c6_rev0_rom.elf
-      - name: Fetch xterm.js for the Terminal tab (MIT, xtermjs/xterm.js, pinned)
-        run: tools/fetch-web-vendor.sh
-      - name: Fetch the Linux-on-esp32-S3 image (GPL-3.0, svermigo/Linux-on-esp32-S3, release 0.7)
-        run: |
-          set -e
-          curl -sL --retry 5 --retry-all-errors --retry-delay 5 https://raw.githubusercontent.com/svermigo/Linux-on-esp32-S3/9a543fb18a1385eafe7afea973ec1021f6479679/images/linux-esp32s3-native-full.bin -o web/wasm/fw/linux-esp32s3-native-full.bin
-          echo "e264b4abbce7610bdc0164d0f31c341c45fae98277c701039f67eded8580961d  web/wasm/fw/linux-esp32s3-native-full.bin" | sha256sum -c
+      - name: Fetch the demo assets (mask ROM ELFs, xterm.js, the Linux-on-esp32-S3 image)
+        run: tools/fetch-demo-assets.sh
       - name: Version-stamp the script and module URLs (Pages caches for 10 minutes)
         run: |
           v=${GITHUB_SHA::8}

@@ -96,7 +96,10 @@ FW=web/wasm/fw/public                       # the demo images the goldens and th
 ```
 
 The mask ROM ELF is picked up from `~/.espressif/tools/esp-rom-elfs/*/esp32s3_rev0_rom.elf`
-(shipped with ESP‑IDF). `--boot app` skips ROM+bootloader and loads the app image directly.
+(shipped with ESP‑IDF). Without ESP-IDF, `tools/fetch-demo-assets.sh --no-linux` puts the S3, C3 and
+C6 ROMs in `web/wasm/fw/`: pass `--rom web/wasm/fw/esp32s3_rev0_rom.elf`, or set
+`ESP32SIM_ROM_DIR=web/wasm/fw` for the tests. `--boot app` skips ROM+bootloader and loads the app
+image directly.
 
 A plain ESP‑IDF project, e.g. `examples/hello_world` (the IDF 5.5 get-started example built with
 `idf.py set-target esp32s3 && idf.py build`):
@@ -187,8 +190,13 @@ describe how the MAC model and the packet path work.
 ## In the browser (WebAssembly)
 
 ```sh
-tools/wasm-build.sh && python3 -m http.server -d web 8790     # then open http://127.0.0.1:8790/?wasm
+tools/wasm-build.sh                  # the module -> web/wasm/esp32sim.wasm
+tools/fetch-demo-assets.sh           # mask ROMs, xterm.js and the Linux image (--no-linux skips its 16 MB)
+python3 -m http.server -d web 8790   # then open http://127.0.0.1:8790/?wasm&fw=hello
 ```
+
+The demo firmware is committed; the mask ROMs, xterm.js and the Linux image are not, and every demo
+boots from the ROM, so run the fetch once. It gets the same files the Pages site serves.
 
 The same emulator compiled to WebAssembly, running inside the page in a Web Worker: pick a board,
 load the ROM ELF and firmware from disk (or `?wasm&fw=<name>` for a hosted manifest), press Boot.
