@@ -4,7 +4,7 @@ Every number here was measured in this repo with `tools/bench.py` (interleaved r
 median wall time, guest instruction counts cross-checked) or `sample(1)` against a normal run.
 The negative results are listed too, so nobody re-spends the time.
 
-**Status:** Phase 1 (block interpreter) and the first cut of Phase 2 (AArch64 JIT) have landed; Phase 0's NEON work and the JIT's inline memory path are open.
+**Status:** Phase 1 (block interpreter) and the first cut of Phase 2 (AArch64 JIT) have landed; Phase 0's NEON work and the JIT's inline memory path are open. The wasm backend compiles bounded regions and the PIE instructions TinyDraw's tile kernels use (#63). pocket-tank now measures language-model inference, the PIE path that remains slow; its baseline is below.
 
 ## Where we are (M-series Mac, `lto = "fat"`, `tools/bench.py`)
 
@@ -35,6 +35,138 @@ generated code — is the classic answer and the next structural step.
 Before blocks the per-instruction scaffolding was ~35 % and **no single piece of it was
 removable** — each ablated to ≈0 %. Executing blocks reclaimed it; the JIT then removed the
 dispatch and operand unpacking. What remains is memory access.
+
+## Language-model inference on PIE: pocket-tank
+
+`tools/fetch-pocket-tank.sh` (mediacutlet/pocket-tank, MIT; a 4-bit transformer on the Waveshare
+AMOLED-1.8 board) is the workload for this path. Measured on 2026-09-12 on an M-series Mac; commands in `tools/browser-benchmark/README.md`.
+
+| pocket-tank, main `de7c6d7` | Minsn/s | real time |
+| --- | --- | --- |
+| native, `tools/bench.py`, 20 guest s, best of 5 | 170.7 | 0.47 |
+| Node, `tools/wasm-test.mjs` loop, 30 guest s, median of 3 | 105.2 | 0.31 |
+| headless Chrome 152, `run-pairs.py`, 30 guest s, one screening pair | 107.5 | 0.32 |
+| the same wasm with `-C target-feature=+simd128` | Node 108.8 against 108.7 for its plain build; Chrome 0.32 | no measurable change |
+
+Every run executes exactly 10,073,833,775 instructions with 15 model decisions, so the total is
+pinned in `workloads.json`. The native row's 20 guest seconds include the boot, which runs denser
+than the steady state: 363 M instructions per emulated second there against 336 M averaged over 30
+seconds, which is why its Minsn/s and real-time columns relate differently from the others. The interactive page in a visible Chrome tab ran at 0.23 real time:
+drawing and pacing there cost extra on top of the headless harness.
+
+The guest asks for 336 M instructions per emulated second across both cores, more than the
+silicon does: SPI2 transfers finish instantly and flash-cache and PSRAM reads cost nothing extra, so
+the firmware renders at 62 fps instead of 25–30 and decodes 24 tokens/s instead of 12.
+
+Where the time goes (instruction shares from `--profile-blocks`; host shares from `sample(1)` and
+a Node `--cpu-prof` of the wasm build):
+
+| guest instructions | share |
+| --- | --- |
+| two 4 KB pages of the 4-bit matmul kernel | 65 % |
+| `__divsf3` / `memcpy` | 3 % / 2 % |
+
+| wasm host time | share |
+| --- | --- |
+| PIE interpreter (`pie::exec`, operand extraction, `Ops::get`, `ld`) | 29 % |
+| scheduler loop between blocks (`run_unmodeled`) | 27 % |
+| all generated code | 19 % |
+| bus reads, mostly PIE weight loads | 8 % |
+| single-instruction interpreter | 6 % |
+| display transaction | 0.5 % |
+
+The kernel's instructions are `ee.vld.128.ip`, `ee.vmulas.s8.accx[.ld.ip]` and `ee.zero.accx`. The
+wasm backend emits only the load (and only through the fast mapping); the AArch64 backend emits no
+PIE; every PIE instruction re-extracts its operands from the word and loads word by word through
+the bus.
+
+Plan, in order: packed PIE operands and bulk loads in the interpreter (all hosts), then those
+instructions in the wasm backend, then NEON in the AArch64 backend or direct block chaining,
+whichever the next profile shows larger.
+
+### Packed PIE operands and bulk loads
+
+The first step of that plan: `pie::pack` extracts the hot instructions' operands once at decode,
+`exec_packed` runs them from the packed fields with byte-array dot products, and 128-bit loads
+use `Bus::read_bulk`. The table executor stays the reference (randomized equivalence tests), and
+pocket-tank still executes exactly 10,073,833,775 instructions with the same 15 decisions.
+
+| pocket-tank | main | packed PIE | change |
+| --- | --- | --- | --- |
+| native, `tools/bench.py`, 20 guest s, best of 5 | 169.5 Minsn/s, 0.47 real time | 258.8 Minsn/s, 0.71 | 1.53× |
+| Node, 30 guest s, median of 3 | 107.2 Minsn/s, 0.32 | 163.9 Minsn/s, 0.49 | 1.53× |
+| headless Chrome 152, `run-pairs.py`, 3 matched pairs, median wall | 90.4 s, 0.33 | 60.3 s, 0.50 | 33.3 % less wall time |
+| the packed build with `+simd128`, Node | | 164.8 Minsn/s | +0.5 %, within noise |
+
+Wasm host time afterwards: the scheduler loop between blocks 37 %, generated code 21 %, the PIE
+path about 18 % (packed execution 9 %, bulk loads 4.5 %, instructions still on the table 2.8 %,
+word reads 1.9 %), and `exec_insn` dispatch into it 8 %. The kernel's instructions still leave
+generated code for a helper call, and a helper ends a region at its next chunk head, so emitting
+them in the wasm backend should shrink the dispatch share as well as the PIE share.
+
+### The dot product in the wasm backend
+
+The wasm backend now emits pocket-tank's kernel: signed 8- and 16-bit multiply-accumulate into
+ACCX with and without its load, the ACCX reset, and the RUR of ACCX that follows each dot
+product. RUR mattered as much as the vector code: a block with any instruction the backend
+does not emit stays interpreted, so without it none of the kernel's blocks compiled and the
+emission gained nothing. With it, the model core runs 92 % of its instructions compiled, up
+from 70 %.
+
+| pocket-tank, 30 guest s | packed PIE | + wasm dot product | change |
+| --- | --- | --- | --- |
+| Node, median of 3 | 162.8 Minsn/s, 0.49 | 199.5 Minsn/s, 0.59 | 1.23× |
+| headless Chrome 152, 3 matched pairs, median wall | 63.3 s, 0.47 | 50.2 s, 0.60 | 20.7 % less wall time |
+
+Against main that is 1.9× under Node and 0.33 to 0.60 real time in Chrome, with the pinned
+instruction total unchanged. Still interpreted on the model core: signed division (3.6 % of its
+instructions) and a dequantisation block needing SAR-byte writes, saturating subtract and
+byte shifts (2.8 %).
+
+### Division in wasm, a direct PIE helper natively
+
+Two follow-ups. The wasm backend emits QUOU, QUOS, REMU and REMS inline, re-executing only a zero
+divisor or QUOS of INT_MIN by -1 in the interpreter. Native blocks call `pie::exec` through their
+own helper instead of `exec_insn`'s dispatch. Timed against the previous step on a quiet machine:
+
+| pocket-tank | before | after | change |
+| --- | --- | --- | --- |
+| native, `bench.py` 5 interleaved rounds of 20 guest s, median | 28.65 s, 0.70 | 27.76 s, 0.72 | 1.03× |
+| Node, 3 rounds of 30 guest s, median | 205.1 Minsn/s, 0.61 | 210.8 Minsn/s, 0.63 | 1.03× |
+| headless Chrome 153, 3 matched pairs, median wall | 51.2 s, 0.59 | 48.5 s, 0.62 | 5.3 % less wall time (pairs 1.4, 5.3, 2.2 %) |
+
+Both are small because both costs were small: division was 3.6 % of the model core's instructions
+and the dispatch a few percent of native time. Where the work stands against main:
+
+| pocket-tank, real time | main | now | change |
+| --- | --- | --- | --- |
+| native, M-series Mac | 0.47 | 0.72 | 1.53× |
+| Node | 0.31 | 0.63 | 2.0× |
+| headless Chrome | 0.32 | 0.62 | 1.9× |
+
+### Guest work: the panel's transfers take no time
+
+Host speed is half of real time; the other half is how much the guest does per emulated second.
+SPI2 transfers complete at the next device tick, so pocket-tank flushes a 368x448 frame in no
+emulated time and renders at 62.5 fps, where the board manages 25 to 30. An experiment (branch
+`exp/qspi-transfer-time`, not merged) holds completion for the transfer's clock time at the
+SH8601 driver's settings, 40 MHz with quad data. Natively over 30 guest seconds:
+
+| pocket-tank, packed PIE | transfers instant | 40 MHz quad transfer time |
+| --- | --- | --- |
+| guest instructions per emulated second | 335.8 M (core0 148 M) | 287.5 M (core0 100 M) |
+| render loop | 62.5 fps, flush 6.1 ms | 41 fps, flush 19.7 ms |
+| model | 24.3 tok/s | 24.3 tok/s |
+| real time on the same host | 0.77 | 0.87 |
+
+Modelling transfer time is worth about 14 % on this board on any host. The remaining gap to the
+board's frame rate and its 12 tok/s is memory latency (flash cache, PSRAM), which the fast paths
+do not charge.
+
+Where the next factors are: the dot-product instructions in the wasm backend, estimated at 1.2–1.4×,
+measured 1.23× under Node (above); not yet measured, cheaper scheduler rounds or direct block chaining about
+1.2×. With transfer time, headless Chrome would go from 0.62 to roughly 0.85 real time and the
+native build to about real time.
 
 ## Phase 0 — small, independent, do anytime
 
