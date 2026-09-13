@@ -131,14 +131,21 @@
   };
   fetch('wasm/fw/demos.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : []).then((demos) => {
     const row = $('fw_demos'); if (!demos.length) return; row.style.display = '';
-    for (const d of demos) { const a = document.createElement('a'); const u = new URL(location.href); u.searchParams.set('wasm', ''); u.searchParams.set('fw', d.fw); a.href = u.toString(); a.textContent = d.title; a.title = d.note || ''; row.appendChild(a); }
+    let parent = '';
+    for (const d of demos) {
+      const a = document.createElement('a'); const u = new URL(location.href); u.searchParams.set('wasm', ''); u.searchParams.set('fw', d.fw); a.href = u.toString(); a.textContent = d.title; a.title = d.note || ''; row.appendChild(a);
+      // "…logged in for you" continues the entry above it: name the tab "Linux 6.11 on the ESP32-S3 — logged in for you"
+      const name = d.title.startsWith('…') ? `${parent} — ${d.title.slice(1)}` : d.title;
+      if (!d.title.startsWith('…')) parent = d.title;
+      if (d.fw === q.get('fw')) { window.EmuLink.demoTitle = name; document.title = name + ' · esp32sim'; }
+    }
   }).catch(() => {});
   // ---- manifest: ?wasm&fw=name → wasm/fw/name.json
   const fw = q.get('fw');
   if (fw) {
     (async () => {
       const man = await (await fetch(`wasm/fw/${fw}.json`, { cache: 'no-cache' })).json();   // manifests are tiny: always revalidate, so a removed demo disappears at once
-      $('fw_board').value = man.board || 'none'; $('fw_flash').value = man.flash_mb || 8; $('fw_psram').value = man.psram_mb || 2; $('fw_wifi').value = man.wifi || ''; $('fw_stubs').value = (man.stubs || []).join(' '); window.EmuLink.terminal = !!man.terminal;   // the page opens on the Terminal tab for a manifest that says so
+      $('fw_board').value = man.board || 'none'; $('fw_flash').value = man.flash_mb || 8; $('fw_psram').value = man.psram_mb || 2; $('fw_wifi').value = man.wifi || ''; $('fw_stubs').value = (man.stubs || []).join(' '); window.EmuLink.terminal = !!man.terminal; window.EmuLink.lineHint = man.line_hint || ''; if (man.line_hint) $('line').placeholder = man.line_hint;   // the page opens on the Terminal tab for a manifest that says so
       const files = [];
       for (const [kind, url] of Object.entries(man.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`, { cache: 'no-cache' }); if (!r.ok) { fail(missing(u, r.status)); return; } files.push([kind, await r.arrayBuffer()]); }
       // flash_at: { "0x610000": "public/energydata.json" } — a data partition's contents
