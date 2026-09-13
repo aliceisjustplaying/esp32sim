@@ -303,3 +303,20 @@ shows `real time`, `⚠ N s behind` and the resync count.
 instruction counts and PCs. `hw/wsdrive.py [port] [seconds]` drives the UI protocol without a
 browser (button presses + knob turns) and reports push gaps, lag and audio delivered — use it
 to measure changes to the scheduler.
+
+## License
+
+esp32sim is released under the [MIT License](LICENSE), copyright Joakim Eriksson
+([@joakimeriksson](https://github.com/joakimeriksson)) and Alice
+([@aliceisjustplaying](https://github.com/aliceisjustplaying)).
+
+The demos use third-party files that keep their own licenses:
+
+- **pocket-tank** ([mediacutlet/pocket-tank](https://github.com/mediacutlet/pocket-tank), MIT). Its
+  bootloader, partition table and app are committed under `web/wasm/fw/public/` with
+  `pocket-tank-LICENSE.txt`; its model is fetched.
+- **Mask ROM ELFs** ([espressif/esp-rom-elfs](https://github.com/espressif/esp-rom-elfs), Apache-2.0),
+  fetched, not committed.
+- **xterm.js** ([xtermjs/xterm.js](https://github.com/xtermjs/xterm.js), MIT), fetched, not committed.
+- **Linux image** ([svermigo/Linux-on-esp32-S3](https://github.com/svermigo/Linux-on-esp32-S3),
+  GPL-3.0), fetched, not committed.
