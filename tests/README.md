@@ -22,7 +22,9 @@ audio sample is a failure, not noise (see `docs/decisions.md`, "Performance").
 
 They need the mask ROM ELFs, which ship with ESP-IDF (`~/.espressif/tools/esp-rom-elfs/`) or
 can be pointed at with `ESP32SIM_ROM_DIR`, so they are `#[ignore]`d by default and never skip
-silently: without a ROM they fail with the path they looked for.
+silently: without a ROM they fail with the path they looked for. Without ESP-IDF,
+`tools/fetch-demo-assets.sh --no-linux` fetches them into `web/wasm/fw/`, where `tools/wasm-test.mjs`
+finds them by itself; for the cargo tests set `ESP32SIM_ROM_DIR=web/wasm/fw`.
 
 ```sh
 cargo test --release --workspace -- --include-ignored --skip external_      # ~15 s for the whole set

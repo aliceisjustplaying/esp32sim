@@ -9,6 +9,15 @@
   if (!q.has('wasm') && !/\.github\.io$/.test(location.hostname)) return;
   const worker = new Worker('wasm/worker.js', { type: 'module' });
   let onmessage = null, setStatus = () => {}, ready = false, started = false;
+  // A manifest that cannot load keeps its message: the page may attach its status line after the
+  // failure, and the module finishing its download must not replace it with "wasm loaded".
+  let failure = '';
+  const fail = (msg) => { failure = msg; setStatus(msg); };
+  // A demo file the checkout lacks: name the script that fetches it (the Pages site has them all).
+  const missing = (u, status) => `${u}: ${status}` + (status !== 404 ? ''
+    : /_rom\.elf$|^linux-esp32s3-native-full\.bin$/.test(u) ? ' — not in this checkout: run tools/fetch-demo-assets.sh'
+    : /^local\/(pt-|pocket_tank|model_q4)/.test(u) ? ' — not in this checkout: run tools/fetch-pocket-tank.sh'
+    : '');
   const KINDS = { rom: 0, bootloader: 1, ptable: 2, app: 3, elf: 4, flash: 5, script: 6, picture: 7 };
   const pending = new Map();
   worker.onmessage = (ev) => {
@@ -22,7 +31,7 @@
       return;
     }
     if (m.log !== undefined) { console.log(m.log); onmessage && onmessage(JSON.stringify({ t: 'emu', msg: m.log })); return; }
-    if (m.ready) { ready = true; setStatus('wasm loaded — choose firmware'); flush(); }
+    if (m.ready) { ready = true; setStatus(failure || 'wasm loaded — choose firmware'); flush(); }
     if (m.created !== undefined) { const r = pending.get('created'); pending.delete('created'); r && r(m.created); }
     if (m.loaded !== undefined) { const r = pending.get('load' + m.loaded); pending.delete('load' + m.loaded); r && r(m.ok); }
     if (m.started !== undefined) { started = m.started; setStatus(started ? 'running in WebAssembly' : 'boot failed (see console)'); }
@@ -37,8 +46,8 @@
 
   window.EmuLink = {
     connect(handler, status) {
-      onmessage = handler; setStatus = status;
-      fetch('wasm/esp32sim.wasm').then((r) => { if (!r.ok) throw new Error('wasm/esp32sim.wasm: ' + r.status); return r.arrayBuffer(); })
+      onmessage = handler; setStatus = status; if (failure) setStatus(failure);
+      fetch('wasm/esp32sim.wasm').then((r) => { if (!r.ok) throw new Error('wasm/esp32sim.wasm: ' + r.status + (r.status === 404 ? ' — build it: tools/wasm-build.sh' : '')); return r.arrayBuffer(); })
         .then((buf) => worker.postMessage({ op: 'init', wasm: buf, touchTrace: q.has('touchTrace') }, [buf]))
         .catch((e) => setStatus('cannot load wasm: ' + e.message));
       return { send: (d, timing) => { if (!started) return; if (typeof d === 'string') post({ op: 'text', data: d, touchTrace: timing }); else { const b = d.buffer ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d; post({ op: 'bin', data: b }, [b]); } } };
@@ -131,15 +140,15 @@
       const man = await (await fetch(`wasm/fw/${fw}.json`, { cache: 'no-cache' })).json();   // manifests are tiny: always revalidate, so a removed demo disappears at once
       $('fw_board').value = man.board || 'none'; $('fw_flash').value = man.flash_mb || 8; $('fw_psram').value = man.psram_mb || 2; $('fw_wifi').value = man.wifi || ''; $('fw_stubs').value = (man.stubs || []).join(' '); window.EmuLink.terminal = !!man.terminal;   // the page opens on the Terminal tab for a manifest that says so
       const files = [];
-      for (const [kind, url] of Object.entries(man.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`, { cache: 'no-cache' }); if (!r.ok) { setStatus(`${u}: ${r.status}`); return; } files.push([kind, await r.arrayBuffer()]); }
+      for (const [kind, url] of Object.entries(man.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`, { cache: 'no-cache' }); if (!r.ok) { fail(missing(u, r.status)); return; } files.push([kind, await r.arrayBuffer()]); }
       // flash_at: { "0x610000": "public/energydata.json" } — a data partition's contents
-      for (const [off, u] of Object.entries(man.flash_at || {})) { const r = await fetch(`wasm/fw/${u}`, { cache: 'no-cache' }); if (!r.ok) { setStatus(`${u}: ${r.status}`); return; } files.push(['flash', await r.arrayBuffer(), parseInt(off, 16)]); }
+      for (const [off, u] of Object.entries(man.flash_at || {})) { const r = await fetch(`wasm/fw/${u}`, { cache: 'no-cache' }); if (!r.ok) { fail(missing(u, r.status)); return; } files.push(['flash', await r.arrayBuffer(), parseInt(off, 16)]); }
       const cfg = { board: man.board, flash_mb: man.flash_mb || 8, psram_mb: man.psram_mb || 2, wifi: man.wifi || '', stubs: man.stubs || [], symbols: man.symbols || {}, appDirect: !!man.app_direct, nodes: man.nodes, slice_ns: man.slice_ns };
       const nodeFiles = [];
-      for (const node of man.nodes || []) { const own = []; for (const [kind, url] of Object.entries(node.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`, { cache: 'no-cache' }); if (!r.ok) { setStatus(`${u}: ${r.status}`); return; } own.push([kind, await r.arrayBuffer()]); } nodeFiles.push(own); }
+      for (const node of man.nodes || []) { const own = []; for (const [kind, url] of Object.entries(node.files || {})) for (const u of [].concat(url)) { const r = await fetch(`wasm/fw/${u}`, { cache: 'no-cache' }); if (!r.ok) { fail(missing(u, r.status)); return; } own.push([kind, await r.arrayBuffer()]); } nodeFiles.push(own); }
       const wait = () => ready ? (man.nodes ? bootNet(cfg, files, nodeFiles) : boot(cfg, files)) : setTimeout(wait, 50);
       wait();
-    })().catch((e) => setStatus('manifest: ' + e.message));
+    })().catch((e) => fail('manifest: ' + e.message));
   }
   });
 })();

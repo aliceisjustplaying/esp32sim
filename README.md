@@ -96,7 +96,10 @@ FW=web/wasm/fw/public                       # the demo images the goldens and th
 ```
 
 The mask ROM ELF is picked up from `~/.espressif/tools/esp-rom-elfs/*/esp32s3_rev0_rom.elf`
-(shipped with ESP‑IDF). `--boot app` skips ROM+bootloader and loads the app image directly.
+(shipped with ESP‑IDF). Without ESP-IDF, `tools/fetch-demo-assets.sh --no-linux` puts the S3, C3 and
+C6 ROMs in `web/wasm/fw/`: pass `--rom web/wasm/fw/esp32s3_rev0_rom.elf`, or set
+`ESP32SIM_ROM_DIR=web/wasm/fw` for the tests. `--boot app` skips ROM+bootloader and loads the app
+image directly.
 
 A plain ESP‑IDF project, e.g. `examples/hello_world` (the IDF 5.5 get-started example built with
 `idf.py set-target esp32s3 && idf.py build`):
