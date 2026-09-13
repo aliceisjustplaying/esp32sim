@@ -287,6 +287,7 @@ fn reboot_keeps_what_silicon_keeps() {
     m.bus.periph.i2s0.pcm = vec![1, 2, 3]; m.bus.periph.i2s0.frames_out = 3;
     m.bus.periph.uart[0].tx_out = b"gone".to_vec();
     m.bus.periph.systimer.conf = 0xffff;
+    m.bus.periph.spi0.jedec[2] = 0x18; m.bus.periph.spi1.jedec[2] = 0x18;   // a 16 MB flash chip
     m.cores[0].pc = IRAM;
     m.bus.periph.rtc.reset_cause = esp_periph::RST_SW_CPU;
     let cause = m.reboot();
@@ -296,6 +297,7 @@ fn reboot_keeps_what_silicon_keeps() {
     assert_eq!(p.rtc.ram.read(0x120), 0x1234); assert_eq!(p.rtc.slow_ticks, 999);
     assert_eq!(p.rtc.ram.read(0x38), cause | (cause << 6));
     assert_eq!(p.i2s0.pcm, vec![1, 2, 3]);
+    assert_eq!((p.spi0.jedec[2], p.spi1.jedec[2]), (0x18, 0x18), "the flash chip keeps its capacity, or IDF finds it smaller than the image header");
     assert!(p.uart[0].tx_out.is_empty() && p.systimer.conf == 0, "digital peripherals are fresh");
     assert_eq!(m.cores[0].pc(), RESET); assert_eq!(m.reboots, 1);
     assert!(!m.dump_regs().contains("core1:"), "core 1 is back in reset");

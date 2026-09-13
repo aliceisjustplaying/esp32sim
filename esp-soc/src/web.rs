@@ -114,6 +114,15 @@ impl WebServer {
     pub fn clients(&self) -> usize { self.shared.lock().unwrap().clients.len() }
 }
 
+/// The value of HTTP header `name` in a request head. Header names are case-insensitive
+/// (RFC 9110): browsers send `Sec-WebSocket-Key`, while Node's WebSocket and others lowercase it.
+fn header<'a>(head: &'a str, name: &str) -> Option<&'a str> {
+    head.lines().skip(1).find_map(|l| {
+        let (n, v) = l.split_once(':')?;
+        n.trim().eq_ignore_ascii_case(name).then(|| v.trim())
+    })
+}
+
 fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
     let mut req = Vec::new();
     let mut buf = [0u8; 4096];
@@ -122,7 +131,7 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
         if req.len() > 65536 { return; }
     }
     let text = String::from_utf8_lossy(&req).to_string();
-    let key = text.lines().find_map(|l| l.strip_prefix("Sec-WebSocket-Key:")).map(|k| k.trim().to_string());
+    let key = header(&text, "Sec-WebSocket-Key").map(str::to_string);
     let Some(key) = key else {
         // plain HTTP: serve a file
         let path = text.split_whitespace().nth(1).unwrap_or("/");
@@ -198,4 +207,26 @@ pub fn json_escape(s: &str) -> String {
     let mut o = String::with_capacity(s.len());
     for c in s.chars() { match c { '"' => o.push_str("\\\""), '\\' => o.push_str("\\\\"), '\n' => o.push_str("\\n"), '\r' => o.push_str("\\r"), c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)), c => o.push(c) } }
     o
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn websocket_key_header_matches_any_case() {
+        for line in ["Sec-WebSocket-Key: abc==", "sec-websocket-key: abc==", "SEC-WEBSOCKET-KEY:abc==", "Sec-Websocket-Key :  abc==  "] {
+            let head = format!("GET /ws HTTP/1.1\r\nHost: x\r\n{line}\r\nUpgrade: websocket\r\n\r\n");
+            assert_eq!(header(&head, "Sec-WebSocket-Key"), Some("abc=="), "{line}");
+        }
+        assert_eq!(header("GET / HTTP/1.1\r\nHost: x\r\n\r\n", "Sec-WebSocket-Key"), None);
+        // the request line is not a header, even if its path contains a colon
+        assert_eq!(header("GET /Sec-WebSocket-Key: HTTP/1.1\r\n\r\n", "GET /Sec-WebSocket-Key"), None);
+    }
+
+    #[test]
+    fn websocket_accept_matches_rfc_6455_example() {
+        let key = "dGhlIHNhbXBsZSBub25jZQ==";
+        assert_eq!(b64(&sha1(format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes())), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+    }
 }
