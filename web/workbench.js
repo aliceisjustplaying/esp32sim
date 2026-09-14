@@ -48,6 +48,9 @@
     'c6-hello': ['The C6 mask ROM boots the app', 'Open UART0 for the console', 'Verified against a Waveshare C6-LCD-1.47'],
   };
   const CHIP = { esp32c3: 'c3', esp32c6: 'c6', 'waveshare-c6-lcd147': 'c6' };
+  // The board the running machine announced (run.html's `board` message): a native --web run has no
+  // manifest or Configure form, and a board picked in Configure can change after the rail is built.
+  let liveBoard = null, renderMachine = null;
   // The same run on the command line: the manifest's files, so the demo reproduces from a checkout.
   function cliCommand(fw, manifest, boardName) {
     if (!manifest) return 'esp32sim --board ' + boardName + ' --boot rom --bootloader build/bootloader/bootloader.bin \\\n  --ptable build/partition_table/partition-table.bin --app build/app.bin --max-seconds 5';
@@ -108,9 +111,9 @@
 
     if (demo) document.title = demo.title + ' · esp32sim';
     const intro = addRailSection(rail, fw ? 'Now running' : 'Local machine');
-    intro.append(make('h2', 'wb-rail-title', demo?.title || (fw ? fw : 'Custom firmware')));
-    intro.append(make('p', 'wb-copy', demo?.note || 'The same emulator engine used by the local CLI, running in this browser tab.'));
-    const hints = HINTS[fw] || (fw?.startsWith('c6-') ? ['Watch the real firmware console', 'Inspect the display and board state', 'Open the manifest and source links'] : ['Select a console and inspect the boot', 'Interact with the modeled board', 'Open Configure to change the machine']);
+    intro.append(make('h2', 'wb-rail-title', demo?.title || fw || (wasmMode ? 'Custom firmware' : 'Native run')));
+    intro.append(make('p', 'wb-copy', demo?.note || (wasmMode ? 'The same emulator engine used by the local CLI, running in this browser tab.' : 'The esp32sim process on this computer, streaming its board and consoles to this page.')));
+    const hints = HINTS[fw] || (fw?.startsWith('c6-') ? ['Watch the real firmware console', 'Inspect the display and board state', 'Open the manifest and source links'] : ['Select a console and inspect the boot', 'Interact with the modeled board', wasmMode ? 'Open Configure to change the machine' : 'Change the machine with esp32sim\'s flags']);
     const hintList = make('div', 'wb-hints');
     hints.forEach(text => hintList.append(make('div', 'wb-hint', text)));
     intro.append(hintList);
@@ -127,19 +130,8 @@
     metric('Speed', 'wbPace', 'loading…');
     telemetry.append(metrics);
 
-    const boardName = manifest?.board || document.querySelector('#fw_board')?.value || 'none';
-    const spec = BOARD[boardName] || BOARD.none;
     const machine = addRailSection(rail, 'Machine configuration');
     const rows = make('dl', 'wb-config');
-    configRow(rows, 'SoC', spec.soc);
-    configRow(rows, 'CPU', spec.cpu);
-    configRow(rows, 'Board', spec.board);
-    configRow(rows, 'Memory', `${manifest?.flash_mb || document.querySelector('#fw_flash')?.value || 8} MB flash · ${manifest?.psram_mb ?? document.querySelector('#fw_psram')?.value ?? 2} MB PSRAM`);
-    configRow(rows, 'Boot', manifest?.app_direct ? 'application directly' : 'mask ROM → 2nd stage → application');
-    configRow(rows, 'Peripherals', spec.peripherals);
-    configRow(rows, 'Engine', 'WebAssembly · block/region JIT');
-    configRow(rows, 'Manifest', fw ? `${fw}.json` : 'local browser files');
-    if (manifest?.stubs?.length) configRow(rows, 'Stubs', manifest.stubs.join(' · '));
     machine.append(rows);
     const machineLinks = make('div', 'wb-links');
     if (fw) machineLinks.append(link('manifest ↗', `wasm/fw/${fw}.json`));
@@ -169,8 +161,28 @@
     const local = addRailSection(rail, 'Use it locally');
     local.append(make('p', 'wb-copy', fw ? 'The same run on the command line, from a checkout: deterministic, scriptable, with the display as a PNG. This is what a coding agent gets.' : 'The same emulator on the command line: deterministic, scriptable, with console text, PNG, WAV and VCD outputs a coding agent can read.'));
     const command = make('pre', 'wb-command');
-    command.textContent = cliCommand(fw, manifest, boardName);
     local.append(command);
+
+    renderMachine = () => {
+      // `none` names no chip (the C3 and a bare C6 announce it too), so it only fills in when nothing
+      // more specific is known
+      const announced = liveBoard && liveBoard !== 'none' ? liveBoard : null;
+      const boardName = announced || manifest?.board || document.querySelector('#fw_board')?.value || liveBoard || 'none';
+      const spec = BOARD[boardName] || BOARD.none;
+      rows.replaceChildren();
+      configRow(rows, 'SoC', spec.soc);
+      configRow(rows, 'CPU', spec.cpu);
+      configRow(rows, 'Board', spec.board);
+      // a native run's memory and boot mode are its command-line flags, which the page is not told
+      configRow(rows, 'Memory', wasmMode ? `${manifest?.flash_mb || document.querySelector('#fw_flash')?.value || 8} MB flash · ${manifest?.psram_mb ?? document.querySelector('#fw_psram')?.value ?? 2} MB PSRAM` : 'as given on the command line');
+      configRow(rows, 'Boot', !wasmMode ? 'as given on the command line' : manifest?.app_direct ? 'application directly' : 'mask ROM → 2nd stage → application');
+      configRow(rows, 'Peripherals', spec.peripherals);
+      configRow(rows, 'Engine', wasmMode ? 'WebAssembly · block/region JIT' : 'native esp32sim process');
+      configRow(rows, 'Manifest', fw ? `${fw}.json` : wasmMode ? 'local browser files' : 'command-line flags');
+      if (manifest?.stubs?.length) configRow(rows, 'Stubs', manifest.stubs.join(' · '));
+      command.textContent = cliCommand(fw, manifest, boardName);
+    };
+    renderMachine();
     const localLinks = make('div', 'wb-links');
     localLinks.append(link('for agents ↗', 'index.html#agents'), link('CLI reference ↗', 'https://github.com/joakimeriksson/esp32sim/blob/main/docs/cli.md'));
     local.append(localLinks);
@@ -178,6 +190,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     window.Workbench = { enabled: true, manifest: null, openConfiguration: () => {} };
+    window.addEventListener('esp32sim-board', (e) => { liveBoard = e.detail; if (renderMachine) renderMachine(); });
     document.body.classList.add('workbench');
     const header = document.querySelector('body > header');
     const title = header?.querySelector('h1');
