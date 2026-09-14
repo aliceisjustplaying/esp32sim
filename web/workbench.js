@@ -92,12 +92,21 @@
           fetch('wasm/fw/demos.json', { cache: 'no-cache' }),
         ]);
         if (manifestResponse.ok) manifest = await manifestResponse.json();
-        if (demosResponse.ok) demo = (await demosResponse.json()).find(item => item.fw === fw) || null;
+        if (demosResponse.ok) {
+          // a title starting with … continues the entry above it, as in emu.js's list: name it in full
+          let parent = '';
+          for (const item of await demosResponse.json()) {
+            const cont = item.title.startsWith('…');
+            const name = cont ? `${parent} — ${item.title.slice(1)}` : item.title;
+            if (!cont) parent = item.title;
+            if (item.fw === fw) { demo = { ...item, title: name }; break; }
+          }
+        }
       } catch (_) {}
     }
     window.Workbench.manifest = manifest;
 
-    if (demo) document.title = (demo.title.startsWith('…') ? fw : demo.title) + ' · esp32sim';
+    if (demo) document.title = demo.title + ' · esp32sim';
     const intro = addRailSection(rail, fw ? 'Now running' : 'Local machine');
     intro.append(make('h2', 'wb-rail-title', demo?.title || (fw ? fw : 'Custom firmware')));
     intro.append(make('p', 'wb-copy', demo?.note || 'The same emulator engine used by the local CLI, running in this browser tab.'));
