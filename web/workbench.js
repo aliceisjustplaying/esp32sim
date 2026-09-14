@@ -254,6 +254,17 @@
     restart.type = 'button';
     restart.onclick = () => location.reload();
     header.append(restart);
+    const theme = make('button', 'wb-button wb-theme');
+    theme.type = 'button';
+    theme.title = 'Light or dark';
+    theme.setAttribute('aria-label', 'Switch between light and dark');
+    theme.onclick = () => {
+      const root = document.documentElement;
+      const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      root.dataset.theme = dark ? 'light' : 'dark';
+      try { localStorage.setItem('esp32sim-theme', root.dataset.theme); } catch (_) {}
+    };
+    header.append(theme);
 
     const updateTelemetry = () => {
       const runtime = document.getElementById('wbRuntime');
