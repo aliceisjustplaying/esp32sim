@@ -11,13 +11,13 @@ to the page) and executed in the tab.
 tools/wasm-build.sh                      # -> web/wasm/esp32sim.wasm (needs the wasm32-unknown-unknown target)
 tools/fetch-demo-assets.sh               # mask ROM ELFs, xterm.js, the Linux image (--no-linux skips its 16 MB)
 python3 -m http.server -d web 8790       # any static server; file:// will not do (workers, fetch)
-open 'http://127.0.0.1:8790/?wasm&fw=hello'
+open 'http://127.0.0.1:8790/run.html?wasm&fw=hello'
 ```
 
 Every demo in `web/wasm/fw/demos.json` boots from the mask ROM, which is not committed: without the
 fetch the page stops at `esp32s3_rev0_rom.elf: 404`. xterm.js is only for the Terminal tab.
 
-`?wasm` switches `web/index.html` from its WebSocket transport to the worker; the page gains a
+`?wasm` switches `web/run.html` from its WebSocket transport to the worker; the page gains a
 firmware panel: board, flash/PSRAM size, an optional WiFi spec, function stubs, and file inputs
 for the mask-ROM ELF, `bootloader.bin`, `partition-table.bin`, the app image, its ELF (symbols
 — needed for stubs) and a script. **Boot** starts it; the rest of the page — console tabs,
@@ -65,7 +65,7 @@ console-only — so the wasm layer turns its console into the same `{"t":"serial
 S3 sends, and `esp32sim_cpu_hz` tells the worker which clock to pace against (240 MHz vs 160).
 
 ```
-web/index.html   the UI, unchanged; `link` is either a WebSocket or the worker
+web/run.html     the UI, unchanged; `link` is either a WebSocket or the worker
 web/emu.js       page side: firmware panel, manifest loading, window.EmuLink
 web/wasm/worker.js   owns the wasm instance, paces it to wall time, relays the UI protocol
 wasm/            the crate: a C ABI over esp32s3::Machine (esp32sim_new / load / wifi / stub /

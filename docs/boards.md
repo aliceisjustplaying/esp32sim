@@ -109,4 +109,4 @@ The worked example is in [adding.md](adding.md#a-board-a-device-with-things-wire
 `impl BoardModel` (GPIO edges, RMT frames, SPI transactions, LCD frames in; display, LEDs, camera preview,
 named pins, encoder, report out), I2C devices as `I2cDevice`, one arm in `make_board`, a run script
 under `examples/<board>/` and a row in this file. The page switches its layout on the `board`
-message (`web/index.html`).
+message (`web/run.html`).

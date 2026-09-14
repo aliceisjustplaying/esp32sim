@@ -1,0 +1,287 @@
+/* The workbench layout for run.html. Every rule is scoped under body.workbench, so ?plain gets the page as it was. */
+html.workbench-pending body { visibility: hidden; }
+
+body.workbench {
+  --wb-bg: #0d100e;
+  --wb-panel: #151815;
+  --wb-panel-2: #1b1f1b;
+  --wb-line: rgba(255,255,255,.1);
+  --wb-ink: #f3f1e8;
+  --wb-muted: #929991;
+  --wb-cyan: #72e6d1;
+  --wb-acid: #dafb63;
+  margin: 0;
+  color: var(--wb-ink);
+  background: var(--wb-bg);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body.workbench a { color: inherit; }
+body.workbench :focus-visible { outline: 3px solid var(--wb-cyan); outline-offset: 3px; }
+
+body.workbench > header {
+  position: relative;
+  z-index: 20;
+  min-height: 68px;
+  padding: 0 22px;
+  gap: 11px;
+  color: var(--wb-ink);
+  border-color: var(--wb-line);
+  background: rgba(13,16,14,.94);
+  backdrop-filter: blur(16px);
+}
+
+body.workbench header h1 {
+  max-width: 480px;
+  overflow: hidden;
+  margin: 0;
+  color: var(--wb-ink);
+  font-size: 14px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.workbench .wb-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 5px;
+  color: var(--wb-ink);
+  font-size: 16px;
+  font-weight: 780;
+  letter-spacing: -.035em;
+  text-decoration: none;
+}
+
+body.workbench .wb-brand img { width: 34px; height: 34px; object-fit: contain; }
+body.workbench .wb-crumb { color: #515851; }
+body.workbench header .st { color: #9aa19a; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+body.workbench #status { position: relative; padding-left: 15px; }
+body.workbench #status::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wb-cyan);
+  box-shadow: 0 0 0 5px rgba(114,230,209,.08), 0 0 14px rgba(114,230,209,.35);
+  transform: translateY(-50%);
+}
+
+body.workbench button.act,
+body.workbench .wb-button {
+  min-height: 36px;
+  padding: 0 12px;
+  color: #d7dcd7;
+  border: 1px solid var(--wb-line);
+  border-radius: 9px;
+  background: rgba(255,255,255,.025);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 680;
+}
+body.workbench button.act:hover,
+body.workbench .wb-button:hover { color: var(--wb-ink); border-color: rgba(114,230,209,.42); }
+body.workbench .wb-button-primary { color: #101713; border-color: var(--wb-cyan); background: var(--wb-cyan); }
+body.workbench .wb-button-primary:hover { color: #101713; background: #8beedc; }
+
+body.workbench main { display: block; padding: 0; }
+body.workbench main > .right {
+  width: 100%;
+  max-width: none;
+  height: calc(100vh - 68px);
+  min-height: 720px;
+  display: grid;
+  grid-template-columns: minmax(480px, 1fr) 350px;
+  grid-template-rows: minmax(440px, 1fr) 260px;
+  gap: 0;
+}
+
+body.workbench #wbStage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 48px 42px 64px;
+  background:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
+    radial-gradient(circle at 50% 45%, rgba(114,230,209,.1), transparent 27rem),
+    #101310;
+  background-size: 32px 32px, 32px 32px, auto, auto;
+}
+
+
+body.workbench #wbStage > * { position: relative; z-index: 1; }
+body.workbench #wbStage .card { color: var(--wb-ink); border: 0; background: transparent; box-shadow: none; }
+body.workbench #lcdpanel { width: fit-content; max-width: 100%; padding: 0; }
+body.workbench #lcdpanel > .row:first-child { margin-bottom: 12px; color: #a9b0aa; }
+body.workbench #lcdpanel > .row:first-child strong { color: var(--wb-ink); }
+body.workbench #lcdpanel canvas {
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  max-width: 100%;
+  max-height: calc(100vh - 408px);
+  margin: 0 auto !important;
+  border: 20px solid #202520;
+  border-radius: 29px !important;
+  box-shadow: 0 36px 75px rgba(0,0,0,.53), inset 0 1px rgba(255,255,255,.1);
+}
+body.workbench #lcdextras { justify-content: center; }
+body.workbench .boardbtn { color: #111813; background: var(--wb-cyan); }
+body.workbench #netpanel, body.workbench #campanel { width: min(760px, 100%); }
+body.workbench #camcanvas { display: block; margin-inline: auto; border: 18px solid #202520; border-radius: 24px !important; }
+body.workbench #tftcard { position: absolute; top: 18px; right: 18px; width: auto; padding: 10px; border: 1px solid var(--wb-line); border-radius: 12px; background: rgba(17,20,17,.88); }
+body.workbench #tftcard .st { display: none; }
+body.workbench #tftbig { width: 320px; height: 160px; }
+body.workbench .boardwrap { max-width: 100%; }
+body.workbench .board { box-shadow: 0 38px 80px rgba(0,0,0,.5); }
+
+body.workbench .wb-console-card {
+  min-width: 0;
+  min-height: 0;
+  grid-column: 1;
+  grid-row: 2;
+  overflow: hidden;
+  padding: 0;
+  color: var(--wb-ink);
+  border: 0;
+  border-top: 1px solid #354039;
+  border-radius: 0;
+  background: #080b09;
+}
+body.workbench .wb-console-card > .tabs { min-height: 46px; padding: 0 18px; border-bottom: 1px solid var(--wb-line); }
+body.workbench .wb-console-card .tabs strong { margin-right: 5px; font-size: 12px; }
+body.workbench .tabs button {
+  min-height: 29px;
+  padding: 0 9px;
+  color: #777f78;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 10px;
+}
+body.workbench .tabs button.on { color: var(--wb-ink); background: rgba(255,255,255,.08); }
+body.workbench #console { height: 143px; padding: 13px 19px; border-radius: 0; background: #080b09; font-size: 11px; line-height: 1.55; }
+body.workbench #term { height: 153px; padding: 8px 14px; border-radius: 0; }
+body.workbench .wb-console-card > .row:not(.tabs) { margin: 0 !important; padding: 3px 18px; }
+body.workbench .wb-console-card #keyhint { font-size: 10px; }
+body.workbench .wb-console-card input[type=text] { min-height: 32px; color: #d7ddd7; border: 1px solid var(--wb-line); background: #111511; }
+body.workbench #presets { display: none; }
+body.workbench .right.wb-console-only #wbStage { display: none; }
+body.workbench .right.wb-console-only .wb-console-card { grid-row: 1 / 3; }
+body.workbench .right.wb-console-only #console { height: calc(100% - 132px); }
+body.workbench .right.wb-console-only #term { height: calc(100% - 92px); }
+
+body.workbench #wbRail {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  overflow: auto;
+  padding: 23px 22px 35px;
+  border-left: 1px solid var(--wb-line);
+  background: #141714;
+}
+body.workbench .wb-rail-section { padding: 4px 0 21px; margin-bottom: 18px; border-bottom: 1px solid var(--wb-line); }
+body.workbench .wb-rail-section:last-child { border: 0; }
+body.workbench .wb-kicker { color: #8a928b; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .11em; }
+body.workbench .wb-rail-title { margin: 7px 0 6px; font-size: 23px; line-height: 1.08; letter-spacing: -.04em; }
+body.workbench .wb-copy { margin: 0; color: #a9b0a9; font-size: 13px; line-height: 1.5; }
+body.workbench .wb-hints { display: grid; gap: 7px; margin-top: 13px; }
+body.workbench .wb-hint { display: flex; align-items: center; gap: 9px; min-height: 43px; padding: 8px 10px; border: 1px solid var(--wb-line); border-radius: 10px; color: #d3d8d3; background: rgba(255,255,255,.02); font-size: 12px; }
+body.workbench .wb-hint::before { content: "→"; width: 25px; height: 25px; display: grid; flex: 0 0 auto; place-items: center; color: #101713; border-radius: 7px; background: var(--wb-cyan); font-weight: 800; }
+body.workbench .wb-metrics { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 12px; }
+body.workbench .wb-metric { min-width: 0; padding: 9px 10px; border: 1px solid var(--wb-line); border-radius: 9px; background: rgba(255,255,255,.018); }
+body.workbench .wb-metric small { display: block; margin-bottom: 3px; color: #7f877f; font: 9px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
+body.workbench .wb-metric b { display: block; color: #d9ded9; font: 12px/1.4 ui-monospace, monospace; white-space: normal; word-break: break-word; }
+body.workbench .wb-config { margin-top: 12px; overflow: hidden; border: 1px solid var(--wb-line); border-radius: 10px; }
+body.workbench .wb-config-row { display: grid; grid-template-columns: 84px 1fr; gap: 9px; padding: 7px 9px; border-bottom: 1px solid rgba(255,255,255,.06); }
+body.workbench .wb-config-row:last-child { border: 0; }
+body.workbench .wb-config-row dt { color: #7d857e; font: 10px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .07em; }
+body.workbench .wb-config-row dd { min-width: 0; margin: 0; color: #cdd3cd; font: 11px/1.45 ui-monospace, monospace; word-break: break-word; }
+body.workbench .wb-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+body.workbench .wb-links a { padding: 5px 7px; color: #8a918a; border: 1px solid var(--wb-line); border-radius: 6px; font: 11px ui-monospace, monospace; text-decoration: none; }
+body.workbench .wb-links a:hover { color: var(--wb-cyan); border-color: rgba(114,230,209,.35); }
+body.workbench .wb-command { margin: 11px 0 0; padding: 10px; overflow: auto; color: #b9c2ba; border: 1px solid var(--wb-line); border-radius: 9px; background: #090c09; font: 11px/1.55 ui-monospace, monospace; white-space: pre; }
+body.workbench .wb-demos { max-width: 220px; min-height: 36px; padding: 0 8px; color: #d7dcd7; border: 1px solid var(--wb-line); border-radius: 9px; background: #151815; font-size: 11px; font-weight: 680; }
+
+body.workbench #wbConfigDialog {
+  width: min(940px, calc(100% - 30px));
+  max-height: calc(100vh - 30px);
+  padding: 0;
+  overflow: hidden;
+  color: var(--wb-ink);
+  border: 1px solid #49534b;
+  border-radius: 20px;
+  background: var(--wb-panel);
+  box-shadow: 0 45px 120px rgba(0,0,0,.72);
+}
+body.workbench #wbConfigDialog::backdrop { background: rgba(3,5,4,.74); backdrop-filter: blur(8px); }
+body.workbench .wb-config-shell { display: flex; max-height: calc(100vh - 30px); flex-direction: column; }
+body.workbench .wb-config-head { display: flex; align-items: start; gap: 20px; padding: 20px 23px 17px; border-bottom: 1px solid var(--wb-line); }
+body.workbench .wb-config-head h2 { margin: 4px 0 3px; font-size: 22px; letter-spacing: -.04em; }
+body.workbench .wb-config-head p { margin: 0; color: var(--wb-muted); font-size: 11px; }
+body.workbench .wb-config-close { width: 35px; height: 35px; margin-left: auto; color: var(--wb-ink); border: 1px solid var(--wb-line); border-radius: 9px; background: transparent; cursor: pointer; }
+body.workbench #fwpanel {
+  overflow: auto;
+  margin: 0;
+  padding: 20px 23px 24px;
+  color: var(--wb-ink);
+  border: 0;
+  border-radius: 0;
+  background: var(--wb-panel);
+  font-size: 11px;
+}
+body.workbench #fwpanel > style { display: none; }
+body.workbench #fwpanel .row { align-items: end; gap: 12px 15px; margin: 0 0 17px; }
+body.workbench #fwpanel .row:first-of-type { padding: 10px 12px; border: 1px solid rgba(114,230,209,.19); border-radius: 9px; background: rgba(114,230,209,.04); }
+body.workbench #fwpanel .row:first-of-type b { color: var(--wb-cyan); }
+body.workbench #fwpanel .note { color: var(--wb-muted); }
+body.workbench #fwpanel label { display: grid; gap: 5px; align-items: start; color: #8f968f; font-size: 10px; }
+body.workbench #fwpanel select,
+body.workbench #fwpanel input:not([type=checkbox]) { min-height: 38px; padding: 7px 9px; color: #d8ddd8; border: 1px solid var(--wb-line); border-radius: 8px; background: #0c0f0d; font: 10px ui-monospace, monospace; }
+body.workbench #fwpanel input[type=file] { width: 180px; max-width: 100%; }
+body.workbench #fwpanel input::file-selector-button { margin-right: 7px; padding: 4px 7px; color: #c7cdc7; border: 1px solid var(--wb-line); border-radius: 5px; background: #202420; font: 9px ui-monospace, monospace; }
+body.workbench #fwpanel #fw_demos { align-items: center; padding-bottom: 15px; border-bottom: 1px solid var(--wb-line); }
+body.workbench #fwpanel #fw_demos a { color: var(--wb-cyan); font-size: 10px; }
+body.workbench #fwpanel .go { min-height: 38px; padding: 0 16px; color: #101713; border: 0; border-radius: 9px; background: var(--wb-cyan); cursor: pointer; }
+
+@media (max-width: 1000px) {
+  body.workbench main > .right { height: auto; grid-template-columns: 1fr; grid-template-rows: 650px 260px auto; }
+  body.workbench #wbStage { grid-column: 1; grid-row: 1; }
+  body.workbench .wb-console-card { grid-column: 1; grid-row: 2; }
+  body.workbench #wbRail { grid-column: 1; grid-row: 3; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-top: 1px solid var(--wb-line); border-left: 0; }
+  body.workbench .wb-rail-section { margin: 0; padding: 14px; border: 1px solid var(--wb-line); border-radius: 12px; }
+}
+
+@media (max-width: 640px) {
+  body.workbench > header { min-height: 62px; padding: 0 12px; }
+  body.workbench .wb-brand span, body.workbench .wb-crumb, body.workbench header h1, body.workbench #stat { display: none; }
+  body.workbench #status { max-width: 105px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.workbench main > .right { min-height: 0; grid-template-rows: 525px 270px auto; }
+  body.workbench #wbStage { padding: 50px 14px 60px; }
+  body.workbench #lcdpanel > .row:first-child { padding-inline: 6px; }
+  body.workbench #lcdpanel canvas { max-height: 400px; border-width: 13px; border-radius: 21px !important; }
+  body.workbench #wbRail { grid-template-columns: 1fr; padding: 14px; }
+  body.workbench .wb-console-card > .tabs { padding-inline: 10px; overflow-x: auto; flex-wrap: nowrap; }
+  body.workbench .wb-console-card > .tabs strong { display: none; }
+  body.workbench .wb-console-card .tabs button { flex: 0 0 auto; }
+  body.workbench .wb-console-card > .row:not(.tabs) { padding-inline: 12px; }
+  body.workbench #console { height: 150px; padding-inline: 13px; }
+  body.workbench #fwpanel, body.workbench .wb-config-head { padding-inline: 15px; }
+  body.workbench #fwpanel label { width: 100%; }
+  body.workbench #fwpanel select, body.workbench #fwpanel input:not([type=checkbox]) { width: 100% !important; }
+  body.workbench #fwpanel input[type=file] { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.workbench *, body.workbench *::before, body.workbench *::after { scroll-behavior: auto !important; transition: none !important; }
+}

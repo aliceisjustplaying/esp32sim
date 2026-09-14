@@ -279,7 +279,7 @@ depend on the previous boot.
 # open http://127.0.0.1:8766/
 ```
 
-`--web PORT` runs the emulator in real time and serves `web/index.html`: the 14‑port board
+`--web PORT` runs the emulator in real time and serves `web/run.html`: the 14‑port board
 (knob + LED ring, buttons, speaker VU, the ST7735 in its physical orientation plus a readable
 copy), USB‑CDC and UART0 consoles, an action box for the SDK JSON protocol, and audio through
 WebAudio. Inputs: click the buttons, wheel/drag/←→ on the knob, click the cap to push it.

@@ -1,6 +1,13 @@
 # Web UI and protocol
 
-`--web PORT` serves `web/index.html` (no build step, no dependencies) and a WebSocket on the
+`web/index.html` is the site's landing page (what GitHub Pages shows at the root: the demos,
+the coding-agent story, the chip facts); every demo opens `web/run.html`, the emulator page.
+`run.html` lays itself out as a workbench (`workbench.js`, `workbench.css`: the device on a stage,
+the console under it, a rail with hints, telemetry, the machine's configuration and the same
+run as a CLI command); `?plain` gives the bare page. `index.html?wasm&fw=…` links from before
+the split redirect to `run.html`.
+
+`--web PORT` serves `web/run.html` (no build step, no dependencies) and a WebSocket on the
 same port. The page shows the board (Atech: 14-port drawing with knob, ring, buttons,
 speaker VU, the TFT in its physical orientation plus a readable copy; Waveshare: camera
 panel with picture upload / webcam and speaker meter; bare: console only), the USB-CDC and

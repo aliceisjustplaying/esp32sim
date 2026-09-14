@@ -134,12 +134,13 @@ fn handle_client(mut stream: TcpStream, shared: Arc<Mutex<Shared>>) {
     let key = header(&text, "Sec-WebSocket-Key").map(str::to_string);
     let Some(key) = key else {
         // plain HTTP: serve a file
-        let path = text.split_whitespace().nth(1).unwrap_or("/");
-        let path = if path == "/" { "/index.html" } else { path };
+        let path = text.split_whitespace().nth(1).unwrap_or("/").split('?').next().unwrap_or("/");
+        let path = if path == "/" { "/run.html" } else { path };
         let web_dir = shared.lock().unwrap().web_dir.clone();
         let safe = !path.contains("..");
         let body = if safe { std::fs::read(format!("{}{}", web_dir, path)).ok() } else { None };
-        let (status, body, ctype) = match body { Some(b) => ("200 OK", b, if path.ends_with(".js") { "application/javascript" } else { "text/html; charset=utf-8" }), None => ("404 Not Found", b"not found".to_vec(), "text/plain") };
+        let ctype = match path.rsplit('.').next() { Some("js") | Some("mjs") => "application/javascript", Some("css") => "text/css", Some("json") => "application/json", Some("wasm") => "application/wasm", Some("png") => "image/png", Some("webp") => "image/webp", Some("svg") => "image/svg+xml", Some("txt") => "text/plain; charset=utf-8", _ => "text/html; charset=utf-8" };
+        let (status, body, ctype) = match body { Some(b) => ("200 OK", b, ctype), None => ("404 Not Found", b"not found".to_vec(), "text/plain") };
         let _ = stream.write_all(format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", status, ctype, body.len()).as_bytes());
         let _ = stream.write_all(&body);
         return;
