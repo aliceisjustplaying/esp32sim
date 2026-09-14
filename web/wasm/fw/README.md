@@ -1,6 +1,6 @@
 # Firmware for the WebAssembly build
 
-Put images here for `index.html?wasm&fw=<name>`, described by `<name>.json`:
+Put images here for `run.html?wasm&fw=<name>`, described by `<name>.json`:
 
 ```json
 { "board": "waveshare-lcd4b", "flash_mb": 16, "psram_mb": 8, "wifi": "ssid=esp32sim,psk=esp32sim-pass", "stubs": ["esp_wifi_start=0"],

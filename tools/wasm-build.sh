@@ -1,7 +1,7 @@
 #!/bin/sh
-# Build the WebAssembly emulator and put it where web/index.html?wasm expects it.
+# Build the WebAssembly emulator and put it where web/run.html?wasm expects it.
 #   tools/wasm-build.sh            -> web/wasm/esp32sim.wasm
-#   python3 -m http.server -d web 8790 ; open http://127.0.0.1:8790/?wasm
+#   python3 -m http.server -d web 8790 ; open http://127.0.0.1:8790/run.html?wasm
 set -e
 cd "$(dirname "$0")/.."
 rustup target list --installed | grep -q wasm32-unknown-unknown || rustup target add wasm32-unknown-unknown

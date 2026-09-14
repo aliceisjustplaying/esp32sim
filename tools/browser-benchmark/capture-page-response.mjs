@@ -1,4 +1,4 @@
-// Production index.html + EmuLink + worker, driven by real CDP mouse events.
+// Production run.html + EmuLink + worker, driven by real CDP mouse events.
 // Queue stages pair by sample ID. Changed-pixel observations are per stroke,
 // not proof that any particular input was consumed or optically presented.
 import fs from 'node:fs/promises';

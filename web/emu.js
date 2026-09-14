@@ -1,5 +1,5 @@
 // Page-side glue for the WebAssembly build. Active when the page is opened with `?wasm`; then
-// window.EmuLink replaces the WebSocket transport in index.html, and a firmware panel is added.
+// window.EmuLink replaces the WebSocket transport in run.html, and a firmware panel is added.
 // Firmware comes from the visitor's disk (file inputs) or from a manifest `wasm/fw/<name>.json`
 // (`?wasm&fw=<name>`) listing files to fetch — for your own hosting; never publish blobs you
 // may not redistribute (the Espressif mask ROM, third-party firmware).
@@ -58,7 +58,7 @@
   };
 
   // Everything below touches the DOM; this script is loaded at the top of <body>, before the
-  // header and main exist, so it waits for the document. EmuLink above is what index.html's
+  // header and main exist, so it waits for the document. EmuLink above is what run.html's
   // own script (at the end of <body>) needs, and that is defined synchronously.
   document.addEventListener('DOMContentLoaded', () => {
   // no firmware yet: no board to draw. The board announcement at boot switches the layout.

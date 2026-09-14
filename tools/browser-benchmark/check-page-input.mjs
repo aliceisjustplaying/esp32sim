@@ -97,7 +97,7 @@ try {
     await evaluate(`(() => { for (let i=0;i<2100;i++) window.recordTouchTrace({stage:'test',i}); })()`);
     assert.equal(await evaluate('window.__esp32simTouchTrace.length'), 2048, 'trace retention is bounded');
   }
-  console.log(JSON.stringify({passed: true, browser: version.Browser, checks: ['trailing dense move', 'bounded sampling', 'release', 'cancel flush', 'single contact', 'no stale timer', 'successive captured drags'], scope: 'actual index.html listeners, captured transport; no firmware latency assertion'}));
+  console.log(JSON.stringify({passed: true, browser: version.Browser, checks: ['trailing dense move', 'bounded sampling', 'release', 'cancel flush', 'single contact', 'no stale timer', 'successive captured drags'], scope: 'actual run.html listeners, captured transport; no firmware latency assertion'}));
 } finally {
   if (targetId) await send('Target.closeTarget', {targetId});
   socket.close();
