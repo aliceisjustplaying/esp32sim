@@ -254,6 +254,38 @@ fn compare_configured(
     }
 }
 
+fn windowed_returns() -> u32 {
+    let mut tests = 0;
+    for op in [Op::Retw, Op::RetwN] {
+        let mut block = [insn(Op::Add), insn(op)];
+        for wb in 0u32..16 {
+            for inc in 0u32..4 {
+                for resident in [false, true] {
+                    for excm in [0, ps::EXCM] {
+                        for (entry, budget) in [(0, 2), (0, 1), (1, 1)] {
+                            compare_configured(&mut block, wb, entry, budget, None, false,
+                                false, false, false, |c| {
+                                    // Preserve unrelated PS bits and replace stale CALLINC.
+                                    c.ps = ps::WOE | excm | (3 << ps::CALLINC_SHIFT) | 5;
+                                    c.windowbase = wb;
+                                    let caller = wb.wrapping_sub(inc) & 15;
+                                    c.windowstart = (1 << wb) | if resident { 1 << caller } else { 0 };
+                                    c.set_ar(0, (inc << 30) | 0x1234_5678);
+                                    // A taken return at LEND must not consume LCOUNT.
+                                    c.lbeg = BASE;
+                                    c.lend = BASE + 6;
+                                    c.lcount = 7;
+                                });
+                            tests += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    tests
+}
+
 fn terminal_helpers() -> u32 {
     use Op::*;
     let mut tests = 0;
@@ -1183,7 +1215,7 @@ fn regions() -> u32 {
         cases += 1;
     }
     // Calls and returns end chunks and leave; a function entry heads a region whose
-    // window proof is redone after ENTRY; RETW.N runs through the terminal helper.
+    // window proof is redone after ENTRY; RETW.N restores the caller window.
     let mut p = Vec::new();
     p.extend(asm::call8(BASE, BASE + 12));          // 0  call8 F
     p.extend(asm::addi_n(2, 2, 1));                 // 3  (return address)
@@ -1486,5 +1518,5 @@ pub fn run_tests() -> u32 {
     retention();
     hardware_loop_scheduler();
     crate::block::ownership_tests::compiled_helpers_follow_the_current_bus_type();
-    tests + integer_ops() + floating_point() + floating_point_guard_proof() + 4 + hardware_loops() + window_masks() + terminal_helpers() + whole_block_guards() + entry_and_shifts()
+    tests + integer_ops() + floating_point() + floating_point_guard_proof() + 4 + hardware_loops() + window_masks() + terminal_helpers() + windowed_returns() + whole_block_guards() + entry_and_shifts()
 }

@@ -85,6 +85,7 @@ pub(super) fn supported(op: crate::Op, fast: bool) -> bool {
             | J
             | Jx
             | Call0 | Call4 | Call8 | Call12 | Callx0 | Callx4 | Callx8 | Callx12
+            | Retw | RetwN
             | Beqz
             | BeqzN
             | Bnez
@@ -126,8 +127,8 @@ pub(super) fn loop_safe(op: crate::Op, fast: bool) -> bool {
             | S8i | S16i | S32i | S32iN))
 }
 
-// Calls and returns must end decoder blocks. Normal calls are emitted directly;
-// returns and exceptional calls retain exec_insn's window and exception handling.
+// Calls and returns must end decoder blocks. Normal calls and windowed returns
+// are emitted directly; exceptional cases retain exec_insn's handling.
 pub(super) fn terminal_helper(op: crate::Op) -> bool {
     use crate::Op::*;
     matches!(op, Call0 | Call4 | Call8 | Call12 | Callx0 | Callx4 | Callx8 | Callx12
@@ -1043,6 +1044,70 @@ fn emit_instruction(
             g.ar(s);
             g.store(PC);
             g.ret(CODE_LEFT);
+        }
+        Retw | RetwN => {
+            // Only the resident caller window is fast. Leave illegal returns and
+            // underflow to exec_insn before changing any architectural state.
+            g.ar(0);
+            g.c(30);
+            g.op(0x76);
+            g.set(TMP); // encoded CALLINC
+            g.cpu(WINDOWBASE);
+            g.get(TMP);
+            g.op(0x6b);
+            g.c(15);
+            g.op(0x71);
+            g.set(REL); // caller window
+            g.cpu(offset_of!(Cpu, ps));
+            g.c(ps::WOE);
+            g.op(0x71);
+            g.op(0x45);
+            g.get(TMP);
+            g.op(0x45);
+            g.op(0x72);
+            g.cpu(offset_of!(Cpu, windowstart));
+            g.c(1);
+            g.get(REL);
+            g.op(0x74);
+            g.op(0x71);
+            g.op(0x45);
+            g.op(0x72);
+            g.begin_if();
+            g.fallback(bi, pc, next, true, false);
+            g.end();
+            // Dirty locals still belong to the old window. Spill once, then
+            // return without reloading or spilling into the caller's window.
+            g.spill();
+            g.get(0);
+            g.cpu(offset_of!(Cpu, windowstart));
+            g.c(1);
+            g.cpu(WINDOWBASE);
+            g.op(0x74);
+            g.c(u32::MAX);
+            g.op(0x73);
+            g.op(0x71);
+            g.store(offset_of!(Cpu, windowstart));
+            g.get(0);
+            g.get(REL);
+            g.store(WINDOWBASE);
+            g.get(0);
+            g.cpu(offset_of!(Cpu, ps));
+            g.c(!ps::CALLINC_MASK);
+            g.op(0x71);
+            g.get(TMP);
+            g.c(ps::CALLINC_SHIFT);
+            g.op(0x74);
+            g.op(0x72);
+            g.store(offset_of!(Cpu, ps));
+            g.get(0);
+            g.ar(0);
+            g.c(0x3fff_ffff);
+            g.op(0x71);
+            g.c(pc & 0xc000_0000);
+            g.op(0x72);
+            g.store(PC);
+            g.advance();
+            g.ret_value(CODE_LEFT);
         }
         Call0 | Call4 | Call8 | Call12 | Callx0 | Callx4 | Callx8 | Callx12 => {
             let inc = match i.op {
