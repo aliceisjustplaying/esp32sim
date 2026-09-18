@@ -600,7 +600,7 @@ impl<S: Soc> Machine<S> {
     /// cycle or instruction limit may fall due before the last of them.
     fn vq_quanta(&self, insns_left: u64, on: &[bool]) -> u64 {
         let Some(deadline) = self.bus.next_deadline() else { return 1 };
-        if self.rt.enabled { return 1; }
+        if self.rt.enabled || !self.bus.can_defer() { return 1; }
         let now = self.bus.cycles();
         let mut k = self.vq_max.min(deadline.div_ceil(QUANTUM)).min(insns_left.div_ceil(QUANTUM))
             .min(self.max_cycles.saturating_sub(now).div_ceil(QUANTUM));
