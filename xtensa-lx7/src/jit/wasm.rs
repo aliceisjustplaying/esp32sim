@@ -193,7 +193,11 @@ pub fn compile(
     pc: u32,
     fast: bool,
 ) -> Option<u32> {
-    if instructions.len() < 2
+    // Keep general singleton admission conservative. Resident-window returns
+    // have a direct path and often stand alone after a call's continuation.
+    let single_return = instructions.len() == 1
+        && matches!(instructions[0].insn.op, crate::Op::Retw | crate::Op::RetwN);
+    if (instructions.len() < 2 && !single_return)
         || !instructions.iter().enumerate().all(|(n, i)| {
             let last = n + 1 == instructions.len();
             (!emitter::terminal_helper(i.insn.op) || last)

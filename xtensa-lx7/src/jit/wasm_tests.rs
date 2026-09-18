@@ -263,8 +263,7 @@ fn windowed_returns() -> u32 {
                 for resident in [false, true] {
                     for excm in [0, ps::EXCM] {
                         for (entry, budget) in [(0, 2), (0, 1), (1, 1)] {
-                            compare_configured(&mut block, wb, entry, budget, None, false,
-                                false, false, false, |c| {
+                            let configure = |c: &mut Cpu| {
                                     // Preserve unrelated PS bits and replace stale CALLINC.
                                     c.ps = ps::WOE | excm | (3 << ps::CALLINC_SHIFT) | 5;
                                     c.windowbase = wb;
@@ -275,8 +274,19 @@ fn windowed_returns() -> u32 {
                                     c.lbeg = BASE;
                                     c.lend = BASE + 6;
                                     c.lcount = 7;
-                                });
+                                };
+                            compare_configured(&mut block, wb, entry, budget, None, false,
+                                false, false, false, configure);
                             tests += 1;
+                            if entry == 1 {
+                                let mut single = [block[1]];
+                                single[0].insn.len = if op == Op::RetwN { 2 } else { 3 };
+                                let mut cc = CodeCache::new(0).unwrap();
+                                assert!(compile(&mut cc, &mut single, BASE, false).is_some());
+                                compare_configured(&mut single, wb, 0, 1, None, false,
+                                    false, false, false, configure);
+                                tests += 1;
+                            }
                         }
                     }
                 }
@@ -302,7 +312,8 @@ fn terminal_helpers() -> u32 {
         let mut cc = CodeCache::new(0).unwrap();
         assert!(compile(&mut cc, &mut block, BASE, false).is_some());
         assert!(compile(&mut cc, &mut [insn(op), insn(Add)], BASE, false).is_none());
-        assert!(compile(&mut cc, &mut [insn(op)], BASE, false).is_none());
+        assert_eq!(compile(&mut cc, &mut [insn(op)], BASE, false).is_some(),
+            matches!(op, Retw | RetwN));
         for wb in [0, 7, 15] {
             for flags in [0, ps::WOE, ps::WOE | ps::EXCM] {
                 for windows in [0, 1 << 2, 0xffff] {
