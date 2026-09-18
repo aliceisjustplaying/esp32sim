@@ -72,6 +72,8 @@ pub trait SocBus: Bus {
     fn next_deadline(&self) -> Option<u64> { None }
     fn irq_dirty(&mut self) -> &mut bool;
     /// Arm or disarm device-register deferral for a multi-quantum run (EX133); clears the flag.
+    /// Whether `set_defer` is honoured; without it a multi-quantum run is never attempted.
+    fn can_defer(&self) -> bool { false }
     fn set_defer(&mut self, on: bool) { let _ = on; }
     /// Whether the last dispatch stopped in front of a device-register access; clears it.
     fn take_deferred(&mut self) -> bool { false }
