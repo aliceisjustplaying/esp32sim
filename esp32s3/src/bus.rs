@@ -98,6 +98,8 @@ pub struct SocBus {
     /// batch when a timer is due, a peripheral register is accessed, or MAX_TICK_DEFER cycles
     /// have passed — so guest-visible time is exact while idle rounds cost nothing.
     tick_pending: u32, tick_budget: u32,
+    /// EX133 virtual quanta: stop in front of device-register accesses / one was just refused.
+    pub(crate) defer_mmio: bool, pub(crate) mmio_deferred: bool,
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
@@ -122,7 +124,7 @@ impl SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
-            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0,
+            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0, defer_mmio: false, mmio_deferred: false,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -987,6 +989,14 @@ impl Bus for SocBus {
     }
     #[inline(always)]
     fn block_break(&self) -> bool { self.irq_dirty }
+    #[inline(always)]
+    fn defer_armed(&self) -> bool { self.defer_mmio }
+    #[inline(always)]
+    fn defer_access(&mut self, addr: u32) -> bool {
+        if self.defer_mmio && Self::is_periph(addr) { self.mmio_deferred = true; true } else { false }
+    }
+    #[inline(always)]
+    fn deferred(&self) -> bool { self.mmio_deferred }
     fn code_page(&mut self, pc: u32) -> u32 {
         match self.lookup(pc) { Some(e) => e.vbase + ((pc - e.lo) >> VPAGE_SHIFT), None => self.page_ver.len() as u32 - 1 }
     }
