@@ -104,7 +104,7 @@ pub struct SocBus {
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
 /// latency of everything that has no computed deadline (DMA, USB, LCD, WiFi).
-const MAX_TICK_DEFER: u32 = 256;
+const MAX_TICK_DEFER: u32 = 65536;
 
 /// Buffer identifiers for resolved addresses.
 pub const SRC_SRAM: u8 = 0; pub const SRC_IROM: u8 = 1; pub const SRC_FLASH: u8 = 2; pub const SRC_PSRAM: u8 = 3;
