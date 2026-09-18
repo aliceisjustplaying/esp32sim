@@ -99,12 +99,16 @@ pub struct SocBus {
     /// have passed — so guest-visible time is exact while idle rounds cost nothing.
     tick_pending: u32, tick_budget: u32,
     /// EX133 virtual quanta: stop in front of device-register accesses / one was just refused.
-    pub(crate) defer_mmio: bool, pub(crate) mmio_deferred: bool,
+    pub(crate) defer_mmio: bool, pub(crate) mmio_deferred: bool, pub vq_violations: u64,
 }
 
 /// Longest stretch of cycles device models may go without seeing time advance. Bounds the
 /// latency of everything that has no computed deadline (DMA, USB, LCD, WiFi).
-const MAX_TICK_DEFER: u32 = 65536;
+/// EX134 (experiment): a build can pin another bound with `ESP32SIM_DEFER_BUILD=<cycles>`.
+const MAX_TICK_DEFER: u32 = match option_env!("ESP32SIM_DEFER_BUILD") {
+    Some(s) => { let b = s.as_bytes(); let (mut i, mut v) = (0, 0u32); while i < b.len() { v = v * 10 + (b[i] - b'0') as u32; i += 1; } v }
+    None => 256,
+};
 
 /// Buffer identifiers for resolved addresses.
 pub const SRC_SRAM: u8 = 0; pub const SRC_IROM: u8 = 1; pub const SRC_FLASH: u8 = 2; pub const SRC_PSRAM: u8 = 3;
@@ -124,7 +128,7 @@ impl SocBus {
             sram: vec![0; SRAM_SIZE], irom: vec![0; (IROM_MASK_HIGH - IROM_MASK_LOW) as usize], drom: vec![0; (DROM_MASK_HIGH - DROM_MASK_LOW) as usize],
             rtc_fast: vec![0; 8192], rtc_slow: vec![0; 8192], flash: vec![0xff; flash_size], psram: vec![0; psram_size],
             mmu: [MMU_INVALID; MMU_ENTRIES], periph: Peripherals::new(mac), board: Box::new(crate::board::Atech14::new()), cycles: 0, last_fault: None, spi2_dma_fault: None, irq_dirty: false, gpio_events: None, debug: Default::default(),
-            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0, defer_mmio: false, mmio_deferred: false,
+            tlb: vec![TlbEntry::EMPTY; TLB_SIZE], page_ver: Vec::new(), ver_base: [0; 7], tick_pending: 0, tick_budget: 0, defer_mmio: false, mmio_deferred: false, vq_violations: 0,
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -244,10 +248,18 @@ impl SocBus {
         if (MMU_TABLE..MMU_TABLE + (MMU_ENTRIES as u32) * 4).contains(&addr) {
             return self.mmu[((addr - MMU_TABLE) >> 2) as usize];
         }
+        self.vq_backstop(addr);
         self.flush_ticks();                                         // registers must show exact time
         self.periph.read32(addr)
     }
+    /// EX133: every device-register access must have been deferred out of a multi-quantum run.
+    /// One that was not (a PIE or MAC16 word access; nothing real does this) saw early time.
+    #[inline]
+    fn vq_backstop(&mut self, addr: u32) {
+        if self.defer_mmio { assert!(option_env!("ESP32SIM_VQ_STRICT").is_none(), "EX133: undeferred device access at {addr:#x}"); self.vq_violations += 1; if self.vq_violations == 1 { eprintln!("[emu] EX133: undeferred device access at {addr:#x}, pc {:#x}", self.periph.misc.cur_pc); } }
+    }
     fn periph_write(&mut self, addr: u32, v: u32) {
+        self.vq_backstop(addr);
         self.periph_write_inner(addr, v);
         self.refresh_tick_budget();   // the write may have armed something
     }

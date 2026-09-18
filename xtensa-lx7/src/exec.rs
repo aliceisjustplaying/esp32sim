@@ -287,6 +287,7 @@ pub(crate) fn word_access(cpu: &Cpu, i: &Insn) -> Option<u32> {
         L32i | L32iN | L32ai | S32i | S32iN | S32ri | S32nb | L32e | S32e | S32c1i | Lsi | Lsip | Ssi | Ssip
             => Some(cpu.get_ar(i.s).wrapping_add(i.imm as u32)),
         Lsx | Lsxp | Ssx | Ssxp => Some(cpu.get_ar(i.s).wrapping_add(cpu.get_ar(i.t))),
+        L32r => Some(i.imm as u32),
         _ => None,
     }
 }
