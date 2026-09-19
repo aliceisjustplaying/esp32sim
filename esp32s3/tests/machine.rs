@@ -183,7 +183,7 @@ fn quiet_display_publication_remains_live_during_continuous_changes() {
             Some((1, 1, vec![version as u16], version))
         }
     }
-    const PUSH: u64 = 240_000_000 / 120;   // one page-push interval (machine.rs PUSH_HZ)
+    const PUSH: u64 = 240_000_000 / 50;   // one page-push interval at the default display_push_hz
     let mut m = machine();
     let version = Arc::new(AtomicU64::new(0));
     m.bus.board = Box::new(Display(version.clone()));
