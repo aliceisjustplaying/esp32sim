@@ -27,8 +27,13 @@ struct Row {
 
 pub const PATHS: [&str; 12] = ["irq", "waiting", "find_trap", "interp_nocode", "interp_cold", "region_hot", "region_slow",
     "body_noregion", "body_gatefail", "body_after_reject", "body_resumed", "body_observed"];
+pub fn missing(ops: &[BlockInsn], fast: bool) -> String {
+    let mut v: Vec<String> = ops.iter().filter(|i| !emitter::supported_insn(&i.insn, fast)).map(|i| if i.insn.op == crate::Op::Pie { format!("Pie:{}", crate::pie_table::OPS[i.insn.imm as usize].name) } else if matches!(i.insn.op, crate::Op::Rsr | crate::Op::Wsr | crate::Op::Xsr | crate::Op::Rur | crate::Op::Wur) { format!("{:?}:{}", i.insn.op, i.insn.imm) } else { format!("{:?}", i.insn.op) }).collect();
+    v.sort(); v.dedup(); v.join("+")
+}
 #[derive(Default)]
 pub struct Census {
+    pub nocode_blocks: HashMap<u32, (String, u64, u64)>,
     pub path: usize,
     pub budget: Vec<u64>,
     pub done: Vec<u64>,
@@ -67,6 +72,10 @@ impl Census {
             let mut v: Vec<_> = m.iter().collect(); v.sort_by(|a, b| b.1.cmp(a.1));
             for (k, n) in v.iter().take(40) { writeln!(t, "[census-{name}] {k}\t{n}").unwrap(); }
         }
+        let mut by: HashMap<&str, (u64, u64)> = HashMap::new();
+        for (m, d, i) in self.nocode_blocks.values() { let e = by.entry(m.as_str()).or_default(); e.0 += d; e.1 += i; }
+        let mut v: Vec<_> = by.iter().collect(); v.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+        for (k, (d, i)) in v.iter().take(40) { writeln!(t, "[census-nocode-missing] {k}\t{d}\t{i}").unwrap(); }
         let mut v: Vec<_> = self.pcs.iter().collect(); v.sort_by(|a, b| b.1.1.cmp(&a.1.1));
         writeln!(t, "[census-pcs] distinct={}", v.len()).unwrap();
         for (pc, (d, i)) in v.iter().take(3000) { writeln!(t, "[census-pc] {pc:08x}\t{d}\t{i}").unwrap(); }

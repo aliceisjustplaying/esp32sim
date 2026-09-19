@@ -374,6 +374,8 @@ fn run_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32, ei: u32, mut k: 
     #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
     { cpu.blocks.profile.census.path = if code == crate::jit::NONE { 3 } else { 4 }; }
     let limit = limit.min(end - k);
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    let census_head = cpu.blocks.entries[ei as usize];
     let (mut done, mut trap, mut pre, mut broke) = (0u32, None, false, false);
     while done < limit {
         let e = cpu.blocks.arena[k as usize];
@@ -396,6 +398,16 @@ fn run_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32, ei: u32, mut k: 
         }
         if let Err(t) = r { trap = Some(t); break; }
         if cpu.pc != expected || bus.block_break() { broke = true; break; }
+    }
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    if code == crate::jit::NONE {
+        let h = census_head;
+        if !cpu.blocks.profile.census.nocode_blocks.contains_key(&h.pc) {
+            let fast = bus.fast_mem().is_some();
+            let m = crate::jit::profile::missing(&cpu.blocks.arena[h.start as usize..(h.start + h.n as u32) as usize], fast);
+            cpu.blocks.profile.census.nocode_blocks.insert(h.pc, (m, 0, 0));
+        }
+        let e = cpu.blocks.profile.census.nocode_blocks.get_mut(&h.pc).unwrap(); e.1 += 1; e.2 += done as u64;
     }
     cpu.insn_count += done as u64;
     cpu.advance_ccount(done * cpu.approximate_cpi);
