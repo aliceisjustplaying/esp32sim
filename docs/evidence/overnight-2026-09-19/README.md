@@ -6,7 +6,7 @@ Two sessions worked through the night on the TinyDraw browser battery: a coordin
 
 | | main d5446b4a | this night | where |
 | --- | --- | --- | --- |
-| TinyDraw battery, exact instruction-count clock | 83.2 s wall, 0.57× | **42.6 s wall, 1.12×**, three alternating pairs, identical 9,819,885,134 instructions and console hash | `night/combined-0919` (75382bcc measured; head adds EX144 and the 1024-quanta default) |
+| TinyDraw battery, exact instruction-count clock | 83.6 s wall, 0.57× | **42.5 s wall, 1.12×**, three alternating pairs (and three more on the previous head), identical 9,819,885,134 instructions and console hash | `night/combined-0919` at 1b28b34e, default build |
 | pocket-tank, 30 guest s (both cores busy) | 80.9 s, 0.37× | 65.4 s, 0.46×, exact 10,073,833,775 | same, head |
 | Atech synth, SID jukebox, LCD-4B panel goldens | committed hashes | identical WAV hashes, consoles and per-core instruction totals with virtual quanta on (native, `--no-jit`) | `night/fast-entry-0919` |
 | Production page, boot to READY | 120.5 s (Sep 5 receipt) | 54.7 s; strokes correct, movement→canvas median 37.6 ms | `night/fast-entry-0919` |
@@ -35,7 +35,7 @@ What did not work: EX109 guarded RETW (inside noise), EX121 wasm-opt (about 1%),
 
 1. Review and upstream `night/combined-0919` in pieces: EX133 + EX134 guard, the diet, EX135, EX136/137. The EX133 contract ("exact unless `vq_violations` is non-zero") deserves a reviewer who did not write it.
 2. Timed model misfits: document load 0.63 and ring-PIE staging 0.71, both memory-side (the model has a 4-way data cache, the firmware an 8-way one; scattered PSRAM access and automatic dirty eviction are unprobed); a uniform −4% elsewhere (CALLX assumed, L32R, instruction fetch). The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
-3. Calls and returns inside regions: 82% of region exits, about 4 s of the remaining 42 s.
+3. Calls and returns inside regions: 82% of region exits, about 4 s of the remaining 42 s; the peer's design note (`design-calls-in-regions.md`) puts the first step (direct CALL8 → ENTRY as an internal edge) at no more than 4%.
 4. pocket-tank stays at 0.44×: both cores busy, so it needs raw throughput or the timed clock, not scheduling.
 
 ## Files
@@ -305,3 +305,11 @@ Peer review of the pricing commits found five real defects (double charge on div
 - Host cost unchanged: 70.4 guest s in 60.2 s wall = 1.17× realtime. `?timing=hw` on the page now uses the measured cache prices.
 
 State of the timed model against the erased-start board, measured parameters only (no fitted constant left except the 4-way geometry and CALLX = JX): uniformly about 4% fast on compute, wall, HARD and export; document load 0.63 and ring-PIE staging 0.71 are the two open misfits, both memory-side.
+
+## Step 17: combined4, EX111, cache geometry
+
+- **combined4** (1b28b34e on `night/combined-0919`: combined3 + EX144 + the 1024-quanta wasm default, built with no environment knobs; peer: 43,261 differential cases incl. new legacy-vs-virtual-quanta machine tests with only core 1 busy, native suites, CI clippy): TinyDraw 83.00 → 44.43 s in its own pair and 42.48 s as the control of the next pair (so equal to combined3 within noise), exact; pocket-tank 80.91 → **65.41 s (−19.2%)**, exact — EX144 helps there because one of its cores does idle at times.
+- **EX111 tiny tails** (peer, 8850d6c6, 43,262 cases; only budget-1 continuations inside a decoded block stay interpreted): pocket-tank 65.54 → 65.41 s, TinyDraw 42.48 → 43.12 s against combined4. No gain. Not adopted.
+- **Timed model cache geometry**: the model and the inline wasm probe now use the firmware's 8-way data cache (64 sets) instead of 4 ways. Ratios move by less than 0.015 (present 0.981 → 0.995, HARD 0.955 → 0.959); kept because it is the real geometry.
+- **combined4 confirmed with three alternating pairs** (`runs/combined4-x3`, default build, no knobs): base 83.27 / 84.16 / 83.57 s, candidate 42.50 / 42.45 / 42.75 s → **−49.2%, 1.12× modeled realtime**, bit-exact in all six runs. `tools/wasm-test.mjs` manifests hello, c3-hello, c6-hello, c6-energy-scan, panel, atech and atech-sid pass on the same artifact.
+- Peer's design note for calls inside regions: `design-calls-in-regions.md` (direct CALL8 → ENTRY-headed chunk as an internal edge, RETW and CALLX still leaving; optimistic ceiling 45.6M dispatches ≈ 1.7 s ≈ 4%).
