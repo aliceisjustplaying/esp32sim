@@ -121,6 +121,7 @@ struct CacheResource {
     core: usize,
     fill_cycles: u32,
     fill_service_cycles: u32,
+    flash_timing: Option<(u32, u32)>, // demand readiness and shared-bus occupancy
     writeback_cycles: u32,
     wait_cycles: [u64; 2],
 }
@@ -170,6 +171,7 @@ impl SocBus {
     pub fn enable_approximate_cache(&mut self, config: crate::approximate_cache::CacheConfig) {
         self.cache_resource.fill_cycles = config.fill_cycles;
         self.cache_resource.fill_service_cycles = config.fill_cycles;
+        self.cache_resource.flash_timing = None;
         self.cache_resource.writeback_cycles = config.writeback_cycles;
         self.approximate_cache = Some(crate::approximate_cache::CacheTiming::new(config));
         self.approximate_cache_pending = 0;
@@ -217,6 +219,14 @@ impl SocBus {
         true
     }
 
+    /// Optional flash-only timing experiment. Configure the common cache first;
+    /// absent this override, flash and PSRAM retain the common readiness/service.
+    pub fn set_approximate_flash_timing(&mut self, ready: u32, service: u32) -> bool {
+        if self.approximate_cache.is_none() || service < ready { return false; }
+        self.cache_resource.flash_timing = Some((ready, service));
+        true
+    }
+
     #[inline]
     fn price_cached_data(&mut self, entry: TlbEntry, address: u32, width: u32, write: bool) {
         if !matches!(entry.src as u8, SRC_FLASH | SRC_PSRAM) { return; }
@@ -224,8 +234,12 @@ impl SocBus {
             // Physical offset plus resource distinguishes flash from PSRAM and
             // recognizes virtual aliases. Both cores share this bus/cache.
             let key = (entry.src << 28) | (entry.off + address - entry.lo);
-            let result = cache.access(key, width, write);
             let resource = &mut self.cache_resource;
+            let common = (resource.fill_cycles, resource.fill_service_cycles);
+            let (ready, service) = if entry.src as u8 == SRC_FLASH {
+                resource.flash_timing.unwrap_or(common)
+            } else { common };
+            let result = cache.access_with_fill_cycles(key, width, write, ready);
             if resource.enabled {
                 let mut wait = 0u64;
                 // Dirty victims finish before refill. Writes do not have an early-ready split.
@@ -233,7 +247,7 @@ impl SocBus {
                     wait = wait.saturating_add(resource.reserve(resource.writeback_cycles, resource.writeback_cycles));
                 }
                 for _ in 0..result.line_fills {
-                    wait = wait.saturating_add(resource.reserve(resource.fill_cycles, resource.fill_service_cycles));
+                    wait = wait.saturating_add(resource.reserve(ready, service));
                 }
                 resource.wait_cycles[resource.core] = resource.wait_cycles[resource.core].saturating_add(wait);
                 // Requested-data readiness is already included in extra_cycles below.
@@ -1331,7 +1345,7 @@ mod gp_spi_board_tests {
 
     #[test]
     fn packed_pie_loads_preserve_external_cache_accounting() {
-        for psram in [false, true] {
+        for (psram, flash_ready) in [(false, 96), (true, 96), (false, 128), (true, 128)] {
             let mut bus = SocBus::new(65536, 65536, [0; 6]);
             bus.mmu[0] = if psram { MMU_SPIRAM } else { 0 };
             let mut bulk = [0; 16];
@@ -1339,6 +1353,7 @@ mod gp_spi_board_tests {
             bus.enable_approximate_cache(crate::approximate_cache::CacheConfig {
                 fill_cycles: 96, ..Default::default()
             });
+            if flash_ready != 96 { assert!(bus.set_approximate_flash_timing(flash_ready, 475)); }
             // ee.vld.128.ip q0,a4,0: decode selects the packed executor.
             let bytes = 0x0083_0044u32.to_le_bytes();
             esp_soc::SocBus::load_bytes(&mut bus, IRAM_LOW, &bytes[..3]).unwrap();
@@ -1349,9 +1364,77 @@ mod gp_spi_board_tests {
             assert_eq!(cpu.qr[0], if psram { 0 } else { u128::MAX });
             let stats = bus.approximate_cache_stats().unwrap();
             assert_eq!((stats.line_fills, stats.hits), (1, 3), "packed load must account for four words");
-            assert_eq!(bus.take_approximate_cache_penalty(), 96);
+            assert_eq!(bus.take_approximate_cache_penalty(), if psram { 96 } else { flash_ready });
             assert!(bus.read_bulk(DRAM_LOW, &mut bulk), "internal bulk stays fast in timed mode");
         }
+    }
+
+    #[test]
+    fn flash_override_keeps_psram_prices_and_shared_contention() {
+        let mut bus = SocBus::new(65536, 65536, [0; 6]);
+        bus.mmu[0] = MMU_SPIRAM;
+        bus.mmu[1] = 0;
+        bus.enable_approximate_cache(crate::approximate_cache::CacheConfig { fill_cycles: 96, writeback_cycles: 160, ..Default::default() });
+        assert!(bus.set_approximate_cache_fill_service(160));
+        assert!(!bus.set_approximate_flash_timing(128, 127));
+        assert!(bus.set_approximate_flash_timing(128, 475));
+        bus.set_approximate_cache_contention(true);
+        bus.begin_timing_batch(0, 100);
+        assert_eq!(bus.read32(DBUS_LOW + PAGE).unwrap(), u32::MAX);
+        assert_eq!(bus.take_timing_penalty(), 128);
+        // Flash occupies100..575; a simultaneous PSRAM miss waits475, then needs96.
+        bus.begin_timing_batch(1, 100);
+        bus.read32(DBUS_LOW).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 475 + 96);
+        bus.begin_timing_batch(0, 228);
+        bus.read32(DBUS_LOW + PAGE).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 0, "hits have no extra source charge");
+        bus.begin_timing_batch(0, 735);
+        bus.read32(DBUS_LOW + PAGE + 64).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 128);
+        bus.begin_timing_batch(1, 1210);
+        bus.read32(DBUS_LOW + 64).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 96);
+        let stats = bus.approximate_cache_stats().unwrap();
+        assert_eq!((stats.line_fills, stats.hits, stats.extra_cycles), (4, 1, 448));
+        assert_eq!(bus.approximate_cache_wait_cycles(), [0, 475]);
+    }
+
+    #[test]
+    fn flash_override_does_not_reprice_dirty_victims() {
+        let mut bus = SocBus::new(65536, 65536, [0; 6]);
+        bus.mmu[0] = MMU_SPIRAM;
+        bus.mmu[1] = 0;
+        bus.enable_approximate_cache(crate::approximate_cache::CacheConfig {
+            capacity_bytes: 64, ways: 1, fill_cycles: 96, writeback_cycles: 160, ..Default::default()
+        });
+        bus.set_approximate_cache_fill_service(160);
+        bus.set_approximate_flash_timing(128, 475);
+        bus.set_approximate_cache_contention(true);
+        bus.begin_timing_batch(0, 0);
+        bus.write32(DBUS_LOW, 7).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 96);
+        bus.begin_timing_batch(0, 160);
+        bus.read32(DBUS_LOW + PAGE).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 160 + 128);
+        assert_eq!(bus.cache_resource.busy_until, 160 + 160 + 475);
+        let stats = bus.approximate_cache_stats().unwrap();
+        assert_eq!((stats.line_fills, stats.dirty_writebacks, stats.extra_cycles), (2, 1, 384));
+    }
+
+    #[test]
+    fn flash_override_is_optional_and_reset_by_cache_configuration() {
+        let mut bus = SocBus::new(65536, 65536, [0; 6]);
+        bus.mmu[0] = 0;
+        assert!(!bus.set_approximate_flash_timing(128, 475));
+        let config = crate::approximate_cache::CacheConfig { fill_cycles: 96, ..Default::default() };
+        bus.enable_approximate_cache(config);
+        bus.set_approximate_flash_timing(64, 80);
+        bus.read32(DBUS_LOW).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 64, "readiness override also works without contention");
+        bus.enable_approximate_cache(config);
+        bus.read32(DBUS_LOW).unwrap();
+        assert_eq!(bus.take_timing_penalty(), 96, "no override means the original common price");
     }
 
     #[test]

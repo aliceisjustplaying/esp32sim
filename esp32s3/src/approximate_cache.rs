@@ -88,6 +88,11 @@ impl CacheTiming {
     /// Either use extra_cycles OR price fills/writebacks through a shared memory
     /// resource model. Charging both would double-count external traffic.
     pub fn access(&mut self, address: u32, width: u32, is_write: bool) -> CacheAccess {
+        self.access_with_fill_cycles(address, width, is_write, self.config.fill_cycles)
+    }
+
+    /// Override only demand-fill readiness; geometry, hit cost and writeback cost are unchanged.
+    pub fn access_with_fill_cycles(&mut self, address: u32, width: u32, is_write: bool, fill_cycles: u32) -> CacheAccess {
         let mut result = CacheAccess::default();
         if width == 0 {
             return result;
@@ -111,7 +116,7 @@ impl CacheTiming {
                 let dirty = ways[victim].valid != 0 && ways[victim].dirty != 0;
                 result.line_fills += 1;
                 result.dirty_writebacks += u64::from(dirty);
-                result.extra_cycles += self.config.fill_cycles as u64
+                result.extra_cycles += fill_cycles as u64
                     + u64::from(dirty) * self.config.writeback_cycles as u64;
                 ways[victim] = Line {
                     tag,
