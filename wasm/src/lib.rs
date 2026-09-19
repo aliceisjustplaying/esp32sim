@@ -857,7 +857,13 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u
     let e = unsafe { &mut *e };
     let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
     if m.insns() != 0 { return 1; }
-    m.bus.enable_approximate_cache(esp32s3::approximate_cache::CacheConfig { fill_cycles: fill, writeback_cycles: writeback, ..Default::default() });
+    // `fast_internal` values 2 and 3 both select the inline probe; 3 also selects the 64 KB data
+    // cache some firmware configures (EXTMEM_DCACHE_CTRL size mode 1; pocket-tank does).
+    let capacity_bytes = if fast_internal == 3 { 65536 } else { 32768 };
+    let fast_internal = fast_internal.min(2);
+    m.bus.enable_approximate_cache(esp32s3::approximate_cache::CacheConfig { fill_cycles: fill, writeback_cycles: writeback, capacity_bytes, ..Default::default() });
+    #[cfg(all(target_arch = "wasm32", feature = "cache-inline"))]
+    xtensa_lx7::jit::CACHE_SET_MASK.store(capacity_bytes as u32 / (64 * 8) - 1, std::sync::atomic::Ordering::Relaxed);
     m.bus.set_approximate_cache_fast_internal(fast_internal != 0);
     if fast_internal == 2 {
         if !m.bus.set_approximate_cache_inline() { return 1; }

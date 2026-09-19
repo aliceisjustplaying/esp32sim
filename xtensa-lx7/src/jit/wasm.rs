@@ -93,6 +93,8 @@ pub static PRICED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 /// runs without the timing model must not pay for it).
 /// EX147: regions generated from now on record the chunks they enter in `Cpu::fetch_ring`.
 pub static FETCH_RING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Set index mask of the inline data-cache probe: 63 for the 32 KB cache, 127 for 64 KB (64-byte lines, 8 ways).
+pub static CACHE_SET_MASK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(63);
 pub static CACHE_PROBES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const RETAIN_BYTES: usize = 64 << 20;
 const RETAIN_BLOCKS: usize = 16_384;

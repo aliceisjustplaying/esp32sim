@@ -1413,7 +1413,7 @@ fn emit_cache_hit(g: &mut Gen, store: bool, accesses: u8) {
     g.get(CACHE);
     g.load(offset_of!(FastCache, lines));
     g.get(CACHE_TAG);
-    g.c(63);   // 32 KB, 64-byte lines, 8 ways: 64 sets (the TinyDraw firmware's data cache)
+    g.c(super::CACHE_SET_MASK.load(std::sync::atomic::Ordering::Relaxed));   // 64-byte lines, 8 ways: 64 sets at 32 KB, 128 at 64 KB
     g.op(0x71);
     g.c((8 * size_of::<FastCacheLine>()) as u32);
     g.op(0x6c);

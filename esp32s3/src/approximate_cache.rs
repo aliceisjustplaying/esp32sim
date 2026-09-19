@@ -75,7 +75,7 @@ impl CacheTiming {
     }
     /// Fixed-geometry prototype; other configurations retain the helper path.
     pub fn inline_view(&mut self) -> Option<FastCache> {
-        (self.config.capacity_bytes == 32768 && self.config.line_bytes == 64
+        (matches!(self.config.capacity_bytes, 32768 | 65536) && self.config.line_bytes == 64
             && self.config.ways == 8 && self.config.hit_cycles == 0)
             .then_some(FastCache { lines: self.lines.as_mut_ptr(), hits: &mut self.stats.hits })
     }
