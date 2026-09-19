@@ -4,36 +4,38 @@ Two sessions worked through the night on the TinyDraw browser battery: a coordin
 
 ## Results
 
-| | main d5446b4a | this night | where |
+The reference column gives the revision or configuration each figure comes from; rows marked historical are earlier receipts, not runs of main d5446b4a made tonight.
+
+| | Reference | This night | Where |
 | --- | --- | --- | --- |
-| TinyDraw battery, exact instruction-count clock | 83.6 s wall, 0.57× | **42.5 s wall, 1.12×**, three alternating pairs (and three more on the previous head), identical 9,819,885,134 instructions and console hash | `night/combined-0919` at 1b28b34e, default build |
-| pocket-tank, 30 guest s (both cores busy) | 80.9 s, 0.37× | 65.4 s, 0.46×, exact 10,073,833,775 | same, head |
-| Atech synth, SID jukebox, LCD-4B panel goldens | committed hashes | identical WAV hashes, consoles and per-core instruction totals with virtual quanta on (native, `--no-jit`) | `night/fast-entry-0919` |
-| Production page, boot to READY | 120.5 s (Sep 5 receipt) | 54.7 s; strokes correct, movement→canvas median 37.6 ms | `night/fast-entry-0919` |
-| Approximate-timing model (EX066 configuration) | 0.478× (Sep 7) | **≈1.2×** with measured instruction, alignment and cache prices | `night/timed-0919` |
-| Timed model vs an erased-start board, paced cold tests | compute 0.749, wall 0.787 | **compute 0.956 (0.883–0.969), wall 0.958, HARD 0.955, export 0.964**; whole battery 70.4 guest s vs 77.4 s | same |
-| pocket-tank under the timed model | 24.3 tok/s, 62.5 fps (instruction clock) | 9.5 tok/s, 35 fps; the board does 12 and 25–30 | same |
-| Production page under the timed model (`?timing=hw`) | strokes dead (board-swap bug) | boots in 80 s wall like the device, strokes correct, 38 ms median | same |
+| TinyDraw battery, exact instruction-count clock | main d5446b4a: 83.6 s wall, 0.57× | **42.5 s wall, 1.12×**; three alternating pairs on 1b28b34e and three on the previous head 75382bcc; identical 9,819,885,134 instructions and console hash | `night/combined-0919` at 1b28b34e, default build, pushed |
+| pocket-tank, 30 guest s (both cores busy) | main d5446b4a: 80.9 s, 0.37× | 65.4 s, 0.46×, exact 10,073,833,775 (one pair) | same |
+| Atech synth, SID jukebox, LCD-4B panel goldens | committed hashes | identical WAV hashes, consoles and per-core instruction totals with virtual quanta on (native, `--no-jit`, one run each) | `night/fast-entry-0919` |
+| Production page, boot to READY | historical: 120.5 s (Sep 5 receipt, 8df2f0ad) | 54.7–56.5 s; strokes correct, movement→canvas median 36–38 ms (single runs) | `night/fast-entry-0919`, `night/timed-0919` |
+| Approximate-timing model, EX066 configuration | historical: 0.478× (Sep 7, d13b7f93) | ≈1.2× with measurement-informed instruction, alignment and cache prices (single untimed runs) | `night/timed-0919` |
+| Timed model vs an erased-start board, 15 paced cold tests | EX066 configuration on tonight's head: compute 0.749, wall 0.787 | medians compute 0.957, wall 0.961, HARD 0.959, export 0.969; individual compute cases 0.88–0.97; whole battery 70.6 guest s vs 77.4 s | same |
+| pocket-tank under the timed model | instruction clock: 24.3 tok/s, 62.5 fps | 9.5 tok/s, 35 fps; `docs/speed-plan.md` gives the board as 12 and 25–30 | same |
+| Production page under the timed model (`?timing=hw`) | strokes dead (board-swap bug, found tonight) | boots to READY in 79 s wall, strokes correct, 38.6 ms median. The board needs 77.4 s from its startup serial line to the verdict; the endpoints differ | same |
 
 What made the difference, in order of size:
 
 1. **EX133 virtual quanta** (new). While the other core idles, core 0 runs many 64-instruction quanta in one budget. The run is bounded so that nothing can fall due inside it, a device-register access stops in front of its instruction, and the spanned rounds are closed exactly as before, so results are bit-identical. EX133 alone (K≤4) took 85.3 s to 70.5 s; with **EX134** in its first, unsafe constant form 82.2 s to 53.9 s. The guarded form of EX134 (tick deferral raised only while no cadence-driven device is active) costs about 1.4 s of that and is the one that is kept.
 2. **EX137 larger regions.** The widening part of EX043, isolated, is worth 15% under virtual quanta. EX043 itself was a flat multi-change bundle, so longer budgets are the plausible enabler, not a proved sole cause.
 3. **Dispatch diet**: EX038 boxed cache, EX065 negative coverage cache, EX106 direct cut index (5–10%), plus EX135 and EX136 (2–3% each).
-4. **EX139 + EX138/EX140/EX141** for the timed model: solo batches with registers deferred to settled time, then measured prices folded into generated code as constants. Pricing cycles correctly slows the guest clock, so the priced model still runs at realtime.
+4. **EX139 + EX138/EX140/EX141/EX146** for the timed model: solo batches that yield in front of device registers, then measured prices folded into generated code as constants. More cycles per instruction means less guest work per simulated second, so the priced model still runs at realtime; that ratio is under a different clock and is not an equal-work speedup.
 
 What did not work: EX109 guarded RETW (inside noise), EX121 wasm-opt (about 1%), EX043 last-mapping TLB reuse isolated (4.2% slower), EX134 as a plain constant (breaks pocket-tank's pinned total), my first derived call/return prices (overcharged by 4.5 cycles per call; replaced by EX141's measured ones).
 
 ## What to trust, and how far
 
-- The exact-clock numbers rest on the harness's own contract: equal instruction totals, equal console SHA-256, 36/36 firmware checks, zero JIT failures, alternating pairs. combined2 and combined3 each have three pairs; every other row in the log is a single screening pair and is labeled so.
-- The peer ran the differential suite (43,257 cases on combined3), native workspace tests and CI clippy on the integrated commits.
-- The timed model is approximate by design. Its prices come from earlier hardware ladders (EX067, EX068, EX079) and from EX081's control cells, which were captured on September 7 and analysed only tonight. CALLX, SUB.S/MSUB.S and the cache parameters are assumptions, named as such in the code. The fit is to one firmware on one board revision.
-- Hardware: the board was fully erased (authorized) and reflashed with the frozen gate-1 images. It was not restored and still runs that firmware.
+- The exact-clock numbers rest on the harness's own contract: equal instruction totals, equal console SHA-256, 36/36 firmware checks, zero JIT failures, alternating pairs. combined2, combined3 and combined4 each have three pairs, the mapping-cache screen two; the other exact-clock rows are single screening pairs, and the timed-model rows are single unpaired diagnostic runs. Each entry in the log states its own count.
+- The peer ran the wasm differential suite (43,261 cases on combined4), selected native suites (Xtensa semantics, S3, shared SoC) and the CI clippy command on the integrated commits. The coordinator ran `cargo test --release --workspace` on `night/fast-entry-0919` and `night/timed-0919` and both differential configurations on the merged timed head.
+- The timed model is approximate by design: a measurement-informed model with remaining assumptions. Its instruction prices come from earlier hardware ladders (EX067, EX068, EX079, EX080) and from EX081's control cells, captured on September 7 and analysed only tonight; its cache prices from window totals of tonight's Tier-B cohort, which are not isolated miss penalties. Assumed: CALLX = JX, SUB.S/MSUB.S = ADD.S, one-cycle latency for unmeasured FP/PIE writers, round-robin replacement, explicit-`msync` cost for automatic eviction, one fill price for PSRAM and flash. The fit is to one firmware on one board revision.
+- Hardware: the board was fully erased (authorized), ran the frozen gate-1 images for the two reference captures, then the Tier-B calibration images. It was not restored; the last image flashed is the Tier-B XIP-PSRAM one.
 
 ## Open items, most valuable first
 
-1. Review and upstream `night/combined-0919` in pieces: EX133 + EX134 guard, the diet, EX135, EX136/137. The EX133 contract ("exact unless `vq_violations` is non-zero") deserves a reviewer who did not write it.
+1. Review and upstream `night/combined-0919` in pieces: EX133 + EX134 guard, the diet, EX135, EX136/137, EX144. EX133's exactness rests on several invariants together (the run-length bounds on device flush, script, page push, peer wake-up and limits; deferral of device registers; the cadence guard) and on the tested contract (pinned totals, console hashes, goldens). `vq_violations` is only a backstop for register accesses that escape deferral, not a correctness certificate. It deserves a reviewer who did not write it.
 2. Timed model misfits: document load 0.63 and ring-PIE staging 0.71, both memory-side (the model has a 4-way data cache, the firmware an 8-way one; scattered PSRAM access and automatic dirty eviction are unprobed); a uniform −4% elsewhere (CALLX assumed, L32R, instruction fetch). The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
 3. Calls and returns inside regions: 82% of region exits, about 4 s of the remaining 42 s; the peer's design note (`design-calls-in-regions.md`) puts the first step (direct CALL8 → ENTRY as an internal edge) at no more than 4%.
 4. pocket-tank stays at 0.44×: both cores busy, so it needs raw throughput or the timed clock, not scheduling.
@@ -165,7 +167,7 @@ EX136 gave 2.7% in this screen, not the 10–15% I had guessed for the `jit::run
 
 Merged `codex/fast-integration` (EX066's approximate-timing stack: frontier scheduler, data-cache model 160/96 with contention, timed SPI2 completion, measured TE) into the fast head → branch `night/timed-0919` (`work/night-timed`, 16 conflict hunks, virtual quanta disabled in approximate mode). Same experiment exports as EX066's final run (`esp32sim_set_approximate_jit_timing 1 64`, frontiers, cache 160/96/2, contention, SPI2 timing, measured TE), supplied through a `tinydraw-timed` workload entry.
 
-**EX139 solo batches in the frontier scheduler:** when every other core idles, the running core's batch may extend to the next device/script deadline instead of 64 instructions; the first dispatch of a batch runs undeferred, later ones stop in front of a device register, so every register access happens at settled device time (the 64-instruction batches it replaces let mid-batch accesses see batch-start time).
+**EX139 solo batches in the frontier scheduler:** when every other core idles, the running core's batch may extend to the next device/script deadline instead of 64 instructions; the first dispatch of a batch runs undeferred (a register it reaches sees batch-start time, as any access did in the 64-instruction batches this replaces), later dispatches stop in front of a device register and yield, so those accesses happen at settled device time.
 
 | Timed configuration (untimed single runs, all 36 checks pass, zero JIT failures) | guest s | wall s | realtime |
 | --- | ---: | ---: | ---: |
@@ -212,7 +214,7 @@ Whole battery: hardware 77.4 s; timed model 60.0 guest s (0.78); untimed 47.75 g
 | whole battery guest seconds (hardware 77.4 s) | 60.0 (0.78) | **69.0 (0.89)** |
 | host wall seconds → realtime | 64.5 → 0.93× | **69.9 → 0.987×** |
 
-All 36 checks pass, zero JIT failures (`check-timed-priced`, full table `cmp-hw-priced.txt`). This is the thesis from the start of the night, now measured: pricing cycles moves the model toward the silicon *and* keeps realtime, because a slower guest clock asks for fewer instructions per second. Still open: load-use (+1, measured in EX067), FP dependency latency (EX057; explains the 0.60 document load), ring-scalar overshoot from the provisional cache parameters, L32R and instruction-fetch cache.
+All 36 checks pass, zero JIT failures (`check-timed-priced`, full table `cmp-hw-priced.txt`). This is the thesis from the start of the night, now measured: pricing cycles moves the model toward the silicon *and* keeps realtime, because more cycles per instruction means less guest work per simulated second. (A higher guest-seconds-per-wall-second ratio under a different clock is not an equal-work host speedup; the exact-clock rows are the equal-work comparison.) Still open: load-use (+1, measured in EX067), FP dependency latency (EX057; explains the 0.60 document load), ring-scalar overshoot from the provisional cache parameters, L32R and instruction-fetch cache.
 
 ### EX138 load-use and EX140 static FP result readiness: timers within ~0.5% of the board (medians)
 
@@ -258,7 +260,7 @@ So my first EX138 call/return prices (call 3, ENTRY 3, return 6, derived from th
 | whole battery guest s (hardware 77.4) | 72.3 | 72.05 (0.931) |
 | host wall s → realtime | 74.9 → 0.97× | 71.9 → **1.003×** |
 
-The measured table is the one to keep: compute is now a uniform −3.6% instead of a lucky 0. Unpriced and plausible for the remainder: window overflow/underflow exception entry (35 cycles per spilled frame measured, the emulator only charges the handler's instructions), interrupt entry/resume (228/142 cycles measured), L32R, instruction-fetch cache misses (EX055), CALLX.
+The measured table is the one to keep: the compute median is 0.964 with cases from 0.910 to 0.973, instead of a median that was right partly by cancellation. Unpriced and plausible for the remainder: window overflow/underflow exception entry (35 cycles per spilled frame measured, the emulator only charges the handler's instructions), interrupt entry/resume (228/142 cycles measured), L32R, instruction-fetch cache misses (EX055), CALLX.
 
 ## Step 12: the timed model on a second firmware, and the both-busy quantum in approximate mode (EX143)
 
@@ -289,7 +291,7 @@ Peer review of the pricing commits found five real defects (double charge on div
 - **EX144 any single busy core + backoff** (`night/fast-entry-0919` 1 commit): the Atech firmware runs on core 1 with core 0 idle, which EX133 as first written ignored; and it touches device registers every few instructions, so runs were cut short 3.17M times out of 3.59M (0.48 quanta per run, slower than not trying). Now whichever single core is busy qualifies, and a run cut short inside two quanta doubles a skip counter (max 255 rounds). Atech: 462K runs, 3.6 quanta each, no slowdown, still exact. TinyDraw wasm pair vs combined3: 43.20 → 43.29 s, exact. No gain on TinyDraw, removes a pathology elsewhere.
 - **Cache parameter sensitivity (not adopted):** requested-data readiness 96 with 160-cycle service (EX054's split) fixes ring-scalar staging (1.217 → 1.036) but worsens present (1.022 → 0.952), HARD (0.985 → 0.942) and export (1.03 → 0.935). Left at 160/96.
 - **EX145 instruction-fetch cache at dispatch granularity: no effect.** 64 sets × 8 ways × 32-byte lines for flash-mapped code, 140 cycles per missing line, touched for the entered block only: every ratio unchanged to three decimals, load_us stays 0.639. Removed again. Either the working set fits or the misses happen inside regions where this coarse model cannot see them.
-- **Document load (peer's scoped native profile, `doc-load-native/`)**: the timed window is 57.5M instructions of eager rasterization (raster helpers 48%, MaterializedCanvas 22%, memmove/memcpy 6.5%, `__divsf3` 5.6%, `lroundf` 3.3%), 37% of it fetched from flash. The missing 200 ms is about 0.84 cycles per instruction, far more than the unpriced FP divide assist (100K divides) or LSI→use (3.4M) can supply, so the remaining suspect is data-side: cache geometry, PSRAM misses and dirty writebacks under scattered access. Needs a hardware probe, not another parameter guess.
+- **Document load (peer's scoped native profile, `doc-load-native/`)**: the timed window is 57.5M instructions of eager rasterization (raster helpers 48%, MaterializedCanvas 22%, memmove/memcpy 6.5%, `__divsf3` 5.6%, `lroundf` 3.3%), 37% of it fetched from flash. The missing 200 ms is about 0.84 cycles per instruction, far more than the unpriced FP divide assist (100K divides) or LSI→use (3.4M) can supply, so the data side (cache geometry, PSRAM misses and dirty writebacks under scattered access) is the leading remaining hypothesis. Instruction counts alone do not rule out unknown per-operation latencies or path differences, and the coarse fetch-cache null result does not rule out fetch misses inside regions. Needs a hardware probe, not another parameter guess.
 
 ## Step 15: timed-model host cost, merge fix, Tier-B hardware session started
 
@@ -299,12 +301,12 @@ Peer review of the pricing commits found five real defects (double charge on div
 
 ## Step 16: Tier-B cohort captured; measured cache prices replace the fitted ones; PIE Q readiness (EX146)
 
-- **Tier-B hardware cohort** (`~/Archives/esp32s3/tier-b/`): normal image boots 1 and 2: 43/43 cells, 360 samples, 0 refusals each; XIP-PSRAM image boots 1 and 2: 44/44 cells, 373 samples, 0 refusals each; receipts and the archived ELFs written by `tools/tier-b-capture.py`. Both boots of the normal image agree exactly on: first-line data miss **PSRAM 96 cycles, flash 128**; first-line instruction miss from flash 404 (one 724 outlier per boot); explicit dirty writeback 1016 / 1170 / 1506 / 2154 / 3442 cycles for 1 / 2 / 4 / 8 / 16 lines (**≈162 cycles per additional dirty 64-byte line**, 862 fixed); PSRAM store hit 272. The firmware's data cache is 32 KB, 8-way, 64-byte lines (`sdkconfig`); the model has 4 ways (the inline wasm path is built for that geometry).
-- **Measured cache prices** (fill 96, writeback 160) instead of EX054's fitted 160/96, on top of the instruction prices: ring-scalar staging 1.217 → **1.033**; every other timer moves down a little and becomes uniform: compute 0.956 (0.883–0.969), present 0.981, wall 0.958, HARD 0.955, export 0.964, document load 0.630; whole battery 70.4 guest s (0.91). The fitted 160 had been absorbing CPU cost that was not priced yet. Ring-PIE staging drops to 0.71: it was only right before because the fill was inflated (EX059 already saw it 17% short).
+- **Tier-B hardware cohort** (`~/Archives/esp32s3/tier-b/`): normal image boots 1 and 2: 43/43 cells, 360 samples, 0 refusals each; XIP-PSRAM image boots 1 and 2: 44/44 cells, 373 samples, 0 refusals each; receipts and the archived ELFs written by `tools/tier-b-capture.py`. Both boots of the normal image agree exactly on these window totals: `first_line_d_psram` **96 cycles** and `first_line_d_flash` **128** (each times the probe's whole one-line read window, with no matched hit control subtracted, so they are not isolated miss penalties); `first_line_i_flash` 404 (one 724 outlier per boot); explicit dirty `msync` writeback 1016 / 1170 / 1506 / 2154 / 3442 cycles for 1 / 2 / 4 / 8 / 16 lines (**≈162 cycles per additional dirty 64-byte line** on top of 862 for the clean call; an explicit flush cost, not a proven price for automatic victim eviction); `store_hit_psram` 272 for its whole window of 256 stores (baseline 276). The firmware's data cache is 32 KB, 8-way, 64-byte lines (`sdkconfig`); the model has 4 ways (the inline wasm path is built for that geometry).
+- **Measurement-informed cache prices** (fill 96, writeback 160, taken from the window totals above with the caveats stated there; one shared fill price also covers flash, whose window is 128) instead of EX054's fitted 160/96, on top of the instruction prices: ring-scalar staging 1.217 → **1.033**; every other timer moves down a little and the medians cluster near 0.96 (individual cases vary): compute 0.956 (0.883–0.969), present 0.981, wall 0.958, HARD 0.955, export 0.964, document load 0.630; whole battery 70.4 guest s (0.91). The fitted 160 had been absorbing CPU cost that was not priced yet. Ring-PIE staging drops to 0.71: it was only right before because the fill was inflated (EX059 already saw it 17% short).
 - **EX146 static readiness of loaded PIE Q registers**: operand masks from the EX058 prototype (810f38c5), only the measured results delayed (VLD, LD.USAR, loaded Qu of SRC.Q.LD usable at issue + 2, EX080), folded into the same per-run table as load-use and FP readiness. Linear PIE staging 0.953 → **0.997**; ring PIE 0.704 → 0.714 (its shortfall is memory-side).
 - Host cost unchanged: 70.4 guest s in 60.2 s wall = 1.17× realtime. `?timing=hw` on the page now uses the measured cache prices.
 
-State of the timed model against the erased-start board, measured parameters only (no fitted constant left except the 4-way geometry and CALLX = JX): uniformly about 4% fast on compute, wall, HARD and export; document load 0.63 and ring-PIE staging 0.71 are the two open misfits, both memory-side.
+State of the timed model against the erased-start board: a measurement-informed model with remaining assumptions (CALLX = JX, SUB.S/MSUB.S = ADD.S, one-cycle latency for every unmeasured FP/PIE writer, round-robin replacement, explicit-`msync` cost applied to automatic eviction, one fill price for PSRAM and flash). Reported medians cluster near 0.96 on compute, wall, HARD and export, with individual cases from 0.88 to 0.98; document load 0.63 and ring-PIE staging 0.71 are the two open misfits, for which the data side is the leading hypothesis, not an established cause.
 
 ## Step 17: combined4, EX111, cache geometry
 
@@ -313,3 +315,16 @@ State of the timed model against the erased-start board, measured parameters onl
 - **Timed model cache geometry**: the model and the inline wasm probe now use the firmware's 8-way data cache (64 sets) instead of 4 ways. Ratios move by less than 0.015 (present 0.981 → 0.995, HARD 0.955 → 0.959); kept because it is the real geometry.
 - **combined4 confirmed with three alternating pairs** (`runs/combined4-x3`, default build, no knobs): base 83.27 / 84.16 / 83.57 s, candidate 42.50 / 42.45 / 42.75 s → **−49.2%, 1.12× modeled realtime**, bit-exact in all six runs. `tools/wasm-test.mjs` manifests hello, c3-hello, c6-hello, c6-energy-scan, panel, atech and atech-sid pass on the same artifact.
 - Peer's design note for calls inside regions: `design-calls-in-regions.md` (direct CALL8 → ENTRY-headed chunk as an internal edge, RETW and CALLX still leaving; optimistic ceiling 45.6M dispatches ≈ 1.7 s ≈ 4%).
+
+## Step 18: one head with everything
+
+`night/timed-0919` now contains combined4 as well (merge, 2 conflict files). On that head:
+- wasm differential suite: 43,261 cases with default features, 43,279 with `cache-inline` (the inline-cache test now follows the 8-way geometry); `cargo test --release --workspace` has no failures.
+- Exact mode (plain build, no timing exports): TinyDraw bit-exact, 43.70 / 43.67 s against combined4's 42.69 / 42.53 s in two pairs, i.e. **the timing hooks cost about 2.5% when unused** (1.09× instead of 1.12×). `night/combined-0919` stays the branch to take for the exact path alone.
+- Timed mode (`cache-inline` build + exports): identical to the pre-merge run (10,101,385,928 instructions, same ratios).
+
+## Step 19: one artifact for both modes; page checks on the unified head
+
+- A `cache-inline` build used to emit the inline data-cache probe into every generated memory access, whether or not the timing model was on: exact mode 48.33 s against 43.52 s, 28% more generated code. The probe is now emitted only after `esp32sim_set_approximate_jit_cache(…, 2)` switches the model on, and `cache-inline` is a default feature of the wasm crate on `night/timed-0919`. Same artifact: exact mode 43.79 s (control 43.69 s, identical generated bytes and console hash), timed mode identical to before (10,101,385,928 instructions, 62.6 s wall for 70.6 guest s). 43,279 differential cases and the workspace tests pass.
+- Production page with that default artifact (`resp-unified-*`): exact mode boots the battery firmware to READY in 56.5 s wall, `?timing=hw` in 78.9 s; both commit 3/3 strokes and answer 24/24 movement points (medians 36.2 and 38.6 ms). The hardware figure next to the 78.9 s is 77.4 s from the startup serial line to the verdict; the endpoints differ (the page time runs from worker start to the READY line), so read it as "same order", not as a matched comparison.
+- Board state at the end of the night: last flashed with the Tier-B XIP-PSRAM calibration image (`flash-xip-psram-2.log`), not TinyDraw.
