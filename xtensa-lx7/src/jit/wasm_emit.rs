@@ -1405,14 +1405,14 @@ fn emit_cache_hit(g: &mut Gen, store: bool, accesses: u8) {
     g.get(CACHE);
     g.load(offset_of!(FastCache, lines));
     g.get(CACHE_TAG);
-    g.c(127);
+    g.c(63);   // 32 KB, 64-byte lines, 8 ways: 64 sets (the TinyDraw firmware's data cache)
     g.op(0x71);
-    g.c((4 * size_of::<FastCacheLine>()) as u32);
+    g.c((8 * size_of::<FastCacheLine>()) as u32);
     g.op(0x6c);
     g.op(0x6a);
     g.set(CACHE_SET);
     g.begin_block(); // Find a way. Invalid tags are MAX, impossible for 64B keys.
-    for way in 0..4 {
+    for way in 0..8 {
         g.get(CACHE_SET);
         g.c((way * size_of::<FastCacheLine>()) as u32);
         g.op(0x6a);

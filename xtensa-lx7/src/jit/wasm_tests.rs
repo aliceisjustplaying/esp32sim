@@ -136,13 +136,13 @@ fn inline_cache_hits() -> u32 {
     use emu_core::bus::FastCacheLine;
     let mut tests = 0;
     for store in [false, true] {
-        for way in 0..5 { // Every way, then a miss that must run the helper.
+        for way in 0..9 { // Every way, then a miss that must run the helper.
             let mut ram = Ram::new(true, false);
             ram.tlb[tlb_index(BASE)].src = 3;
             let tag = (0x3000_0000u32 | 0x100) >> 6;
-            let slot = ((tag & 127) * 4) as usize;
+            let slot = ((tag & 63) * 8) as usize;
             let mut lines = vec![FastCacheLine::default(); 512];
-            if way < 4 { lines[slot + way] = FastCacheLine { tag, dirty: 0, valid: 1 }; }
+            if way < 8 { lines[slot + way] = FastCacheLine { tag, dirty: 0, valid: 1 }; }
             ram.inline_cache = Some((lines, 0));
             let mut block = [insn(if store { Op::S32i } else { Op::L32i })];
             block[0].insn.imm = 0;

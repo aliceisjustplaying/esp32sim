@@ -18,7 +18,7 @@ impl Default for CacheConfig {
         Self {
             capacity_bytes: 32768,
             line_bytes: 64,
-            ways: 4,
+            ways: 8,
             hit_cycles: 0,
             fill_cycles: 120,
             writeback_cycles: 96,
@@ -76,7 +76,7 @@ impl CacheTiming {
     /// Fixed-geometry prototype; other configurations retain the helper path.
     pub fn inline_view(&mut self) -> Option<FastCache> {
         (self.config.capacity_bytes == 32768 && self.config.line_bytes == 64
-            && self.config.ways == 4 && self.config.hit_cycles == 0)
+            && self.config.ways == 8 && self.config.hit_cycles == 0)
             .then(|| FastCache { lines: self.lines.as_mut_ptr(), hits: &mut self.stats.hits })
     }
     pub fn reset(&mut self) {
