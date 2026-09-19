@@ -197,6 +197,8 @@ unsafe fn text<'a>(ptr: *const u8, len: usize) -> &'a str {
 /// # Safety
 /// For nonzero `board_len`, `board` must be non-null and readable for `board_len` bytes throughout
 /// this call. A null pointer is accepted only when `board_len` is 0.
+/// On WASM, destroy the previous emulator before creating another: timing emitter
+/// configuration is module-wide, not isolated between simultaneously live emulators.
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_mb: u32, psram_mb: u32) -> *mut Emu {
     std::panic::set_hook(Box::new(|info| log(&format!("[emu] panic: {}", info))));
@@ -229,6 +231,17 @@ pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_
         prepare(&mut m);
         Box::new(m)
     };
+    // A worker reuses this WASM instance after deleting its previous emulator.
+    // No generated code is shared: it was owned by the old CPUs and dropped with them.
+    #[cfg(target_arch = "wasm32")]
+    {
+        use std::sync::atomic::Ordering::Relaxed;
+        xtensa_lx7::jit::PRICED.store(false, Relaxed);
+        xtensa_lx7::jit::CACHE_PROBES.store(false, Relaxed);
+        xtensa_lx7::jit::FETCH_RING.store(false, Relaxed);
+        xtensa_lx7::jit::CACHE_SET_MASK.store(63, Relaxed);
+    }
+    xtensa_lx7::state::reset_shared_fetch_cache();
     Box::into_raw(Box::new(Emu {
         m,
         out: Vec::new(),
