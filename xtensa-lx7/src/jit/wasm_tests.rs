@@ -322,6 +322,22 @@ fn whole_block_guards() -> u32 {
     }
     tests
 }
+fn flat_ram_bounds() -> u32 {
+    // On wasm32, a below-base offset plus its width used to wrap usize to zero.
+    let mut ram = FlatRam::new(BASE, 16);
+    assert_eq!(ram.read8(BASE - 1), Err(Fault::Unmapped));
+    assert_eq!(ram.read16(BASE - 2), Err(Fault::Unmapped));
+    assert_eq!(ram.read32(BASE - 4), Err(Fault::Unmapped));
+    assert_eq!(ram.write8(BASE - 1, 1), Err(Fault::Unmapped));
+    assert_eq!(ram.write16(BASE - 2, 1), Err(Fault::Unmapped));
+    assert_eq!(ram.write32(BASE - 4, 1), Err(Fault::Unmapped));
+    assert!(!ram.read_bulk(BASE - 4, &mut [0; 4]));
+    assert_eq!(ram.fetch(BASE - 1), Err(Fault::Unmapped));
+    assert_eq!(ram.ver, 0);
+    assert_eq!(ram.mem, vec![0; 16]);
+    8
+}
+
 fn scheduler() {
     // addi.n a3,a3,1; addi.n a4,a4,1; j back to the first instruction.
     let program = [0x1b, 0x33, 0x1b, 0x44, 0x06, 0xfe, 0xff];
@@ -1482,7 +1498,7 @@ pub fn run_tests() -> u32 {
         }
     }
     scheduler();
-    tests += regions();
+    tests += flat_ram_bounds() + regions();
     retention();
     hardware_loop_scheduler();
     crate::block::ownership_tests::compiled_helpers_follow_the_current_bus_type();
