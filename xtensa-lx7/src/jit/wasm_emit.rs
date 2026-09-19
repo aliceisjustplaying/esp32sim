@@ -199,6 +199,8 @@ struct Gen {
     free_leave: bool,
     /// EX141: the instruction being emitted has a static target that straddles a fetch word
     straddle: bool,
+    /// Static wait prepaid for the current instruction, refundable on helper failure.
+    wait_price: u32,
     /// module body bytes
     bytes: Vec<u8>,
     /// registers written so far (spilled on exit)
@@ -415,6 +417,14 @@ impl Gen {
         self.op(0x6a);
         self.store(offset_of!(Cpu, timing_extra));
     }
+    fn refund_wait(&mut self) {
+        if self.wait_price == 0 || !super::PRICED.load(std::sync::atomic::Ordering::Relaxed) { return; }
+        self.get(0);
+        self.cpu(offset_of!(Cpu, timing_extra));
+        self.c(self.wait_price);
+        self.op(0x6b);
+        self.store(offset_of!(Cpu, timing_extra));
+    }
     /// Retire the current instruction and continue at a statically known `target`.
     fn leave(&mut self, target: u32) {
         if !std::mem::take(&mut self.free_leave) { self.price(2 + self.straddle as u32); }
@@ -481,6 +491,9 @@ impl Gen {
         self.c(1);
         self.op(0x71);
         self.begin_if();
+        // Match the interpreter: an instruction that faults or is deferred does
+        // not retain its dependency wait. The executed prefix remains priced.
+        self.refund_wait();
         if continue_block {
             self.ret(CODE_TRAP);
         } else {
@@ -723,7 +736,8 @@ fn emit_body(
             g.overflow(bi.max_ar, pc);
         }
         let last = index + 1 == instructions.len();
-        g.price(extras[index] as u32);
+        g.wait_price = extras[index] as u32;
+        g.price(g.wait_price);
         g.straddle = bi.straddle;
         if emit_instruction(g, bi, fast, pc, next, last, cp) {
             if whole {

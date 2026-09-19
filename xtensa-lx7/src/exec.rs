@@ -386,6 +386,40 @@ pub(crate) fn transfers(op: Op) -> bool {
         | Beqz | Bnez | Bltz | Bgez | BeqzN | BnezN | Beqi | Bnei | Blti | Bgei | Bltui | Bgeui
         | Bnone | Beq | Blt | Bltu | Ball | Bbc | Bbci | Bany | Bne | Bge | Bgeu | Bnall | Bbs | Bbsi | Bf | Bt)
 }
+/// Whether the instruction itself redirects control, excluding an implicit loop backedge.
+/// Conditional branches do not write their operands, so this is also valid after execution.
+/// Comparing PC with fall-through cannot distinguish a not-taken branch at LEND, or a
+/// taken branch whose target happens to be the next instruction.
+#[inline]
+pub(crate) fn control_taken(cpu: &Cpu, i: &Insn) -> bool {
+    use Op::*;
+    let ar = |r| cpu.get_ar(r);
+    match i.op {
+        Beqz | BeqzN => ar(i.s) == 0,
+        Bnez | BnezN => ar(i.s) != 0,
+        Bltz => (ar(i.s) as i32) < 0,
+        Bgez => (ar(i.s) as i32) >= 0,
+        Beqi => ar(i.s) == i.imm2 as u32,
+        Bnei => ar(i.s) != i.imm2 as u32,
+        Blti => (ar(i.s) as i32) < i.imm2,
+        Bgei => (ar(i.s) as i32) >= i.imm2,
+        Bltui => ar(i.s) < i.imm2 as u32,
+        Bgeui => ar(i.s) >= i.imm2 as u32,
+        Beq => ar(i.s) == ar(i.t), Bne => ar(i.s) != ar(i.t),
+        Blt => (ar(i.s) as i32) < ar(i.t) as i32,
+        Bge => (ar(i.s) as i32) >= ar(i.t) as i32,
+        Bltu => ar(i.s) < ar(i.t), Bgeu => ar(i.s) >= ar(i.t),
+        Bnone => ar(i.s) & ar(i.t) == 0, Bany => ar(i.s) & ar(i.t) != 0,
+        Ball => !ar(i.s) & ar(i.t) == 0, Bnall => !ar(i.s) & ar(i.t) != 0,
+        Bbc => ar(i.s) & (1 << (ar(i.t) & 31)) == 0,
+        Bbs => ar(i.s) & (1 << (ar(i.t) & 31)) != 0,
+        Bbci => ar(i.s) & (1 << i.imm2) == 0,
+        Bbsi => ar(i.s) & (1 << i.imm2) != 0,
+        Bf => cpu.br & (1 << i.s) == 0, Bt => cpu.br & (1 << i.s) != 0,
+        _ => transfers(i.op),
+    }
+}
+
 /// EX141: a redirected fetch costs one more cycle when the first instruction at the target
 /// straddles a 32-bit fetch word, `(pc & 3) + length > 4`. From the captured EX081 control cells:
 /// taken branches over a 9-byte stride average 2.5 extra cycles, not 2, and the zero-overhead
