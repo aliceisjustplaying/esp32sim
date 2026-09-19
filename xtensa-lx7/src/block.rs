@@ -327,7 +327,7 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         let r = exec_insn(cpu, bus, &e.insn);
         done += 1; k += 1;
         if cpu.price_control && r.is_ok() {
-            let taken = cpu.pc != expected;
+            let taken = crate::exec::control_taken(cpu, &e.insn);
             cpu.timing_extra += crate::exec::control_price(e.insn.op, taken) + cpu.blocks.extras[k as usize - 1] as u32
                 + u32::from(taken && crate::exec::transfers(e.insn.op) && crate::exec::straddles(bus, cpu.pc));
         }
