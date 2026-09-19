@@ -163,15 +163,20 @@ impl Default for Cpu {
 
 static SHARED_FETCH_CACHE: std::sync::Mutex<[[u32; 8]; 64]> = std::sync::Mutex::new([[0; 8]; 64]);
 
+/// A new machine starts with an empty fetch cache (the cache is shared by the cores of one
+/// machine; the emulator runs one machine at a time per module instance).
+pub fn reset_shared_fetch_cache() { *SHARED_FETCH_CACHE.lock().unwrap() = [[0; 8]; 64]; }
+
 impl Cpu {
     /// EX147: fetch the 32-byte lines covering `lo..=hi` of flash-mapped code; misses are charged.
     #[inline]
     pub fn touch_fetch_lines(&mut self, lo: u32, hi: u32) {
         if self.icache_fill == 0 || !(0x4200_0000..0x4400_0000).contains(&lo) { return; }
+        // One cache for both cores, as on the chip (the emulator is single-threaded).
+        let mut shared = SHARED_FETCH_CACHE.lock().unwrap();
         for line in lo >> 5..=hi >> 5 {
-            // One cache for both cores, as on the chip (the emulator is single-threaded).
-            let mut shared = SHARED_FETCH_CACHE.lock().unwrap();
             let set = &mut shared[(line & 63) as usize];
+            if set[0] == line + 1 { continue; }   // already the most recent line of its set
             let way = match set.iter().position(|&t| t == line + 1) { Some(w) => w, None => { self.timing_extra += self.icache_fill; self.icache_misses += 1; 7 } };
             set.copy_within(0..way, 1);
             set[0] = line + 1;

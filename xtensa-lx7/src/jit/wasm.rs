@@ -486,18 +486,7 @@ pub unsafe fn run<B: Bus>(
                 // SAFETY: as for the region call below; the epoch proves slot and sites are live.
                 let f: Run<B> = unsafe { std::mem::transmute(hot.slot as usize) };
                 let result = f(cpu, bus, h, budget.min(0xffff), hot.k, tlb, versions);
-                if cpu.icache_fill != 0 {
-                    // EX147: replay the chunks the region entered (the last 64) into the fetch cache.
-                    // SAFETY: the epoch proves the owning region, and with it this vector, is live.
-                    let chunks = unsafe { std::slice::from_raw_parts(hot.lines, hot.nlines as usize) };
-                    let n = cpu.fetch_n;
-                    // More entries than the ring holds: the older ones are unknown, so every chunk
-                    // counts as fetched once before the recorded tail.
-                    if n > 64 { for &(lo, hi) in chunks { cpu.touch_fetch_lines(lo, hi); } }
-                    for i in n.saturating_sub(64)..n {
-                        if let Some(&(lo, hi)) = chunks.get(cpu.fetch_ring[(i & 63) as usize] as usize) { cpu.touch_fetch_lines(lo, hi); }
-                    }
-                }
+                replay_fetch_ring(cpu, hot.lines, hot.nlines);
                 let site = if (result >> 16) & 7 != CODE_REJECT {
                     assert!((result >> 19) < hot.nsites);
                     // SAFETY: index checked against the live vector's length.
@@ -603,7 +592,9 @@ pub unsafe fn run<B: Bus>(
                         b.hot.set(Hot { epoch: cc.region_epoch.get(), bloom: r.bloom, slot: r.slot, k, len: r.lens[k as usize], lo: r.lo,
                             span: r.hi.wrapping_sub(r.lo), pages, npages: r.pages.len() as u32, nsites: r.sites.len() as u32, sites: r.sites.as_ptr(), lines: r.fetch_lines.as_ptr(), nlines: r.fetch_lines.len() as u32 });
                     }
+                    cpu.fetch_n = 0;
                     let result = f(cpu, bus, h, budget.min(0xffff), k, tlb, versions);
+                    replay_fetch_ring(cpu, r.fetch_lines.as_ptr(), r.fetch_lines.len() as u32);
                     let site = if (result >> 16) & 7 != CODE_REJECT {
                         assert!(((result >> 19) as usize) < r.sites.len(), "region {:x}: result {result:#x} sites {}", rb.pc, r.sites.len());
                         Some(r.sites[(result >> 19) as usize])
@@ -618,6 +609,24 @@ pub unsafe fn run<B: Bus>(
         }
     }
     run_block_body(cc, code, cpu, bus, h, budget, entry, tlb, versions)
+}
+
+/// EX147: replay the chunks a region call entered (the last 64; with more, every chunk counts as
+/// fetched once first) into the fetch cache. `chunks` must belong to the live region just called.
+#[inline]
+fn replay_fetch_ring(cpu: &mut Cpu, chunks: *const (u32, u32), n_chunks: u32) {
+    if cpu.icache_fill == 0 { return; }
+    // SAFETY: the caller passes the fetch-line vector of the region it has just run.
+    let chunks = unsafe { std::slice::from_raw_parts(chunks, n_chunks as usize) };
+    let n = cpu.fetch_n;
+    if n > 64 { for &(lo, hi) in chunks { cpu.touch_fetch_lines(lo, hi); } }
+    let mut last = u32::MAX;
+    for i in n.saturating_sub(64)..n {
+        let k = cpu.fetch_ring[(i & 63) as usize];
+        if k == last { continue; }   // a loop over one chunk
+        last = k;
+        if let Some(&(lo, hi)) = chunks.get(k as usize) { cpu.touch_fetch_lines(lo, hi); }
+    }
 }
 
 /// Test and profile counters of one region call.

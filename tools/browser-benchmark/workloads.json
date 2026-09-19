@@ -869,5 +869,59 @@
         404
       ]
     ]
+  },
+  "tinydraw-hw-ic200": {
+    "schema": "tinydraw-gate1-v1",
+    "assets": [
+      "rom",
+      "bootloader",
+      "ptable",
+      "app",
+      "elf"
+    ],
+    "serialSource": "usb",
+    "expectedInstructions": null,
+    "as": "tinydraw",
+    "exports": [
+      [
+        "esp32sim_set_approximate_jit_timing",
+        1,
+        512
+      ],
+      [
+        "esp32sim_set_approximate_jit_frontiers",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_jit_cache",
+        96,
+        160,
+        2
+      ],
+      [
+        "esp32sim_set_approximate_cache_contention",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_cache_fill_service",
+        160
+      ],
+      [
+        "esp32sim_set_spi2_timing",
+        1
+      ],
+      [
+        "esp32sim_set_measured_te",
+        1
+      ],
+      [
+        "esp32sim_set_control_prices",
+        1
+      ],
+      [
+        "esp32sim_set_icache_fill",
+        200
+      ]
+    ]
   }
 }
