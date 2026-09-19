@@ -126,5 +126,283 @@
         1
       ]
     ]
+  },
+  "pocket-tank-timed-priced": {
+    "schema": "pocket-tank-v1",
+    "assets": [
+      "rom",
+      "bootloader",
+      "ptable",
+      "app",
+      "model"
+    ],
+    "flashAt": {
+      "model": 2686976
+    },
+    "guestSeconds": 30,
+    "serialSource": "uart0",
+    "checks": [
+      {
+        "name": "model_decisions",
+        "pattern": "advisor: [^\\n]*tok/s",
+        "min": 10
+      },
+      {
+        "name": "render_reports",
+        "pattern": "display: [0-9.]+ fps",
+        "min": 2
+      }
+    ],
+    "expectedInstructions": null,
+    "as": "pocket-tank",
+    "exports": [
+      [
+        "esp32sim_set_approximate_jit_timing",
+        1,
+        64
+      ],
+      [
+        "esp32sim_set_approximate_jit_frontiers",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_jit_cache",
+        160,
+        96,
+        2
+      ],
+      [
+        "esp32sim_set_approximate_cache_contention",
+        1
+      ],
+      [
+        "esp32sim_set_spi2_timing",
+        1
+      ],
+      [
+        "esp32sim_set_measured_te",
+        1
+      ],
+      [
+        "esp32sim_set_control_prices",
+        1
+      ]
+    ]
+  },
+  "pocket-tank-timed-priced-q512": {
+    "schema": "pocket-tank-v1",
+    "assets": [
+      "rom",
+      "bootloader",
+      "ptable",
+      "app",
+      "model"
+    ],
+    "flashAt": {
+      "model": 2686976
+    },
+    "guestSeconds": 30,
+    "serialSource": "uart0",
+    "checks": [
+      {
+        "name": "model_decisions",
+        "pattern": "advisor: [^\\n]*tok/s",
+        "min": 10
+      },
+      {
+        "name": "render_reports",
+        "pattern": "display: [0-9.]+ fps",
+        "min": 2
+      }
+    ],
+    "expectedInstructions": null,
+    "as": "pocket-tank",
+    "exports": [
+      [
+        "esp32sim_set_approximate_jit_timing",
+        1,
+        512
+      ],
+      [
+        "esp32sim_set_approximate_jit_frontiers",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_jit_cache",
+        160,
+        96,
+        2
+      ],
+      [
+        "esp32sim_set_approximate_cache_contention",
+        1
+      ],
+      [
+        "esp32sim_set_spi2_timing",
+        1
+      ],
+      [
+        "esp32sim_set_measured_te",
+        1
+      ],
+      [
+        "esp32sim_set_control_prices",
+        1
+      ]
+    ]
+  },
+  "tinydraw-timed-priced-q512": {
+    "schema": "tinydraw-gate1-v1",
+    "assets": [
+      "rom",
+      "bootloader",
+      "ptable",
+      "app",
+      "elf"
+    ],
+    "serialSource": "usb",
+    "expectedInstructions": null,
+    "as": "tinydraw",
+    "exports": [
+      [
+        "esp32sim_set_approximate_jit_timing",
+        1,
+        512
+      ],
+      [
+        "esp32sim_set_approximate_jit_frontiers",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_jit_cache",
+        160,
+        96,
+        2
+      ],
+      [
+        "esp32sim_set_approximate_cache_contention",
+        1
+      ],
+      [
+        "esp32sim_set_spi2_timing",
+        1
+      ],
+      [
+        "esp32sim_set_measured_te",
+        1
+      ],
+      [
+        "esp32sim_set_control_prices",
+        1
+      ]
+    ]
+  },
+  "pocket-tank-timed-priced-q4096": {
+    "schema": "pocket-tank-v1",
+    "assets": [
+      "rom",
+      "bootloader",
+      "ptable",
+      "app",
+      "model"
+    ],
+    "flashAt": {
+      "model": 2686976
+    },
+    "guestSeconds": 30,
+    "serialSource": "uart0",
+    "checks": [
+      {
+        "name": "model_decisions",
+        "pattern": "advisor: [^\\n]*tok/s",
+        "min": 10
+      },
+      {
+        "name": "render_reports",
+        "pattern": "display: [0-9.]+ fps",
+        "min": 2
+      }
+    ],
+    "expectedInstructions": null,
+    "as": "pocket-tank",
+    "exports": [
+      [
+        "esp32sim_set_approximate_jit_timing",
+        1,
+        4096
+      ],
+      [
+        "esp32sim_set_approximate_jit_frontiers",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_jit_cache",
+        160,
+        96,
+        2
+      ],
+      [
+        "esp32sim_set_approximate_cache_contention",
+        1
+      ],
+      [
+        "esp32sim_set_spi2_timing",
+        1
+      ],
+      [
+        "esp32sim_set_measured_te",
+        1
+      ],
+      [
+        "esp32sim_set_control_prices",
+        1
+      ]
+    ]
+  },
+  "tinydraw-timed-priced-q4096": {
+    "schema": "tinydraw-gate1-v1",
+    "assets": [
+      "rom",
+      "bootloader",
+      "ptable",
+      "app",
+      "elf"
+    ],
+    "serialSource": "usb",
+    "expectedInstructions": null,
+    "as": "tinydraw",
+    "exports": [
+      [
+        "esp32sim_set_approximate_jit_timing",
+        1,
+        4096
+      ],
+      [
+        "esp32sim_set_approximate_jit_frontiers",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_jit_cache",
+        160,
+        96,
+        2
+      ],
+      [
+        "esp32sim_set_approximate_cache_contention",
+        1
+      ],
+      [
+        "esp32sim_set_spi2_timing",
+        1
+      ],
+      [
+        "esp32sim_set_measured_te",
+        1
+      ],
+      [
+        "esp32sim_set_control_prices",
+        1
+      ]
+    ]
   }
 }
