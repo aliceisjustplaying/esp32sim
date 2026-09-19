@@ -246,6 +246,7 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         }
     };
     cpu.blocks.resume.2 = 1;
+    if cpu.icache_fill != 0 { let n = cpu.blocks.entries[ei as usize].n as u32; cpu.touch_fetch_lines(pc, pc + 3 * n.saturating_sub(1)); }
 
     // never run past a CCOMPARE match: the timer interrupt must land on the same instruction
     #[cfg(not(target_arch = "wasm32"))]

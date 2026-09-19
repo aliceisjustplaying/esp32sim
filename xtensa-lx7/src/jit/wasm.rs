@@ -125,10 +125,12 @@ struct Block {
 /// Entry facts of one region chunk. `sites` points into the owning region's vector, which
 /// lives until that region is dropped, and every drop moves `CodeCache::region_epoch` on.
 #[derive(Clone, Copy)]
-struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); 8], npages: u32, nsites: u32, sites: *const ExitSite }
-impl Hot { const NONE: Hot = Hot { epoch: 0, bloom: 0, slot: 0, k: 0, len: 0, lo: 0, span: 0, pages: [(0, 0); 8], npages: 0, nsites: 0, sites: std::ptr::null() }; }
+struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); 8], npages: u32, nsites: u32, sites: *const ExitSite, lines: *const u32, nlines: u32 }
+impl Hot { const NONE: Hot = Hot { epoch: 0, bloom: 0, slot: 0, k: 0, len: 0, lo: 0, span: 0, pages: [(0, 0); 8], npages: 0, nsites: 0, sites: std::ptr::null(), lines: std::ptr::null(), nlines: 0 }; }
 /// Several chunks compiled as one function; see wasm_region.rs.
 struct Region {
+    /// EX147: the 32-byte fetch lines its chunks occupy (sorted, unique).
+    fetch_lines: Vec<u32>,
     /// The generated code holds pointers to these instructions for its helper calls,
     /// so they live exactly as long as the module does.
     #[allow(dead_code)]
@@ -476,6 +478,12 @@ pub unsafe fn run<B: Bus>(
         {
             let pv = bus.page_versions();
             if hot.pages[..hot.npages as usize].iter().all(|&(i, v)| pv.get(i as usize).copied().unwrap_or(0) == v) {
+                // EX147 (diagnostic): the whole region footprint is fetched, a coarse stand-in for
+                // the lines its chunks really run.
+                if cpu.icache_fill != 0 {
+                    // SAFETY: the epoch proves the owning region, and with it this vector, is live.
+                    for &line in unsafe { std::slice::from_raw_parts(hot.lines, hot.nlines as usize) } { cpu.touch_fetch_lines(line << 5, line << 5); }
+                }
                 // SAFETY: as for the region call below; the epoch proves slot and sites are live.
                 let f: Run<B> = unsafe { std::mem::transmute(hot.slot as usize) };
                 let result = f(cpu, bus, h, budget.min(0xffff), hot.k, tlb, versions);
@@ -526,6 +534,7 @@ pub unsafe fn run<B: Bus>(
                     let slot = unsafe { host_jit_compile(bytes.as_ptr(), bytes.len()) };
                     (slot != 0).then(|| Region {
                         lens: f.chunks.iter().map(|c| c.instructions.len() as u32).collect(),
+                        fetch_lines: { let mut l: Vec<u32> = f.chunks.iter().flat_map(|c| { let end = c.pc + c.instructions.iter().map(|i| i.insn.len as u32).sum::<u32>().max(1) - 1; (c.pc >> 5)..=(end >> 5) }).collect(); l.sort_unstable(); l.dedup(); l },
                         chunks: f.chunks, slot, bytes: bytes.len(), bloom: f.bloom, lo: f.lo, hi: f.hi, loops: f.loops, pages: f.pages, sites,
                     })
                 });
@@ -581,7 +590,7 @@ pub unsafe fn run<B: Bus>(
                         let mut pages = [(0, 0); 8];
                         pages[..r.pages.len()].copy_from_slice(&r.pages);
                         b.hot.set(Hot { epoch: cc.region_epoch.get(), bloom: r.bloom, slot: r.slot, k, len: r.lens[k as usize], lo: r.lo,
-                            span: r.hi.wrapping_sub(r.lo), pages, npages: r.pages.len() as u32, nsites: r.sites.len() as u32, sites: r.sites.as_ptr() });
+                            span: r.hi.wrapping_sub(r.lo), pages, npages: r.pages.len() as u32, nsites: r.sites.len() as u32, sites: r.sites.as_ptr(), lines: r.fetch_lines.as_ptr(), nlines: r.fetch_lines.len() as u32 });
                     }
                     let result = f(cpu, bus, h, budget.min(0xffff), k, tlb, versions);
                     let site = if (result >> 16) & 7 != CODE_REJECT {
