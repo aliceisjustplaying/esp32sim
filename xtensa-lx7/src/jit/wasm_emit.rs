@@ -1383,6 +1383,7 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
 #[cfg(feature = "wasm-cache-inline")]
 fn emit_cache_hit(g: &mut Gen, store: bool, accesses: u8) {
     use emu_core::bus::{FastCache, FastCacheLine};
+    if !super::CACHE_PROBES.load(std::sync::atomic::Ordering::Relaxed) { return; }
     g.begin_block(); // No cache view or internal memory: keep ordinary fast path.
     g.get(2);
     g.load(offset_of!(Helpers, cache));

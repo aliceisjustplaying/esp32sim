@@ -859,7 +859,11 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u
     if m.insns() != 0 { return 1; }
     m.bus.enable_approximate_cache(esp32s3::approximate_cache::CacheConfig { fill_cycles: fill, writeback_cycles: writeback, ..Default::default() });
     m.bus.set_approximate_cache_fast_internal(fast_internal != 0);
-    if fast_internal == 2 && !m.bus.set_approximate_cache_inline() { return 1; }
+    if fast_internal == 2 {
+        if !m.bus.set_approximate_cache_inline() { return 1; }
+        #[cfg(all(target_arch = "wasm32", feature = "cache-inline"))]
+        xtensa_lx7::jit::CACHE_PROBES.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     0
 }
 

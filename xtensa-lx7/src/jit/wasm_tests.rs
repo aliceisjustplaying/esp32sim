@@ -134,6 +134,7 @@ impl Bus for Ram {
 #[cfg(feature = "wasm-cache-inline")]
 fn inline_cache_hits() -> u32 {
     use emu_core::bus::FastCacheLine;
+    super::CACHE_PROBES.store(true, std::sync::atomic::Ordering::Relaxed);
     let mut tests = 0;
     for store in [false, true] {
         for way in 0..9 { // Every way, then a miss that must run the helper.

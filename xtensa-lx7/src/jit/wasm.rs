@@ -89,6 +89,9 @@ impl RegionStats {
 const HOT: u32 = 32;
 /// EX138: emit control-flow prices into code generated from now on.
 pub static PRICED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Emit the inline data-cache probe into code generated from now on (a `cache-inline` build that
+/// runs without the timing model must not pay for it).
+pub static CACHE_PROBES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const RETAIN_BYTES: usize = 64 << 20;
 const RETAIN_BLOCKS: usize = 16_384;
 
@@ -455,7 +458,7 @@ pub unsafe fn run<B: Bus>(
     type Run<B> =
         extern "C" fn(*mut Cpu, *mut B, *const Helpers, u32, u32, *const TlbEntry, *mut u32) -> u32;
     #[cfg(feature = "wasm-cache-inline")]
-    let cache_view = bus.fast_cache();
+    let cache_view = if CACHE_PROBES.load(std::sync::atomic::Ordering::Relaxed) { bus.fast_cache() } else { None };
     #[cfg(feature = "wasm-cache-inline")]
     let hinted = Helpers { cache: cache_view.as_ref().map_or(std::ptr::null(), |v| v), ..*h };
     #[cfg(feature = "wasm-cache-inline")]
