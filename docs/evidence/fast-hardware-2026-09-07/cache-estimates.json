@@ -1,0 +1,176 @@
+{
+  "units": "CPU cycles at 240 MHz, 64-byte data cache lines",
+  "geometry": {
+    "capacityBytes": 32768,
+    "lineBytes": 64,
+    "sdkconfigWays": 8,
+    "simpleModelWays": 4,
+    "romObservation": "Supplied ROM Cache_Set_DCache_Mode ignores ways argument; fixed-four-way header agrees. Actual rev0.2 ROM not read back.",
+    "measuredAssociativity": null,
+    "replacementPolicyMeasured": false
+  },
+  "firstColdDataLineWholeProbeCycles": {
+    "psram": [
+      93,
+      96
+    ],
+    "flash": [
+      128
+    ]
+  },
+  "psramServiceTraversal": [
+    {
+      "boot": 1,
+      "psramHz": 40000000,
+      "samples": 54,
+      "bytes": 4096,
+      "missCounts": [
+        64
+      ],
+      "minCycles": 19698,
+      "medianCycles": 19698.0,
+      "maxCycles": 19977,
+      "medianCyclesPerLineIncludingLoop": 307.78125
+    },
+    {
+      "boot": 1,
+      "psramHz": 80000000,
+      "samples": 54,
+      "bytes": 4096,
+      "missCounts": [
+        64
+      ],
+      "minCycles": 10860,
+      "medianCycles": 10860.0,
+      "maxCycles": 10860,
+      "medianCyclesPerLineIncludingLoop": 169.6875
+    },
+    {
+      "boot": 2,
+      "psramHz": 40000000,
+      "samples": 54,
+      "bytes": 4096,
+      "missCounts": [
+        64
+      ],
+      "minCycles": 19698,
+      "medianCycles": 19698.0,
+      "maxCycles": 19974,
+      "medianCyclesPerLineIncludingLoop": 307.78125
+    },
+    {
+      "boot": 2,
+      "psramHz": 80000000,
+      "samples": 54,
+      "bytes": 4096,
+      "missCounts": [
+        64
+      ],
+      "minCycles": 10671,
+      "medianCycles": 10671.0,
+      "maxCycles": 10671,
+      "medianCyclesPerLineIncludingLoop": 166.734375
+    }
+  ],
+  "explicitWritebackDelta": [
+    {
+      "lines": 1,
+      "cleanCycles": 862.0,
+      "dirtyCycles": 1016.0,
+      "extraCycles": 154.0,
+      "extraCyclesPerLine": 154.0
+    },
+    {
+      "lines": 2,
+      "cleanCycles": 862.0,
+      "dirtyCycles": 1170.0,
+      "extraCycles": 308.0,
+      "extraCyclesPerLine": 154.0
+    },
+    {
+      "lines": 4,
+      "cleanCycles": 876.0,
+      "dirtyCycles": 1506.0,
+      "extraCycles": 630.0,
+      "extraCyclesPerLine": 157.5
+    },
+    {
+      "lines": 8,
+      "cleanCycles": 894.0,
+      "dirtyCycles": 2154.0,
+      "extraCycles": 1260.0,
+      "extraCyclesPerLine": 157.5
+    },
+    {
+      "lines": 16,
+      "cleanCycles": 936.0,
+      "dirtyCycles": 3442.0,
+      "extraCycles": 2506.0,
+      "extraCyclesPerLine": 156.625
+    }
+  ],
+  "clockDecomposedWritebackDelta": [
+    {
+      "psramMHz": 40,
+      "lines": 1,
+      "extraCyclesPerDirtyLine": 280.0
+    },
+    {
+      "psramMHz": 40,
+      "lines": 16,
+      "extraCyclesPerDirtyLine": 280.0
+    },
+    {
+      "psramMHz": 40,
+      "lines": 512,
+      "extraCyclesPerDirtyLine": 286.59375
+    },
+    {
+      "psramMHz": 80,
+      "lines": 1,
+      "extraCyclesPerDirtyLine": 154.0
+    },
+    {
+      "psramMHz": 80,
+      "lines": 16,
+      "extraCyclesPerDirtyLine": 156.625
+    },
+    {
+      "psramMHz": 80,
+      "lines": 512,
+      "extraCyclesPerDirtyLine": 161.33203125
+    }
+  ],
+  "hotStore256Operations": {
+    "psramMedianCycles": 272.0,
+    "internalMedianCycles": 276.0
+  },
+  "roughExperimentParameters": {
+    "hitExtraCycles": 0,
+    "psramStreamingServiceCyclesPerLine": {
+      "try": [
+        150,
+        160,
+        170
+      ],
+      "status": "effective serialized-service sensitivity sweep, not identified incremental miss latency"
+    },
+    "explicitDirtyFlushExtraCyclesPerLine80MHz": {
+      "observedRange": [
+        154,
+        161.33203125
+      ],
+      "status": "explicit C2M flush delta, not proven automatic-eviction charge"
+    },
+    "automaticEvictionExtraCycles": null,
+    "criticalWordVsFullLine": "First-line whole probe 93-96 cycles versus steady 166.734-169.688 cycles/line indicates a single fixed latency does not represent both observations; overlap/critical-word-first is an inference."
+  },
+  "limits": [
+    "No matched warm-load traversal baseline, so incremental fill latency cannot be isolated from CPU loop and pipeline overlap.",
+    "Cold stride reads only one byte per cache line; its 4096-byte coverage forces 64 line fills, not 4096 load bytes.",
+    "Explicit dirty-minus-clean flush controls identify marginal flushed-line work but not demand-eviction overlap or stalls.",
+    "No set-conflict or way-count sweep exists in these cohorts; geometry and replacement cannot be inferred empirically.",
+    "Both cores share counter registers; concurrent cells prove contention patterns, not a universal per-request arbitration cost.",
+    "PIE vector issue throughput is not isolated by these scalar load/store cells."
+  ]
+}

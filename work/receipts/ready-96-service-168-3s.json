@@ -1,0 +1,46 @@
+{
+  "mode": "Node functional smoke, not performance evidence",
+  "cpi": 1,
+  "quantum": 64,
+  "cache": 2,
+  "frontiers": 2,
+  "contention": 1,
+  "fill": 96,
+  "service": 168,
+  "cacheWait": [
+    27924873,
+    2171960
+  ],
+  "cacheCounters": {
+    "hits": 20203600,
+    "fills": 751800,
+    "writebacks": 171515,
+    "extraCycles": 88638240
+  },
+  "stop": 0,
+  "interrupted": false,
+  "verdict": null,
+  "verdictValidation": {
+    "schema": "tinydraw-gate1-v1",
+    "valid": false,
+    "passed": false,
+    "error": "missing or incomplete verdict"
+  },
+  "guestSeconds": 3,
+  "wallSeconds": 8.179286292,
+  "instructions": 608871428,
+  "jitInstructions": 516753741,
+  "jit": {
+    "compiled": 3270,
+    "failed": 0,
+    "released": 36,
+    "compileMs": 205.5285259999982,
+    "bytes": 16085590,
+    "liveBytes": 15942965,
+    "peakBytes": 15942965,
+    "peakModules": 3234
+  },
+  "frames": 1,
+  "logs": [],
+  "serial": "ESP-ROM:esp32s3-20210327\r\nBuild:Mar 27 2021\r\nrst:0x1 (POWERON),boot:0xf (SPI_FAST_FLASH_BOOT)\r\nconfigspi:0x00000008\r\nSPIWP:0x00\r\nmode:DIO, clock div:1\r\nload:0x3fce2820,len:0x1664\r\nload:0x403c8700,len:0xf38\r\nload:0x403cb700,len:0x31e8\r\nentry 0x403c8930\r\nI (9) boot: ESP-IDF v6.0.2 2nd stage bootloader\r\nI (9) boot: compile time Sep  4 2026 20:35:10\r\nI (9) boot: Multicore bootloader\r\nI (9) boot: chip revision: v0.0\r\nI (9) boot: efuse block revision: v1.0\r\nI (9) qio_mode: Enabling default flash chip QIO\r\nI (9) boot.esp32s3: Boot SPI Speed : 80MHz\r\nI (9) boot.esp32s3: SPI Mode       : QIO\r\nI (9) boot.esp32s3: SPI Flash Size : 16MB\r\nI (9) boot: Enabling RNG early entropy source...\r\nI (9) boot: Partition Table:\r\nI (9) boot: ## Label            Usage          Type ST Offset   Length\r\nI (10) boot:  0 nvs              WiFi data        01 02 00009000 00006000\r\nI (10) boot:  1 phy_init         RF data          01 01 0000f000 00001000\r\nI (10) boot:  2 factory          factory app      00 00 00010000 001c0000\r\nI (10) boot:  3 drawing          Unknown data     01 40 001d0000 00400000\r\nI (10) boot:  4 export           Unknown data     01 41 005d0000 00a20000\r\nI (10) boot:  5 coredump         Unknown data     01 03 00ff0000 00010000\r\nI (10) boot: End of partition table\r\nI (10) esp_image: segment 0: paddr=00010020 vaddr=3c070020 size=34c7ch (216188) map\r\nI (29) esp_image: segment 1: paddr=00044ca4 vaddr=3fc9d000 size=03794h ( 14228) load\r\nI (31) esp_image: segment 2: paddr=00048440 vaddr=40374000 size=07bd8h ( 31704) load\r\nI (35) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=602fch (393980) map\r\nI (68) esp_image: segment 4: paddr=000b0324 vaddr=4037bbd8 size=11360h ( 70496) load\r\nI (76) esp_image: segment 5: paddr=000c168c vaddr=50000000 size=00024h (    36) load\r\nI (80) boot: Loaded app from partition at offset 0x10000\r\nI (80) boot: Disabling RNG early entropy source...\r\nI (81) octal_psram: vendor id    : 0x0d (AP)\r\nI (81) octal_psram: dev id       : 0x01 (generation 2)\r\nI (81) octal_psram: density      : 0x03 (64 Mbit)\r\nI (81) octal_psram: good-die     : 0x01 (Pass)\r\nI (81) octal_psram: Latency      : 0x01 (Fixed)\r\nI (81) octal_psram: VCC          : 0x00 (1.8V)\r\nI (81) octal_psram: SRF          : 0x00 (Slow Refresh)\r\nI (81) octal_psram: BurstType    : 0x00 ( Wrap)\r\nI (81) octal_psram: BurstLen     : 0x03 (1024 Byte)\r\nI (81) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)\r\nI (82) octal_psram: DriveStrength: 0x00 (1/1)\r\nI (82) MSPI Timing: Enter psram timing tuning\r\nW MSPI Timing: tuning fail, best point is fallen back to index 5\r\nI (82) esp_psram: Found 8MB PSRAM device\r\nI (82) esp_psram: Speed: 80MHz\r\nI (82) cpu_start: Multicore app\r\nI (790) esp_psram: SPI SRAM memory test OK\r\nI (798) cpu_start: GPIO 44 and 43 are used as console UART I/O pins\r\nI (799) cpu_start: Pro cpu start user code\r\nI (799) cpu_start: cpu freq: 240000000 Hz\r\nI (799) app_init: Application information:\r\nI (799) app_init: Project name:     tinydraw_esp32\r\nI (799) app_init: App version:      7a157d4\r\nI (799) app_init: Compile time:     Sep  4 2026 20:35:01\r\nI (799) app_init: ELF file SHA256:  d8e9be336...\r\nI (799) app_init: ESP-IDF:          v6.0.2\r\nI (799) efuse_init: Min chip rev:     v0.0\r\nI (799) efuse_init: Max chip rev:     v0.99 \r\nI (799) efuse_init: Chip rev:         v0.0\r\nI (799) heap_init: Initializing. RAM available for dynamic allocation:\r\nI (799) heap_init: At 3FCA1FD0 len 00047740 (285 KiB): RAM\r\nI (799) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM\r\nI (799) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM\r\nI (799) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM\r\nI (799) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator\r\nI (799) spi_flash: detected chip: generic\r\nI (799) spi_flash: flash io: qio\r\nI (799) sleep_gpio: Configure to isolate all GPIO pins in sleep state\r\nI (800) sleep_gpio: Enable automatic switching of GPIO sleep configuration\r\nI (800) main_task: Started on CPU0\r\nI (800) main_task: Calling app_main()\r\nTINYDRAW_PRODUCER_SCRATCH supertask_internal=1 settle_internal=1 free_internal=220524 free_psram=951304 frame_phase=0\r\nTINYDRAW_AUTOSAVE_RESTORE status=1 generation=0 active=0 retained=0\r\nTINYDRAW_PANEL_HARD_RESET=1 attempts=1 bus_resets=0 first_failure_stage=none first_failure=ESP_OK last_bus_reset=ESP_OK device_remove=ESP_OK bus_delete=ESP_OK\r\nTINYDRAW_PANEL_TRANSPORT clock_mhz=40 transfer_phase=0\r\nI (990) co5300: version: 2.1.0\r\nI (990) co5300_spi: LCD panel create success, version: 2.1.0\r\nW (1070) co5300_spi: The 3Ah command has been used and will be overwritten by external initialization sequence\r\nI (1170) CST816S: IC id: 183\r\nI (1170) PCF85063A: PCF85063A initialized successfully\r\nTINYDRAW_RTC ready=1 retained=0 local=0000-00-00T00:00:00\r\nTINYDRAW_VECTOR_V2_PRESENTATION experiment=boundary-top-sweep te_edge=rising clock_mhz=40 optical_acceptance=external_manual\r\nTINYDRAW_LIVE_PRESENT kind=startup zoom=25 x=0 y=0 compose_us=16740 scroll_us=0 exposed_compose_us=0 chrome_us=8125 chrome_prepare_us=5173 chrome_stage_us=2952 read_submit_us=0 read_complete_us=0 transfer_wait_us=12664 tile_pixels=0 uniform_pixels=0 overview_pixels=164864 fallback_pixels=0 resident_tiles=0 fallback_tiles=0 pushes=11 tear_wait_us=319 tear_edge_isr_to_resume_us=7 tear_edge_observed=1 tear_edge_wait_resumed=1 tear_edge_timeout=0 tear_heal_attempted=0 tear_heal_command_sent=0 presentation_experiment=boundary-top-sweep te_edge=rising clock_mhz=40 frame_reused=0 pass=1\r\nTINYDRAW_GATE1_PANEL_STAGE_AB allocation=1 linear_iterations=2048 linear_calls=8192 linear_pie_us=10609 linear_scalar_us=67394 linear_speedup_x1000=6352 linear_pie_checksum=79f7df66 linear_scalar_checksum=79f7df66 linear_guards=1 ring_iterations=8 ring_sweeps=48 ring_pie_us=155383 ring_scalar_us=297361 ring_speedup_x1000=1913 ring_pie_checksum=3301799a ring_scalar_checksum=3301799a ring_guards=1 pass=1\r\nTINYDRAW_GATE1_MASKED_SPAN_AB allocation=1 workloads=192 slots=256 calls=49152 candidate_us=61475 halfword_us=73849 speedup_x1000=1201 candidate_count=1851392 halfword_count=1851392 candidate_checksum=8e40e885 halfword_checksum=8e40e885 exact=1 guards=1 pass=1\r\n"
+}

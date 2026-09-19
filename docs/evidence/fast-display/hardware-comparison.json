@@ -1,0 +1,481 @@
+{
+  "caveat": "Firmware timer ratios, not host throughput. One hardware run restores a drawing unlike erased simulator flash. Matching workload fields are not proof of complete state equality.",
+  "summary": {
+    "compute_us": 0.7255580219770892,
+    "present_us": 0.6005917159763313
+  },
+  "rows": [
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=25 kind=startup",
+      "field": "transfer_wait_us",
+      "hardwareUs": 19700,
+      "timedDisplayUs": 18161,
+      "timedDisplayOverHardware": 0.9218781725888325,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=25 kind=startup",
+      "field": "tear_wait_us",
+      "hardwareUs": 9919,
+      "timedDisplayUs": 10883,
+      "timedDisplayOverHardware": 1.0971872164532714,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "linear_pie_us",
+      "hardwareUs": 12640,
+      "timedDisplayUs": 10605,
+      "timedDisplayOverHardware": 0.839003164556962,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "linear_scalar_us",
+      "hardwareUs": 68151,
+      "timedDisplayUs": 67397,
+      "timedDisplayOverHardware": 0.9889363325556485,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "ring_pie_us",
+      "hardwareUs": 165815,
+      "timedDisplayUs": 25428,
+      "timedDisplayOverHardware": 0.1533516268130145,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PANEL_STAGE_AB",
+      "field": "ring_scalar_us",
+      "hardwareUs": 302845,
+      "timedDisplayUs": 210267,
+      "timedDisplayOverHardware": 0.6943056679159306,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=100 kind=gate_fallback",
+      "field": "transfer_wait_us",
+      "hardwareUs": 19566,
+      "timedDisplayUs": 17814,
+      "timedDisplayOverHardware": 0.9104569150567311,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=100 kind=gate_fallback",
+      "field": "tear_wait_us",
+      "hardwareUs": 1488,
+      "timedDisplayUs": 3063,
+      "timedDisplayOverHardware": 2.058467741935484,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=400 kind=gate_fallback",
+      "field": "transfer_wait_us",
+      "hardwareUs": 19866,
+      "timedDisplayUs": 17575,
+      "timedDisplayOverHardware": 0.8846773381657103,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=400 kind=gate_fallback",
+      "field": "tear_wait_us",
+      "hardwareUs": 834,
+      "timedDisplayUs": 16147,
+      "timedDisplayOverHardware": 19.360911270983213,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=50",
+      "field": "compute_us",
+      "hardwareUs": 289558,
+      "timedDisplayUs": 210386,
+      "timedDisplayOverHardware": 0.7265763681196858,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=50",
+      "field": "present_us",
+      "hardwareUs": 73917,
+      "timedDisplayUs": 40313,
+      "timedDisplayOverHardware": 0.5453819824938783,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=50",
+      "field": "wall_us",
+      "hardwareUs": 371705,
+      "timedDisplayUs": 257998,
+      "timedDisplayOverHardware": 0.6940934343094658,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 140821,
+      "timedDisplayUs": 99001,
+      "timedDisplayOverHardware": 0.7030272473565733,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=100",
+      "field": "present_us",
+      "hardwareUs": 69365,
+      "timedDisplayUs": 39590,
+      "timedDisplayOverHardware": 0.5707489367836805,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 215957,
+      "timedDisplayUs": 142998,
+      "timedDisplayOverHardware": 0.6621595965863575,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=200",
+      "field": "compute_us",
+      "hardwareUs": 116314,
+      "timedDisplayUs": 78813,
+      "timedDisplayOverHardware": 0.6775882524889523,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=200",
+      "field": "present_us",
+      "hardwareUs": 68614,
+      "timedDisplayUs": 41209,
+      "timedDisplayOverHardware": 0.6005917159763313,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=200",
+      "field": "wall_us",
+      "hardwareUs": 190980,
+      "timedDisplayUs": 123000,
+      "timedDisplayOverHardware": 0.6440464970153943,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 89160,
+      "timedDisplayUs": 59758,
+      "timedDisplayOverHardware": 0.6702332884701659,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=400",
+      "field": "present_us",
+      "hardwareUs": 67266,
+      "timedDisplayUs": 39978,
+      "timedDisplayOverHardware": 0.5943270002675943,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=overlap zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 158978,
+      "timedDisplayUs": 103998,
+      "timedDisplayOverHardware": 0.6541659852306608,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=50",
+      "field": "compute_us",
+      "hardwareUs": 235609,
+      "timedDisplayUs": 170948,
+      "timedDisplayOverHardware": 0.7255580219770892,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=50",
+      "field": "present_us",
+      "hardwareUs": 61254,
+      "timedDisplayUs": 36377,
+      "timedDisplayOverHardware": 0.5938714206419172,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=50",
+      "field": "wall_us",
+      "hardwareUs": 302975,
+      "timedDisplayUs": 213001,
+      "timedDisplayOverHardware": 0.7030316032675963,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 236128,
+      "timedDisplayUs": 172263,
+      "timedDisplayOverHardware": 0.7295322875728418,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=100",
+      "field": "present_us",
+      "hardwareUs": 60117,
+      "timedDisplayUs": 35818,
+      "timedDisplayOverHardware": 0.5958048472145983,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 301397,
+      "timedDisplayUs": 211733,
+      "timedDisplayOverHardware": 0.7025053334970156,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=200",
+      "field": "compute_us",
+      "hardwareUs": 309585,
+      "timedDisplayUs": 227666,
+      "timedDisplayOverHardware": 0.7353909265629794,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=200",
+      "field": "present_us",
+      "hardwareUs": 57186,
+      "timedDisplayUs": 35633,
+      "timedDisplayOverHardware": 0.6231070541740985,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=200",
+      "field": "wall_us",
+      "hardwareUs": 374354,
+      "timedDisplayUs": 269934,
+      "timedDisplayOverHardware": 0.7210661566324923,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 334074,
+      "timedDisplayUs": 247974,
+      "timedDisplayOverHardware": 0.7422726701269778,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=400",
+      "field": "present_us",
+      "hardwareUs": 56633,
+      "timedDisplayUs": 35199,
+      "timedDisplayOverHardware": 0.6215280843324563,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=adversarial_tapered_4x+evil_hairlines zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 400957,
+      "timedDisplayUs": 291577,
+      "timedDisplayOverHardware": 0.7272026676177246,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=50",
+      "field": "compute_us",
+      "hardwareUs": 31803,
+      "timedDisplayUs": 23264,
+      "timedDisplayOverHardware": 0.7315033172971104,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=50",
+      "field": "present_us",
+      "hardwareUs": 55226,
+      "timedDisplayUs": 34291,
+      "timedDisplayOverHardware": 0.6209213051823417,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=50",
+      "field": "wall_us",
+      "hardwareUs": 90971,
+      "timedDisplayUs": 59521,
+      "timedDisplayOverHardware": 0.654285431621066,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 44328,
+      "timedDisplayUs": 32405,
+      "timedDisplayOverHardware": 0.731027792817181,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=100",
+      "field": "present_us",
+      "hardwareUs": 56496,
+      "timedDisplayUs": 34689,
+      "timedDisplayOverHardware": 0.6140080713678845,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 104489,
+      "timedDisplayUs": 70167,
+      "timedDisplayOverHardware": 0.6715252323211056,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=200",
+      "field": "compute_us",
+      "hardwareUs": 89199,
+      "timedDisplayUs": 65147,
+      "timedDisplayOverHardware": 0.7303557214766981,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=200",
+      "field": "present_us",
+      "hardwareUs": 56939,
+      "timedDisplayUs": 35471,
+      "timedDisplayOverHardware": 0.6229649273784226,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=200",
+      "field": "wall_us",
+      "hardwareUs": 149963,
+      "timedDisplayUs": 104165,
+      "timedDisplayOverHardware": 0.6946046691517241,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 184612,
+      "timedDisplayUs": 132883,
+      "timedDisplayOverHardware": 0.719796112928737,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=400",
+      "field": "present_us",
+      "hardwareUs": 63888,
+      "timedDisplayUs": 37218,
+      "timedDisplayOverHardware": 0.5825507137490609,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=owner_torture zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 253976,
+      "timedDisplayUs": 173998,
+      "timedDisplayOverHardware": 0.6850962295649983,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=seed7 zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 96934,
+      "timedDisplayUs": 63816,
+      "timedDisplayOverHardware": 0.6583448531990839,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=seed7 zoom=400",
+      "field": "present_us",
+      "hardwareUs": 71104,
+      "timedDisplayUs": 40280,
+      "timedDisplayOverHardware": 0.5664941494149415,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=seed7 zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 171981,
+      "timedDisplayUs": 107000,
+      "timedDisplayOverHardware": 0.6221617504259191,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=100 kind=gate_fallback",
+      "field": "transfer_wait_us",
+      "hardwareUs": 19309,
+      "timedDisplayUs": 17814,
+      "timedDisplayOverHardware": 0.9225749650422083,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=100 kind=gate_fallback",
+      "field": "tear_wait_us",
+      "hardwareUs": 9121,
+      "timedDisplayUs": 3063,
+      "timedDisplayOverHardware": 0.335818440960421,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=400 kind=gate_fallback",
+      "field": "transfer_wait_us",
+      "hardwareUs": 19389,
+      "timedDisplayUs": 17575,
+      "timedDisplayOverHardware": 0.9064417968951467,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_LIVE_PRESENT zoom=400 kind=gate_fallback",
+      "field": "tear_wait_us",
+      "hardwareUs": 15458,
+      "timedDisplayUs": 16147,
+      "timedDisplayOverHardware": 1.0445723897011256,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=100",
+      "field": "compute_us",
+      "hardwareUs": 115822,
+      "timedDisplayUs": 77134,
+      "timedDisplayOverHardware": 0.6659701956450416,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=100",
+      "field": "present_us",
+      "hardwareUs": 66713,
+      "timedDisplayUs": 41037,
+      "timedDisplayOverHardware": 0.6151274863969541,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=100",
+      "field": "wall_us",
+      "hardwareUs": 186983,
+      "timedDisplayUs": 122000,
+      "timedDisplayOverHardware": 0.6524657321788612,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=400",
+      "field": "compute_us",
+      "hardwareUs": 49574,
+      "timedDisplayUs": 28543,
+      "timedDisplayOverHardware": 0.5757655222495663,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=400",
+      "field": "present_us",
+      "hardwareUs": 64824,
+      "timedDisplayUs": 39591,
+      "timedDisplayOverHardware": 0.6107460199925954,
+      "workloadDifferences": {}
+    },
+    {
+      "record": "TINYDRAW_GATE1_PACED_COLD corpus=evil_hairlines_capacity zoom=400",
+      "field": "wall_us",
+      "hardwareUs": 118984,
+      "timedDisplayUs": 72000,
+      "timedDisplayOverHardware": 0.6051233779331675,
+      "workloadDifferences": {}
+    }
+  ]
+}

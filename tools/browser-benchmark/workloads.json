@@ -38,5 +38,47 @@
       }
     ],
     "expectedInstructions": 10073833775
+  },
+  "tinydraw-timed": {
+    "schema": "tinydraw-gate1-v1",
+    "assets": [
+      "rom",
+      "bootloader",
+      "ptable",
+      "app",
+      "elf"
+    ],
+    "serialSource": "usb",
+    "expectedInstructions": null,
+    "as": "tinydraw",
+    "exports": [
+      [
+        "esp32sim_set_approximate_jit_timing",
+        1,
+        64
+      ],
+      [
+        "esp32sim_set_approximate_jit_frontiers",
+        1
+      ],
+      [
+        "esp32sim_set_approximate_jit_cache",
+        160,
+        96,
+        2
+      ],
+      [
+        "esp32sim_set_approximate_cache_contention",
+        1
+      ],
+      [
+        "esp32sim_set_spi2_timing",
+        1
+      ],
+      [
+        "esp32sim_set_measured_te",
+        1
+      ]
+    ]
   }
 }

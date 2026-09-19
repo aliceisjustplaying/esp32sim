@@ -1,0 +1,327 @@
+{
+  "caveat": "Each nonempty block has 256 FP instructions; lsi_add_gap additionally has 128 NOPs. Baseline subtraction includes terminal result-read differences, so per-block values are primary. No interrupts inside measurements.",
+  "boots": [
+    {
+      "source": "work/fast-hardware/docs/evidence/fast-fp-2026-09-07/boot-1.log",
+      "complete": true,
+      "allResultsMatch": true,
+      "cells": {
+        "empty": {
+          "samples": 9,
+          "minCycles": 22529,
+          "medianCycles": 22529,
+          "maxCycles": 22529,
+          "extraCyclesPer256InstructionBlock": 0.0,
+          "extraCyclesPerFpInstruction": 0.0,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "add_dep": {
+          "samples": 9,
+          "minCycles": 1071172,
+          "medianCycles": 1071172,
+          "maxCycles": 1071173,
+          "extraCyclesPer256InstructionBlock": 1024.0654296875,
+          "extraCyclesPerFpInstruction": 4.000255584716797,
+          "resultBits": "43808000",
+          "expectedResultBits": "43808000",
+          "resultMatches": true
+        },
+        "add_ind4": {
+          "samples": 9,
+          "minCycles": 284780,
+          "medianCycles": 284780,
+          "maxCycles": 284781,
+          "extraCyclesPer256InstructionBlock": 256.1044921875,
+          "extraCyclesPerFpInstruction": 1.0004081726074219,
+          "resultBits": "42820000",
+          "expectedResultBits": "42820000",
+          "resultMatches": true
+        },
+        "mul_dep": {
+          "samples": 9,
+          "minCycles": 1071167,
+          "medianCycles": 1071172,
+          "maxCycles": 1071172,
+          "extraCyclesPer256InstructionBlock": 1024.0654296875,
+          "extraCyclesPerFpInstruction": 4.000255584716797,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "mul_ind4": {
+          "samples": 9,
+          "minCycles": 284753,
+          "medianCycles": 284759,
+          "maxCycles": 284762,
+          "extraCyclesPer256InstructionBlock": 256.083984375,
+          "extraCyclesPerFpInstruction": 1.0003280639648438,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "madd_dep": {
+          "samples": 9,
+          "minCycles": 1071114,
+          "medianCycles": 1071120,
+          "maxCycles": 1071120,
+          "extraCyclesPer256InstructionBlock": 1024.0146484375,
+          "extraCyclesPerFpInstruction": 4.000057220458984,
+          "resultBits": "43808000",
+          "expectedResultBits": "43808000",
+          "resultMatches": true
+        },
+        "madd_ind4": {
+          "samples": 9,
+          "minCycles": 284697,
+          "medianCycles": 284703,
+          "maxCycles": 284707,
+          "extraCyclesPer256InstructionBlock": 256.029296875,
+          "extraCyclesPerFpInstruction": 1.0001144409179688,
+          "resultBits": "42820000",
+          "expectedResultBits": "42820000",
+          "resultMatches": true
+        },
+        "float_add_dep": {
+          "samples": 9,
+          "minCycles": 548897,
+          "medianCycles": 548897,
+          "maxCycles": 548899,
+          "extraCyclesPer256InstructionBlock": 514.03125,
+          "extraCyclesPerFpInstruction": 2.0079345703125,
+          "resultBits": "40000000",
+          "expectedResultBits": "40000000",
+          "resultMatches": true
+        },
+        "float_add_ind": {
+          "samples": 9,
+          "minCycles": 544790,
+          "medianCycles": 544790,
+          "maxCycles": 544805,
+          "extraCyclesPer256InstructionBlock": 510.0205078125,
+          "extraCyclesPerFpInstruction": 1.9922676086425781,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "mul_trunc_dep": {
+          "samples": 9,
+          "minCycles": 677918,
+          "medianCycles": 677927,
+          "maxCycles": 677930,
+          "extraCyclesPer256InstructionBlock": 640.037109375,
+          "extraCyclesPerFpInstruction": 2.5001449584960938,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "mul_trunc_ind": {
+          "samples": 9,
+          "minCycles": 546842,
+          "medianCycles": 546842,
+          "maxCycles": 546872,
+          "extraCyclesPer256InstructionBlock": 512.0244140625,
+          "extraCyclesPerFpInstruction": 2.0000953674316406,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "lsi_add_dep": {
+          "samples": 9,
+          "minCycles": 547874,
+          "medianCycles": 547893,
+          "maxCycles": 547896,
+          "extraCyclesPer256InstructionBlock": 513.05078125,
+          "extraCyclesPerFpInstruction": 2.0041046142578125,
+          "resultBits": "40000000",
+          "expectedResultBits": "40000000",
+          "resultMatches": true
+        },
+        "lsi_add_gap": {
+          "samples": 9,
+          "minCycles": 548897,
+          "medianCycles": 548900,
+          "maxCycles": 548920,
+          "extraCyclesPer256InstructionBlock": 514.0341796875,
+          "extraCyclesPerFpInstruction": 2.007946014404297,
+          "resultBits": "40000000",
+          "expectedResultBits": "40000000",
+          "resultMatches": true
+        },
+        "lsi_add_ind": {
+          "samples": 9,
+          "minCycles": 544809,
+          "medianCycles": 544817,
+          "maxCycles": 544841,
+          "extraCyclesPer256InstructionBlock": 510.046875,
+          "extraCyclesPerFpInstruction": 1.99237060546875,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        }
+      }
+    },
+    {
+      "source": "work/fast-hardware/docs/evidence/fast-fp-2026-09-07/boot-2.log",
+      "complete": true,
+      "allResultsMatch": true,
+      "cells": {
+        "empty": {
+          "samples": 9,
+          "minCycles": 22529,
+          "medianCycles": 22529,
+          "maxCycles": 22529,
+          "extraCyclesPer256InstructionBlock": 0.0,
+          "extraCyclesPerFpInstruction": 0.0,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "add_dep": {
+          "samples": 9,
+          "minCycles": 1071168,
+          "medianCycles": 1071168,
+          "maxCycles": 1071184,
+          "extraCyclesPer256InstructionBlock": 1024.0615234375,
+          "extraCyclesPerFpInstruction": 4.000240325927734,
+          "resultBits": "43808000",
+          "expectedResultBits": "43808000",
+          "resultMatches": true
+        },
+        "add_ind4": {
+          "samples": 9,
+          "minCycles": 284780,
+          "medianCycles": 284784,
+          "maxCycles": 284785,
+          "extraCyclesPer256InstructionBlock": 256.1083984375,
+          "extraCyclesPerFpInstruction": 1.0004234313964844,
+          "resultBits": "42820000",
+          "expectedResultBits": "42820000",
+          "resultMatches": true
+        },
+        "mul_dep": {
+          "samples": 9,
+          "minCycles": 1071167,
+          "medianCycles": 1071168,
+          "maxCycles": 1071168,
+          "extraCyclesPer256InstructionBlock": 1024.0615234375,
+          "extraCyclesPerFpInstruction": 4.000240325927734,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "mul_ind4": {
+          "samples": 9,
+          "minCycles": 284754,
+          "medianCycles": 284757,
+          "maxCycles": 284760,
+          "extraCyclesPer256InstructionBlock": 256.08203125,
+          "extraCyclesPerFpInstruction": 1.0003204345703125,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "madd_dep": {
+          "samples": 9,
+          "minCycles": 1071114,
+          "medianCycles": 1071125,
+          "maxCycles": 1071125,
+          "extraCyclesPer256InstructionBlock": 1024.01953125,
+          "extraCyclesPerFpInstruction": 4.0000762939453125,
+          "resultBits": "43808000",
+          "expectedResultBits": "43808000",
+          "resultMatches": true
+        },
+        "madd_ind4": {
+          "samples": 9,
+          "minCycles": 284701,
+          "medianCycles": 284701,
+          "maxCycles": 284710,
+          "extraCyclesPer256InstructionBlock": 256.02734375,
+          "extraCyclesPerFpInstruction": 1.0001068115234375,
+          "resultBits": "42820000",
+          "expectedResultBits": "42820000",
+          "resultMatches": true
+        },
+        "float_add_dep": {
+          "samples": 9,
+          "minCycles": 548887,
+          "medianCycles": 548891,
+          "maxCycles": 548898,
+          "extraCyclesPer256InstructionBlock": 514.025390625,
+          "extraCyclesPerFpInstruction": 2.0079116821289062,
+          "resultBits": "40000000",
+          "expectedResultBits": "40000000",
+          "resultMatches": true
+        },
+        "float_add_ind": {
+          "samples": 9,
+          "minCycles": 544797,
+          "medianCycles": 544799,
+          "maxCycles": 544805,
+          "extraCyclesPer256InstructionBlock": 510.029296875,
+          "extraCyclesPerFpInstruction": 1.9923019409179688,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "mul_trunc_dep": {
+          "samples": 9,
+          "minCycles": 677918,
+          "medianCycles": 677930,
+          "maxCycles": 677930,
+          "extraCyclesPer256InstructionBlock": 640.0400390625,
+          "extraCyclesPerFpInstruction": 2.5001564025878906,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "mul_trunc_ind": {
+          "samples": 9,
+          "minCycles": 546848,
+          "medianCycles": 546848,
+          "maxCycles": 546863,
+          "extraCyclesPer256InstructionBlock": 512.0302734375,
+          "extraCyclesPerFpInstruction": 2.0001182556152344,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        },
+        "lsi_add_dep": {
+          "samples": 9,
+          "minCycles": 547874,
+          "medianCycles": 547902,
+          "maxCycles": 547902,
+          "extraCyclesPer256InstructionBlock": 513.0595703125,
+          "extraCyclesPerFpInstruction": 2.004138946533203,
+          "resultBits": "40000000",
+          "expectedResultBits": "40000000",
+          "resultMatches": true
+        },
+        "lsi_add_gap": {
+          "samples": 9,
+          "minCycles": 548906,
+          "medianCycles": 548909,
+          "maxCycles": 548920,
+          "extraCyclesPer256InstructionBlock": 514.04296875,
+          "extraCyclesPerFpInstruction": 2.0079803466796875,
+          "resultBits": "40000000",
+          "expectedResultBits": "40000000",
+          "resultMatches": true
+        },
+        "lsi_add_ind": {
+          "samples": 9,
+          "minCycles": 544815,
+          "medianCycles": 544815,
+          "maxCycles": 544851,
+          "extraCyclesPer256InstructionBlock": 510.044921875,
+          "extraCyclesPerFpInstruction": 1.9923629760742188,
+          "resultBits": "3f800000",
+          "expectedResultBits": "3f800000",
+          "resultMatches": true
+        }
+      }
+    }
+  ]
+}

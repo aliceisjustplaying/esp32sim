@@ -1,0 +1,115 @@
+{
+  "caveat": "Sensitivity hypotheses, not isolated measured opcode prices. Same frozen firmware; hardware retained drawing state differs. Default scalar issue and branch costs remain approximate.",
+  "hardwarePath": "../fast-hardware/docs/evidence/fast-hardware-gate1-2026-09-07/timing-comparison.json",
+  "hardware": {
+    "ring_pie_us": 165815,
+    "ring_scalar_us": 302845,
+    "linear_pie_us": 12640,
+    "linear_scalar_us": 68151
+  },
+  "cases": [
+    {
+      "sourcePhase": 1,
+      "destinationPhase": 0,
+      "width": 368,
+      "prefix": 0,
+      "blocks": 22
+    },
+    {
+      "sourcePhase": 3,
+      "destinationPhase": 1,
+      "width": 351,
+      "prefix": 7,
+      "blocks": 21
+    },
+    {
+      "sourcePhase": 7,
+      "destinationPhase": 2,
+      "width": 255,
+      "prefix": 6,
+      "blocks": 15
+    },
+    {
+      "sourcePhase": 2,
+      "destinationPhase": 5,
+      "width": 127,
+      "prefix": 3,
+      "blocks": 7
+    }
+  ],
+  "predictedLinearCycles": {
+    "allStagingMemoryPlus1": 540672,
+    "srcQLoadPlus2": 516096
+  },
+  "rows": [
+    {
+      "mode": "none",
+      "path": "receipts/inline-cache-3s.json",
+      "guestUs": {
+        "linear_pie_us": 10609,
+        "linear_scalar_us": 67394,
+        "ring_pie_us": 131268,
+        "ring_scalar_us": 320414
+      },
+      "hardwareErrorPercent": {
+        "linear_pie_us": -16.06803797468355,
+        "linear_scalar_us": -1.110768734134493,
+        "ring_pie_us": -20.834665138859577,
+        "ring_scalar_us": 5.801317505654713
+      },
+      "pass": "1",
+      "linearGuards": "1",
+      "ringGuards": "1",
+      "jitFailures": 0,
+      "pieCounters": null
+    },
+    {
+      "mode": "128-bit staging memory +1",
+      "path": "receipts/pie-memory-plus1-3s.json",
+      "guestUs": {
+        "linear_pie_us": 12887,
+        "linear_scalar_us": 67398,
+        "ring_pie_us": 138005,
+        "ring_scalar_us": 320419
+      },
+      "hardwareErrorPercent": {
+        "linear_pie_us": 1.9541139240506267,
+        "linear_scalar_us": -1.1048994145353652,
+        "ring_pie_us": -16.771703404396465,
+        "ring_scalar_us": 5.8029685152470645
+      },
+      "pass": "1",
+      "linearGuards": "1",
+      "ringGuards": "1",
+      "jitFailures": 0,
+      "pieCounters": {
+        "events": 5717974,
+        "extraCycles": 5717974
+      }
+    },
+    {
+      "mode": "SRC.Q.LD +2",
+      "path": "receipts/pie-src-load-plus2-3s.json",
+      "guestUs": {
+        "linear_pie_us": 12785,
+        "linear_scalar_us": 67398,
+        "ring_pie_us": 137756,
+        "ring_scalar_us": 320364
+      },
+      "hardwareErrorPercent": {
+        "linear_pie_us": 1.1471518987341778,
+        "linear_scalar_us": -1.1048994145353652,
+        "ring_pie_us": -16.92187075958146,
+        "ring_scalar_us": 5.784807409731041
+      },
+      "pass": "1",
+      "linearGuards": "1",
+      "ringGuards": "1",
+      "jitFailures": 0,
+      "pieCounters": {
+        "events": 2492408,
+        "extraCycles": 4984816
+      }
+    }
+  ]
+}

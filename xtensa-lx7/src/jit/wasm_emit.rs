@@ -167,10 +167,18 @@ const WINDOWS: u8 = 29;
 /// Region locals: a helper or code-page store happened (leave at the next head); next chunk.
 const DIRTY: u8 = 30;
 const NEXT: u8 = 31;
-/// Typed scratch locals declared after the 25 i32 locals: a vector and a 64-bit integer
+#[cfg(feature = "wasm-cache-inline")]
+const CACHE: u8 = 32;
+#[cfg(feature = "wasm-cache-inline")]
+const CACHE_TAG: u8 = 33;
+#[cfg(feature = "wasm-cache-inline")]
+const CACHE_SET: u8 = 34;
+#[cfg(feature = "wasm-cache-inline")]
+const CACHE_LINE: u8 = 35;
+/// Typed scratch locals declared after the i32 locals: a vector and a 64-bit integer
 /// (PIE lane sums and the 40-bit ACCX). `module` must declare them in this order.
-const V128: u8 = 32;
-const WIDE: u8 = 33;
+const V128: u8 = if cfg!(feature = "wasm-cache-inline") { 36 } else { 32 };
+const WIDE: u8 = V128 + 1;
 const PC: usize = offset_of!(Cpu, pc);
 const AR: usize = offset_of!(Cpu, ar);
 const WINDOWBASE: usize = offset_of!(Cpu, windowbase);
@@ -1291,6 +1299,8 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     g.load(offset_of!(TlbEntry, lo));
     g.op(0x6b);
     g.set(REL);
+    #[cfg(feature = "wasm-cache-inline")]
+    emit_cache_hit(g, store, 1);
     g.get(TLB);
     g.load(offset_of!(TlbEntry, base));
     g.get(REL);
@@ -1334,6 +1344,77 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     g.bytes.extend([0x0c, 1]);
     g.end();
     g.fallback(bi, pc, next, last, false);
+    g.end();
+}
+
+/// The ordinary TLB checks already established a successful aligned access.
+/// Preserve the reference cache's four-way round-robin policy: hit does not
+/// update replacement; miss leaves before touching state and uses the helper.
+#[cfg(feature = "wasm-cache-inline")]
+fn emit_cache_hit(g: &mut Gen, store: bool, accesses: u8) {
+    use emu_core::bus::{FastCache, FastCacheLine};
+    g.begin_block(); // No cache view or internal memory: keep ordinary fast path.
+    g.get(2);
+    g.load(offset_of!(Helpers, cache));
+    g.tee(CACHE);
+    g.op(0x45);
+    g.bytes.extend([0x0d, 0]);
+    g.get(TLB);
+    g.load(offset_of!(TlbEntry, src));
+    g.c(!1);
+    g.op(0x71);
+    g.c(2); // Flash=2, PSRAM=3 in the experimental S3 adapter.
+    g.op(0x47);
+    g.bytes.extend([0x0d, 0]);
+
+    g.get(TLB);
+    g.load(offset_of!(TlbEntry, src));
+    g.c(28);
+    g.op(0x74);
+    g.get(TLB);
+    g.load(offset_of!(TlbEntry, off));
+    g.get(REL);
+    g.op(0x6a);
+    g.op(0x72);
+    g.c(6);
+    g.op(0x76);
+    g.set(CACHE_TAG);
+    g.get(CACHE);
+    g.load(offset_of!(FastCache, lines));
+    g.get(CACHE_TAG);
+    g.c(127);
+    g.op(0x71);
+    g.c((4 * size_of::<FastCacheLine>()) as u32);
+    g.op(0x6c);
+    g.op(0x6a);
+    g.set(CACHE_SET);
+    g.begin_block(); // Find a way. Invalid tags are MAX, impossible for 64B keys.
+    for way in 0..4 {
+        g.get(CACHE_SET);
+        g.c((way * size_of::<FastCacheLine>()) as u32);
+        g.op(0x6a);
+        g.tee(CACHE_LINE);
+        g.load(offset_of!(FastCacheLine, tag));
+        g.get(CACHE_TAG);
+        g.op(0x46);
+        g.begin_if();
+        g.bytes.extend([0x0c, 1]);
+        g.end();
+    }
+    g.bytes.extend([0x0c, 2]); // No match: leave to this instruction's slow path.
+    g.end();
+    if store {
+        g.get(CACHE_LINE);
+        g.c(1);
+        g.store(offset_of!(FastCacheLine, dirty));
+    }
+    g.get(CACHE);
+    g.load(offset_of!(FastCache, hits));
+    g.tee(CACHE_SET);
+    g.get(CACHE_SET);
+    g.bytes.extend([0x29, 3, 0]); // i64.load
+    g.bytes.extend([0x42, accesses, 0x7c]); // i64.const accesses; i64.add
+    g.bytes.extend([0x37, 3, 0]); // i64.store
     g.end();
 }
 
@@ -1408,7 +1489,7 @@ fn module(body: &[u8]) -> Vec<u8> {
     name(&mut exports, "run");
     exports.extend([0, 0]);
     section(&mut out, 7, &exports);
-    let mut func = vec![3, 25, 0x7f, 1, 0x7b, 1, 0x7e];   // 25 i32, then V128 and WIDE
+    let mut func = vec![3, if cfg!(feature = "wasm-cache-inline") { 29 } else { 25 }, 0x7f, 1, 0x7b, 1, 0x7e];   // i32 locals, then V128 and WIDE
     func.extend(body);
     let mut code = vec![1];
     uleb(&mut code, func.len());

@@ -1,0 +1,21 @@
+   Compiling esp32s3 v0.1.0 (/Users/alice/src/a/esp32sim/work/fast-memory-fixed/esp32s3)
+warning: output of `xcrun` while finding MacOSX.sdk
+  |
+  = note: xcrun: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+
+warning: linker stderr: cc: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `esp32s3` (lib test) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.33s
+     Running unittests src/lib.rs (target/debug/deps/esp32s3-23a78746ad076812)
+
+running 4 tests
+test rough_memory::tests::flash_and_psram_contend_but_internal_does_not ... ok
+test rough_memory::tests::classification_tracks_mmu_remap_and_aliases ... ok
+test rough_memory::tests::independent_mode_has_no_wait_and_empty_bursts_do_nothing ... ok
+test rough_memory::tests::free_access_at_later_instruction_phase_does_not_reserve_future_time ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.00s
+

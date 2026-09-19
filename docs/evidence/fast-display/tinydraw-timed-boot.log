@@ -1,0 +1,202 @@
+[emu] ROM loaded from /Users/alice/src/a/esp32sim/target/performance-review-latest-main-2026-09-06/esp32sim-performance-review-latest-main-2026-09-06/assets/rom.elf
+[emu] ROM boot from reset vector 0x40000400
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0xf (SPI_FAST_FLASH_BOOT)
+configspi:0x00000008
+SPIWP:0x00
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x1664
+load:0x403c8700,len:0xf38
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0xf (SPI_FAST_FLASH_BOOT)
+configspi:0x00000008
+SPIWP:0x00
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x1664
+load:0x403c8700,len:0xf38
+load:0x403cb700,len:0x31e8
+load:0x403cb700,len:0x31e8
+entry 0x403c8930
+I (7) boot: ESP-IDF v6.0.2 2nd stage bootloader
+I (7) boot: compile time Sep  4 2026 20:35:10
+I (7) boot: Multicore bootloader
+I (7) boot: chip revision: v0.0
+entry 0x403c8930
+I (7) boot: ESP-IDF v6.0.2 2nd stage bootloader
+I (7) boot: compile time Sep  4 2026 20:35:10
+I (7) boot: Multicore bootloader
+I (7) boot: chip revision: v0.0
+I (7) boot: efuse bI (7) boot: efuse block revision: v1.0
+I (7) qio_mode: Enabling default flash chip QIO
+I (7) boot.esp32s3: Boot SPI Speed : 80MHz
+I (7) boot.esp32s3: SPI Mode       : QIO
+I (8) boot.esp32s3: SPI Flash Size : 16MB
+I (8) boot: Enabling RNG early entropy source...
+I (8) boot: Partition Table:
+I (8) boot: ## Label            Usage          Type ST Offset   Length
+I (8) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (8) boot:  1 phy_init         RF data          01 01 0000f000 lock revision: v1.0
+I (7) qio_mode: Enabling default flash chip QIO
+I (7) boot.esp32s3: Boot SPI Speed : 80MHz
+I (7) boot.esp32s3: SPI Mode       : QIO
+I (8) boot.esp32s3: SPI Flash Size : 16MB
+I (8) boot: Enabling RNG early entropy source...
+I (8) boot: Partition Table:
+I (8) boot: ## Label            Usage          Type ST Offset   Length
+I (8) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (8) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (8) boot:  2 factory          factory app      00 00 00010000 001c0000
+I (8) boot:  3 drawing          Unknown data     01 40 001d0000 00400000
+I (8) boot:  4 export           Unknown data     01 41 005d0000 00a20000
+I (8) boot:  5 coredump         Unknown data     01 03 00ff0000 00010000
+I (9) boot: End of partition table
+I (9) esp_image: segment 0: paddr=00010020 vaddr=3c070020 size=34c7ch (216188) map
+00001000
+I (8) boot:  2 factory          factory app      00 00 00010000 001c0000
+I (8) boot:  3 drawing          Unknown data     01 40 001d0000 00400000
+I (8) boot:  4 export           Unknown data     01 41 005d0000 00a20000
+I (8) boot:  5 coredump         Unknown data     01 03 00ff0000 00010000
+I (9) boot: End of partition table
+I (9) esp_image: segment 0: paddr=00010020 vaddr=3c070020 size=34c7ch (216188) map
+I (23) esp_image: segment 1: paddr=00044ca4 vaddr=3fc9d000 size=03794h ( 14228) load
+I (23) esp_image: segment 1: paddr=00044ca4 vaddr=3fc9d000 size=03794h ( 14228) load
+I (25) esp_image: segment 2: paddr=00048440 vaddr=40374000 size=07bd8h ( 31704) load
+I (25) esp_image: segment 2: paddr=00048440 vaddr=40374000 size=07bd8h ( 31704) load
+I (28) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=602fch (393980) map
+I (28) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=602fch (393980) map
+I (54) esp_image: segment 4: paddr=000b0324 vaddr=4037bbd8 size=11360h ( 70496) load
+I (54) esp_image: segment 4: paddr=000b0324 vaddr=4037bbd8 size=11360h ( 70496) load
+I (61) esp_image: segment 5: paddr=000c168c vaddr=50000000 size=00024h (    36) load
+I (61) esp_image: segment 5: paddr=000c168c vaddr=50000000 size=00024h (    36) load
+I (65) boot: Loaded app from partition at offset 0x10000
+I (65) boot: Disabling RNG early entropy source...
+I (65) boot: Loaded app from partition at offset 0x10000
+I (65) boot: Disabling RNG early entropy source...
+I (65) octal_psram: vendor id    : 0x0d (AP)
+I (65) octal_psram: dev id       : 0x01 (generation 2)
+I (66) octal_psram: density      : 0x03 (64 Mbit)
+I (66) octal_psram: good-die     : 0x01 (Pass)
+I (66) octal_psram: Latency      : 0x01 (Fixed)
+I (66) octal_psram: VCC          : 0x00 (1.8V)
+I (66) octal_psram: SRF          : 0x00 (Slow Refresh)
+I (66) octal_psram: BurstType    : 0x00 ( Wrap)
+I (66) octal_psram: BurstLen     : 0x03 (1024 Byte)
+I (66) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (65) octal_psram: vendor id    : 0x0d (AP)
+I (65) octal_psram: dev id       : 0x01 (generation 2)
+I (66) octal_psram: density      : 0x03 (64 Mbit)
+I (66) octal_psram: good-die     : 0x01 (Pass)
+I (66) octal_psram: Latency      : 0x01 (Fixed)
+I (66) octal_psram: VCC          : 0x00 (1.8V)
+I (66) octal_psram: SRF          : 0x00 (Slow Refresh)
+I (66) octal_psram: BurstType    : 0x00 ( Wrap)
+I (66) octal_psram: BurstLen     : 0x03 (1024 Byte)
+I (66) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (66) octal_psram: DriveStrength: 0xI (66) octal_psram: DriveStrength: 0x00 (1/1)
+I (66) MSPI Timing: Enter psram timing tuning
+W MSPI Timing: tuning fail, best point is fallen back to index 5
+I (67) esp_psram: Found 8MB PSRAM device
+I (67) esp_psram: Speed: 80MHz
+I (67) cpu_start: Multicore app
+00 (1/1)
+I (66) MSPI Timing: Enter psram timing tuning
+W MSPI Timing: tuning fail, best point is fallen back to index 5
+I (67) esp_psram: Found 8MB PSRAM device
+I (67) esp_psram: Speed: 80MHz
+I (67) cpu_start: Multicore app
+I (106) esp_psram: SPI SRAM memory test OK
+I (106) esp_psram: SPI SRAM memory test OK
+I (114) cpu_start: GPIO 44 and 43 arI (114) cpu_start: GPIO 44 and 43 are used as console UART I/O pins
+I (115) cpu_start: Pro cpu start user code
+I (115) cpu_start: cpu freq: 240000000 Hz
+I (115) app_init: Application information:
+I (115) app_init: Project name:     tinydraw_esp32
+I (115) app_init: App version:      7a157d4
+e used as console UART I/O pins
+I (115) cpu_start: Pro cpu start user code
+I (115) cpu_start: cpu freq: 240000000 Hz
+I (115) app_init: Application information:
+I (115) app_init: Project name:     tinydraw_esp32
+I (115) app_init: App version:      7a157d4
+I (115) app_init: Compile time:     Sep  4 2026 2I (115) app_init: Compile time:     Sep  4 2026 20:35:01
+I (115) app_init: ELF file SHA256:  d8e9be336...
+I (115) app_init: ESP-IDF:          v6.0.2
+I (115) efuse_init: Min chip rev:     v0.0
+I (115) efuse_init: Max chip rev:     v0.99 
+I (115) efuse_init: Chip rev:         v0.0
+I (115) heap_init: Initializing. RAM available for dynamic allocation:
+I (115) heap_init: At 3FCA1FD0 len 00047740 (285 KiB): RAM
+I (115) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+0:35:01
+I (115) app_init: ELF file SHA256:  d8e9be336...
+I (115) app_init: ESP-IDF:          v6.0.2
+I (115) efuse_init: Min chip rev:     v0.0
+I (115) efuse_init: Max chip rev:     v0.99 
+I (115) efuse_init: Chip rev:         v0.0
+I (115) heap_init: Initializing. RAM available for dynamic allocation:
+I (115) heap_init: At 3FCA1FD0 len 00047740 (285 KiB): RAM
+I (115) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (115) heap_init: At I (115) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (115) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (115) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator
+3FCF0000 len 00008000 (32 KiB): DRAM
+I (115) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (115) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator
+I (115) spiI (115) spi_flash: detected chip: generic
+I (115) spi_flash: flash io: qio
+I (116) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+_flash: detected chip: generic
+I (115) spi_flash: flash io: qio
+I (116) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (116) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (116) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (116) main_task: Started on CPU0
+I (116) main_task: Calling app_main()
+I (116) main_task: Started on CPU0
+I (116) main_task: Calling app_main()
+TINYDRAW_PRODUCER_SCRATCH supertask_internal=1 settle_internal=1 free_internal=220524 free_psram=951304 frame_phase=0
+TINYDRAW_PRODUCER_SCRATCH supertask_internal=1 settle_internal=1 free_internal=220524 free_psram=951304 frame_phase=0
+TINYDRAW_AUTOSAVE_RESTORE status=1 generation=0 active=0 retained=0
+TINYDRAW_AUTOSAVE_RESTORE status=1 generation=0 active=0 retained=0
+TINYDRAW_PANEL_HARD_RESET=1 attempts=1 bus_resets=0 first_failure_stage=none first_failure=ESP_OK last_bus_reset=ESP_OK device_remove=ESP_OK bus_delete=ESP_OK
+TINYDRAW_PANEL_HARD_RESET=1 attempts=1 bus_resets=0 first_failure_stage=none first_failure=ESP_OK last_bus_reset=ESP_OK device_remove=ESP_OK bus_delete=ESP_OK
+TINYDRAW_PANEL_TRANSPORT clock_mhz=40 transfer_phase=0
+I (293) co5300: version: 2.1.0
+I (293) co5300_spi: LCD panel create success, version: 2.1.0
+TINYDRAW_PANEL_TRANSPORT clock_mhz=40 transfer_phase=0
+I (293) co5300: version: 2.1.0
+I (293) co5300_spi: LCD panel create success, version: 2.1.0
+W (373) co5300_spi: The 3Ah command has been used and will be overwritten by external initialization sequence
+W (373) co5300_spi: The 3Ah command has been used and will be overwritten by external initialization sequence
+I (473) CST816S: IC id: 183
+I (473) CST816S: IC id: 183
+I (473) PCF85063A: PCF85063A initialized successfully
+I (473) PCF85063A: PCF85063A initialized successfully
+TINYDRAW_RTC ready=1 retained=0 local=0000-00-00T00:00:00
+TINYDRAW_VECTOR_V2_PRESENTATION experiment=boundary-top-sweep te_edge=rising clock_mhz=40 optical_acceptance=external_manual
+TINYDRAW_RTC ready=1 retained=0 local=0000-00-00T00:00:00
+TINYDRAW_VECTOR_V2_PRESENTATION experiment=boundary-top-sweep te_edge=rising clock_mhz=40 optical_acceptance=external_manual
+TINYDRAW_LIVE_PRESENT kind=startup zoom=25 x=0 y=0 compose_us=9761 scroll_us=0 exposed_compose_us=0 chrome_us=4075 chrome_prepare_us=1794 chrome_stage_us=2281 read_submit_us=0 read_complete_us=0 transfer_wait_us=18161 tile_pixels=0 uniform_pixels=0 overvieTINYDRAW_LIVE_PRESENT kind=startup zoom=25 x=0 y=0 compose_us=9761 scroll_us=0 exposed_compose_us=0 chrome_us=4075 chrome_prepare_us=1794 chrome_stage_us=2281 read_submit_us=0 read_complete_us=0 transfer_wait_us=18161 tile_pixels=0 uniform_pixels=0 overview_pixels=164864 fallback_pixels=0 resident_tiles=0 fallback_tiles=0 pushes=11 tear_wait_us=10883 tear_edgw_pixels=164864 fallback_pixels=0 resident_tiles=0 fallback_tiles=0 pushes=11 tear_wait_us=10883 tear_edge_isr_to_resume_us=5 tear_edge_observed=1 tear_edge_wait_resumed=1 tear_edge_timeout=0 tear_heal_attempted=0 tear_heal_command_sent=0 presentation_experiment=boundary-top-sweep te_edge=rising clock_mhz=40 frame_reused=0 pass=1
+e_isr_to_resume_us=5 tear_edge_observed=1 tear_edge_wait_resumed=1 tear_edge_timeout=0 tear_heal_attempted=0 tear_heal_command_sent=0 presentation_experiment=boundary-top-sweep te_edge=rising clock_mhz=40 frame_reused=0 pass=1
+TINYDRAW_GATE1_PANEL_STAGE_AB allocation=1 linear_iterations=2048 linear_calls=8192 linear_pie_us=10605 linear_scalar_us=67397 linear_speedup_x1000=6355 linear_pie_checksum=79f7df66 linear_scalar_checksum=79f7df66 linear_guards=1 ring_iterations=8 ring_sweTINYDRAW_GATE1_PANEL_STAGE_AB allocation=1 linear_iterations=2048 linear_calls=8192 linear_pie_us=10605 linear_scalar_us=67397 linear_speedup_x1000=6355 linear_pie_checksum=79f7df66 linear_scalar_checksum=79f7df66 linear_guards=1 ring_iterations=8 ring_sweeps=48 ring_pie_us=25428 ring_scalar_us=210267 ring_speedup_x1000=8269 ring_pie_checksum=3301799a ring_scalar_checksum=3301799a ring_guards=1 pass=1
+eps=48 ring_pie_us=25428 ring_scalar_us=210267 ring_speedup_x1000=8269 ring_pie_checksum=3301799a ring_scalar_checksum=3301799a ring_guards=1 pass=1
+TINYDRAW_GATE1_MASKED_SPAN_AB allocation=1 workloads=192 slots=256 calls=49152 candidate_us=61520 halfword_us=73800 speedup_x1000=1199 candidate_count=1851392 halfword_count=1851392 candidate_checksum=8e40e885 halfword_checksum=8e40e885 exact=1 guards=1 pass=1
+TINYDRAW_GATE1_MASKED_SPAN_AB allocation=1 workloads=192 slots=256 calls=49152 candidate_us=61520 halfword_us=73800 speedup_x1000=1199 candidate_count=1851392 halfword_count=1851392 candidate_checksum=8e40e885 halfword_checksum=8e40e885 exact=1 guards=1 pass=1
+TINYDRAW_GATE1_TILE_PUBLISH pass=1 first_source_phase=0 first_destination_phase=0 first_index=0 expected=0000 actual=0000
+TINYDRAW_GATE1_TILE_PUBLISH pass=1 first_source_phase=0 first_destination_phase=0 first_index=0 expected=0000 actual=0000
+
+[emu] stop: Halted — core0 1103248198 + core1 60957739 insns in 8.4s wall = 138.5 Minsn/s; emulated 5.000s (1200000058 cycles); 184118 exceptions, 24446 interrupts
+[irq] per core, cpu-int: count (peripheral sources mapped to it)
+  core0 int3        126  sources [79]
+  core0 int5       4961  sources [57]
+  core0 int9         25  sources []
+  core0 int12       546  sources [16]
+  core0 int13      4614  sources [42]
+  core1 int0       9212  sources [80]
+  core1 int1       4962  sources [58]
+
+[emu] i2s frames out: 0 (i2s0 @ 44100 Hz) 0 (i2s1 @ 44100 Hz)
+[emu] crypto: 0 AES blocks, 11708 SHA blocks, 0 RSA/MPI operations
+[emu] blocks: 12532 built (0 cache flushes) core0, 1333 (0) core1; jit: 13865 compiled, 12697 KB code

@@ -111,6 +111,8 @@ pub trait Core {
     /// Let cycles pass without retiring an instruction. This advances architectural cycle
     /// counters and raises core-local timer interrupts that fall due.
     fn advance_cycles(&mut self, cycles: u32);
+    /// Experimental uniform instruction cost for the fast block path.
+    fn set_approximate_cpi(&mut self, _cycles: u32) {}
     /// Existing no-model idle accounting. Cores may count scheduler-skipped time as host work;
     /// model-added cycle deltas use `advance_cycles` and never call this method.
     fn idle_advance(&mut self, cycles: u32) { self.advance_cycles(cycles); }
@@ -204,6 +206,11 @@ pub struct LifecycleFacts {
 pub trait CostModel {
     fn lifecycle(&mut self, facts: &LifecycleFacts) -> Result<(), String>;
     fn cycles(&mut self, facts: &ExecutionFacts<'_>) -> Result<u32, String>;
+    /// Shared simulated time for models that account for resource occupancy.
+    /// Like `cycles`, this is called after instruction effects, not before memory access.
+    fn cycles_at(&mut self, facts: &ExecutionFacts<'_>, _now: u64) -> Result<u32, String> {
+        self.cycles(facts)
+    }
 }
 
 /// Bloom bit for a pc; the machine's stub/probe tables and the cores' block boundaries agree on it.
