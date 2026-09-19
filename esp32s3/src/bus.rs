@@ -223,7 +223,7 @@ impl SocBus {
         if let Some(cache) = &mut self.approximate_cache {
             // Physical offset plus resource distinguishes flash from PSRAM and
             // recognizes virtual aliases. Both cores share this bus/cache.
-            let key = ((entry.src as u32) << 28) | (entry.off + address - entry.lo);
+            let key = (entry.src << 28) | (entry.off + address - entry.lo);
             let result = cache.access(key, width, write);
             let resource = &mut self.cache_resource;
             if resource.enabled {
