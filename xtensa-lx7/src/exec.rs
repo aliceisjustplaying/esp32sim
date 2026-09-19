@@ -366,7 +366,7 @@ pub(crate) fn static_target(i: &Insn) -> Option<u32> {
 /// Instructions whose taken path redirects the fetch (the alignment cycle applies to them).
 pub(crate) fn transfers(op: Op) -> bool {
     use Op::*;
-    !matches!(op, Rfe | Rfi | Rfwo | Rfwu | Rfde | Rfue | Rfme | Waiti | Syscall | Break | BreakN | Ill | IllN | Loop | Loopnez | Loopgtz)
+    !matches!(op, Waiti | Syscall | Break | BreakN | Ill | IllN | Loop | Loopnez | Loopgtz)
 }
 /// EX141: a redirected fetch costs one more cycle when the first instruction at the target
 /// straddles a 32-bit fetch word, `(pc & 3) + length > 4`. From the captured EX081 control cells:
@@ -390,7 +390,7 @@ pub(crate) fn control_price(op: Op, taken: bool) -> u32 {
         Loop | Loopnez | Loopgtz => 4,
         Quou | Quos => 3,
         Remu | Rems => 4,
-        _ if taken && !matches!(op, Rfe | Rfi | Rfwo | Rfwu | Rfde | Rfue | Rfme | Waiti | Syscall | Break | BreakN | Ill | IllN) => 2,
+        _ if taken && !matches!(op, Waiti | Syscall | Break | BreakN | Ill | IllN) => 2,
         _ => 0,
     }
 }

@@ -211,7 +211,12 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
             return result;
         }
     }
-    run_block_inner(cpu, bus, budget)
+    let result = run_block_inner(cpu, bus, budget);
+    // EX142: redirecting the fetch to a vector. The window ladder measures 35 cycles for an
+    // overflow plus underflow pair whose handlers retire 18 instructions: (35 - 18) / 2 per
+    // handler, of which the return takes two beyond its own cycle and the entry the rest.
+    if cpu.price_control && matches!(result.1, Some(Trap::Exception(_) | Trap::Interrupt(_))) { cpu.timing_extra += 6; }
+    result
 }
 
 // Keep this boundary visible to a sampling profiler without adding per-block clocks.
