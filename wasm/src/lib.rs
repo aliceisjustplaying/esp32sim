@@ -805,6 +805,7 @@ pub unsafe extern "C" fn esp32sim_profile_report(e: *mut Emu) {
             log(&format!("core={i}\n{}", core.blocks.profile.report()));
             if let Some(r) = core.blocks.region_report() { log(&format!("core={i} {r}")); }
         }
+        log(&format!("[vq] runs,quanta,deferred,waiti,k1,peer_busy,peer_only={:?}", m.vq_stats));
     }
 }
 

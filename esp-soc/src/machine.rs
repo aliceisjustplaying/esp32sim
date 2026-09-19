@@ -74,6 +74,9 @@ pub struct Machine<S: Soc> {
     /// EX133 virtual quanta: most scheduling quanta one core may run in a single budget while
     /// every other core idles (1 = off). Bit-exact with the per-quantum schedule by construction.
     pub vq_max: u64,
+    /// EX133 counters: [multi-quantum runs, quanta they covered, stopped at a device register, stopped at waiti,
+    /// single-quantum rounds with core 0 alone (bounds gave k = 1), rounds with a busy peer, rounds with only a peer busy]
+    pub vq_stats: [u64; 7],
     pub bus: S::Bus,
     pub symbols: BTreeMap<u32, String>,
     pub dbg: Debug,
@@ -175,7 +178,7 @@ impl<S: Soc> Machine<S> {
     pub fn new(mac: [u8; 6], bus: S::Bus) -> Self {
         Machine {
             mac, reboots: 0, stubs: HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: HashMap::new(),
-            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
+            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), vq_stats: [0; 7], vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
             bus, symbols: BTreeMap::new(),
             dbg: Debug { stop_on_unimplemented: true, stop_after_exceptions: u64::MAX },
             observers: Vec::new(), probes: Wants::NONE, prev_irq: vec![0; S::CORES],
@@ -556,8 +559,10 @@ impl<S: Soc> Machine<S> {
                         let (used, s) = self.step_blocks(0, left);
                         left -= used.min(left);
                         if s.is_some() { stop = s; break; }
-                        if self.bus.take_deferred() || self.cores[0].waiting() { break; }
+                        if self.bus.take_deferred() { self.vq_stats[2] += 1; break; }
+                        if self.cores[0].waiting() { self.vq_stats[3] += 1; break; }
                     }
+                    self.vq_stats[0] += 1; self.vq_stats[1] += (total - left) as u64 / QUANTUM;
                     self.bus.set_defer(false);
                     let pos = (total - left) as u64;
                     for _ in 0..pos / QUANTUM {
@@ -566,8 +571,8 @@ impl<S: Soc> Machine<S> {
                     if let Some(s) = stop { self.drain_console(); return s; }
                     if pos > 0 && pos % QUANTUM == 0 { continue; }
                     resume_at = pos % QUANTUM;
-                }
-            }
+                } else { self.vq_stats[4] += 1; }
+            } else if !idle[0] { self.vq_stats[5] += 1; } else { self.vq_stats[6] += 1; }
             for i in 0..S::CORES {
                 if !on[i] { continue; }
                 if idle[i] && !slow_path { self.cores[i].idle_advance(QUANTUM as u32); } else if blocks {
