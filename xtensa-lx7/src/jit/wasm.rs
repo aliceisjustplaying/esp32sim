@@ -82,8 +82,14 @@ struct Block {
 /// Entry facts of one region chunk. `sites` points into the owning region's vector, which
 /// lives until that region is dropped, and every drop moves `CodeCache::region_epoch` on.
 #[derive(Clone, Copy)]
-struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); 8], npages: u32, nsites: u32, sites: *const u32 }
-impl Hot { const NONE: Hot = Hot { epoch: 0, bloom: 0, slot: 0, k: 0, len: 0, lo: 0, span: 0, pages: [(0, 0); 8], npages: 0, nsites: 0, sites: std::ptr::null() }; }
+struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); 8], npages: u32, nsites: u32, sites: *const u32, loop_pair: Option<(u32, u32)> }
+impl Hot { const NONE: Hot = Hot { epoch: 0, bloom: 0, slot: 0, k: 0, len: 0, lo: 0, span: 0, pages: [(0, 0); 8], npages: 0, nsites: 0, sites: std::ptr::null(), loop_pair: None };
+    #[inline]
+    fn admits_loop(&self, cpu: &Cpu) -> bool {
+        cpu.lcount == 0 || cpu.lend.wrapping_sub(self.lo) > self.span
+            || self.loop_pair == Some((cpu.lend, cpu.lbeg))
+    }
+}
 /// Several chunks compiled as one function; see wasm_region.rs.
 struct Region {
     /// The generated code holds pointers to these instructions for its helper calls,
@@ -412,7 +418,7 @@ pub unsafe fn run<B: Bus>(
         // three of its vectors are cached in this block while no region has been dropped.
         let hot = b.hot.get();
         if hot.epoch == cc.region_epoch.get() && budget >= hot.len && cpu.boundary_bloom & hot.bloom == 0
-            && (cpu.lcount == 0 || cpu.lend.wrapping_sub(hot.lo) > hot.span)
+            && hot.admits_loop(cpu)
         {
             let pv = bus.page_versions();
             if hot.pages[..hot.npages as usize].iter().all(|&(i, v)| pv.get(i as usize).copied().unwrap_or(0) == v) {
@@ -518,7 +524,10 @@ pub unsafe fn run<B: Bus>(
                         let mut pages = [(0, 0); 8];
                         pages[..r.pages.len()].copy_from_slice(&r.pages);
                         b.hot.set(Hot { epoch: cc.region_epoch.get(), bloom: r.bloom, slot: r.slot, k, len: r.lens[k as usize], lo: r.lo,
-                            span: r.hi.wrapping_sub(r.lo), pages, npages: r.pages.len() as u32, nsites: r.sites.len() as u32, sites: r.sites.as_ptr() });
+                            span: r.hi.wrapping_sub(r.lo), pages, npages: r.pages.len() as u32, nsites: r.sites.len() as u32, sites: r.sites.as_ptr(),
+                            // The admission above proved this exact active pair belongs to r.loops.
+                            loop_pair: (cpu.lcount != 0 && cpu.lend.wrapping_sub(r.lo) <= r.hi.wrapping_sub(r.lo))
+                                .then_some((cpu.lend, cpu.lbeg)) });
                     }
                     let result = f(cpu, bus, h, budget.min(0xffff), k, tlb, versions);
                     region_stats(cc, result, budget);

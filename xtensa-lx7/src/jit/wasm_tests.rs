@@ -274,6 +274,28 @@ fn compare_configured(
     }
 }
 
+fn hot_loop_pair() -> u32 {
+    let hot = Hot { lo: BASE, span: 64, loop_pair: Some((BASE + 32, BASE + 8)), ..Hot::NONE };
+    let mut c = cpu(0);
+    c.lcount = 5;
+    c.lend = BASE + 32;
+    c.lbeg = BASE + 8;
+    assert!(hot.admits_loop(&c));
+    c.lbeg += 1;
+    assert!(!hot.admits_loop(&c), "same end with a different backedge is not the cached loop");
+    c.lbeg -= 1;
+    c.lend += 1;
+    assert!(!hot.admits_loop(&c), "a different end needs fresh admission");
+    c.lend = BASE + 100;
+    assert!(hot.admits_loop(&c), "a loop outside the region does not constrain it");
+    c.lend = BASE + 32;
+    c.lcount = 0;
+    assert!(hot.admits_loop(&c));
+    c.lcount = 1;
+    assert!(!Hot { loop_pair: None, ..hot }.admits_loop(&c));
+    6
+}
+
 fn special_register_blocks() -> u32 {
     use crate::state::sr;
     let mut tests = 0;
@@ -1631,5 +1653,5 @@ pub fn run_tests() -> u32 {
     retention();
     hardware_loop_scheduler();
     crate::block::ownership_tests::compiled_helpers_follow_the_current_bus_type();
-    tests + integer_ops() + floating_point() + floating_point_guard_proof() + 4 + hardware_loops() + window_masks() + terminal_helpers() + special_register_blocks() + whole_block_guards() + entry_and_shifts()
+    tests + integer_ops() + floating_point() + floating_point_guard_proof() + 4 + hardware_loops() + window_masks() + terminal_helpers() + special_register_blocks() + hot_loop_pair() + whole_block_guards() + entry_and_shifts()
 }
