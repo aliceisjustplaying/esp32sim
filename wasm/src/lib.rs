@@ -903,6 +903,8 @@ pub unsafe extern "C" fn esp32sim_set_icache_fill(e: *mut Emu, cycles: u32) -> u
     let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
     if m.insns() != 0 { return 1; }
     for cpu in &mut m.cores { cpu.icache_fill = cycles; }
+    #[cfg(target_arch = "wasm32")]
+    xtensa_lx7::jit::FETCH_RING.store(cycles != 0, std::sync::atomic::Ordering::Relaxed);
     0
 }
 

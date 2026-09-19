@@ -91,6 +91,8 @@ const HOT: u32 = 32;
 pub static PRICED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Emit the inline data-cache probe into code generated from now on (a `cache-inline` build that
 /// runs without the timing model must not pay for it).
+/// EX147: regions generated from now on record the chunks they enter in `Cpu::fetch_ring`.
+pub static FETCH_RING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub static CACHE_PROBES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const RETAIN_BYTES: usize = 64 << 20;
 const RETAIN_BLOCKS: usize = 16_384;
@@ -125,12 +127,12 @@ struct Block {
 /// Entry facts of one region chunk. `sites` points into the owning region's vector, which
 /// lives until that region is dropped, and every drop moves `CodeCache::region_epoch` on.
 #[derive(Clone, Copy)]
-struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); 8], npages: u32, nsites: u32, sites: *const ExitSite, lines: *const u32, nlines: u32 }
+struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); 8], npages: u32, nsites: u32, sites: *const ExitSite, lines: *const (u32, u32), nlines: u32 }
 impl Hot { const NONE: Hot = Hot { epoch: 0, bloom: 0, slot: 0, k: 0, len: 0, lo: 0, span: 0, pages: [(0, 0); 8], npages: 0, nsites: 0, sites: std::ptr::null(), lines: std::ptr::null(), nlines: 0 }; }
 /// Several chunks compiled as one function; see wasm_region.rs.
 struct Region {
-    /// EX147: the 32-byte fetch lines its chunks occupy (sorted, unique).
-    fetch_lines: Vec<u32>,
+    /// EX147: first and last byte address of every chunk, by chunk index.
+    fetch_lines: Vec<(u32, u32)>,
     /// The generated code holds pointers to these instructions for its helper calls,
     /// so they live exactly as long as the module does.
     #[allow(dead_code)]
@@ -478,15 +480,22 @@ pub unsafe fn run<B: Bus>(
         {
             let pv = bus.page_versions();
             if hot.pages[..hot.npages as usize].iter().all(|&(i, v)| pv.get(i as usize).copied().unwrap_or(0) == v) {
-                // EX147 (diagnostic): the whole region footprint is fetched, a coarse stand-in for
-                // the lines its chunks really run.
-                if cpu.icache_fill != 0 {
-                    // SAFETY: the epoch proves the owning region, and with it this vector, is live.
-                    for &line in unsafe { std::slice::from_raw_parts(hot.lines, hot.nlines as usize) } { cpu.touch_fetch_lines(line << 5, line << 5); }
-                }
+                cpu.fetch_n = 0;
                 // SAFETY: as for the region call below; the epoch proves slot and sites are live.
                 let f: Run<B> = unsafe { std::mem::transmute(hot.slot as usize) };
                 let result = f(cpu, bus, h, budget.min(0xffff), hot.k, tlb, versions);
+                if cpu.icache_fill != 0 {
+                    // EX147: replay the chunks the region entered (the last 64) into the fetch cache.
+                    // SAFETY: the epoch proves the owning region, and with it this vector, is live.
+                    let chunks = unsafe { std::slice::from_raw_parts(hot.lines, hot.nlines as usize) };
+                    let n = cpu.fetch_n;
+                    // More entries than the ring holds: the older ones are unknown, so every chunk
+                    // counts as fetched once before the recorded tail.
+                    if n > 64 { for &(lo, hi) in chunks { cpu.touch_fetch_lines(lo, hi); } }
+                    for i in n.saturating_sub(64)..n {
+                        if let Some(&(lo, hi)) = chunks.get(cpu.fetch_ring[(i & 63) as usize] as usize) { cpu.touch_fetch_lines(lo, hi); }
+                    }
+                }
                 let site = if (result >> 16) & 7 != CODE_REJECT {
                     assert!((result >> 19) < hot.nsites);
                     // SAFETY: index checked against the live vector's length.
@@ -534,7 +543,7 @@ pub unsafe fn run<B: Bus>(
                     let slot = unsafe { host_jit_compile(bytes.as_ptr(), bytes.len()) };
                     (slot != 0).then(|| Region {
                         lens: f.chunks.iter().map(|c| c.instructions.len() as u32).collect(),
-                        fetch_lines: { let mut l: Vec<u32> = f.chunks.iter().flat_map(|c| { let end = c.pc + c.instructions.iter().map(|i| i.insn.len as u32).sum::<u32>().max(1) - 1; (c.pc >> 5)..=(end >> 5) }).collect(); l.sort_unstable(); l.dedup(); l },
+                        fetch_lines: f.chunks.iter().map(|c| { let end = c.pc + c.instructions.iter().map(|i| i.insn.len as u32).sum::<u32>().max(1) - 1; (c.pc, end) }).collect(),
                         chunks: f.chunks, slot, bytes: bytes.len(), bloom: f.bloom, lo: f.lo, hi: f.hi, loops: f.loops, pages: f.pages, sites,
                     })
                 });
