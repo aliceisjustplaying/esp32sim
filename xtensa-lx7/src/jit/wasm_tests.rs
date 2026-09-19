@@ -463,6 +463,26 @@ fn extension_deferral() -> u32 {
     tests + 3
 }
 
+fn tiny_resumed_tail() {
+    // Two ALU instructions followed by a one-instruction branch continuation.
+    let program = [0x1b, 0x33, 0x1b, 0x44, 0x06, 0xfe, 0xff];
+    let (mut a, mut b) = (cpu(7), cpu(7));
+    let (mut ra, mut rb) = (Ram::new(true, false), Ram::new(true, false));
+    ra.ram.mem[..program.len()].copy_from_slice(&program);
+    rb.ram.mem[..program.len()].copy_from_slice(&program);
+    for _ in 0..80 {
+        assert_eq!(crate::block::run_block(&mut b, &mut rb, 2), (2, None));
+        for _ in 0..2 { crate::step(&mut a, &mut ra).unwrap(); }
+        same(&a, &b);
+        let compiled = b.blocks.jit_instructions;
+        assert_eq!(crate::block::run_block(&mut b, &mut rb, 1), (1, None));
+        crate::step(&mut a, &mut ra).unwrap();
+        same(&a, &b);
+        assert_eq!(b.blocks.jit_instructions, compiled, "tiny continuation should stay interpreted");
+    }
+    assert!(b.blocks.jit_instructions > 0, "ordinary prefixes must still compile");
+}
+
 fn scheduler() {
     // addi.n a3,a3,1; addi.n a4,a4,1; j back to the first instruction.
     let program = [0x1b, 0x33, 0x1b, 0x44, 0x06, 0xfe, 0xff];
@@ -1627,7 +1647,8 @@ pub fn run_tests() -> u32 {
         }
     }
     scheduler();
-    tests += extension_deferral() + regions();
+    tiny_resumed_tail();
+    tests += 1 + extension_deferral() + regions();
     retention();
     hardware_loop_scheduler();
     crate::block::ownership_tests::compiled_helpers_follow_the_current_bus_type();

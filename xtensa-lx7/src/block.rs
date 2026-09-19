@@ -242,7 +242,13 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
     for i in 0..3 { let d = cpu.ccompare[i].wrapping_sub(cpu.ccount); if d != 0 && d < limit { limit = d; } }
 
     let code = cpu.blocks.entries[ei as usize].code;
-    if code != crate::jit::NONE && cpu.blocks.jit_enabled && crate::jit::ready(cpu.blocks.code.as_ref().unwrap(), code) {
+    // A one-instruction continuation can cost more to re-enter than to interpret.
+    // Keep block-head admission unchanged; this only skips tiny resumed tails.
+    #[cfg(target_arch = "wasm32")]
+    let use_jit = limit > 1 || k == cpu.blocks.entries[ei as usize].start;
+    #[cfg(not(target_arch = "wasm32"))]
+    let use_jit = true;
+    if use_jit && code != crate::jit::NONE && cpu.blocks.jit_enabled && crate::jit::ready(cpu.blocks.code.as_ref().unwrap(), code) {
         let entry = cpu.blocks.arena[k as usize].off;
         let fm = bus.fast_mem();
         #[cfg(not(target_arch = "wasm32"))]
