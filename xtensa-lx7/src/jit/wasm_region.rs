@@ -12,9 +12,9 @@ use crate::decode::decode;
 use crate::exec::max_ar;
 use std::collections::HashMap;
 
-pub(super) const MAX_CHUNKS: usize = 24;
-pub(super) const MAX_INSNS: usize = 192;
-const MAX_PAGES: usize = 6;
+pub(super) const MAX_CHUNKS: usize = 64;
+pub(super) const MAX_INSNS: usize = 512;
+const MAX_PAGES: usize = 8;
 
 /// One straight-line piece of a region, decoded independently of the block cache.
 pub(in crate::jit) struct Chunk {
