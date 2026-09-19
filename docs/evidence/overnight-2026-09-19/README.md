@@ -36,7 +36,7 @@ What did not work: EX109 guarded RETW (inside noise), EX121 wasm-opt (about 1%),
 ## Open items, most valuable first
 
 1. Review and upstream `night/combined-0919` in pieces: EX133 + EX134 guard, the diet, EX135, EX136/137, EX144. EX133's exactness rests on several invariants together (the run-length bounds on device flush, script, page push, peer wake-up and limits; deferral of device registers; the cadence guard) and on the tested contract (pinned totals, console hashes, goldens). `vq_violations` is only a backstop for register accesses that escape deferral, not a correctness certificate. It deserves a reviewer who did not write it.
-2. Timed model: presentation is 7% slow with the fetch cache on; ring-PIE staging 0.93; flash data lines share the PSRAM price (the cohort shows 475 cycles per sustained flash line against 172 for PSRAM; pocket-tank's flash-resident weights will expose it); CALLX assumed; 404 and 96/160 are window totals, not isolated penalties. The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
+2. Timed model: presentation is 7% slow with the fetch cache on and the fetch-line price (404, a window with two misses in its raw records) is provisional; ring-PIE staging 0.93; pocket-tank's inference is 35% slow and neither its 64 KB data cache nor a separate flash price fixes that (sequential data-cache autoload is the open hypothesis); the cache geometry should come from the EXTMEM registers; CALLX assumed; 96/160 are window totals, not isolated penalties. The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
 3. Calls and returns inside regions: 82% of region exits, about 4 s of the remaining 42 s; the peer's design note (`design-calls-in-regions.md`) puts the first step (direct CALL8 → ENTRY as an internal edge) at no more than 4%.
 4. pocket-tank stays at 0.44×: both cores busy, so it needs raw throughput or the timed clock, not scheduling.
 
@@ -383,3 +383,23 @@ Ranges over the individual cases: compute 0.977–0.989 (all 15 within 1.2 point
 - Production page with the final `timing=hw` set (`resp-hw-final`): READY after 88.1 s wall, 3/3 strokes, 24/24 movement points, 42.8 ms median (max 59.9).
 - The timed model is deterministic: two runs of the final head and export set give the same 10,152,693,296 instructions, 73.975 guest seconds and console hash c8ec9334… (`check-hw-final2`, `check-hw-final2-repeat`; wall 71.6 and 75.4 s, so about 1.0× realtime with the fetch cache on).
 - Instruction-side numbers still unused from the cohort: XIP-PSRAM `instruction_psram_cold` 993 against `instruction_psram_hot` 133 cycles for 256 bytes, i.e. about 107 cycles per sequential fetch line from PSRAM; for flash only the isolated first-line window (404) exists. A sequential flash fetch-line probe would settle whether the 7% presentation overshoot is a too-high sequential fetch price.
+
+## Step 22: pocket-tank's cache configuration, flash price knob (peer), what the board must be doing
+
+- The firmware's own cache geometry is readable from the emulated EXTMEM registers after boot (`--peek 0x600c4000,4 --peek 0x600c4060,4`): TinyDraw programs `DCACHE_CTRL = 0x11` (64-byte lines, 32 KB) and `ICACHE_CTRL = 0x0b` (32-byte lines, 16 KB, 8 ways); **pocket-tank programs `DCACHE_CTRL = 0x15`: a 64 KB data cache**. The model's geometry is a constant; it should follow these registers. Added a 64 KB option for now (`esp32sim_set_approximate_jit_cache(…, 3)`, 128 sets in the inline probe).
+- pocket-tank, final export set (single untimed runs): 32 KB cache 7.4–8.0 tok/s; 64 KB cache 7.9–8.3; 64 KB plus the peer's separate flash price (26e82aa1, `esp32sim_set_approximate_flash_timing(128, 160)`) 7.4–8.0; fps 32–33 throughout; the board does 12 tok/s and 25–30 fps. Neither knob closes the inference gap, and a bigger flash price moves away from the board. The weights stream sequentially from flash, so the likely missing piece is the S3's data-cache autoload (sequential preload), which ESP-IDF enables and the model does not have: a line-at-a-time miss price cannot be right for a sequential stream. Not attempted tonight.
+
+## Step 23: EX147 review fixes and the price's uncertainty
+
+Peer review of EX147 found: the ring was replayed only on the hot region-entry path (regions entered through the slow path, e.g. with an active in-region hardware loop, were never priced); the fetch cache was a module-global that a second emulator in the same instance would inherit; more than 64 chunk entries per call lose their order (left as a labeled approximation); and the 404-cycle window's raw records show two fetch misses, so 404 is not a proven per-line price. Fixed the first two (both call paths replay; the cache resets when the price is set for a new machine). Ratios with 404 are unchanged. Sensitivity to the price, same head (`check-hw-final5*`, single runs, 36/36):
+
+| Firmware timer ÷ hardware | 404 per line | 200 per line |
+| --- | ---: | ---: |
+| document load_us | 0.934 | 0.757 |
+| paced cold compute_us | 0.982 | 0.971 |
+| HARD total_us | 1.007 | 0.995 |
+| paced cold wall_us | 1.013 | 0.990 |
+| paced cold present_us | 1.074 | 1.030 |
+| export | 0.992 | 0.983 |
+
+Document load wants at least 404, presentation at most 200, so presentation's overshoot is not only a fetch price. `?timing=hw` keeps 404 as a provisional value; a sequential flash fetch-line probe is the measurement that would replace it.
