@@ -15,7 +15,7 @@ Two sessions worked through the night on the TinyDraw browser battery: a coordin
 What made the difference, in order of size:
 
 1. **EX133 virtual quanta** (new). While the other core idles, core 0 runs many 64-instruction quanta in one budget. The run is bounded so that nothing can fall due inside it, a device-register access stops in front of its instruction, and the spanned rounds are closed exactly as before, so results are bit-identical. EX133 alone (K≤4) took 85.3 s to 70.5 s; with **EX134** in its first, unsafe constant form 82.2 s to 53.9 s. The guarded form of EX134 (tick deferral raised only while no cadence-driven device is active) costs about 1.4 s of that and is the one that is kept.
-2. **EX137 larger regions.** EX043's idea, flat on September 6 because the quantum capped region stays, is worth 15% once EX133 removes the cap.
+2. **EX137 larger regions.** The widening part of EX043, isolated, is worth 15% under virtual quanta. EX043 itself was a flat multi-change bundle, so longer budgets are the plausible enabler, not a proved sole cause.
 3. **Dispatch diet**: EX038 boxed cache, EX065 negative coverage cache, EX106 direct cut index (5–10%), plus EX135 and EX136 (2–3% each).
 4. **EX139 + EX138/EX140/EX141** for the timed model: solo batches with registers deferred to settled time, then measured prices folded into generated code as constants. Pricing cycles correctly slows the guest clock, so the priced model still runs at realtime.
 
@@ -130,7 +130,7 @@ Core 1's 613M instructions are FreeRTOS critical-section / spinlock code (`spinl
 
 ## Step 6: EX135, safety fixes, second workload
 
-- **EX135 fewer forced block boundaries around special registers** (coordinator, commit 5942cd06 on `night/ex135-sr-blocks`; peer's integrated version f5fdd86a + loop-state fix): RSYNC/ESYNC/DSYNC no longer end a block and emit as no-ops; RSR/WSR of PS and INTENABLE no longer force a block start; the wasm backend emits RSR for registers whose `Cpu` field is exact mid-dispatch (PS, PRID, EXCSAVE, EPC, …); WSR/XSR/RSIL are terminal helpers. Motivation: core 1 is 28% of all dispatches for 6% of instructions, nearly all FreeRTOS critical sections from the touch sampler's I2C polling (`_xtos_set_intlevel` took 5 dispatches for 9 instructions). Bit-exact on the battery; compiled share 95.3% → 97.7%; one pair on top of EX133/134: 53.34 → 52.08 s (−2.4%, weak). Peer review found and fixed one real bug before it shipped: a terminal WSR/XSR of LBEG/LEND/LCOUNT after a retained hardware-loop prefix breaks the retired-offset reconstruction → those writes are excluded and the loop prefix disabled; 919 new directed cases, 43,257 total pass.
+- **EX135 fewer forced block boundaries around special registers** (coordinator, commit 5942cd06 on `night/ex135-sr-blocks`; peer's integrated version f5fdd86a + loop-state fix): RSYNC/ESYNC/DSYNC no longer end a block and emit as no-ops; RSR/WSR of PS and INTENABLE no longer force a block start; the wasm backend emits RSR for registers whose `Cpu` field is exact mid-dispatch (PS, PRID, EXCSAVE, EPC, …); WSR/XSR/RSIL are terminal helpers. Motivation: core 1 is 28% of all dispatches for 6% of instructions, nearly all FreeRTOS critical sections from the touch sampler's I2C polling (`_xtos_set_intlevel` took 5 dispatches for 9 instructions). Bit-exact on the battery; compiled share 95.3% → 97.7%; one pair on top of EX133/134: 53.34 → 52.08 s (−2.4%, weak). Peer review found and fixed one real bug before the combined2 validation: a terminal WSR/XSR of LBEG/LEND/LCOUNT after a retained hardware-loop prefix breaks the retired-offset reconstruction. Such writes still compile; their blocks can no longer retain a loop prefix. 919 new directed cases, 43,257 total pass.
 - **PIE/MAC16 deferral hole closed** (peer, 8e49f2f0): when armed, a PIE or MAC16 load form scans the 16 visible address registers against the device range (±128 bytes slack for `ld.qr/st.qr`), so no operand decoding; 231 new cases.
 - **EX134 unsafe constant is wrong on pocket-tank, EX134-safe is right.** `runs/pt-ex135` (K≤1000, MAX_TICK_DEFER 65536 constant): 10,073,833,712 instructions instead of the pinned 10,073,833,775 → rejected by the harness. `runs/pt-combined2` (cadence guard, quiet cap 32768): exact total and console 9e8a66e4, 83.59 → 78.49 s (−6.1%). pocket-tank keeps both cores busy, so EX133 rarely applies there; the gain is the dispatch diet.
 - Native check: `--no-jit` pocket-tank for 30 guest seconds gives identical pc/ccount/insns with ESP32SIM_VQ=1 and =1000 (K≤4 natively).
@@ -149,9 +149,9 @@ On top of combined2, branch `night/fast-entry-0919` (`work/night-fast`), one pai
 | EX137 region limits 8 chunks/64 insns/4 pages → 24/192/6, vs EX136 | 48.23 | 42.92 | −11.0% | **1.11×** |
 | EX137b limits → 64/512/8, vs EX137 | 43.93 | 41.89 | −4.6% | **1.14×** |
 
-EX137 is EX043's "wider regions" idea retried under a materially different condition: EX043 was flat because the 64-instruction quantum capped how long execution could stay in a region; EX133 removed that cap. Cumulative generated wasm grows 98 → 111 MB.
+EX137 is the widening part of EX043 retried in isolation under a materially different condition (virtual quanta). EX043 was a flat multi-change bundle, so its null result cannot be attributed to the quantum alone. Cumulative generated wasm grows 98 → 111 MB.
 
-Disproved on the way: my guess that pointer chasing dominated the `jit::run` wrapper (EX136 gave 2.7%, not 10–15%).
+EX136 gave 2.7% in this screen, not the 10–15% I had guessed for the `jit::run` wrapper; it does not isolate every wrapper cost.
 
 ## Step 8: robustness of the fast-entry head (eaf23abc)
 
@@ -256,3 +256,34 @@ So my first EX138 call/return prices (call 3, ENTRY 3, return 6, derived from th
 | host wall s → realtime | 74.9 → 0.97× | 71.9 → **1.003×** |
 
 The measured table is the one to keep: compute is now a uniform −3.6% instead of a lucky 0. Unpriced and plausible for the remainder: window overflow/underflow exception entry (35 cycles per spilled frame measured, the emulator only charges the handler's instructions), interrupt entry/resume (228/142 cycles measured), L32R, instruction-fetch cache misses (EX055), CALLX.
+
+## Step 12: the timed model on a second firmware, and the both-busy quantum in approximate mode (EX143)
+
+Peer review of the pricing commits found five real defects (double charge on divide fallbacks, +6 on skipped LOOPNEZ/LOOPGTZ bodies, priced hardware-loop backedges in the interpreter only, FP readiness not cleared by fast overwrites, timeline not aged by fixed opcode costs). All fixed in 3af6fd22; battery ratios unchanged (rare paths).
+
+**pocket-tank under the timed + priced model** (`check-pt-timed*`, same exports as TinyDraw): the firmware reports **9.5 tok/s and 34–35 fps**; `docs/speed-plan.md` gives the real board as 12 tok/s and 25–30 fps; the instruction clock gives 24.3 tok/s and 62.5 fps. So the prices transfer to a firmware they were never fitted on: inference is now 20% slow (flash weight loads through the provisional 160-cycle cache fill) and rendering 25% fast (display path), instead of both being 2× fast. The harness's `model_decisions ≥ 10` check fails at this speed, as it must.
+
+**EX143 both-busy quantum in approximate mode.** The frontier scheduler interleaves two busy cores every 64 instructions. In approximate mode there is no bit-exactness contract, only the fit to hardware, so the quantum is a free parameter (the EX066 API already allowed up to 4096). Single untimed runs:
+
+| | quantum 64 | quantum 512 | quantum 4096 |
+| --- | ---: | ---: | ---: |
+| pocket-tank realtime (tok/s, fps unchanged at 9.5 / 35) | 0.47× | 0.61× | 0.61× |
+| TinyDraw realtime | 0.98× | **1.11×** | — |
+| TinyDraw compute / wall / HARD ratio to hardware | 0.964 / 0.978 / 0.985 | 0.963 / 0.978 / 0.985 | — |
+
+36/36 in both TinyDraw runs. This is EX047's knob, acceptable here only because the mode is approximate and the hardware-timer fit did not move; it must not leak into the exact path.
+
+## Step 13: EX136 hot-loop pair (no gain); the production page under the hardware-timing model, and a real bug it exposed
+
+- **EX136 extension, cached admitted loop pair** (peer, 6b844713, 43,263 cases): pocket-tank 69.68 → 70.89 s, TinyDraw 43.00 → 43.10 s against combined3. No gain; not adopted.
+- **`?timing=hw` on the page** (`night/timed-0919`): `web/wasm/worker.js` applies the timing-model exports after the loads and before boot; `web/emu.js` and the response harness pass them for `timing=hw` (the harness also takes `timing=hw-<n>-<m>` to drop exports when bisecting). Needs a wasm built with `--features cache-inline`.
+- First run: the page booted the battery in 79.7 s wall (the board needs 77.4 s plus boot) but **no stroke registered**. Bisecting the exports found `esp32sim_set_measured_te`: it swaps in a new board before boot and re-attaches its I2C devices, and `I2c::attach` appended, so the old board's touch controller kept answering while input went to the new one. The battery never touches the screen, so EX056/EX066 could not see it. Fix: attach replaces a device at an occupied address.
+- After the fix (`resp-timed-hw-r3`): boot to READY 80.1 s wall, 3/3 strokes committed, 24/24 movement points, movement → canvas median 38.3 ms (max 49.3), screenshot correct. So the page now keeps device time through the whole battery and stays interactive.
+
+## Step 14: generality checks and two more negatives
+
+- **Golden regression bar with virtual quanta, natively.** With `ESP32SIM_VQ_NATIVE=1 ESP32SIM_VQ=1000 --no-jit` (the interpreter path has the deferral guard; the AArch64 JIT does not, so the native default stays off), the three committed golden scenarios give the committed hashes: Atech synth WAV `c64c46c5…`, SID jukebox WAV `ca76a497…`, LCD-4B panel WAV `89880538…`, identical consoles and identical per-core instruction totals against `ESP32SIM_VQ=1` (319,618,108 / 338,474,266 / 396,469,561, equal to `tests/golden/*.insns`). These firmwares use I2S, RMT and LCD_CAM, i.e. the devices the EX134 cadence guard exists for.
+- **EX144 any single busy core + backoff** (`night/fast-entry-0919` 1 commit): the Atech firmware runs on core 1 with core 0 idle, which EX133 as first written ignored; and it touches device registers every few instructions, so runs were cut short 3.17M times out of 3.59M (0.48 quanta per run, slower than not trying). Now whichever single core is busy qualifies, and a run cut short inside two quanta doubles a skip counter (max 255 rounds). Atech: 462K runs, 3.6 quanta each, no slowdown, still exact. TinyDraw wasm pair vs combined3: 43.20 → 43.29 s, exact. No gain on TinyDraw, removes a pathology elsewhere.
+- **Cache parameter sensitivity (not adopted):** requested-data readiness 96 with 160-cycle service (EX054's split) fixes ring-scalar staging (1.217 → 1.036) but worsens present (1.022 → 0.952), HARD (0.985 → 0.942) and export (1.03 → 0.935). Left at 160/96.
+- **EX145 instruction-fetch cache at dispatch granularity: no effect.** 64 sets × 8 ways × 32-byte lines for flash-mapped code, 140 cycles per missing line, touched for the entered block only: every ratio unchanged to three decimals, load_us stays 0.639. Removed again. Either the working set fits or the misses happen inside regions where this coarse model cannot see them.
+- **Document load (peer's scoped native profile, `doc-load-native/`)**: the timed window is 57.5M instructions of eager rasterization (raster helpers 48%, MaterializedCanvas 22%, memmove/memcpy 6.5%, `__divsf3` 5.6%, `lroundf` 3.3%), 37% of it fetched from flash. The missing 200 ms is about 0.84 cycles per instruction, far more than the unpriced FP divide assist (100K divides) or LSI→use (3.4M) can supply, so the remaining suspect is data-side: cache geometry, PSRAM misses and dirty writebacks under scattered access. Needs a hardware probe, not another parameter guess.
