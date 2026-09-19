@@ -195,6 +195,8 @@ enum Ctl { If(u32), Block(u32), Loop(u32) }
 
 #[derive(Default)]
 struct Gen {
+    /// EX141: the instruction being emitted has a static target that straddles a fetch word
+    straddle: bool,
     /// module body bytes
     bytes: Vec<u8>,
     /// registers written so far (spilled on exit)
@@ -408,7 +410,7 @@ impl Gen {
     }
     /// Retire the current instruction and continue at a statically known `target`.
     fn leave(&mut self, target: u32) {
-        self.price(2);
+        self.price(2 + self.straddle as u32);
         self.advance();
         if self.region.is_some() {
             region_edge(self, target, false);
@@ -713,6 +715,7 @@ fn emit_body(
         }
         let last = index + 1 == instructions.len();
         g.price(extras[index] as u32);
+        g.straddle = bi.straddle;
         if emit_instruction(g, bi, fast, pc, next, last, cp) {
             if whole {
                 g.advance();
@@ -976,7 +979,6 @@ fn emit_instruction(
             if s > 3 {
                 return false;
             }
-            g.price(2);
             g.cpu(offset_of!(Cpu, ps));
             g.c(ps::WOE);
             g.op(0x71);
@@ -1112,7 +1114,7 @@ fn emit_instruction(
                 g.end();
             }
             let indirect = matches!(i.op, Callx0 | Callx4 | Callx8 | Callx12);
-            g.price(if indirect { 5 } else { 2 });
+            g.price(if indirect { 5 } else { 2 + g.straddle as u32 });
             if indirect {
                 // The target may alias the return-address destination.
                 g.ar(s);

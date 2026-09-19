@@ -353,17 +353,40 @@ pub(crate) fn static_extras<'a>(insns: impl Iterator<Item = &'a Insn>) -> Vec<u8
     }).collect()
 }
 
+/// EX141: the statically known target of a jump, call or conditional branch.
+pub(crate) fn static_target(i: &Insn) -> Option<u32> {
+    use Op::*;
+    match i.op {
+        J | Call0 | Call4 | Call8 | Call12
+        | Beqz | Bnez | Bltz | Bgez | BeqzN | BnezN | Beqi | Bnei | Blti | Bgei | Bltui | Bgeui
+        | Bnone | Beq | Blt | Bltu | Ball | Bbc | Bbci | Bany | Bne | Bge | Bgeu | Bnall | Bbs | Bbsi | Bf | Bt => Some(i.imm as u32),
+        _ => None,
+    }
+}
+/// Instructions whose taken path redirects the fetch (the alignment cycle applies to them).
+pub(crate) fn transfers(op: Op) -> bool {
+    use Op::*;
+    !matches!(op, Rfe | Rfi | Rfwo | Rfwu | Rfde | Rfue | Rfme | Waiti | Syscall | Break | BreakN | Ill | IllN | Loop | Loopnez | Loopgtz)
+}
+/// EX141: a redirected fetch costs one more cycle when the first instruction at the target
+/// straddles a 32-bit fetch word, `(pc & 3) + length > 4`. From the captured EX081 control cells:
+/// taken branches over a 9-byte stride average 2.5 extra cycles, not 2, and the zero-overhead
+/// loop ladder pays +1 exactly at a body start of 3 mod 4 with 2-byte instructions.
+pub(crate) fn straddles<B: Bus>(bus: &mut B, target: u32) -> bool {
+    match bus.fetch(target) { Ok(b) => (target & 3) + crate::decode::decode(target, b).len as u32 > 4, Err(_) => false }
+}
+
 /// EX138: cycles an instruction costs beyond the one every instruction is charged, from the
 /// ESP32-S3 opcode ladders (EX068): taken branch 3, J 3, JX 6, LOOP setup 5, QUO 4, REM 5.
-/// Calls and returns are not individually measured; CALLn is priced as J, CALLXn and the
-/// returns as JX, ENTRY as 3, which sums to the measured 16-cycle callx8/entry/add/retw.n level.
+/// Calls and returns from the EX081 control cells: `call0 + ret` and `call8 + entry + retw` each
+/// cost 4.5 cycles more than the same count of plain instructions, i.e. call 3, return 3, ENTRY 1,
+/// plus the half-cycle average of the alignment cycle below. CALLXn is assumed to cost what JX does.
 #[inline]
 pub(crate) fn control_price(op: Op, taken: bool) -> u32 {
     use Op::*;
     match op {
-        J | Call0 | Call4 | Call8 | Call12 => 2,
-        Jx | Callx0 | Callx4 | Callx8 | Callx12 | Ret | RetN | Retw | RetwN => 5,
-        Entry => 2,
+        J | Call0 | Call4 | Call8 | Call12 | Ret | RetN | Retw | RetwN => 2,
+        Jx | Callx0 | Callx4 | Callx8 | Callx12 => 5,
         Loop | Loopnez | Loopgtz => 4,
         Quou | Quos => 3,
         Remu | Rems => 4,

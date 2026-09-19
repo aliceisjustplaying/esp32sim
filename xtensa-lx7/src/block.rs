@@ -32,7 +32,8 @@ use crate::state::{sr, Cpu};
 pub use emu_core::core::pc_bit;
 
 #[derive(Clone, Copy)]
-pub struct BlockInsn { pub insn: Insn, pub max_ar: u8, /// Backend entry: native byte offset or WASM instruction index
+pub struct BlockInsn { pub insn: Insn, pub max_ar: u8, /// EX141: a static transfer target whose first instruction straddles a fetch word
+ pub straddle: bool, /// Backend entry: native byte offset or WASM instruction index
  pub off: u32 }
 
 #[derive(Clone, Copy)]
@@ -162,7 +163,7 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
         };
         let i = decode(pc, bytes);
         if n > 0 && (must_start_block(&i) || cpu.boundary_bloom & pc_bit(pc) != 0) { break; }
-        cpu.blocks.arena.push(BlockInsn { insn: i, max_ar: max_ar(&i), off: 0 });
+        cpu.blocks.arena.push(BlockInsn { insn: i, max_ar: max_ar(&i), straddle: cpu.price_control && crate::exec::static_target(&i).is_some_and(|t| crate::exec::straddles(bus, t)), off: 0 });
         n += 1; last = pc;
         pc = pc.wrapping_add(i.len as u32);
         if ends_block(&i) || n as usize == MAX_LEN { break; }
@@ -316,7 +317,9 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         let r = exec_insn(cpu, bus, &e.insn);
         done += 1; k += 1;
         if cpu.price_control && r.is_ok() {
-            cpu.timing_extra += crate::exec::control_price(e.insn.op, cpu.pc != expected) + cpu.blocks.extras[k as usize - 1] as u32;
+            let taken = cpu.pc != expected;
+            cpu.timing_extra += crate::exec::control_price(e.insn.op, taken) + cpu.blocks.extras[k as usize - 1] as u32
+                + u32::from(taken && crate::exec::transfers(e.insn.op) && crate::exec::straddles(bus, cpu.pc));
         }
         if let Err(t) = r { trap = Some(t); break; }
         if cpu.pc != expected || bus.block_break() { broke = true; break; }

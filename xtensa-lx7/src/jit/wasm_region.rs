@@ -102,7 +102,7 @@ fn chunk<B: Bus>(cpu: &Cpu, bus: &mut B, head: u32, pc0: u32, fast: bool, room: 
         let i = decode(pc, bytes);
         if i.len == 0 || !(eligible(&i, fast) || terminal(i.op)) { break }
         if pc != head && (must_start_block(&i) || cpu.boundary_bloom & pc_bit(pc) != 0) { break }
-        v.push(BlockInsn { insn: i, max_ar: max_ar(&i), off: v.len() as u32 });
+        v.push(BlockInsn { insn: i, max_ar: max_ar(&i), straddle: cpu.price_control && crate::exec::static_target(&i).is_some_and(|t| crate::exec::straddles(bus, t)), off: v.len() as u32 });
         // Includes the head: an internal backedge to it would skip a probe there.
         *bloom |= pc_bit(pc);
         pc = pc.wrapping_add(i.len as u32);

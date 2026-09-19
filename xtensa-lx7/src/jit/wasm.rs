@@ -358,7 +358,9 @@ extern "C" fn h_exec<B: Bus>(
     match exec_insn(cpu, bus, &instruction.insn) {
         Ok(()) => {
             if cpu.price_control {
-                cpu.timing_extra += crate::exec::control_price(instruction.insn.op, cpu.pc != pc.wrapping_add(instruction.insn.len as u32));
+                let taken = cpu.pc != pc.wrapping_add(instruction.insn.len as u32);
+                cpu.timing_extra += crate::exec::control_price(instruction.insn.op, taken)
+                    + u32::from(taken && crate::exec::transfers(instruction.insn.op) && crate::exec::straddles(bus, cpu.pc));
             }
             (bus.block_break() as u32) << 1
         }

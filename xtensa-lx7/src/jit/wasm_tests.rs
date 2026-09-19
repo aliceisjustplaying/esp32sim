@@ -227,6 +227,7 @@ fn insn(op: Op) -> BlockInsn {
     BlockInsn {
         insn: i,
         max_ar: crate::exec::max_ar(&i),
+        straddle: false,
         off: 0,
     }
 }
@@ -503,7 +504,7 @@ fn extension_deferral() -> u32 {
     // execution paths must defer before that partial architectural mutation.
     let bytes = 0xf002_000eu32.to_le_bytes();
     let i = crate::decode::decode(BASE, bytes);
-    let bi = BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), off: 0 };
+    let bi = BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), straddle: false, off: 0 };
     ram.deferred = false;
     assert_eq!(h_exec::<Ram>(&mut c, &mut ram, &bi, BASE), 1);
     assert!(ram.deferred);
@@ -1287,7 +1288,7 @@ fn regions() -> u32 {
         let mut ram = Ram::new(true, false);
         ram.ram.mem[..p.len()].copy_from_slice(&p);
         let c = cpu(0);
-        let head: Vec<BlockInsn> = (0..6).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, off: 0 }) }).collect();
+        let head: Vec<BlockInsn> = (0..6).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, straddle: false, off: 0 }) }).collect();
         let formed = emitter::region::form(&c, &mut ram, BASE, &head, true).expect("memmove region");
         assert_eq!(formed.chunks.iter().map(|c| (c.pc - BASE, c.instructions.len())).collect::<Vec<_>>(), vec![(0, 6), (17, 1)]);
         let (bytes, sites) = emitter::region::generate(&formed.chunks, &formed.pages, &formed.loops, true);
@@ -1377,7 +1378,7 @@ fn regions() -> u32 {
         let mut ram = Ram::new(true, false);
         ram.ram.mem[..p.len()].copy_from_slice(&p);
         let c = cpu(0);
-        let head: Vec<BlockInsn> = (0..3).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, off: 0 }) }).collect();
+        let head: Vec<BlockInsn> = (0..3).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, straddle: false, off: 0 }) }).collect();
         let formed = emitter::region::form(&c, &mut ram, BASE, &head, true).expect("hwloop region");
         assert_eq!(formed.loops, vec![(BASE + 17, BASE + 7)]);
         assert_eq!(formed.chunks.iter().map(|c| (c.pc - BASE, c.instructions.len())).collect::<Vec<_>>(),
@@ -1412,7 +1413,7 @@ fn regions() -> u32 {
         let mut ram = Ram::new(true, false);
         ram.ram.mem[..p.len()].copy_from_slice(&p);
         let c = cpu(0);
-        let head: Vec<BlockInsn> = (0..4).scan(BASE + 12, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, off: 0 }) }).collect();
+        let head: Vec<BlockInsn> = (0..4).scan(BASE + 12, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, straddle: false, off: 0 }) }).collect();
         let formed = emitter::region::form(&c, &mut ram, BASE + 12, &head, true).expect("entry region");
         assert_eq!(formed.chunks.iter().map(|c| (c.pc - BASE, c.instructions.len())).collect::<Vec<_>>(),
             vec![(12, 4), (24, 2), (22, 1)]);
@@ -1449,7 +1450,7 @@ fn regions() -> u32 {
         let mut ram = Ram::new(true, false);
         ram.ram.mem[..p.len()].copy_from_slice(&p);
         let c0 = cpu(0);
-        let head: Vec<BlockInsn> = (0..4).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), off: 0 }) }).collect();
+        let head: Vec<BlockInsn> = (0..4).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), straddle: false, off: 0 }) }).collect();
         let formed = emitter::region::form(&c0, &mut ram, BASE, &head, true).expect("entry-interior region");
         let interior = formed.chunks.iter().position(|c| c.pc == BASE + 3).expect("interior chunk") as u32;
         let (bytes, _) = emitter::region::generate(&formed.chunks, &formed.pages, &formed.loops, true);
@@ -1594,7 +1595,7 @@ fn regions() -> u32 {
     let mut ram = Ram::new(true, false);
     ram.ram.mem[..tp.len()].copy_from_slice(&tp);
     let c = cpu(0);
-    let head: Vec<BlockInsn> = (0..2).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, off: 0 }) }).collect();
+    let head: Vec<BlockInsn> = (0..2).scan(BASE, |pc, _| { let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32; Some(BlockInsn { insn: i, max_ar: 0, straddle: false, off: 0 }) }).collect();
     let formed = emitter::region::form(&c, &mut ram, BASE, &head, true).expect("tile region");
     assert_eq!(formed.chunks.iter().map(|c| (c.pc - BASE, c.instructions.len())).collect::<Vec<_>>(),
         vec![(0, 2), (35, 1), (6, 3), (41, 2), (13, 6), (43, 1)]);
