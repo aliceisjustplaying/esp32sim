@@ -107,6 +107,8 @@ pub struct Machine<S: Soc> {
 }
 
 const QUANTUM: u64 = 64;
+/// Page pushes (display, audio, input poll) per emulated second; a frame goes out only when it changed.
+const PUSH_HZ: u64 = 120;
 /// EX133 default for `Machine::vq_max`; a build can pin another with `ESP32SIM_VQ_BUILD=<n>`.
 const VQ_DEFAULT: u64 = match option_env!("ESP32SIM_VQ_BUILD") {
     Some(s) => { let b = s.as_bytes(); let (mut i, mut v) = (0, 0u64); while i < b.len() { v = v * 10 + (b[i] - b'0') as u64; i += 1; } v }
@@ -669,7 +671,7 @@ impl<S: Soc> Machine<S> {
             if enabled && i != busy { if let Some(wake) = core.cycles_until_wake() { k = k.min(wake.div_ceil(QUANTUM)); } }
         }
         if let Some((at, _)) = self.script.events.get(self.script.pos) { k = k.min(at.saturating_sub(now).div_ceil(QUANTUM)); }
-        if self.web.is_some() { k = k.min((S::CPU_HZ / 50).saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(QUANTUM)); }
+        if self.web.is_some() { k = k.min((S::CPU_HZ / PUSH_HZ).saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(QUANTUM)); }
         k.max(1)
     }
 
@@ -1080,7 +1082,7 @@ impl<S: Soc> Machine<S> {
     #[inline]
     fn after_round_rest(&mut self) -> bool {
         let stopped = self.apply_script_events();
-        if self.web.is_some() && self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= S::CPU_HZ / 50 { self.ws.last_push_cycles = self.bus.cycles(); self.web_push(); self.web_poll_input(); }
+        if self.web.is_some() && self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= S::CPU_HZ / PUSH_HZ { self.ws.last_push_cycles = self.bus.cycles(); self.web_push(); self.web_poll_input(); }
         if self.rt.enabled && self.bus.cycles().wrapping_sub(self.rt.last_check) >= 1 << 16 {
             self.rt.last_check = self.bus.cycles();
             let start = *self.rt.wall_start.get_or_insert_with(std::time::Instant::now);
@@ -1135,8 +1137,9 @@ impl<S: Soc> Machine<S> {
         if due {
             if let Some((w_, h_, px, _)) = board.display() {
                 self.ws.px_sent = ver;
-                let mut b = vec![1u8, w_ as u8, (w_ >> 8) as u8, h_ as u8, (h_ >> 8) as u8];
-                for p in &px { b.push(*p as u8); b.push((*p >> 8) as u8); }
+                let mut b = Vec::with_capacity(5 + px.len() * 2);
+                b.extend_from_slice(&[1u8, w_ as u8, (w_ >> 8) as u8, h_ as u8, (h_ >> 8) as u8]);
+                b.extend(px.iter().flat_map(|p| p.to_le_bytes()));
                 w.send_binary(&b);
             }
         }
