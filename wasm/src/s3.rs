@@ -269,6 +269,7 @@ pub unsafe extern "C" fn esp32sim_profile_report(e: *mut Emu) {
     if let Some(m) = unsafe { &mut *e }.m.s3_mut() {
         for (i, core) in m.cores.iter().enumerate() {
             log(&format!("core={i}\n{}", core.blocks.profile.report()));
+            for chunk in core.blocks.profile.census.report().lines().collect::<Vec<_>>().chunks(200) { log(&format!("core={i}\n{}", chunk.join("\n"))); }
             if let Some(r) = core.blocks.region_report() { log(&format!("core={i} {r}")); }
         }
     }

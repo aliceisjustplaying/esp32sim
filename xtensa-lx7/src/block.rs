@@ -207,6 +207,14 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
 fn run_block_profiled<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
     #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
     {
+        let pc = cpu.pc;
+        cpu.blocks.profile.sample();
+        let result = run_block_inner(cpu, bus, budget);
+        cpu.blocks.profile.census.dispatch(pc, budget, result.0);
+        return result;
+    }
+    #[cfg(any())]
+    {
         if cpu.blocks.profile.sample() {
             let pc = cpu.pc;
             let ei = if cpu.blocks.resume.2 == pc { cpu.blocks.resume.0 as usize } else { BlockCache::index(pc) };
@@ -228,8 +236,14 @@ fn run_block_profiled<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, 
 // Keep this boundary visible to a sampling profiler without adding per-block clocks.
 #[cfg_attr(all(target_arch = "wasm32", feature = "wasm-cpu-profile"), inline(never))]
 fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    { cpu.blocks.profile.census.path = 0; }
     if let Some(t) = cpu.check_interrupts() { return (1, Some(t)); }
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    { cpu.blocks.profile.census.path = 1; }
     if cpu.waiting { cpu.advance_ccount(cpu.approximate_cpi); return (1, None); }
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    { cpu.blocks.profile.census.path = 2; }
     let (ei, k, end) = match find_block(cpu, bus) { Ok(b) => b, Err(t) => return (1, Some(t)) };
     cpu.blocks.resume.2 = 1;
 
@@ -357,10 +371,14 @@ fn run_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32, ei: u32, mut k: 
         };
     }
 
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    { cpu.blocks.profile.census.path = if code == crate::jit::NONE { 3 } else { 4 }; }
     let limit = limit.min(end - k);
     let (mut done, mut trap, mut pre, mut broke) = (0u32, None, false, false);
     while done < limit {
         let e = cpu.blocks.arena[k as usize];
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+        { *cpu.blocks.profile.census.interp_ops.entry(format!("{}{:?}", if code == crate::jit::NONE { "nocode:" } else { "cold:" }, e.insn.op)).or_default() += 1; }
         if let Some(t) = cpu.check_overflow(e.max_ar) { trap = Some(t); pre = true; break; }
         let at = cpu.pc;
         if crate::exec::defer_instruction(cpu, bus, &e.insn) { break; }

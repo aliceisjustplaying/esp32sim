@@ -155,7 +155,13 @@ fn st<B: Bus>(cpu: &mut Cpu, bus: &mut B, a: u32, bytes: u32, v: u128) -> Result
 pub fn exec<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
     if cpu.cpenable & (1 << 3) == 0 { return Err(cpu.raise(exc::COPROCESSOR0_DISABLED + 3)); }
     // The optional PIE cost hypotheses are charged in the table executor only.
-    if i.r & PACKED != 0 && cpu.approximate_pie_mode == 0 { return exec_packed(cpu, bus, i); }
+    if i.r & PACKED != 0 && cpu.approximate_pie_mode == 0 {
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+        { *cpu.blocks.profile.census.pie_packed.entry(OPS[i.imm as usize].name).or_default() += 1; }
+        return exec_packed(cpu, bus, i);
+    }
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    { *cpu.blocks.profile.census.pie_table.entry(OPS[i.imm as usize].name).or_default() += 1; }
     exec_table(cpu, bus, i)
 }
 

@@ -388,6 +388,8 @@ extern "C" fn h_exec<B: Bus>(
     // owned by its live CodeCache. No Rust execution overlaps generated access.
     let (cpu, bus, instruction) = unsafe { (&mut *cpu, &mut *bus, &*instruction) };
     cpu.pc = pc;
+    #[cfg(feature = "wasm-jit-profile")]
+    { *cpu.blocks.profile.census.helper_ops.entry(format!("{:?}", instruction.insn.op)).or_default() += 1; }
     if crate::exec::defer_instruction(cpu, bus, &instruction.insn) {
         cpu.jit_trap = None;
         return 1;
@@ -491,6 +493,8 @@ unsafe fn run_inner<B: Bus>(
         .map(|m| (m.tlb, m.page_ver))
         .unwrap_or((std::ptr::null(), std::ptr::null_mut()));
     let b = &cc.blocks[code as usize];
+    #[cfg(feature = "wasm-jit-profile")]
+    { cpu.blocks.profile.census.path = if entry != 0 { 10 } else if cpu.blocks.observed { 11 } else { 7 }; }
     if entry == 0 && !cpu.blocks.observed {
         // EX136: the facts the checks below would fetch through the owning block, its region and
         // three of its vectors are cached in this block while no region has been dropped.
@@ -509,10 +513,14 @@ unsafe fn run_inner<B: Bus>(
                     Some(unsafe { *hot.sites.add((result >> 19) as usize) })
                 } else { None };
                 region_stats(cc, result, budget, site);
+                #[cfg(feature = "wasm-jit-profile")]
+                { cpu.blocks.profile.census.path = 5; }
                 if let Some(site) = site {
                     bus.note_pc(site_pc(site));
                     return result & 0x7ffff;
                 }
+                #[cfg(feature = "wasm-jit-profile")]
+                { cpu.blocks.profile.census.path = 9; }
                 return run_block_body(cc, code, cpu, bus, h, budget, entry, tlb, versions);
             }
         }
@@ -613,9 +621,22 @@ unsafe fn run_inner<B: Bus>(
                         Some(r.sites[(result >> 19) as usize])
                     } else { None };
                     region_stats(cc, result, budget, site);
+                    #[cfg(feature = "wasm-jit-profile")]
+                    { cpu.blocks.profile.census.path = 6; }
                     if let Some(site) = site {
                         bus.note_pc(site_pc(site));
                         return result & 0x7ffff;
+                    }
+                    #[cfg(feature = "wasm-jit-profile")]
+                    { cpu.blocks.profile.census.path = 9; }
+                } else {
+                    #[cfg(feature = "wasm-jit-profile")]
+                    {
+                        let c = &mut cpu.blocks.profile.census;
+                        c.path = 8;
+                        if budget < r.lens[k as usize] { c.gate[0] += 1; }
+                        else if cpu.boundary_bloom & r.bloom != 0 { c.gate[1] += 1; }
+                        else { c.gate[2] += 1; }
                     }
                 }
             }
@@ -678,6 +699,8 @@ unsafe fn run_block_body<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: 
     } else {
         f(cpu, bus, h, budget.min(0xffff), entry, tlb, versions)
     };
+    #[cfg(feature = "wasm-jit-profile")]
+    { cpu.blocks.profile.census.body_exits[usize::from(entry != 0)][((result >> 16) & 7) as usize] += 1; }
     let done = result & 0xffff;
     // LCOUNT changes only at the admitted hardware backedge. Subtract repeated
     // prefixes to locate both the last retired instruction and a cut continuation.

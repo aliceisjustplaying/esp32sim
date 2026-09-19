@@ -25,7 +25,57 @@ struct Row {
     missing: String,
 }
 
+pub const PATHS: [&str; 12] = ["irq", "waiting", "find_trap", "interp_nocode", "interp_cold", "region_hot", "region_slow",
+    "body_noregion", "body_gatefail", "body_after_reject", "body_resumed", "body_observed"];
+#[derive(Default)]
+pub struct Census {
+    pub path: usize,
+    pub budget: Vec<u64>,
+    pub done: Vec<u64>,
+    pub paths: [(u64, u64); 12],
+    pub gate: [u64; 4],
+    pub body_exits: [[u64; 8]; 2],
+    pub interp_ops: HashMap<String, u64>,
+    pub helper_ops: HashMap<String, u64>,
+    pub pie_table: HashMap<&'static str, u64>,
+    pub pie_packed: HashMap<&'static str, u64>,
+    pub pcs: HashMap<u32, (u64, u64)>,
+}
+impl Census {
+    pub fn dispatch(&mut self, pc: u32, budget: u32, done: u32) {
+        if self.budget.is_empty() { self.budget = vec![0; 67]; self.done = vec![0; 67]; }
+        self.budget[budget.min(66) as usize] += 1;
+        self.done[done.min(66) as usize] += 1;
+        let p = &mut self.paths[self.path]; p.0 += 1; p.1 += done as u64;
+        let e = self.pcs.entry(pc).or_default(); e.0 += 1; e.1 += done as u64;
+    }
+    pub fn report(&self) -> String {
+        let mut t = String::new();
+        let total: u64 = self.paths.iter().map(|p| p.0).sum();
+        let insns: u64 = self.paths.iter().map(|p| p.1).sum();
+        writeln!(t, "[census] dispatches={total} iterations={insns}").unwrap();
+        for (n, p) in PATHS.iter().zip(&self.paths) { writeln!(t, "[census-path] {n}\t{}\t{}", p.0, p.1).unwrap(); }
+        writeln!(t, "[census-budget] {:?}", self.budget).unwrap();
+        writeln!(t, "[census-done] {:?}", self.done).unwrap();
+        writeln!(t, "[census-gate] budget_lt_len={} bloom={} loop={} stale_pages={}", self.gate[0], self.gate[1], self.gate[2], self.gate[3]).unwrap();
+        writeln!(t, "[census-body-exits] entry0[end,left,trap,cut,pre,reject]={:?} resumed={:?}", &self.body_exits[0][..6], &self.body_exits[1][..6]).unwrap();
+        for (name, m) in [("interp", &self.interp_ops), ("helper", &self.helper_ops)] {
+            let mut v: Vec<_> = m.iter().collect(); v.sort_by(|a, b| b.1.cmp(a.1));
+            for (k, n) in v.iter().take(40) { writeln!(t, "[census-{name}-op] {k}\t{n}").unwrap(); }
+        }
+        for (name, m) in [("pie_table", &self.pie_table), ("pie_packed", &self.pie_packed)] {
+            let mut v: Vec<_> = m.iter().collect(); v.sort_by(|a, b| b.1.cmp(a.1));
+            for (k, n) in v.iter().take(40) { writeln!(t, "[census-{name}] {k}\t{n}").unwrap(); }
+        }
+        let mut v: Vec<_> = self.pcs.iter().collect(); v.sort_by(|a, b| b.1.1.cmp(&a.1.1));
+        writeln!(t, "[census-pcs] distinct={}", v.len()).unwrap();
+        for (pc, (d, i)) in v.iter().take(3000) { writeln!(t, "[census-pc] {pc:08x}\t{d}\t{i}").unwrap(); }
+        t
+    }
+}
+
 pub struct Profile {
+    pub census: Census,
     rng: u32,
     calls: u64,
     rows: HashMap<(u32, bool), Row>,
@@ -34,7 +84,7 @@ pub struct Profile {
 
 impl Default for Profile {
     fn default() -> Self {
-        Self { rng: 0x914f_7ab3, calls: 0, rows: HashMap::new(), loops: HashMap::new() }
+        Self { census: Census::default(), rng: 0x914f_7ab3, calls: 0, rows: HashMap::new(), loops: HashMap::new() }
     }
 }
 
