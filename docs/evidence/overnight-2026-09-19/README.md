@@ -36,7 +36,7 @@ What did not work: EX109 guarded RETW (inside noise), EX121 wasm-opt (about 1%),
 ## Open items, most valuable first
 
 1. Review and upstream `night/combined-0919` in pieces: EX133 + EX134 guard, the diet, EX135, EX136/137, EX144. EX133's exactness rests on several invariants together (the run-length bounds on device flush, script, page push, peer wake-up and limits; deferral of device registers; the cadence guard) and on the tested contract (pinned totals, console hashes, goldens). `vq_violations` is only a backstop for register accesses that escape deferral, not a correctness certificate. It deserves a reviewer who did not write it.
-2. Timed model: presentation is 7% slow with the fetch cache on and the fetch-line price (404, a window with two misses in its raw records) is provisional; ring-PIE staging 0.93; pocket-tank's inference is 35% slow and neither its 64 KB data cache nor a separate flash price fixes that (sequential data-cache autoload is the open hypothesis); the cache geometry should come from the EXTMEM registers; CALLX assumed; 96/160 are window totals, not isolated penalties. The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
+2. Timed model: presentation is 7% slow with the fetch cache on and the fetch-line price (404, a window with two misses in its raw records) is provisional; ring-PIE staging 0.93; pocket-tank's inference is 35% slow and neither its 64 KB data cache nor a separate flash price fixes that (sequential data-cache autoload was checked and is off in both firmwares, so that gap is unexplained); the cache geometry should come from the EXTMEM registers; CALLX assumed; 96/160 are window totals, not isolated penalties. The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
 3. Calls and returns inside regions: 82% of region exits, about 4 s of the remaining 42 s; the peer's design note (`design-calls-in-regions.md`) puts the first step (direct CALL8 → ENTRY as an internal edge) at no more than 4%.
 4. pocket-tank stays at 0.44×: both cores busy, so it needs raw throughput or the timed clock, not scheduling.
 
@@ -403,3 +403,8 @@ Peer review of EX147 found: the ring was replayed only on the hot region-entry p
 | export | 0.992 | 0.983 |
 
 Document load wants at least 404, presentation at most 200, so presentation's overshoot is not only a fetch price. `?timing=hw` keeps 404 as a provisional value; a sequential flash fetch-line probe is the measurement that would replace it.
+
+## Step 24: two more nulls
+
+- **Data-cache autoload is not the pocket-tank explanation** (peer, `autoload/*-peek.log`): after boot both firmwares leave `DCACHE_AUTOLOAD_CTRL` (0x600c404c) at 0x8, enable and section bits clear, section registers zero; IDF 6.1's `cache_hal_init` preserves that state and no S3 call site enables autoload. The 8-versus-12 tok/s gap stays unexplained.
+- **EX149 solo memory stalls spend budget instead of ending the batch** (timed model): 69.8 s against 70.6 s wall, same ratios. No gain; reverted.
