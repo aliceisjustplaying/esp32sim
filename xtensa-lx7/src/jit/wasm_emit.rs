@@ -711,6 +711,7 @@ fn emit_body(
             g.overflow(bi.max_ar, pc);
         }
         let last = index + 1 == instructions.len();
+        if index > 0 && crate::exec::load_use(&instructions[index - 1].insn, &bi.insn) { g.price(1); }
         if emit_instruction(g, bi, fast, pc, next, last, cp) {
             if whole {
                 g.advance();

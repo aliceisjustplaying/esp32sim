@@ -305,6 +305,19 @@ pub(crate) fn defer_instruction<B: Bus>(cpu: &Cpu, bus: &mut B, i: &Insn) -> boo
     false
 }
 
+/// EX138: the register a load leaves its result in, for the measured load-use cycle (EX067: an
+/// instruction that reads the result of the load right before it waits one cycle).
+#[inline]
+pub(crate) fn load_result(i: &Insn) -> Option<u8> {
+    use Op::*;
+    matches!(i.op, L32i | L32iN | L32r | L8ui | L16ui | L16si).then_some(i.t)
+}
+/// True when `i` reads the result of the load `prev`.
+#[inline]
+pub(crate) fn load_use(prev: &Insn, i: &Insn) -> bool {
+    load_result(prev).is_some_and(|r| i.gpr_effects().reads & (1 << r) != 0)
+}
+
 /// EX138: cycles an instruction costs beyond the one every instruction is charged, from the
 /// ESP32-S3 opcode ladders (EX068): taken branch 3, J 3, JX 6, LOOP setup 5, QUO 4, REM 5.
 /// Calls and returns are not individually measured; CALLn is priced as J, CALLXn and the
