@@ -6,11 +6,14 @@ Two sessions worked through the night on the TinyDraw browser battery: a coordin
 
 | | main d5446b4a | this night | where |
 | --- | --- | --- | --- |
-| TinyDraw battery, exact instruction-count clock | 83.2 s wall, 0.57× | **42.6 s wall, 1.12×**, three alternating pairs, identical 9,819,885,134 instructions and console hash | `night/combined-0919` at 75382bcc |
-| pocket-tank, 30 guest s (both cores busy) | 81.0 s, 0.37× | 68.8 s, 0.44×, exact 10,073,833,775 | same |
+| TinyDraw battery, exact instruction-count clock | 83.2 s wall, 0.57× | **42.6 s wall, 1.12×**, three alternating pairs, identical 9,819,885,134 instructions and console hash | `night/combined-0919` (75382bcc measured; head adds EX144 and the 1024-quanta default) |
+| pocket-tank, 30 guest s (both cores busy) | 80.9 s, 0.37× | 65.4 s, 0.46×, exact 10,073,833,775 | same, head |
+| Atech synth, SID jukebox, LCD-4B panel goldens | committed hashes | identical WAV hashes, consoles and per-core instruction totals with virtual quanta on (native, `--no-jit`) | `night/fast-entry-0919` |
 | Production page, boot to READY | 120.5 s (Sep 5 receipt) | 54.7 s; strokes correct, movement→canvas median 37.6 ms | `night/fast-entry-0919` |
-| Approximate-timing model (EX066 configuration) | 0.478× (Sep 7) | **≈1.0×** with measured control-flow, load-use, FP-readiness and fetch-alignment prices | `night/timed-0919` |
-| Timed model vs an erased-start board, paced cold tests | compute 0.749, wall 0.787 | **compute 0.964 (0.910–0.973), wall 0.978, HARD 0.982, export 1.04**; whole battery 72.0 guest s vs 77.4 s | same |
+| Approximate-timing model (EX066 configuration) | 0.478× (Sep 7) | **≈1.2×** with measured instruction, alignment and cache prices | `night/timed-0919` |
+| Timed model vs an erased-start board, paced cold tests | compute 0.749, wall 0.787 | **compute 0.956 (0.883–0.969), wall 0.958, HARD 0.955, export 0.964**; whole battery 70.4 guest s vs 77.4 s | same |
+| pocket-tank under the timed model | 24.3 tok/s, 62.5 fps (instruction clock) | 9.5 tok/s, 35 fps; the board does 12 and 25–30 | same |
+| Production page under the timed model (`?timing=hw`) | strokes dead (board-swap bug) | boots in 80 s wall like the device, strokes correct, 38 ms median | same |
 
 What made the difference, in order of size:
 
@@ -31,7 +34,7 @@ What did not work: EX109 guarded RETW (inside noise), EX121 wasm-opt (about 1%),
 ## Open items, most valuable first
 
 1. Review and upstream `night/combined-0919` in pieces: EX133 + EX134 guard, the diet, EX135, EX136/137. The EX133 contract ("exact unless `vq_violations` is non-zero") deserves a reviewer who did not write it.
-2. Timed model misfits: document load 0.64 (FP divide/convert sequences unpriced, dependencies across loop backedges not charged), ring-scalar staging 1.22 (provisional 160/96 cache parameters), CALLX price, instruction-fetch cache.
+2. Timed model misfits: document load 0.63 and ring-PIE staging 0.71, both memory-side (the model has a 4-way data cache, the firmware an 8-way one; scattered PSRAM access and automatic dirty eviction are unprobed); a uniform −4% elsewhere (CALLX assumed, L32R, instruction fetch). The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
 3. Calls and returns inside regions: 82% of region exits, about 4 s of the remaining 42 s.
 4. pocket-tank stays at 0.44×: both cores busy, so it needs raw throughput or the timed clock, not scheduling.
 
@@ -287,3 +290,18 @@ Peer review of the pricing commits found five real defects (double charge on div
 - **Cache parameter sensitivity (not adopted):** requested-data readiness 96 with 160-cycle service (EX054's split) fixes ring-scalar staging (1.217 → 1.036) but worsens present (1.022 → 0.952), HARD (0.985 → 0.942) and export (1.03 → 0.935). Left at 160/96.
 - **EX145 instruction-fetch cache at dispatch granularity: no effect.** 64 sets × 8 ways × 32-byte lines for flash-mapped code, 140 cycles per missing line, touched for the entered block only: every ratio unchanged to three decimals, load_us stays 0.639. Removed again. Either the working set fits or the misses happen inside regions where this coarse model cannot see them.
 - **Document load (peer's scoped native profile, `doc-load-native/`)**: the timed window is 57.5M instructions of eager rasterization (raster helpers 48%, MaterializedCanvas 22%, memmove/memcpy 6.5%, `__divsf3` 5.6%, `lroundf` 3.3%), 37% of it fetched from flash. The missing 200 ms is about 0.84 cycles per instruction, far more than the unpriced FP divide assist (100K divides) or LSI→use (3.4M) can supply, so the remaining suspect is data-side: cache geometry, PSRAM misses and dirty writebacks under scattered access. Needs a hardware probe, not another parameter guess.
+
+## Step 15: timed-model host cost, merge fix, Tier-B hardware session started
+
+- Profile of the timed + priced model (`prof-timed`, 69 s sampled): generated 36.8%, `jit::run` 13.3%, `run_block_inner` 10.9%, and 1.4 s in `decode` — my alignment check decoded the target instruction on every redirected fetch through the helper (51M RETWs). Replaced by a length test on the first byte, skipped when `pc & 3 < 2`. Same ratios; TinyDraw timed + priced, both-busy quantum 512: **72.0 guest s in 60.6 s wall = 1.19× realtime** (`check-timed-priced-r4`, single untimed run).
+- Merge fix: `pie::timing_tests::selective_pie_costs…` (from the timing branch) failed after the merge because main's packed PIE executor bypasses the table executor where the optional PIE cost hypotheses are charged. Packed execution is now skipped when such a hypothesis is selected (none is in our configuration). `cargo test --release --workspace`: no failures on `night/timed-0919` f16d4daf.
+- **Tier-B hardware session** (tinydraw `calibration/esp32s3-tier-b` at 7a157d4, the probe whose README says its decomposition controls were never captured; `~/Archives/esp32s3/tier-b/` did not exist): normal image built and ELF-verified under IDF v6.1, then flash + `tools/tier-b-capture.py --cells all` for two boots, then the XIP-PSRAM image the same way. Runs in the background from `~/Archives/esp32s3/tier-b/logs/session.sh`; the tinydraw checkout was dirty (`.gitignore`, untracked site files) and the verifier records that. This is the data-side probe the document-load misfit needs; analysis is for the morning.
+
+## Step 16: Tier-B cohort captured; measured cache prices replace the fitted ones; PIE Q readiness (EX146)
+
+- **Tier-B hardware cohort** (`~/Archives/esp32s3/tier-b/`): normal image boots 1 and 2: 43/43 cells, 360 samples, 0 refusals each; XIP-PSRAM image boots 1 and 2: 44/44 cells, 373 samples, 0 refusals each; receipts and the archived ELFs written by `tools/tier-b-capture.py`. Both boots of the normal image agree exactly on: first-line data miss **PSRAM 96 cycles, flash 128**; first-line instruction miss from flash 404 (one 724 outlier per boot); explicit dirty writeback 1016 / 1170 / 1506 / 2154 / 3442 cycles for 1 / 2 / 4 / 8 / 16 lines (**≈162 cycles per additional dirty 64-byte line**, 862 fixed); PSRAM store hit 272. The firmware's data cache is 32 KB, 8-way, 64-byte lines (`sdkconfig`); the model has 4 ways (the inline wasm path is built for that geometry).
+- **Measured cache prices** (fill 96, writeback 160) instead of EX054's fitted 160/96, on top of the instruction prices: ring-scalar staging 1.217 → **1.033**; every other timer moves down a little and becomes uniform: compute 0.956 (0.883–0.969), present 0.981, wall 0.958, HARD 0.955, export 0.964, document load 0.630; whole battery 70.4 guest s (0.91). The fitted 160 had been absorbing CPU cost that was not priced yet. Ring-PIE staging drops to 0.71: it was only right before because the fill was inflated (EX059 already saw it 17% short).
+- **EX146 static readiness of loaded PIE Q registers**: operand masks from the EX058 prototype (810f38c5), only the measured results delayed (VLD, LD.USAR, loaded Qu of SRC.Q.LD usable at issue + 2, EX080), folded into the same per-run table as load-use and FP readiness. Linear PIE staging 0.953 → **0.997**; ring PIE 0.704 → 0.714 (its shortfall is memory-side).
+- Host cost unchanged: 70.4 guest s in 60.2 s wall = 1.17× realtime. `?timing=hw` on the page now uses the measured cache prices.
+
+State of the timed model against the erased-start board, measured parameters only (no fitted constant left except the 4-way geometry and CALLX = JX): uniformly about 4% fast on compute, wall, HARD and export; document load 0.63 and ring-PIE staging 0.71 are the two open misfits, both memory-side.
