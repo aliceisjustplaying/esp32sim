@@ -921,7 +921,7 @@ pub unsafe extern "C" fn esp32sim_set_control_prices(e: *mut Emu, on: u32) -> u3
 pub unsafe extern "C" fn esp32sim_set_quantum(e: *mut Emu, instructions: u32) -> u32 {
     let e = unsafe { &mut *e };
     let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
-    if m.insns() != 0 || !(64..=4096).contains(&instructions) || instructions % 64 != 0 { return 1; }
+    if m.insns() != 0 || !(64..=4096).contains(&instructions) || !instructions.is_multiple_of(64) { return 1; }
     m.quantum = u64::from(instructions);
     0
 }
