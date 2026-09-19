@@ -100,6 +100,8 @@ pub struct Machine<S: Soc> {
     pub vq_max: u64,
     /// EX133 counters: multi-quantum runs, quanta they covered, runs stopped at a device register, at waiti.
     pub vq_stats: [u64; 4],
+    /// census hack: guest cycles by round kind: [both busy, core0 idle, core1 idle, all idle, vq core0, vq core1, ordinary rounds, 0]
+    pub round_census: [u64; 8],
     /// Backoff after runs cut short by frequent device-register accesses.
     vq_skip: u32, vq_penalty: u32,
     run_steps: u64,
@@ -117,7 +119,7 @@ impl<S: Soc> Machine<S> {
     pub fn new(mac: [u8; 6], bus: S::Bus) -> Self {
         Machine {
             mac, reboots: 0, stubs: HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: HashMap::new(),
-            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), quantum: QUANTUM, run_steps: 0, vq_stats: [0; 4], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
+            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), quantum: QUANTUM, run_steps: 0, vq_stats: [0; 4], round_census: [0; 8], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
             bus, symbols: BTreeMap::new(),
             dbg: Debug { stop_on_unimplemented: true, stop_after_exceptions: u64::MAX },
             observers: Vec::new(), probes: Wants::NONE, prev_irq: vec![0; S::CORES],
@@ -499,6 +501,7 @@ impl<S: Soc> Machine<S> {
                 let chunk = self.idle_budget(limit, &on);
                 for (i, &enabled) in on.iter().enumerate().take(S::CORES) { if enabled { self.cores[i].idle_advance(chunk as u32); } }
                 n += chunk;
+                self.round_census[3] += chunk;
                 self.run_steps += chunk;
                 self.after_round(chunk);
                 if self.bus.sw_reset() { self.drain_console(); return Stop::SwReset; }
@@ -536,6 +539,7 @@ impl<S: Soc> Machine<S> {
                     self.bus.set_defer(false);
                     let pos = (total - left) as u64;
                     self.vq_stats[0] += 1; self.vq_stats[1] += pos / self.quantum;
+                    self.round_census[4 + busy.min(1)] += (pos / self.quantum) * self.quantum;
                     if pos < 2 * self.quantum { self.vq_penalty = (self.vq_penalty * 2 + 1).min(255); self.vq_skip = self.vq_penalty; } else { self.vq_penalty = 0; }
                     // A stopping instruction belongs to the unfinished round, even when it
                     // consumes its last slot. Preserve the ordinary path's pre-tick return.
@@ -570,6 +574,7 @@ impl<S: Soc> Machine<S> {
                     .fold(self.quantum, |limit, wake| limit.min(wake.max(1)))
             };
             let elapsed = quantum * u64::from(cpi);
+            { let mask = (0..S::CORES.min(2)).fold(0, |m, i| m | (usize::from(idle[i]) << i)); self.round_census[mask] += quantum - resume_at; self.round_census[6] += 1; }
             let mut stalls = [0u64; 4];
             let mut round_elapsed = 0;
             for i in 0..S::CORES {

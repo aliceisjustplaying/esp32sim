@@ -267,6 +267,7 @@ pub unsafe extern "C" fn esp32sim_block_jit_insns(e: *mut Emu) -> f64 {
 pub unsafe extern "C" fn esp32sim_profile_report(e: *mut Emu) {
     // SAFETY: the ABI caller guarantees a live exclusive handle.
     if let Some(m) = unsafe { &mut *e }.m.s3_mut() {
+        log(&format!("[census-rounds] cycles[both_busy,core0_idle,core1_idle,all_idle,vq_core0,vq_core1,ordinary_rounds]={:?} vq_stats[runs,quanta,device_stop,waiti]={:?}", m.round_census, m.vq_stats));
         for (i, core) in m.cores.iter().enumerate() {
             log(&format!("core={i}\n{}", core.blocks.profile.report()));
             for chunk in core.blocks.profile.census.report().lines().collect::<Vec<_>>().chunks(200) { log(&format!("core={i}\n{}", chunk.join("\n"))); }
