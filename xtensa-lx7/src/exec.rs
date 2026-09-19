@@ -356,11 +356,11 @@ pub(crate) fn static_extras<'a>(insns: impl Iterator<Item = &'a Insn>) -> Vec<u8
         let mut wait = u32::from(prev.is_some_and(|p| load_use(p, i)));
         // EX146: a loaded Q register is usable two cycles after its load issues (EX080).
         let q = if i.op == Op::Pie { crate::pie_timing::insn_effects(i) } else { Default::default() };
-        for r in 0..8 { if q.reads & (1 << r) != 0 { wait = wait.max(qready[r].saturating_sub(now)); } }
+        for (r, &at) in qready.iter().enumerate() { if q.reads & (1 << r) != 0 { wait = wait.max(at.saturating_sub(now)); } }
         let (reads, slow) = fp_effects(i);
-        for f in 0..16 { if reads & (1 << f) != 0 { wait = wait.max(ready[f].saturating_sub(now)); } }
+        for (f, &at) in ready.iter().enumerate() { if reads & (1 << f) != 0 { wait = wait.max(at.saturating_sub(now)); } }
         now += 1 + wait + control_price(i.op, false);
-        for r in 0..8 { if q.writes & (1 << r) != 0 { qready[r] = if q.delayed & (1 << r) != 0 { now + 1 } else { 0 }; } }
+        for (r, at) in qready.iter_mut().enumerate() { if q.writes & (1 << r) != 0 { *at = if q.delayed & (1 << r) != 0 { now + 1 } else { 0 }; } }
         if let Some(f) = slow { ready[f as usize & 15] = now + 3; }
         else if let Some(f) = fp_fast_write(i) { ready[f as usize & 15] = 0; }
         prev = Some(i);

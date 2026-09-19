@@ -726,8 +726,8 @@ impl<S: Soc> Machine<S> {
             let mut cycles = u64::from(if solo { quantum.max(4096) } else { quantum }) * u64::from(cpi);
             if let Some(delta) = self.bus.next_deadline() { cycles = cycles.min(delta.max(1)); }
             if let Some(&(at, _)) = self.script.events.get(self.script.pos) { cycles = cycles.min(at.saturating_sub(now).max(1)); }
-            for i in 0..S::CORES {
-                if i != core && on[i] && self.model_ready_at[i] > now {
+            for (i, &enabled) in on.iter().enumerate().take(S::CORES) {
+                if i != core && enabled && self.model_ready_at[i] > now {
                     cycles = cycles.min(self.model_ready_at[i] - now);
                 }
             }
