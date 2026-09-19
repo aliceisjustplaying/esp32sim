@@ -690,6 +690,7 @@ fn emit_body(
 ) {
     let mut pc = pc0;
     let mut window_changed = false;
+    let extras = crate::exec::static_extras(instructions.iter().map(|b| &b.insn));
     for (index, bi) in instructions.iter().enumerate() {
         let next = pc.wrapping_add(bi.insn.len as u32);
         g.last_pc = pc;
@@ -711,7 +712,7 @@ fn emit_body(
             g.overflow(bi.max_ar, pc);
         }
         let last = index + 1 == instructions.len();
-        if index > 0 && crate::exec::load_use(&instructions[index - 1].insn, &bi.insn) { g.price(1); }
+        g.price(extras[index] as u32);
         if emit_instruction(g, bi, fast, pc, next, last, cp) {
             if whole {
                 g.advance();

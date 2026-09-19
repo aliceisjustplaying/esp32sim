@@ -318,6 +318,41 @@ pub(crate) fn load_use(prev: &Insn, i: &Insn) -> bool {
     load_result(prev).is_some_and(|r| i.gpr_effects().reads & (1 << r) != 0)
 }
 
+/// EX140: FP registers an instruction reads and the one it writes with a multi-cycle result.
+/// ADD.S, MUL.S and MADD.S results are usable four cycles after issue (EX079, measured);
+/// SUB.S and MSUB.S are assumed to match them. Every other writer counts as ready next cycle.
+fn fp_effects(i: &Insn) -> (u16, Option<u8>) {
+    use Op::*;
+    let (r, s, t) = (1u16 << (i.r & 15), 1u16 << (i.s & 15), 1u16 << (i.t & 15));
+    match i.op {
+        AddS | SubS | MulS => (s | t, Some(i.r)),
+        MaddS | MsubS => (r | s | t, Some(i.r)),
+        MkdadjS => (r | s, None),
+        UnS | OeqS | UeqS | OltS | UltS | OleS | UleS => (s | t, None),
+        RoundS | TruncS | FloorS | CeilS | UtruncS | MovS | AbsS | NegS | Rfr | MksadjS | AddexpmS
+        | MoveqzS | MovnezS | MovltzS | MovgezS | MovfS | MovtS => (s, None),
+        Ssi | Ssip => (t, None),
+        Ssx | Ssxp => (r, None),
+        _ => (0, None),
+    }
+}
+
+/// EX138/EX140: cycles each instruction of a straight-line run waits beyond its own, known when
+/// the run is decoded: the load-use cycle (EX067) and FP result readiness (EX079). The run
+/// starts with every result ready, so a dependency across a block boundary is not charged.
+pub(crate) fn static_extras<'a>(insns: impl Iterator<Item = &'a Insn>) -> Vec<u8> {
+    let (mut ready, mut now, mut prev) = ([0u32; 16], 0u32, None::<&Insn>);
+    insns.map(|i| {
+        let mut wait = u32::from(prev.is_some_and(|p| load_use(p, i)));
+        let (reads, slow) = fp_effects(i);
+        for f in 0..16 { if reads & (1 << f) != 0 { wait = wait.max(ready[f].saturating_sub(now)); } }
+        now += 1 + wait;
+        if let Some(f) = slow { ready[f as usize & 15] = now + 3; }
+        prev = Some(i);
+        wait as u8
+    }).collect()
+}
+
 /// EX138: cycles an instruction costs beyond the one every instruction is charged, from the
 /// ESP32-S3 opcode ladders (EX068): taken branch 3, J 3, JX 6, LOOP setup 5, QUO 4, REM 5.
 /// Calls and returns are not individually measured; CALLn is priced as J, CALLXn and the

@@ -55,6 +55,8 @@ pub struct BlockCache {
     pub profile: crate::jit::profile::Profile,
     entries: Vec<Entry>,
     arena: Vec<BlockInsn>,
+    /// EX140: `exec::static_extras` of every arena instruction, filled when its block is built.
+    extras: Vec<u8>,
     /// A block cut short by the caller's budget or a timer deadline resumes here rather than
     /// spawning a new block at the cut point: (entry index, arena index, pc at that index).
     resume: (u32, u32, u32),
@@ -83,12 +85,12 @@ impl BlockCache {
         BlockCache {
                      #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
                      profile: crate::jit::profile::Profile::default(),
-                     entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), resume: (0, 0, 1), builds: 0, flushes: 0,
+                     entries: vec![Entry::EMPTY; ENTRIES], arena: Vec::with_capacity(ARENA_MAX + MAX_LEN), extras: Vec::new(), resume: (0, 0, 1), builds: 0, flushes: 0,
                      code, jit_enabled: crate::jit::AVAILABLE, observed: false, compiled: 0, jit_instructions: 0 }
     }
     pub fn flush(&mut self) {
         for e in self.entries.iter_mut() { *e = Entry::EMPTY; }
-        self.arena.clear(); self.resume = (0, 0, 1); self.flushes += 1;
+        self.arena.clear(); self.extras.clear(); self.resume = (0, 0, 1); self.flushes += 1;
         if let Some(c) = &mut self.code { c.reset(); }
     }
     /// Bytes of native code currently in use.
@@ -165,6 +167,9 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
         pc = pc.wrapping_add(i.len as u32);
         if ends_block(&i) || n as usize == MAX_LEN { break; }
     }
+    let extras = crate::exec::static_extras(cpu.blocks.arena[start as usize..].iter().map(|b| &b.insn));
+    cpu.blocks.extras.truncate(start as usize);
+    cpu.blocks.extras.extend(extras);
     let last_byte = last.wrapping_add(cpu.blocks.arena[(start + n as u32 - 1) as usize].insn.len.max(1) as u32 - 1);
     let vidx0 = bus.code_page(pc0);
     let vidx1 = if last_byte >> 7 != pc0 >> 7 { bus.code_page(last_byte) } else { vidx0 };   // pages are >= 128 B
@@ -311,9 +316,7 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         let r = exec_insn(cpu, bus, &e.insn);
         done += 1; k += 1;
         if cpu.price_control && r.is_ok() {
-            cpu.timing_extra += crate::exec::control_price(e.insn.op, cpu.pc != expected);
-            let first = cpu.blocks.entries[ei as usize].start;
-            if k - 1 > first && crate::exec::load_use(&cpu.blocks.arena[k as usize - 2].insn, &e.insn) { cpu.timing_extra += 1; }
+            cpu.timing_extra += crate::exec::control_price(e.insn.op, cpu.pc != expected) + cpu.blocks.extras[k as usize - 1] as u32;
         }
         if let Err(t) = r { trap = Some(t); break; }
         if cpu.pc != expected || bus.block_break() { broke = true; break; }
