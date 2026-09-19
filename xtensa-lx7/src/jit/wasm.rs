@@ -49,6 +49,8 @@ impl RegionStats {
     }
 }
 const HOT: u32 = 32;
+/// EX138: emit control-flow prices into code generated from now on.
+pub static PRICED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const RETAIN_BYTES: usize = 64 << 20;
 const RETAIN_BLOCKS: usize = 16_384;
 
@@ -354,7 +356,12 @@ extern "C" fn h_exec<B: Bus>(
     }
     bus.note_pc(pc);
     match exec_insn(cpu, bus, &instruction.insn) {
-        Ok(()) => (bus.block_break() as u32) << 1,
+        Ok(()) => {
+            if cpu.price_control {
+                cpu.timing_extra += crate::exec::control_price(instruction.insn.op, cpu.pc != pc.wrapping_add(instruction.insn.len as u32));
+            }
+            (bus.block_break() as u32) << 1
+        }
         Err(t) => {
             cpu.jit_trap = Some(t);
             1

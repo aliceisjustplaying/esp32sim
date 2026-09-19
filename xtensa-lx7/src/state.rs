@@ -145,6 +145,10 @@ pub struct Cpu {
     pub boundary_bloom: u64,
     /// trap raised inside native code, handed back to `block::run_block`
     pub jit_trap: Option<crate::exec::Trap>,
+    /// EX138: cycles beyond one per instruction that priced control flow has accrued since the
+    /// machine last collected them; charged only while `price_control` is set.
+    pub timing_extra: u32,
+    pub price_control: bool,
 }
 
 impl Default for Cpu {
@@ -165,7 +169,7 @@ impl Cpu {
             qr: [0; 8], accx: [0; 2], qacc_h: [0; 5], qacc_l: [0; 5], sar_byte: 0, fft_bit_width: 0, ua_state: [0; 4], gpio_out: 0,
             waiting: false, ext_level_lines: 0, insn_count: 0,
             icache: vec![crate::decode::CacheEntry::EMPTY; crate::decode::ICACHE_SIZE],
-            blocks: crate::block::BlockCache::new(), boundary_bloom: 0, jit_trap: None,
+            blocks: crate::block::BlockCache::new(), boundary_bloom: 0, jit_trap: None, timing_extra: 0, price_control: false,
         };
         c.reset();
         c

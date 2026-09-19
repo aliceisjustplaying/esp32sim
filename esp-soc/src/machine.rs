@@ -724,7 +724,7 @@ impl<S: Soc> Machine<S> {
             let budget = cycles.div_ceil(u64::from(cpi)).max(1) as u32;
             // Keep cheap blocks together. A priced memory access yields immediately after its
             // block, exposing the stall to the other CPU without settling devices per ALU block.
-            let mut used = 0;
+            let (mut used, mut extras) = (0, 0u32);
             let penalty = loop {
                 self.bus.begin_timing_batch(core, now + u64::from(used) * u64::from(cpi));
                 if solo { self.bus.set_defer(used > 0); }
@@ -735,12 +735,15 @@ impl<S: Soc> Machine<S> {
                 };
                 if let Some(stop) = stop { self.bus.set_defer(false); self.drain_console(); return stop; }
                 let deferred = solo && self.bus.take_deferred();
-                used += if deferred { done } else { done.max(1) };
+                // EX138: priced control flow spends the batch's cycles without ending it.
+                let extra = self.cores[core].take_timing_extra();
+                extras += extra;
+                used += if deferred { done } else { done.max(1) } + extra;
                 let penalty = self.bus.take_timing_penalty();
                 if penalty != 0 || used >= budget || self.cores[core].waiting() || deferred { break penalty; }
             };
             if solo { self.bus.set_defer(false); }
-            self.cores[core].advance_cycles(penalty);
+            self.cores[core].advance_cycles(penalty + extras);
             self.model_ready_at[core] = now + u64::from(used.max(1)) * u64::from(cpi) + u64::from(penalty);
             instructions += u64::from(used.max(1));
             if instructions & 0xffff < u64::from(used.max(1)) { self.drain_console(); }

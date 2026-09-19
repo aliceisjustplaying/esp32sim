@@ -310,6 +310,7 @@ fn run_block_inner<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Opt
         let expected = at.wrapping_add(e.insn.len as u32);
         let r = exec_insn(cpu, bus, &e.insn);
         done += 1; k += 1;
+        if cpu.price_control && r.is_ok() { cpu.timing_extra += crate::exec::control_price(e.insn.op, cpu.pc != expected); }
         if let Err(t) = r { trap = Some(t); break; }
         if cpu.pc != expected || bus.block_break() { broke = true; break; }
     }

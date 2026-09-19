@@ -397,8 +397,18 @@ impl Gen {
         }
         self.pending = 0;
     }
+    /// EX138: charge `cycles` beyond the instruction's own to `Cpu::timing_extra`.
+    fn price(&mut self, cycles: u32) {
+        if cycles == 0 || !super::PRICED.load(std::sync::atomic::Ordering::Relaxed) { return; }
+        self.get(0);
+        self.cpu(offset_of!(Cpu, timing_extra));
+        self.c(cycles);
+        self.op(0x6a);
+        self.store(offset_of!(Cpu, timing_extra));
+    }
     /// Retire the current instruction and continue at a statically known `target`.
     fn leave(&mut self, target: u32) {
+        self.price(2);
         self.advance();
         if self.region.is_some() {
             region_edge(self, target, false);
@@ -964,6 +974,7 @@ fn emit_instruction(
             if s > 3 {
                 return false;
             }
+            g.price(2);
             g.cpu(offset_of!(Cpu, ps));
             g.c(ps::WOE);
             g.op(0x71);
@@ -1073,6 +1084,7 @@ fn emit_instruction(
         }
         J => g.leave(imm),
         Jx => {
+            g.price(5);
             g.advance();
             g.get(0);
             g.ar(s);
@@ -1098,6 +1110,7 @@ fn emit_instruction(
                 g.end();
             }
             let indirect = matches!(i.op, Callx0 | Callx4 | Callx8 | Callx12);
+            g.price(if indirect { 5 } else { 2 });
             if indirect {
                 // The target may alias the return-address destination.
                 g.ar(s);
@@ -1145,6 +1158,7 @@ fn emit_instruction(
             g.end();
         }
         Loop | Loopnez | Loopgtz => {
+            g.price(4);
             // Review spike. Mirrors exec.rs: LCOUNT = AR[s] - 1, LBEG = next, LEND = target;
             // LOOPNEZ/LOOPGTZ skip the body when the count is zero / non-positive. Blocks
             // containing these never receive a retained loop prefix (see queue), so the
@@ -1205,6 +1219,7 @@ fn emit_instruction(
 fn emit_divide(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     use crate::Op::*;
     let i = &bi.insn;
+    g.price(if matches!(i.op, Quou | Quos) { 3 } else { 4 });
     g.begin_block();
     g.begin_block();
     g.ar(i.t);

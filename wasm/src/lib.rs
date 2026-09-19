@@ -875,6 +875,21 @@ pub unsafe extern "C" fn esp32sim_set_approximate_pie_timing(e: *mut Emu, mode: 
     0
 }
 
+/// EX138: charge the measured control-flow prices (taken branch 3, J 3, JX 6, LOOP 5, QUO 4,
+/// REM 5; calls and returns derived) on top of one cycle per instruction. Before execution only.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_control_prices(e: *mut Emu, on: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    if m.insns() != 0 { return 1; }
+    for cpu in &mut m.cores { cpu.price_control = on != 0; }
+    #[cfg(target_arch = "wasm32")]
+    xtensa_lx7::jit::PRICED.store(on != 0, std::sync::atomic::Ordering::Relaxed);
+    0
+}
+
 /// Provisional PIE counts: charged events (0), additional cycles (1).
 /// # Safety
 /// `e` must be a live exclusively borrowed emulator.

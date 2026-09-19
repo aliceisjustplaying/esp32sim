@@ -305,6 +305,25 @@ pub(crate) fn defer_instruction<B: Bus>(cpu: &Cpu, bus: &mut B, i: &Insn) -> boo
     false
 }
 
+/// EX138: cycles an instruction costs beyond the one every instruction is charged, from the
+/// ESP32-S3 opcode ladders (EX068): taken branch 3, J 3, JX 6, LOOP setup 5, QUO 4, REM 5.
+/// Calls and returns are not individually measured; CALLn is priced as J, CALLXn and the
+/// returns as JX, ENTRY as 3, which sums to the measured 16-cycle callx8/entry/add/retw.n level.
+#[inline]
+pub(crate) fn control_price(op: Op, taken: bool) -> u32 {
+    use Op::*;
+    match op {
+        J | Call0 | Call4 | Call8 | Call12 => 2,
+        Jx | Callx0 | Callx4 | Callx8 | Callx12 | Ret | RetN | Retw | RetwN => 5,
+        Entry => 2,
+        Loop | Loopnez | Loopgtz => 4,
+        Quou | Quos => 3,
+        Remu | Rems => 4,
+        _ if taken && !matches!(op, Rfe | Rfi | Rfwo | Rfwu | Rfde | Rfue | Rfme | Waiti | Syscall | Break | BreakN | Ill | IllN) => 2,
+        _ => 0,
+    }
+}
+
 pub(crate) fn exec_insn<B: Bus>(cpu: &mut Cpu, bus: &mut B, i: &Insn) -> Result<(), Trap> {
     use Op::*;
     let pc = cpu.pc;
