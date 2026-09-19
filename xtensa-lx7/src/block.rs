@@ -129,7 +129,7 @@ pub(crate) fn ends_block(i: &Insn) -> bool {
 }
 
 /// The instruction must be the first of its block: it reads or writes state that is only exact
-/// at a block boundary (`CCOUNT`, `CCOMPARE*`, `INTERRUPT`, `INTENABLE`, `PS`).
+/// at a block boundary (`CCOUNT`, `CCOMPARE*`, `INTERRUPT`, `ICOUNT`).
 pub(crate) fn must_start_block(i: &Insn) -> bool {
     // EX135: PS and INTENABLE change only through instructions that end a block (or a trap), so a
     // read of them is exact anywhere; a write ends its block and needs no boundary in front.
