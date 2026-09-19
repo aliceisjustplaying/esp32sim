@@ -12,8 +12,8 @@ The reference column gives the revision or configuration each figure comes from;
 | pocket-tank, 30 guest s (both cores busy) | main d5446b4a: 80.9 s, 0.37× | 65.4 s, 0.46×, exact 10,073,833,775 (one pair) | same |
 | Atech synth, SID jukebox, LCD-4B panel goldens | committed hashes | identical WAV hashes, consoles and per-core instruction totals with virtual quanta on (native, `--no-jit`, one run each) | `night/fast-entry-0919` |
 | Production page, boot to READY | historical: 120.5 s (Sep 5 receipt, 8df2f0ad) | 54.7–56.5 s; strokes correct, movement→canvas median 36–38 ms (single runs) | `night/fast-entry-0919`, `night/timed-0919` |
-| Approximate-timing model, EX066 configuration | historical: 0.478× (Sep 7, d13b7f93) | ≈1.2× with measurement-informed instruction, alignment and cache prices (single untimed runs) | `night/timed-0919` |
-| Timed model vs an erased-start board, 15 paced cold tests | EX066 configuration on tonight's head: compute 0.749, wall 0.787 | medians compute 0.962, wall 0.971, HARD 0.979, export 0.975, present 1.007; individual compute cases 0.91–0.97; staging microbenchmarks 0.93–1.04; document load 0.63; whole battery 71.0 guest s vs 77.4 s (single run) | same |
+| Approximate-timing model, EX066 configuration | historical: 0.478× (Sep 7, d13b7f93) | 1.05× with measurement-informed instruction, alignment, data-cache and fetch-cache prices; 1.14× without the fetch cache (single untimed runs) | `night/timed-0919` |
+| Timed model vs an erased-start board, 15 paced cold tests | EX066 configuration on tonight's head: compute 0.749, wall 0.787, document load 0.47 | medians compute 0.983 (all 15 cases 0.977–0.989), HARD 1.004, wall 1.013, export 0.992, document load 0.933, present 1.072; staging microbenchmarks 0.93–1.04; whole battery 73.8 guest s vs 77.4 s (single run) | same |
 | pocket-tank under the timed model | instruction clock: 24.3 tok/s, 62.5 fps | 9.5 tok/s, 35 fps; `docs/speed-plan.md` gives the board as 12 and 25–30 | same |
 | Production page under the timed model (`?timing=hw`) | strokes dead (board-swap bug, found tonight) | boots to READY in 79 s wall, strokes correct, 38.6 ms median. The board needs 77.4 s from its startup serial line to the verdict; the endpoints differ | same |
 
@@ -36,7 +36,7 @@ What did not work: EX109 guarded RETW (inside noise), EX121 wasm-opt (about 1%),
 ## Open items, most valuable first
 
 1. Review and upstream `night/combined-0919` in pieces: EX133 + EX134 guard, the diet, EX135, EX136/137, EX144. EX133's exactness rests on several invariants together (the run-length bounds on device flush, script, page push, peer wake-up and limits; deferral of device registers; the cadence guard) and on the tested contract (pinned totals, console hashes, goldens). `vq_violations` is only a backstop for register accesses that escape deferral, not a correctness certificate. It deserves a reviewer who did not write it.
-2. Timed model misfits: document load 0.63 (not line-fill cost: it does not move with any cache price tried; the data side under scattered access is the leading hypothesis, unknown per-operation latencies are not ruled out), flash lines sharing the PSRAM price (the cohort shows 475 cycles per sustained flash line against 172 for PSRAM; pocket-tank's flash-resident weights will expose it), CALLX assumed. The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
+2. Timed model: presentation is 7% slow with the fetch cache on; ring-PIE staging 0.93; flash data lines share the PSRAM price (the cohort shows 475 cycles per sustained flash line against 172 for PSRAM; pocket-tank's flash-resident weights will expose it); CALLX assumed; 404 and 96/160 are window totals, not isolated penalties. The Tier-B cohort captured tonight (`~/Archives/esp32s3/tier-b/`) has the msync and SPI2 decomposition cells still to analyse.
 3. Calls and returns inside regions: 82% of region exits, about 4 s of the remaining 42 s; the peer's design note (`design-calls-in-regions.md`) puts the first step (direct CALL8 → ENTRY as an internal edge) at no more than 4%.
 4. pocket-tank stays at 0.44×: both cores busy, so it needs raw throughput or the timed clock, not scheduling.
 
@@ -346,3 +346,34 @@ The peer noticed that the cohort separates first-word readiness from sustained l
 | whole battery guest s (hardware 77.4) | 70.6 | 71.0 |
 
 Single untimed run, 36/36 (`check-tp-r96s160w160`, 71.0 guest s in 62.4 s wall = 1.14× realtime). Adopted for `?timing=hw`. The 160 is the 171.6-cycle total less an unmeasured loop overhead, so it is measurement-informed, not measured; flash lines (475 per line sustained) still share the PSRAM price, which pocket-tank's flash-resident weights will expose. Document load does not move: whatever is missing there is not line fill cost.
+- **Linux on the S3 in the wasm module** (`tools/wasm-test.mjs linux`, image fetched by `tools/fetch-demo-assets.sh`, pinned by SHA-256): reaches `buildroot login:` on both builds with the same 440.8 M instructions and 170 console lines; base 18.1 s wall, combined4 15.3 s. A second dual-core system (network adapter on core 0, Linux XIP on core 1, MMU remaps, a function stub) that virtual quanta leave intact.
+
+## Step 21: the document-load misfit is the instruction-fetch cache (EX147), not the data side
+
+EX145's null result came from its granularity: it touched only the entered block's lines, and with 512-instruction regions almost no fetch line was ever touched, so the working set looked tiny. EX147 touches, per region entry, the fetch lines of the region (64 sets × 8 ways × 32-byte lines as in the firmware's `sdkconfig`, flash-mapped code only), and charges the Tier-B `first_line_i_flash` window of **404 cycles** per missing line. Same configuration otherwise (ready 96 / service 160 / writeback 160), single untimed runs, 36/36:
+
+| Firmware timer ÷ hardware | no fetch cache | whole region span touched | the region's chunk lines touched |
+| --- | ---: | ---: | ---: |
+| document load_us | 0.628 | **0.956** | 0.737 |
+| paced cold compute_us (15) | 0.962 | 0.981 | 0.976 |
+| HARD total_us (4) | 0.979 | 0.998 | 0.999 |
+| paced cold wall_us | 0.971 | 1.007 | 1.003 |
+| paced cold present_us | 1.007 | 1.076 | 1.063 |
+| export | 0.975 | 0.985 | 0.978 |
+| whole battery guest s (hardware 77.4) | 71.0 | 73.3 | 72.4 |
+
+The load window fetches 37% of its instructions from flash (peer's scoped profile), and a fetch-line miss costs four times a data-line miss, so this is where its missing 200 ms are. Both variants are approximations in opposite directions (the span also fetches gaps and unexecuted chunks; the chunk list misses entries through the slow path and treats every chunk as executed), and both overshoot presentation by 6–8%, so EX147 stays a diagnostic switch (`esp32sim_set_icache_fill`, off in `?timing=hw`). A faithful version needs the touch where a chunk is actually entered. My earlier note that the data side was the leading hypothesis is withdrawn.
+
+Refinement the same hour: generated regions now record the chunks they actually enter (a 64-entry ring in `Cpu`, one store and one increment per chunk head of flash-mapped regions, emitted only when the fetch cache is on), and `jit::run` replays them into the fetch cache after the call. With per-core caches that gave load_us 0.709. Making the cache **one for both cores, as on the chip**, gives:
+
+| Firmware timer ÷ hardware | no fetch cache | EX147, shared cache, chunk replay, 404 per line |
+| --- | ---: | ---: |
+| document load_us | 0.628 | **0.933** |
+| paced cold compute_us (15) | 0.962 | 0.983 |
+| HARD total_us (4) | 0.979 | 1.004 |
+| paced cold wall_us | 0.971 | 1.013 |
+| export | 0.975 | 0.992 |
+| paced cold present_us | 1.007 | 1.072 |
+| whole battery guest s (hardware 77.4) | 71.0 | 73.8 (0.954) |
+
+Ranges over the individual cases: compute 0.977–0.989 (all 15 within 1.2 points of each other), HARD 1.002–1.019, wall 0.986–1.042, present 1.025–1.106. 36/36, single untimed run (`check-tp-icache404-shared`), 73.8 guest s in 70.4 s wall = 1.05× realtime. Core 1's flash-resident code (the touch sampler and FreeRTOS paths) evicts core 0's lines: a cross-core effect through the shared fetch cache that no per-core model can show. Adopted for `?timing=hw`; presentation is now the one timer more than 2% off in the median (7% slow).
