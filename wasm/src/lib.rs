@@ -913,6 +913,19 @@ pub unsafe extern "C" fn esp32sim_set_control_prices(e: *mut Emu, on: u32) -> u3
     0
 }
 
+/// Scheduling quantum of the exact-clock scheduler (default 64). Larger values interleave two
+/// busy cores more coarsely: faster, deterministic, but not bit-identical with the default.
+/// # Safety
+/// `e` must be a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_quantum(e: *mut Emu, instructions: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
+    if m.insns() != 0 || !(64..=4096).contains(&instructions) || instructions % 64 != 0 { return 1; }
+    m.quantum = u64::from(instructions);
+    0
+}
+
 /// EX147 (diagnostic): instruction-fetch cache fill price for flash-mapped code, per 32-byte line.
 /// # Safety
 /// `e` must be a live exclusively borrowed emulator.

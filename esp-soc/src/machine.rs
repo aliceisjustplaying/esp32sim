@@ -74,6 +74,9 @@ pub struct Machine<S: Soc> {
     /// EX133 virtual quanta: most scheduling quanta one core may run in a single budget while
     /// every other core idles (1 = off). Bit-exact with the per-quantum schedule by construction.
     pub vq_max: u64,
+    /// Instructions each busy core runs per scheduling round. 64 is the reference the goldens and
+    /// pinned totals hold for; a larger value changes the interleaving of two busy cores (EX047).
+    pub quantum: u64,
     /// EX133 counters: multi-quantum runs, quanta they covered, runs stopped at a device register, at waiti.
     pub vq_stats: [u64; 4],
     /// Rounds to leave alone after runs that a device register cut short, and the growing penalty:
@@ -106,6 +109,7 @@ pub struct Machine<S: Soc> {
     model_attach_error: Option<&'static str>,
 }
 
+/// Default scheduling quantum; `Machine::quantum` can raise it (not bit-exact with the default).
 const QUANTUM: u64 = 64;
 /// EX133 default for `Machine::vq_max`; a build can pin another with `ESP32SIM_VQ_BUILD=<n>`.
 const VQ_DEFAULT: u64 = match option_env!("ESP32SIM_VQ_BUILD") {
@@ -186,7 +190,7 @@ impl<S: Soc> Machine<S> {
     pub fn new(mac: [u8; 6], bus: S::Bus) -> Self {
         Machine {
             mac, reboots: 0, stubs: HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: HashMap::new(),
-            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), vq_stats: [0; 4], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
+            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), quantum: QUANTUM, vq_stats: [0; 4], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
             bus, symbols: BTreeMap::new(),
             dbg: Debug { stop_on_unimplemented: true, stop_after_exceptions: u64::MAX },
             observers: Vec::new(), probes: Wants::NONE, prev_irq: vec![0; S::CORES],
@@ -512,14 +516,14 @@ impl<S: Soc> Machine<S> {
         {
             return None;
         }
-        Some(QUANTUM as u32)
+        Some(self.quantum as u32)
     }
 
     /// Advance shared device time after a quantum accepted by
     /// `browser_external_block_budget`. Architectural core state must already contain the full
     /// quantum's result.
     pub fn finish_browser_external_quantum(&mut self) -> Option<Stop> {
-        self.after_round(QUANTUM);
+        self.after_round(self.quantum);
         if self.bus.sw_reset() { self.drain_console(); return Some(Stop::SwReset); }
         if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Some(Stop::Halted); }
         self.drain_console();
@@ -527,7 +531,7 @@ impl<S: Soc> Machine<S> {
     }
 
     fn run_unmodeled<const APPROXIMATE: bool>(&mut self, max_insns: u64) -> Stop {
-        let (cpi, max_quantum) = if APPROXIMATE { self.approximate_jit_timing.unwrap() } else { (1, QUANTUM as u32) };
+        let (cpi, max_quantum) = if APPROXIMATE { self.approximate_jit_timing.unwrap() } else { (1, self.quantum as u32) };
         self.stub_bloom = self.stubs.keys().fold(0, |m, &pc| m | pc_bit(pc));
         self.probe_bloom = self.fn_probes.keys().fold(0, |m, &pc| m | pc_bit(pc));
         for c in &mut self.cores {
@@ -581,7 +585,7 @@ impl<S: Soc> Machine<S> {
             else if !APPROXIMATE && self.vq_max > 1 && blocks && !slow_path && self.probes.0 == 0 && busy != usize::MAX {
                 let k = self.vq_quanta(max_insns - n, &on, busy);
                 if k > 1 {
-                    let total = (k * QUANTUM) as u32;
+                    let total = (k * self.quantum) as u32;
                     let mut left = total;
                     let mut stop = None;
                     self.bus.set_defer(true);
@@ -594,21 +598,21 @@ impl<S: Soc> Machine<S> {
                     }
                     self.bus.set_defer(false);
                     let pos = (total - left) as u64;
-                    self.vq_stats[0] += 1; self.vq_stats[1] += pos / QUANTUM;
-                    if pos < 2 * QUANTUM { self.vq_penalty = (self.vq_penalty * 2 + 1).min(255); self.vq_skip = self.vq_penalty; } else { self.vq_penalty = 0; }
-                    for _ in 0..pos / QUANTUM {
+                    self.vq_stats[0] += 1; self.vq_stats[1] += pos / self.quantum;
+                    if pos < 2 * self.quantum { self.vq_penalty = (self.vq_penalty * 2 + 1).min(255); self.vq_skip = self.vq_penalty; } else { self.vq_penalty = 0; }
+                    for _ in 0..pos / self.quantum {
                         if let Some(s) = self.vq_close_round(&on, &mut n, busy) { return s; }
                     }
                     if let Some(s) = stop { self.drain_console(); return s; }
-                    if pos > 0 && pos.is_multiple_of(QUANTUM) { continue; }
-                    resume_at = pos % QUANTUM;
+                    if pos > 0 && pos.is_multiple_of(self.quantum) { continue; }
+                    resume_at = pos % self.quantum;
                 }
             }
             let quantum = if APPROXIMATE {
                 // An instruction can overrun the deadline by at most CPI-1 cycles.
                 self.idle_budget(u64::from(max_quantum) * u64::from(cpi), &on)
                     .min(self.max_cycles - self.bus.cycles()).div_ceil(u64::from(cpi)).max(1)
-            } else { QUANTUM };
+            } else { self.quantum };
             let elapsed = quantum * u64::from(cpi);
             let mut stalls = [0u64; 4];
             for i in 0..S::CORES {
@@ -663,24 +667,24 @@ impl<S: Soc> Machine<S> {
         let Some(deadline) = self.bus.next_deadline() else { return 1 };
         if self.rt.enabled || !self.bus.can_defer() { return 1; }
         let now = self.bus.cycles();
-        let mut k = self.vq_max.min(deadline.div_ceil(QUANTUM)).min(insns_left.div_ceil(QUANTUM))
-            .min(self.max_cycles.saturating_sub(now).div_ceil(QUANTUM));
+        let mut k = self.vq_max.min(deadline.div_ceil(self.quantum)).min(insns_left.div_ceil(self.quantum))
+            .min(self.max_cycles.saturating_sub(now).div_ceil(self.quantum));
         for (i, (core, &enabled)) in self.cores.iter().zip(on).enumerate() {
-            if enabled && i != busy { if let Some(wake) = core.cycles_until_wake() { k = k.min(wake.div_ceil(QUANTUM)); } }
+            if enabled && i != busy { if let Some(wake) = core.cycles_until_wake() { k = k.min(wake.div_ceil(self.quantum)); } }
         }
-        if let Some((at, _)) = self.script.events.get(self.script.pos) { k = k.min(at.saturating_sub(now).div_ceil(QUANTUM)); }
-        if self.web.is_some() { k = k.min((S::CPU_HZ / self.bus.board_ref().display_push_hz()).saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(QUANTUM)); }
+        if let Some((at, _)) = self.script.events.get(self.script.pos) { k = k.min(at.saturating_sub(now).div_ceil(self.quantum)); }
+        if self.web.is_some() { k = k.min((S::CPU_HZ / self.bus.board_ref().display_push_hz()).saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(self.quantum)); }
         k.max(1)
     }
 
     /// EX133/EX144: close one quantum that the busy core ran alone, as the scheduling loop does.
     fn vq_close_round(&mut self, on: &[bool], n: &mut u64, busy: usize) -> Option<Stop> {
-        for (i, (core, &enabled)) in self.cores.iter_mut().zip(on).enumerate() { if enabled && i != busy { core.idle_advance(QUANTUM as u32); } }
-        *n += QUANTUM;
-        self.after_round(QUANTUM);
+        for (i, (core, &enabled)) in self.cores.iter_mut().zip(on).enumerate() { if enabled && i != busy { core.idle_advance(self.quantum as u32); } }
+        *n += self.quantum;
+        self.after_round(self.quantum);
         if self.bus.sw_reset() { self.drain_console(); return Some(Stop::SwReset); }
         if self.bus.cycles() >= self.max_cycles { self.drain_console(); return Some(Stop::Halted); }
-        if *n & 0xffff < QUANTUM { self.drain_console(); }
+        if *n & 0xffff < self.quantum { self.drain_console(); }
         None
     }
 
@@ -1006,7 +1010,7 @@ impl<S: Soc> Machine<S> {
                 if let Some((at, _)) = self.script.events.get(self.script.pos) {
                     deadline = deadline.min(at.saturating_sub(now).max(1));
                 }
-                let mut budget = left.min(QUANTUM).min(deadline) as u32;
+                let mut budget = left.min(self.quantum).min(deadline) as u32;
                 let (mut used_total, mut yielded, mut stop) = (0u64, false, None);
                 while budget > 0 {
                     let (used, s) = if blocks { self.step_blocks(0, budget) } else { (1, self.step_core(0)) };
