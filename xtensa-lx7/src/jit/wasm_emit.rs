@@ -167,10 +167,15 @@ const WINDOWS: u8 = 29;
 /// Region locals: a helper or code-page store happened (leave at the next head); next chunk.
 const DIRTY: u8 = 30;
 const NEXT: u8 = 31;
-/// Typed scratch locals declared after the 25 i32 locals: a vector and a 64-bit integer
-/// (PIE lane sums and the 40-bit ACCX). `module` must declare them in this order.
-const V128: u8 = 32;
-const WIDE: u8 = 33;
+/// Last proved mapping, retained across accesses until a helper can remap memory.
+const CLO: u8 = 32;
+const CSPAN: u8 = 33;
+const CDELTA: u8 = 34;
+const CVB: u8 = 35;
+const CW: u8 = 36;
+/// Typed scratch locals after the 30 i32 locals. Keep `module` in the same order.
+const V128: u8 = 37;
+const WIDE: u8 = 38;
 const PC: usize = offset_of!(Cpu, pc);
 const AR: usize = offset_of!(Cpu, ar);
 const WINDOWBASE: usize = offset_of!(Cpu, windowbase);
@@ -441,6 +446,9 @@ impl Gen {
         self.set(REL);
         if continue_block {
             self.reload();
+            // Interpreter helpers may change the bus mappings.
+            self.c(0);
+            self.set(CSPAN);
             if self.region.is_some() {
                 // The helper may have written a region code page: leave at the next head.
                 self.c(1);
@@ -1239,16 +1247,68 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
         g.op(0x6a);
     }
     g.set(ADDR);
-    // This block jumps to the slow instruction before making any memory changes.
+    preflight(g, width, store, true);
+    g.get(ADDR);
+    g.get(CDELTA);
+    g.op(0x6a);
+    if store {
+        if i.op == Ssi { g.fr(i.t); } else { g.ar(i.t); }
+        g.op(match width {
+            1 => 0x3a,
+            2 => 0x3b,
+            _ => 0x36,
+        });
+        g.bytes.extend([0, 0]);
+        version_bump(g, 1);
+    } else {
+        if i.op == Lsi { g.set(TMP); g.get(0); g.get(TMP); }
+        g.op(match i.op {
+            L8ui => 0x2d,
+            L16ui => 0x2f,
+            L16si => 0x2e,
+            _ => 0x28,
+        });
+        g.bytes.extend([0, 0]);
+        if i.op == Lsi { g.store(offset_of!(Cpu, fr) + 4 * i.t as usize); } else { g.set_ar(i.t); }
+    }
+    g.bytes.extend([0x0c, 1]);
+    g.end();
+    g.fallback(bi, pc, next, last, false);
+    g.end();
+}
+
+/// Prove a width-byte access at ADDR before side effects. Two outer blocks select
+/// the slow instruction on failure; the inner block skips lookup on a cached hit.
+fn preflight(g: &mut Gen, width: u32, store: bool, align: bool) {
     g.begin_block();
     g.begin_block();
+    if align {
+        g.get(ADDR);
+        g.c(width - 1);
+        g.op(0x71);
+        g.bytes.extend([0x0d, 0]);
+    }
+    g.begin_block();
+    g.get(ADDR);
+    g.get(CLO);
+    g.op(0x6b);
+    g.tee(REL);
+    g.get(CSPAN);
+    g.op(0x49);
+    g.get(CSPAN);
+    g.get(REL);
+    g.op(0x6b);
+    g.c(width);
+    g.op(0x4f);
+    g.op(0x71);
+    if store {
+        g.get(CW);
+        g.op(0x71);
+    }
+    g.bytes.extend([0x0d, 0]);
     g.get(5);
     g.op(0x45);
-    g.bytes.extend([0x0d, 0]);
-    g.get(ADDR);
-    g.c(width - 1);
-    g.op(0x71);
-    g.bytes.extend([0x0d, 0]);
+    g.bytes.extend([0x0d, 1]);
     g.get(5);
     g.get(ADDR);
     g.c(16);
@@ -1267,74 +1327,69 @@ fn emit_memory(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     g.get(TLB);
     g.load(offset_of!(TlbEntry, lo));
     g.op(0x49);
-    g.bytes.extend([0x0d, 0]);
+    g.bytes.extend([0x0d, 1]);
     g.get(TLB);
     g.load(offset_of!(TlbEntry, hi));
     g.get(ADDR);
     g.op(0x6b);
     g.c(width);
     g.op(0x49);
-    g.bytes.extend([0x0d, 0]);
+    g.bytes.extend([0x0d, 1]);
     g.get(ADDR);
     g.get(TLB);
     g.load(offset_of!(TlbEntry, hi));
     g.op(0x4f);
-    g.bytes.extend([0x0d, 0]);
+    g.bytes.extend([0x0d, 1]);
     if store {
         g.get(TLB);
         g.load(offset_of!(TlbEntry, writable));
         g.op(0x45);
-        g.bytes.extend([0x0d, 0]);
+        g.bytes.extend([0x0d, 1]);
     }
-    g.get(ADDR);
     g.get(TLB);
     g.load(offset_of!(TlbEntry, lo));
+    g.set(CLO);
+    g.get(TLB);
+    g.load(offset_of!(TlbEntry, hi));
+    g.get(CLO);
     g.op(0x6b);
-    g.set(REL);
+    g.set(CSPAN);
     g.get(TLB);
     g.load(offset_of!(TlbEntry, base));
+    g.get(CLO);
+    g.op(0x6b);
+    g.set(CDELTA);
+    g.get(TLB);
+    g.load(offset_of!(TlbEntry, vbase));
+    g.set(CVB);
+    g.get(TLB);
+    g.load(offset_of!(TlbEntry, writable));
+    g.set(CW);
+    g.get(ADDR);
+    g.get(CLO);
+    g.op(0x6b);
+    g.set(REL);
+    g.end();
+}
+
+/// Match the interpreter's per-word version increments, then check region code pages.
+fn version_bump(g: &mut Gen, by: u32) {
+    g.get(6);
+    g.get(CVB);
     g.get(REL);
+    g.c(8);
+    g.op(0x76);
     g.op(0x6a);
-    if store {
-        if i.op == Ssi { g.fr(i.t); } else { g.ar(i.t); }
-        g.op(match width {
-            1 => 0x3a,
-            2 => 0x3b,
-            _ => 0x36,
-        });
-        g.bytes.extend([0, 0]);
-        g.get(6);
-        g.get(TLB);
-        g.load(offset_of!(TlbEntry, vbase));
-        g.get(REL);
-        g.c(8);
-        g.op(0x76);
-        g.op(0x6a);
-        g.c(2);
-        g.op(0x74);
-        g.op(0x6a);
-        g.tee(TMP);
-        g.get(TMP);
-        g.load(0);
-        g.c(1);
-        g.op(0x6a);
-        g.store(0);
-        region_store_check(g);
-    } else {
-        if i.op == Lsi { g.set(TMP); g.get(0); g.get(TMP); }
-        g.op(match i.op {
-            L8ui => 0x2d,
-            L16ui => 0x2f,
-            L16si => 0x2e,
-            _ => 0x28,
-        });
-        g.bytes.extend([0, 0]);
-        if i.op == Lsi { g.store(offset_of!(Cpu, fr) + 4 * i.t as usize); } else { g.set_ar(i.t); }
-    }
-    g.bytes.extend([0x0c, 1]);
-    g.end();
-    g.fallback(bi, pc, next, last, false);
-    g.end();
+    g.c(2);
+    g.op(0x74);
+    g.op(0x6a);
+    g.tee(TMP);
+    g.get(TMP);
+    g.load(0);
+    g.c(by);
+    g.op(0x6a);
+    g.store(0);
+    region_store_check(g);
 }
 
 /// After a fast store bumped the version at the pointer in TMP: a store into one of the
@@ -1408,7 +1463,7 @@ fn module(body: &[u8]) -> Vec<u8> {
     name(&mut exports, "run");
     exports.extend([0, 0]);
     section(&mut out, 7, &exports);
-    let mut func = vec![3, 25, 0x7f, 1, 0x7b, 1, 0x7e];   // 25 i32, then V128 and WIDE
+    let mut func = vec![3, 30, 0x7f, 1, 0x7b, 1, 0x7e];   // 30 i32, then V128 and WIDE
     func.extend(body);
     let mut code = vec![1];
     uleb(&mut code, func.len());

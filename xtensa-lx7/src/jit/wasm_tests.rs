@@ -274,6 +274,44 @@ fn compare_configured(
     }
 }
 
+fn reused_mapping_accesses() -> u32 {
+    let mut tests = 0;
+    let addresses = [BASE + 0x1000, BASE + 0x1004, BASE + 65532, BASE + 65535, BASE - 16, SLOW, 0];
+    for readonly in [false, true] {
+        for op in [Op::L8ui, Op::L16ui, Op::L32i, Op::S32i, Op::Lsi, Op::Ssi] {
+            for addr in addresses {
+                let mut block = [insn(Op::L32i), insn(op), insn(Op::Xor)];
+                block[0].insn.imm = 0;
+                block[1].insn.imm = 0;
+                block[1].insn.s = 6;
+                block[1].max_ar = crate::exec::max_ar(&block[1].insn);
+                for entry in [0, 1] {
+                    for budget in [1, 3] {
+                        compare_configured(&mut block, 0, entry, budget, None, true, readonly,
+                            false, false, |c| { c.set_ar(4, BASE + 0x1000); c.set_ar(6, addr); c.cpenable = 1; });
+                        tests += 1;
+                    }
+                }
+            }
+        }
+        // Scalar and vector accesses share the proof, including write permission
+        // and the four version increments of a successful 128-bit store.
+        for name in ["ee.vld.128.ip", "ee.vst.128.ip"] {
+            let p = crate::pie::OPS.iter().find(|p| p.name == name).unwrap();
+            let i = crate::decode::decode(BASE + 3, (p.value | (6 << 4)).to_le_bytes());
+            for addr in addresses {
+                let mut block = [insn(Op::L32i), BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), off: 0 }, insn(Op::S32i)];
+                block[0].insn.imm = 0;
+                block[2].insn.imm = 0;
+                compare_configured(&mut block, 0, 0, 3, None, true, readonly,
+                    false, false, |c| { c.set_ar(4, BASE + 0x1000); c.set_ar(6, addr); c.cpenable = 8; c.qr[0] = u128::MAX; });
+                tests += 1;
+            }
+        }
+    }
+    tests
+}
+
 fn special_register_blocks() -> u32 {
     use crate::state::sr;
     let mut tests = 0;
@@ -1631,5 +1669,5 @@ pub fn run_tests() -> u32 {
     retention();
     hardware_loop_scheduler();
     crate::block::ownership_tests::compiled_helpers_follow_the_current_bus_type();
-    tests + integer_ops() + floating_point() + floating_point_guard_proof() + 4 + hardware_loops() + window_masks() + terminal_helpers() + special_register_blocks() + whole_block_guards() + entry_and_shifts()
+    tests + integer_ops() + floating_point() + floating_point_guard_proof() + 4 + hardware_loops() + window_masks() + terminal_helpers() + special_register_blocks() + reused_mapping_accesses() + whole_block_guards() + entry_and_shifts()
 }

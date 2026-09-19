@@ -239,88 +239,24 @@ fn vmem(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool, o: &Ops, st
     g.c(!15u32);
     g.op(0x71);
     g.set(ADDR);
-    g.begin_block();
-    g.begin_block();
-    g.get(5);
-    g.op(0x45);
-    g.bytes.extend([0x0d, 0]);
-    g.get(5);
-    g.get(ADDR);
-    g.c(16);
-    g.op(0x76);
-    g.get(ADDR);
-    g.c(24);
-    g.op(0x76);
-    g.op(0x73);
-    g.c(511);
-    g.op(0x71);
-    g.c(size_of::<TlbEntry>() as u32);
-    g.op(0x6c);
-    g.op(0x6a);
-    g.set(TLB);
-    g.get(ADDR);
-    g.get(TLB);
-    g.load(offset_of!(TlbEntry, lo));
-    g.op(0x49);
-    g.bytes.extend([0x0d, 0]);
-    g.get(TLB);
-    g.load(offset_of!(TlbEntry, hi));
-    g.get(ADDR);
-    g.op(0x6b);
-    g.c(16);
-    g.op(0x49);
-    g.bytes.extend([0x0d, 0]);
-    g.get(ADDR);
-    g.get(TLB);
-    g.load(offset_of!(TlbEntry, hi));
-    g.op(0x4f);
-    g.bytes.extend([0x0d, 0]);
+    preflight(g, 16, store, false);
     if store {
-        g.get(TLB);
-        g.load(offset_of!(TlbEntry, writable));
-        g.op(0x45);
-        g.bytes.extend([0x0d, 0]);
-    }
-    g.get(ADDR);
-    g.get(TLB);
-    g.load(offset_of!(TlbEntry, lo));
-    g.op(0x6b);
-    g.set(REL);
-    if store {
-        g.get(TLB);
-        g.load(offset_of!(TlbEntry, base));
-        g.get(REL);
+        g.get(ADDR);
+        g.get(CDELTA);
         g.op(0x6a);
         q(g, o.get(Role::Qv));
         v128_store(g, 0);
         // One version page: a 16-byte aligned access never crosses a 256-byte page. The
         // interpreter stores four words, bumping the version four times; match it exactly
         // so version arrays stay identical, not merely both changed.
-        g.get(6);
-        g.get(TLB);
-        g.load(offset_of!(TlbEntry, vbase));
-        g.get(REL);
-        g.c(8);
-        g.op(0x76);
-        g.op(0x6a);
-        g.c(2);
-        g.op(0x74);
-        g.op(0x6a);
-        g.tee(TMP);
-        g.get(TMP);
-        g.load(0);
-        g.c(4);
-        g.op(0x6a);
-        g.store(0);
-        region_store_check(g);
+        version_bump(g, 4);
     } else {
         if let Some((w, x, y)) = accumulate_first {
             accumulate(g, w, x, y);
         }
         g.get(0);
-        g.get(TLB);
-        g.load(offset_of!(TlbEntry, base));
-        g.get(REL);
+        g.get(ADDR);
+        g.get(CDELTA);
         g.op(0x6a);
         v128_load(g, 0);
         set_q(g, o.get(Role::Qu));
