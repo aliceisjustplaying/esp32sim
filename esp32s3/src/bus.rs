@@ -1140,6 +1140,9 @@ impl Bus for SocBus {
         // per-word reads would return, without their per-word lookups or fault reporting.
         if Self::is_periph(addr) { return false; }
         let Some(e) = self.lookup(addr) else { return false };
+        // Packed PIE falls back to its four word reads when external-cache timing
+        // is enabled, so fills, hits and queued service are accounted for normally.
+        if self.approximate_cache.is_some() && matches!(e.src as u8, SRC_FLASH | SRC_PSRAM) { return false; }
         if u64::from(addr) + out.len() as u64 > u64::from(e.hi) { return false; }
         let o = e.off as usize + (addr - e.lo) as usize;
         match self.buf(e.src as u8).get(o..o + out.len()) { Some(bytes) => { out.copy_from_slice(bytes); true } None => false }
@@ -1324,6 +1327,31 @@ mod gp_spi_board_tests {
         bus.read32(DBUS_LOW + 128).unwrap();
         assert_eq!(bus.take_timing_penalty(), 96);
         assert_eq!(bus.approximate_cache_wait_cycles(), [44, 0]);
+    }
+
+    #[test]
+    fn packed_pie_loads_preserve_external_cache_accounting() {
+        for psram in [false, true] {
+            let mut bus = SocBus::new(65536, 65536, [0; 6]);
+            bus.mmu[0] = if psram { MMU_SPIRAM } else { 0 };
+            let mut bulk = [0; 16];
+            assert!(bus.read_bulk(DBUS_LOW, &mut bulk), "untimed bulk remains available");
+            bus.enable_approximate_cache(crate::approximate_cache::CacheConfig {
+                fill_cycles: 96, ..Default::default()
+            });
+            // ee.vld.128.ip q0,a4,0: decode selects the packed executor.
+            let bytes = 0x0083_0044u32.to_le_bytes();
+            esp_soc::SocBus::load_bytes(&mut bus, IRAM_LOW, &bytes[..3]).unwrap();
+            let mut cpu = xtensa_lx7::Cpu::new(0);
+            cpu.pc = IRAM_LOW; cpu.ps = 0; cpu.cpenable = 8;
+            cpu.set_ar(4, DBUS_LOW);
+            xtensa_lx7::step(&mut cpu, &mut bus).unwrap();
+            assert_eq!(cpu.qr[0], if psram { 0 } else { u128::MAX });
+            let stats = bus.approximate_cache_stats().unwrap();
+            assert_eq!((stats.line_fills, stats.hits), (1, 3), "packed load must account for four words");
+            assert_eq!(bus.take_approximate_cache_penalty(), 96);
+            assert!(bus.read_bulk(DRAM_LOW, &mut bulk), "internal bulk stays fast in timed mode");
+        }
     }
 
     #[test]
