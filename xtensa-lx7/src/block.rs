@@ -168,9 +168,13 @@ fn build<B: Bus>(cpu: &mut Cpu, bus: &mut B, pc0: u32) -> Result<(u32, u32, u16)
         pc = pc.wrapping_add(i.len as u32);
         if ends_block(&i) || n as usize == MAX_LEN { break; }
     }
-    let extras = crate::exec::static_extras(cpu.blocks.arena[start as usize..].iter().map(|b| &b.insn));
     cpu.blocks.extras.truncate(start as usize);
-    cpu.blocks.extras.extend(extras);
+    if cpu.price_control {
+        let extras = crate::exec::static_extras(cpu.blocks.arena[start as usize..].iter().map(|b| &b.insn));
+        cpu.blocks.extras.extend(extras);
+    } else {
+        cpu.blocks.extras.resize(cpu.blocks.arena.len(), 0);
+    }
     let last_byte = last.wrapping_add(cpu.blocks.arena[(start + n as u32 - 1) as usize].insn.len.max(1) as u32 - 1);
     let vidx0 = bus.code_page(pc0);
     let vidx1 = if last_byte >> 7 != pc0 >> 7 { bus.code_page(last_byte) } else { vidx0 };   // pages are >= 128 B

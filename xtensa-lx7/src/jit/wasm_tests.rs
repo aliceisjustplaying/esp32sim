@@ -157,10 +157,10 @@ fn inline_cache_hits() -> u32 {
             let result = unsafe { run(&cc, code, &mut c, &mut ram, &Helpers::new::<Ram>(), 1, 0, fm) };
             assert_eq!(result & 0xffff, 1);
             let (lines, hits) = ram.inline_cache.as_ref().unwrap();
-            assert_eq!(*hits, u64::from(way < 4));
-            assert_eq!(ram.helper_accesses, u32::from(way == 4));
+            assert_eq!(*hits, u64::from(way < 8));
+            assert_eq!(ram.helper_accesses, u32::from(way == 8));
             if store {
-                if way < 4 { assert_eq!(lines[slot + way].dirty, 1); }
+                if way < 8 { assert_eq!(lines[slot + way].dirty, 1); }
                 assert_eq!(ram.versions[1], 1);
                 assert_eq!(ram.ram.read32(BASE + 0x100).unwrap(), 0x1234_5678);
             } else {
