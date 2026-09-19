@@ -387,7 +387,9 @@ pub(crate) fn transfers(op: Op) -> bool {
 /// taken branches over a 9-byte stride average 2.5 extra cycles, not 2, and the zero-overhead
 /// loop ladder pays +1 exactly at a body start of 3 mod 4 with 2-byte instructions.
 pub(crate) fn straddles<B: Bus>(bus: &mut B, target: u32) -> bool {
-    match bus.fetch(target) { Ok(b) => (target & 3) + crate::decode::decode(target, b).len as u32 > 4, Err(_) => false }
+    // Only the length matters: with the density option, op0 8..=13 marks a 16-bit instruction.
+    if target & 3 < 2 { return false; }
+    match bus.fetch(target) { Ok(b) => (target & 3) + if (8..=13).contains(&(b[0] & 0xf)) { 2 } else { 3 } > 4, Err(_) => false }
 }
 
 /// EX138: cycles an instruction costs beyond the one every instruction is charged, from the
