@@ -195,6 +195,8 @@ enum Ctl { If(u32), Block(u32), Loop(u32) }
 
 #[derive(Default)]
 struct Gen {
+    /// The next `leave` is a skipped LOOPNEZ/LOOPGTZ body: its setup price already covers it.
+    free_leave: bool,
     /// EX141: the instruction being emitted has a static target that straddles a fetch word
     straddle: bool,
     /// module body bytes
@@ -410,7 +412,7 @@ impl Gen {
     }
     /// Retire the current instruction and continue at a statically known `target`.
     fn leave(&mut self, target: u32) {
-        self.price(2 + self.straddle as u32);
+        if !std::mem::take(&mut self.free_leave) { self.price(2 + self.straddle as u32); }
         self.advance();
         if self.region.is_some() {
             region_edge(self, target, false);
@@ -1183,6 +1185,7 @@ fn emit_instruction(
                     g.op(0x4c); // i32.le_s
                 }
                 g.begin_if();
+                g.free_leave = true;
                 g.leave(imm);
                 g.end();
             }
@@ -1223,7 +1226,6 @@ fn emit_instruction(
 fn emit_divide(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     use crate::Op::*;
     let i = &bi.insn;
-    g.price(if matches!(i.op, Quou | Quos) { 3 } else { 4 });
     g.begin_block();
     g.begin_block();
     g.ar(i.t);
@@ -1243,6 +1245,8 @@ fn emit_divide(g: &mut Gen, bi: &BlockInsn, pc: u32, next: u32, last: bool) {
     g.ar(i.t);
     g.op(match i.op { Quos => 0x6d, Quou => 0x6e, Rems => 0x6f, _ => 0x70 }); // i32.div_s/div_u/rem_s/rem_u
     g.set_ar(i.r);
+    // The helper below prices its own path; only the inline quotient is charged here.
+    g.price(if matches!(i.op, Quou | Quos) { 3 } else { 4 });
     g.bytes.extend([0x0c, 1]);
     g.end();
     g.fallback(bi, pc, next, last, false);

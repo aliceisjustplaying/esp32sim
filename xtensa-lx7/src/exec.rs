@@ -337,6 +337,16 @@ fn fp_effects(i: &Insn) -> (u16, Option<u8>) {
     }
 }
 
+/// The FP register an instruction overwrites with a result that is ready on the next cycle.
+fn fp_fast_write(i: &Insn) -> Option<u8> {
+    use Op::*;
+    match i.op {
+        Wfr | ConstS | MovS | AbsS | NegS | FloatS | UfloatS | MkdadjS | MksadjS | AddexpmS | Lsx | Lsxp => Some(i.r),
+        Lsi | Lsip => Some(i.t),
+        _ => None,
+    }
+}
+
 /// EX138/EX140: cycles each instruction of a straight-line run waits beyond its own, known when
 /// the run is decoded: the load-use cycle (EX067) and FP result readiness (EX079). The run
 /// starts with every result ready, so a dependency across a block boundary is not charged.
@@ -346,8 +356,9 @@ pub(crate) fn static_extras<'a>(insns: impl Iterator<Item = &'a Insn>) -> Vec<u8
         let mut wait = u32::from(prev.is_some_and(|p| load_use(p, i)));
         let (reads, slow) = fp_effects(i);
         for f in 0..16 { if reads & (1 << f) != 0 { wait = wait.max(ready[f].saturating_sub(now)); } }
-        now += 1 + wait;
+        now += 1 + wait + control_price(i.op, false);
         if let Some(f) = slow { ready[f as usize & 15] = now + 3; }
+        else if let Some(f) = fp_fast_write(i) { ready[f as usize & 15] = 0; }
         prev = Some(i);
         wait as u8
     }).collect()
@@ -366,7 +377,10 @@ pub(crate) fn static_target(i: &Insn) -> Option<u32> {
 /// Instructions whose taken path redirects the fetch (the alignment cycle applies to them).
 pub(crate) fn transfers(op: Op) -> bool {
     use Op::*;
-    !matches!(op, Waiti | Syscall | Break | BreakN | Ill | IllN | Loop | Loopnez | Loopgtz)
+    matches!(op, J | Jx | Call0 | Call4 | Call8 | Call12 | Callx0 | Callx4 | Callx8 | Callx12 | Ret | RetN | Retw | RetwN
+        | Rfe | Rfi | Rfwo | Rfwu | Rfde | Rfue | Rfme
+        | Beqz | Bnez | Bltz | Bgez | BeqzN | BnezN | Beqi | Bnei | Blti | Bgei | Bltui | Bgeui
+        | Bnone | Beq | Blt | Bltu | Ball | Bbc | Bbci | Bany | Bne | Bge | Bgeu | Bnall | Bbs | Bbsi | Bf | Bt)
 }
 /// EX141: a redirected fetch costs one more cycle when the first instruction at the target
 /// straddles a 32-bit fetch word, `(pc & 3) + length > 4`. From the captured EX081 control cells:
@@ -390,7 +404,11 @@ pub(crate) fn control_price(op: Op, taken: bool) -> u32 {
         Loop | Loopnez | Loopgtz => 4,
         Quou | Quos => 3,
         Remu | Rems => 4,
-        _ if taken && !matches!(op, Waiti | Syscall | Break | BreakN | Ill | IllN) => 2,
+        Rfe | Rfi | Rfwo | Rfwu | Rfde | Rfue | Rfme => 2,
+        // Only a conditional branch is priced by its direction: a hardware-loop backedge also
+        // changes the pc, and costs nothing.
+        Beqz | Bnez | Bltz | Bgez | BeqzN | BnezN | Beqi | Bnei | Blti | Bgei | Bltui | Bgeui
+        | Bnone | Beq | Blt | Bltu | Ball | Bbc | Bbci | Bany | Bne | Bge | Bgeu | Bnall | Bbs | Bbsi | Bf | Bt if taken => 2,
         _ => 0,
     }
 }
