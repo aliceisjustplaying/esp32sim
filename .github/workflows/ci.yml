@@ -41,3 +41,11 @@ jobs:
           python3 -m unittest discover -s tools/browser-benchmark -p 'test_*.py'
       - name: Differential tests for generated WASM blocks
         run: tools/wasm-jit-test.sh
+  native-aarch64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Native AArch64 core and JIT memory tests
+        run: cargo test --release -p xtensa-lx7
