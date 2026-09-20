@@ -349,5 +349,5 @@ pub fn run_tests() -> u32 {
     tests + arithmetic::integer_ops() + float::floating_point() + float::floating_point_guard_proof()
         + loops::hardware_loops() + control::window_masks() + control::terminal_helpers()
         + control::special_register_blocks() + control::whole_block_guards()
-        + control::entry_and_shifts() + timing::priced_cases()
+        + control::pie_wide_shifts() + control::entry_and_shifts() + timing::priced_cases()
 }

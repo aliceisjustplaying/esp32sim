@@ -267,3 +267,28 @@ pub(super) fn helper_continuation() -> u32 {
     }
     tests
 }
+
+pub(super) fn pie_wide_shifts() -> u32 {
+    use crate::pie::Role::{Qa, Qs};
+    let mut tests = 0;
+    for name in ["ee.vsr.32", "ee.vsl.32"] {
+        let bytes = asm::pie(name, &[(Qa, 1), (Qs, 0)]);
+        let raw = bytes[0] as u32 | ((bytes[1] as u32) << 8) | ((bytes[2] as u32) << 16);
+        let mut shift = insn(Op::Pie);
+        shift.insn = crate::decode::decode(BASE + 3, raw.to_le_bytes());
+        for sar in 33..64 {
+            let mut block = [insn(Op::Nop), shift, insn(Op::Xor)];
+            for entry in 0..=1 {
+                for budget in [1, 3] {
+                    compare(&mut block, Case { entry, budget, ..Case::default() }, |c| {
+                        c.ps = 0; c.cpenable = 8;
+                        c.write_sr(crate::state::sr::SAR, sar).unwrap();
+                        c.qr[0] = u128::MAX;
+                    });
+                    tests += 1;
+                }
+            }
+        }
+    }
+    tests
+}

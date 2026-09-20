@@ -398,7 +398,7 @@ extern "C" fn h_exec<B: Bus>(
     cpu.pc = pc;
     #[cfg(feature = "wasm-jit-profile")]
     {
-        let c = crate::census::get();
+        let mut c = crate::census::get();
         let core = crate::census::core(cpu);
         let i = &instruction.insn;
         use crate::Op::*;
