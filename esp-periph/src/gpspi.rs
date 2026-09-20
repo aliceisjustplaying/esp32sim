@@ -215,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn cpu_transfer_replaces_a_stale_dma_wait() {
+    fn cpu_transfer_starts_after_the_active_dma_transfer_finishes() {
         let mut spi = GpSpi::new();
         spi.write(0x30, 1 << 28);
         spi.write(0x10, 1 << 27);
@@ -223,11 +223,14 @@ mod tests {
         spi.write(0x00, 1 << 24);
         assert!(spi.take_transfer().is_none());
 
+        spi.complete_dma_tx(&[0x12]);
+        let transfer = spi.take_transfer().expect("DMA completion makes the transfer visible");
+        spi.finish_transfer(transfer, &[]);
         spi.write(0x30, 0);
         spi.write(0x98, 0x5a);
         spi.write(0x00, 1 << 24);
 
-        let transfer = spi.take_transfer().expect("CPU transaction must replace a stale DMA wait");
+        let transfer = spi.take_transfer().expect("CPU transaction may start after DMA completion");
         assert_eq!(transfer.tx, [0x5a]);
     }
 }
