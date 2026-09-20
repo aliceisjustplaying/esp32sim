@@ -118,7 +118,7 @@ impl<S: Soc> Machine<S> {
     pub fn new(mac: [u8; 6], bus: S::Bus) -> Self {
         Machine {
             mac, reboots: 0, stubs: HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: HashMap::new(),
-            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), quantum: QUANTUM, run_steps: 0, vq_stats: [0; 4], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
+            cores: (0..S::CORES).map(|i| S::new_core_with_bus(i, &bus)).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), quantum: QUANTUM, run_steps: 0, vq_stats: [0; 4], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
             bus, symbols: BTreeMap::new(),
             dbg: Debug { stop_on_unimplemented: true, stop_after_exceptions: u64::MAX },
             observers: Vec::new(), probes: Wants::NONE, prev_irq: vec![0; S::CORES],
@@ -363,6 +363,8 @@ impl<S: Soc> Machine<S> {
 
     /// Common completion boundary for blocks and individual instructions. Keeping block
     /// callbacks here makes BLOCK observers compose with observers that force single-stepping.
+    /// `pc` is the dispatch-start address, including for trap and Simcall reporting;
+    /// the WASM wrapper may have chained through later blocks before it returns.
     #[inline]
     fn observe_execution(&mut self, core: usize, pc: u32, used: u32, trap: Option<Trap>) -> Option<Stop> {
         if self.probes.contains(Wants::BLOCK | Wants::TRAP | Wants::TRAP_PC) {
@@ -381,6 +383,23 @@ impl<S: Soc> Machine<S> {
             Some(Trap::Unimplemented(p, raw)) => { if self.dbg.stop_on_unimplemented { return Some(Stop::Unimplemented(p, raw)); } }
             Some(Trap::Simcall) => return Some(Stop::Simcall(pc)),
             Some(Trap::Ebreak(p)) => { self.exceptions += 1; if !self.cores[core].has_trap_handler() { return Some(Stop::Ebreak(p)); } }
+        }
+        None
+    }
+
+    /// Observe sleeping PCs without advancing their instruction or device clocks.
+    #[inline]
+    fn observe_idle_pcs(&mut self, on: &[bool]) -> Option<Stop> {
+        if !self.probes.contains(Wants::IDLE_PC) { return None; }
+        let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+        for (i, (&enabled, cpu)) in on.iter().zip(&self.cores).enumerate() {
+            if enabled && cpu.waiting() && !cpu.irq_pending() {
+                for observer in &mut self.observers {
+                    if observer.wants().contains(Wants::IDLE_PC) {
+                        if let Some(stop) = observer.on_insn(&cx, i, cpu, &mut self.bus, cpu.pc()) { return Some(stop); }
+                    }
+                }
+            }
         }
         None
     }
@@ -406,7 +425,7 @@ impl<S: Soc> Machine<S> {
         let cpu = &mut self.cores[core];
         self.bus.note_pc(pc);
         let outcome = cpu.step(&mut self.bus);
-        if let Some(stop) = self.observe_execution(core, pc, 1, outcome.trap()) { return Some(stop); }
+        if let Some(stop) = self.observe_execution(core, pc, u32::from(outcome.kind != emu_core::StepKind::Idle), outcome.trap()) { return Some(stop); }
         self.refresh_irq();
         {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
@@ -416,8 +435,9 @@ impl<S: Soc> Machine<S> {
         None
     }
 
-    /// Run until something stops us, for at most `max_insns` scheduling steps. The no-model path
-    /// uses 64-instruction quanta; the modeled path schedules one priced event at a time.
+    /// Run until something stops us or the `max_insns` scheduling-step budget is reached. The no-model path
+    /// uses complete quanta (64 by default), so a busy round can exceed the budget by up to
+    /// `quantum - 1` steps. The modeled path schedules one priced event at a time.
     pub fn run(&mut self, max_insns: u64) -> Stop {
         self.web_poll_input();
         self.refresh_irq();
@@ -472,6 +492,7 @@ impl<S: Soc> Machine<S> {
         // Per-instruction observers need the slow hooks; only exact-PC trap observers use bounded fragments.
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
+        let can_defer = !APPROXIMATE && self.vq_max > 1 && self.bus.can_defer();
         if self.web.is_some() { self.ws.push_interval = (S::CPU_HZ / self.bus.board_ref().display_push_hz().max(1)).max(1); }
         let trace = self.has_observer("trace");
         let mut n = 0u64;
@@ -493,6 +514,7 @@ impl<S: Soc> Machine<S> {
                     }
                 };
             }
+            if let Some(stop) = self.observe_idle_pcs(&on[..S::CORES]) { self.drain_console(); return stop; }
             for (i, state) in idle.iter_mut().enumerate().take(S::CORES) { *state = !on[i] || (self.cores[i].waiting() && !self.cores[i].irq_pending()); }
             if idle[..S::CORES].iter().all(|&x| x) && !slow_path {
                 // Stop at every known source of new work, including core-local timers. Device
@@ -514,7 +536,7 @@ impl<S: Soc> Machine<S> {
             // register access stops in front of its instruction and finishes its quantum the old way.
             let mut resume_at = 0u64;
             // Find the sole busy core only when virtual quanta are eligible.
-            let busy = if !APPROXIMATE && self.vq_max > 1 && blocks && !slow_path && self.probes.0 == 0 {
+            let busy = if !APPROXIMATE && can_defer && blocks && !slow_path && self.probes.0 == 0 {
                 if self.vq_skip > 0 { self.vq_skip -= 1; usize::MAX }
                 else {
                     let mut b = (0..S::CORES).filter(|&i| !idle[i]);
@@ -645,6 +667,7 @@ impl<S: Soc> Machine<S> {
     /// dispatching another core or running post-round host actions in the resetting machine.
     fn finish_reset(&mut self, cycles: u64) -> Stop {
         self.bus.tick(cycles as u32);
+        self.observe_round();
         self.drain_console();
         Stop::SwReset
     }
@@ -654,7 +677,7 @@ impl<S: Soc> Machine<S> {
     /// cycle or instruction limit may fall due before the last of them.
     fn vq_quanta(&self, insns_left: u64, on: &[bool], busy: usize) -> u64 {
         let Some(deadline) = self.bus.next_deadline() else { return 1 };
-        if self.rt.enabled || !self.bus.can_defer() { return 1; }
+        if self.rt.enabled { return 1; }
         let now = self.bus.cycles();
         let mut k = self.vq_max.min(deadline.div_ceil(self.quantum)).min(insns_left.div_ceil(self.quantum))
             .min(self.max_cycles.saturating_sub(now).div_ceil(self.quantum));
@@ -721,6 +744,7 @@ impl<S: Soc> Machine<S> {
             if self.apply_script_events() { self.drain_console(); return RunUntil::Stop(Stop::Halted); }
             self.refresh_irq();
             if self.bus.sw_reset() { self.drain_console(); return RunUntil::Stop(Stop::SwReset); }
+            if let Some(stop) = self.observe_idle_pcs(&[true]) { self.drain_console(); return RunUntil::Stop(stop); }
             let left = target - now;
             let core = &self.cores[0];
             if core.waiting() && !core.irq_pending() && !no_skip {
@@ -767,11 +791,17 @@ impl<S: Soc> Machine<S> {
             if self.bus.refresh_irq() { self.present_irqs(); }
         }
         let script_stopped = self.after_round_rest();
+        self.observe_round();
+        script_stopped
+    }
+
+    /// Flush observations even when reset prevents post-round host actions.
+    #[inline]
+    fn observe_round(&mut self) {
         if self.probes.0 != 0 {
             self.deliver_events();
             if self.probes.contains(Wants::ROUND) { let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ }; for o in &mut self.observers { if o.wants().contains(Wants::ROUND) { o.on_round(&cx); } } }
         }
-        script_stopped
     }
 
     /// Keep the common empty/not-due case in the scheduling loop without inlining action
