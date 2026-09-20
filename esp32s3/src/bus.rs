@@ -79,6 +79,7 @@ pub struct SocBus {
     approximate_cache_inline: bool,
     approximate_cache_yield_miss: bool,
     cache_resource: CacheResource,
+    pub(crate) fetch_cache: xtensa_lx7::state::SharedFetchCache,
 }
 
 /// One shared external resource, occupied only by priced fills/writebacks.
@@ -130,6 +131,7 @@ impl SocBus {
             approximate_cache: None, approximate_cache_pending: 0, approximate_cache_fast_internal: false, approximate_cache_inline: false,
             approximate_cache_yield_miss: false,
             cache_resource: CacheResource::default(),
+            fetch_cache: xtensa_lx7::state::SharedFetchCache::default(),
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -261,6 +263,7 @@ impl SocBus {
     /// the flash and PSRAM page versions are bumped too: that is what invalidates decoded
     /// instructions and blocks that were built through the old mapping.
     pub fn invalidate_tlb(&mut self) {
+        self.fetch_cache.reset();
         for e in self.tlb.iter_mut() { *e = TlbEntry::EMPTY; }
         let (a, b) = (self.ver_base[SRC_FLASH as usize] as usize, self.ver_base[SRC_DROM as usize] as usize);
         for v in &mut self.page_ver[a..b] { *v = v.wrapping_add(1); }          // flash then psram
