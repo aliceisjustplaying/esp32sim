@@ -45,8 +45,10 @@ jobs:
           python3 -m unittest discover -s tools/browser-benchmark -p 'test_*.py'
       - name: Differential tests for generated WASM blocks
         run: tools/wasm-jit-test.sh
-      - name: Compile WASM profiling features
-        run: cargo build --release --target wasm32-unknown-unknown -p esp32sim-wasm --features jit-profile,cpu-profile
+      - name: Compile WASM profiling features with production flags
+        run: |
+          . ./tools/wasm-rustflags.sh
+          cargo build --release --target wasm32-unknown-unknown -p esp32sim-wasm --features jit-profile,cpu-profile
   native-aarch64:
     runs-on: ubuntu-24.04-arm
     steps:
