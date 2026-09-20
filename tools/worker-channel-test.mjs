@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { createPacing } from '../web/wasm/pacing.mjs';
 
 const source = (await readFile(new URL('../web/wasm/worker.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-async function harness(cost = 0, init = { frameAck: true }) {
+async function harness(cost = 0, init = { frameAck: true }, overrides = {}) {
   let wall = 0, cycles = 0, input = 0, frame = null, immediate = 0;
   const timers = [], messages = [], channels = [], runs = [];
   let delivered;
@@ -39,6 +39,7 @@ async function harness(cost = 0, init = { frameAck: true }) {
     WebAssembly: { instantiate: async () => ({ instance: { exports: wasm } }) },
     setTimeout: (callback, delay) => timers.push({ callback, delay }),
   };
+  Object.assign(wasm, overrides);
   runInNewContext(source, context);
   const send = data => context.onmessage({ data });
   await send({ op: 'init', ...init }); await send({ op: 'create', board: 'test' });
@@ -160,3 +161,27 @@ for (const op of ['create', 'net-create']) {
   } finally { h.close(); }
 }
 console.log('worker native-channel, consumer ACK and replacement tests passed');
+
+for (const smoothDisplay of [undefined, false, true]) {
+  const calls = [];
+  const h = await harness(0, { frameAck: true }, {
+    esp32sim_set_smooth_display(_emu, on) { calls.push(['display', on]); return 0; },
+    esp32sim_boot() { calls.push(['boot']); return 0; },
+  });
+  try {
+    await h.send({ op: 'create', board: 'test', smoothDisplay });
+    await h.send({ op: 'start' });
+    assert.deepEqual(calls, smoothDisplay ? [['display', 1], ['boot']] : [['boot']], 'only explicit smooth display opt-in configures before boot');
+  } finally { h.close(); }
+}
+for (const setter of [undefined, () => 1, () => { throw Error('unsupported'); }]) {
+  let booted = false;
+  const h = await harness(0, { frameAck: true }, { esp32sim_set_smooth_display: setter, esp32sim_boot() { booted = true; return 0; } });
+  try {
+    await h.send({ op: 'create', board: 'test', smoothDisplay: true });
+    await h.send({ op: 'start' });
+    assert.equal(booted, false, 'unsupported smooth display must not silently boot with a different policy');
+    assert.equal(h.messages.at(-1).started, false);
+  } finally { h.close(); }
+}
+console.log('worker smooth display configuration tests passed');

@@ -89,7 +89,7 @@ worker.onerror = event => { status.textContent = event.message; receipt.error = 
 receipt.assets = await (await fetch('/assets.json')).json();
 const wasm = await (await fetch('/asset/wasm')).arrayBuffer();
 await command({op: 'init', wasm, frameAck: true}, 'ready');
-await command({op: 'create', board: 'waveshare-amoled18-v2', flash_mb: 16, psram_mb: 8}, 'created');
+await command({op: 'create', board: 'waveshare-amoled18-v2', smoothDisplay: true, flash_mb: 16, psram_mb: 8}, 'created');
 for (const [name, kind] of [['rom', 0], ['bootloader', 1], ['ptable', 2], ['app', 3], ['elf', 4]]) {
   const data = await (await fetch('/asset/' + name)).arrayBuffer();
   const result = await command({op: 'load', kind, data}, 'loaded');
