@@ -15,7 +15,7 @@ mod memory;
 mod instruction;
 pub(super) use policy::{admitted, supported_insn, loop_safe, terminal_helper};
 #[cfg(feature = "wasm-jit-tests")]
-pub(super) use policy::supported;
+pub(super) use policy::supported_opcode;
 use policy::coprocessors;
 
 // Parameters: cpu, bus, helpers, budget, entry, TLB, versions.
@@ -245,6 +245,7 @@ impl Gen {
             }
             None => 0,
         };
+        assert!(site < (1 << 13), "region exit site exceeds the result tag");
         (code << 16) | (site << 19)
     }
     fn ret_value(&mut self, code: u32) {
@@ -613,6 +614,12 @@ pub(super) fn generate(block: &Block) -> Vec<u8> {
     emit_body(&mut g, block.pc, &block.instructions, block.fast, looping, true, cp);
     g.end();
     {
+        #[cfg(feature = "wasm-jit-tests")]
+        {
+            g.c(super::tests::GUARDED_TAKEN.as_ptr() as u32);
+            g.c(1);
+            g.store(0);
+        }
         let whole_written = g.written;
         g.dynamic = true;
         g.pending = 0;
@@ -748,6 +755,9 @@ fn emit_body(
             for (offset, address) in [(0, pc), (4, next.wrapping_sub(1))] {
                 g.get(0);
                 g.cpu(offset_of!(Cpu, fetch_n));
+                // Bound the write even if a future emitted path overruns its credit.
+                g.c(63);
+                g.op(0x71); // i32.and
                 g.c(3);
                 g.op(0x74);
                 g.op(0x6a);
@@ -768,8 +778,7 @@ fn emit_body(
         if instruction::emit(g, bi, fast, pc, next, last, cp) {
             if whole {
                 g.advance();
-                if let Some((n, loop_depth)) = g.guard_site.filter(|s| s.0 == index + 1) {
-                    let _ = n;
+                if let Some((_, loop_depth)) = g.guard_site.filter(|s| s.0 == index + 1) {
                     g.guarded_backedge(next, loop_depth);
                 }
             } else {

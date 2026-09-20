@@ -6,7 +6,7 @@ import { applyExperiments, HW } from '../web/wasm/experiments.mjs';
 import { createPacing } from '../web/wasm/pacing.mjs';
 
 const source = (await readFile(new URL('../web/wasm/worker.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-async function harness(cost = 0, additions = [], experiments = [], overrides = {}) {
+async function harness(cost = 0, additions = [], experiments = [], overrides = {}, init = { frameAck: true }) {
   let wall = 0, cycles = 0, input = 0, frame = null, immediate = 0;
   const timers = [], messages = [], channels = [], runs = [], deletedNetworks = [];
   let delivered;
@@ -37,14 +37,14 @@ async function harness(cost = 0, additions = [], experiments = [], overrides = {
   };
   const context = {
     applyExperiments, createPacing, createJitHost: () => ({ imports: {} }), TextEncoder, TextDecoder, MessageChannel: Channel,
-    performance: { now: () => wall }, Date, postMessage: m => messages.push(m),
+    performance: { now: () => wall, timeOrigin: 0 }, Date, postMessage: m => messages.push(m),
     WebAssembly: { instantiate: async () => ({ instance: { exports: wasm } }) },
     setTimeout: (callback, delay) => timers.push({ callback, delay }),
   };
   Object.assign(wasm, overrides);
   runInNewContext(source, context);
   const send = data => context.onmessage({ data });
-  await send({ op: 'init' }); await send({ op: 'create', board: 'test', experiments });
+  await send({ op: 'init', ...init }); await send({ op: 'create', board: 'test', experiments });
   return {
     send, timers, messages, runs, deletedNetworks, get immediate() { return immediate; },
     setWall(value) { wall = value; }, get wall() { return wall; },
@@ -111,6 +111,38 @@ for (const [path, end] of [['../web/emu.js', '  const queue ='], ['../tools/brow
       await h.send(acks.shift());
     }
     assert.equal(rendered.length, 6);
+    consumer.onmessage = consumer.frame = () => { throw new Error('draw failed'); };
+    for (let id = 7; id <= 9; id++) {
+      h.frame(id);
+      const message = h.messages.findLast(m => m.bin);
+      assert.equal(new Uint8Array(message.bin)[1], id, 'failed draws do not exhaust credits');
+      assert.throws(() => consumer.worker.onmessage({ data: message }), /draw failed/);
+      assert.equal(acks.length, 1, 'failed draw still returns its credit');
+      await h.send(acks.shift());
+    }
+  } finally { h.close(); }
+}
+
+// Cached pages and custom consumers that never acknowledge must keep receiving frames.
+for (const frameAck of [undefined, false, 'true']) {
+  const h = await harness(0, [], [], {}, { frameAck });
+  try {
+    for (let id = 1; id <= 6; id++) h.frame(id);
+    assert.deepEqual(h.messages.filter(m => m.bin).map(m => new Uint8Array(m.bin)[1]), [1, 2, 3, 4, 5, 6]);
+    assert.ok(h.messages.filter(m => m.bin).every(m => !m.ack));
+  } finally { h.close(); }
+}
+{
+  const h = await harness(0, [], [], {}, { frameAck: true, touchTrace: true });
+  try {
+    h.frame(1); h.frame(2); h.setWall(10); h.frame(3); h.setWall(20); h.frame(4);
+    assert.equal(h.messages.filter(m => m.bin).length, 2, 'negotiated window remains bounded');
+    h.setWall(30); await h.send({ op: 'frame-ack' });
+    const message = h.messages.at(-1);
+    assert.equal(new Uint8Array(message.bin)[1], 4, 'only newest retained frame is released');
+    assert.equal(message.frameTrace.stage, 'worker-frame');
+    assert.equal(message.frameTrace.atMs, 20, 'retained trace describes original frame production');
+    assert.equal(message.frameTrace.cycles, 0);
   } finally { h.close(); }
 }
 
@@ -184,3 +216,43 @@ for (const failure of ['missing', 'reject', 'throw']) {
   } finally { h.close(); }
 }
 console.log('worker native-channel, consumer ACK, replacement and experiment tests passed');
+
+for (const [op, exportName, label] of [['stub', 'esp32sim_stub_spec', 'stub'], ['wifi', 'esp32sim_wifi', 'WiFi']]) {
+  let booted = 0;
+  const h = await harness(0, [], [], { [exportName]: () => 1, esp32sim_boot() { booted++; return 0; } });
+  try {
+    await h.send({ op, spec: 'invalid' });
+    await h.send({ op: 'start' });
+    assert.equal(booted, 0, 'failed setup never boots');
+    assert.equal(h.messages.at(-1).started, false);
+    assert.match(h.messages.at(-1).error, new RegExp(label));
+    await h.send({ op: 'create', board: 'test' });
+    await h.send({ op: 'start' });
+    assert.equal(h.messages.at(-1).started, true, 'new emulator clears setup failures');
+  } finally { h.close(); }
+}
+console.log('worker rejected stub and WiFi boot status tests passed');
+
+for (const smoothDisplay of [undefined, false, true]) {
+  const calls = [];
+  const h = await harness(0, [], [], {
+    esp32sim_set_smooth_display(_emu, on) { calls.push(['display', on]); return 0; },
+    esp32sim_boot() { calls.push(['boot']); return 0; },
+  });
+  try {
+    await h.send({ op: 'create', board: 'test', smoothDisplay });
+    await h.send({ op: 'start' });
+    assert.deepEqual(calls, smoothDisplay ? [['display', 1], ['boot']] : [['boot']], 'only explicit smooth display opt-in configures before boot');
+  } finally { h.close(); }
+}
+for (const setter of [undefined, () => 1, () => { throw Error('unsupported'); }]) {
+  let booted = false;
+  const h = await harness(0, [], [], { esp32sim_set_smooth_display: setter, esp32sim_boot() { booted = true; return 0; } });
+  try {
+    await h.send({ op: 'create', board: 'test', smoothDisplay: true });
+    await h.send({ op: 'start' });
+    assert.equal(booted, false, 'unsupported smooth display must not silently boot with a different policy');
+    assert.equal(h.messages.at(-1).started, false);
+  } finally { h.close(); }
+}
+console.log('worker smooth display configuration tests passed');
