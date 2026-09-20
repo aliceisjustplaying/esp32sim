@@ -65,7 +65,7 @@ pub(crate) fn note_sequential(cpu: &mut Cpu, last: u32) {
 const CODE_SIZE: usize = 256 << 20;   // address space; pages are only committed as code is written
 
 pub struct BlockCache {
-    #[cfg(feature = "wasm-jit-profile")]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
     pub profile: crate::jit::profile::Profile,
     entries: Vec<Entry>,
     arena: Vec<BlockInsn>,
@@ -111,7 +111,7 @@ impl BlockCache {
         #[cfg(target_arch = "wasm32")]
         let code = code.map(Box::new);
         BlockCache {
-                     #[cfg(feature = "wasm-jit-profile")]
+                     #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
                      profile: crate::jit::profile::Profile::default(),
                      #[cfg(target_arch = "wasm32")]
                      chain_ei: u32::MAX,
@@ -132,7 +132,7 @@ impl BlockCache {
     pub fn code_bytes(&self) -> usize { self.code.as_ref().map(|c| c.used()).unwrap_or(0) }
     /// Region counters, in the opt-in profile build only.
     pub fn region_report(&self) -> Option<String> {
-        #[cfg(feature = "wasm-jit-profile")]
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
         { return self.code.as_ref().map(|c| c.region_stats.report()); }
         #[allow(unreachable_code)]
         None
@@ -249,7 +249,7 @@ pub fn run_block<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Optio
 }
 
 fn run_block_profiled<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32) -> (u32, Option<Trap>) {
-    #[cfg(feature = "wasm-jit-profile")]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
     {
         if cpu.blocks.profile.sample() {
             let pc = cpu.pc;
@@ -455,7 +455,7 @@ fn run_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32, ei: u32, mut k: 
     }
 
     let limit = limit.min(end - k);
-    #[cfg(feature = "wasm-jit-profile")]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
     let (census_core, census_why) = {
         let core = crate::census::core(cpu);
         let en = &cpu.blocks.entries[ei as usize];
@@ -467,7 +467,7 @@ fn run_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32, ei: u32, mut k: 
     let mut seq = false;
     while done < limit {
         let e = cpu.blocks.arena[k as usize];
-        #[cfg(feature = "wasm-jit-profile")]
+        #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
         {
             let mut c = crate::census::get();
             if let Some(total) = c.interp_total.get_mut(census_core as usize) { *total += 1; }
