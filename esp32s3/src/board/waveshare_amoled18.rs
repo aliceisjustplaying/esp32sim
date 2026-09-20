@@ -250,7 +250,7 @@ mod amoled_tests {
 
     #[test]
     fn smooth_publication_is_an_explicit_opt_in() {
-        for mut board in [WaveshareAmoled18V2::new()] {
+        for mut board in [WaveshareAmoled18V2::new(), WaveshareAmoled18V2::with_measured_te()] {
             assert_eq!(board.display_push_hz(), 50);
             assert!(board.display_quiet_push());
             assert!(board.set_smooth_display(true));
