@@ -472,6 +472,7 @@ impl<S: Soc> Machine<S> {
         // Per-instruction observers need the slow hooks; only exact-PC trap observers use bounded fragments.
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
+        if self.web.is_some() { self.ws.push_interval = (S::CPU_HZ / self.bus.board_ref().display_push_hz().max(1)).max(1); }
         let trace = self.has_observer("trace");
         let mut n = 0u64;
         let mut on = [true; 4];
@@ -661,7 +662,7 @@ impl<S: Soc> Machine<S> {
             if enabled && i != busy { if let Some(wake) = core.cycles_until_wake() { k = k.min(wake / self.quantum); } }
         }
         if let Some((at, _)) = self.script.events.get(self.script.pos) { k = k.min(at.saturating_sub(now).div_ceil(self.quantum)); }
-        if self.web.is_some() { k = k.min((S::CPU_HZ / self.bus.board_ref().display_push_hz()).saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(self.quantum)); }
+        if self.web.is_some() { k = k.min(self.ws.push_interval.saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(self.quantum)); }
         k.max(1)
     }
 
@@ -809,7 +810,7 @@ impl<S: Soc> Machine<S> {
         // EX170: the cached interval filters the common not-yet-due round without the board call and
         // division; a due round re-derives it from the board before deciding, as before.
         if self.web.is_some() && self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= self.ws.push_interval {
-            self.ws.push_interval = S::CPU_HZ / self.bus.board_ref().display_push_hz();
+            self.ws.push_interval = (S::CPU_HZ / self.bus.board_ref().display_push_hz().max(1)).max(1);
             if self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= self.ws.push_interval { self.ws.last_push_cycles = self.bus.cycles(); self.web_push(); self.web_poll_input(); }
         }
         if self.rt.enabled && self.bus.cycles().wrapping_sub(self.rt.last_check) >= 1 << 16 {
