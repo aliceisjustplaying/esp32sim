@@ -269,6 +269,7 @@ fn refresh_priced_continuation<B: Bus>(cpu: &mut Cpu, bus: &mut B, ei: u32) {
     cpu.blocks.entries[ei as usize].ver = indices.map(|i| pv.get(i as usize).copied().unwrap_or(0));
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 fn find_block<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(u32, u32, u32), Trap> {
     let pc = cpu.pc;
     Ok({
