@@ -380,6 +380,23 @@ impl<S: Soc> Machine<S> {
         None
     }
 
+    /// Observe sleeping PCs without advancing their instruction or device clocks.
+    #[inline]
+    fn observe_idle_pcs(&mut self, on: &[bool]) -> Option<Stop> {
+        if !self.probes.contains(Wants::IDLE_PC) { return None; }
+        let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
+        for (i, (&enabled, cpu)) in on.iter().zip(&self.cores).enumerate() {
+            if enabled && cpu.waiting() && !cpu.irq_pending() {
+                for observer in &mut self.observers {
+                    if observer.wants().contains(Wants::IDLE_PC) {
+                        if let Some(stop) = observer.on_insn(&cx, i, cpu, &mut self.bus, cpu.pc()) { return Some(stop); }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Execute one instruction on `core` with every per-instruction observer; returns Some(stop) if the run must end.
     #[inline]
     fn step_core(&mut self, core: usize) -> Option<Stop> {
@@ -401,7 +418,7 @@ impl<S: Soc> Machine<S> {
         let cpu = &mut self.cores[core];
         self.bus.note_pc(pc);
         let outcome = cpu.step(&mut self.bus);
-        if let Some(stop) = self.observe_execution(core, pc, 1, outcome.trap()) { return Some(stop); }
+        if let Some(stop) = self.observe_execution(core, pc, u32::from(outcome.kind != emu_core::StepKind::Idle), outcome.trap()) { return Some(stop); }
         self.refresh_irq();
         {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
@@ -486,6 +503,7 @@ impl<S: Soc> Machine<S> {
                     }
                 };
             }
+            if let Some(stop) = self.observe_idle_pcs(&on[..S::CORES]) { self.drain_console(); return stop; }
             for (i, state) in idle.iter_mut().enumerate().take(S::CORES) { *state = !on[i] || (self.cores[i].waiting() && !self.cores[i].irq_pending()); }
             if idle[..S::CORES].iter().all(|&x| x) && !slow_path {
                 // Stop at every known source of new work, including core-local timers. Device
@@ -637,6 +655,7 @@ impl<S: Soc> Machine<S> {
     /// dispatching another core or running post-round host actions in the resetting machine.
     fn finish_reset(&mut self, cycles: u64) -> Stop {
         self.bus.tick(cycles as u32);
+        self.observe_round();
         self.drain_console();
         Stop::SwReset
     }
@@ -713,6 +732,7 @@ impl<S: Soc> Machine<S> {
             if self.apply_script_events() { self.drain_console(); return RunUntil::Stop(Stop::Halted); }
             self.refresh_irq();
             if self.bus.sw_reset() { self.drain_console(); return RunUntil::Stop(Stop::SwReset); }
+            if let Some(stop) = self.observe_idle_pcs(&[true]) { self.drain_console(); return RunUntil::Stop(stop); }
             let left = target - now;
             let core = &self.cores[0];
             if core.waiting() && !core.irq_pending() && !no_skip {
@@ -759,11 +779,17 @@ impl<S: Soc> Machine<S> {
             if self.bus.refresh_irq() { self.present_irqs(); }
         }
         let script_stopped = self.after_round_rest();
+        self.observe_round();
+        script_stopped
+    }
+
+    /// Flush observations even when reset prevents post-round host actions.
+    #[inline]
+    fn observe_round(&mut self) {
         if self.probes.0 != 0 {
             self.deliver_events();
             if self.probes.contains(Wants::ROUND) { let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ }; for o in &mut self.observers { if o.wants().contains(Wants::ROUND) { o.on_round(&cx); } } }
         }
-        script_stopped
     }
 
     /// Keep the common empty/not-due case in the scheduling loop without inlining action

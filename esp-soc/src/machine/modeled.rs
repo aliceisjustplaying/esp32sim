@@ -235,6 +235,7 @@ impl<S: Soc> Machine<S> {
             let now = self.bus.cycles();
             if now >= self.max_cycles { return Err(Stop::Halted); }
 
+            if let Some(stop) = self.observe_idle_pcs(&on[..S::CORES]) { return Err(stop); }
             let next_core = (0..S::CORES)
                 .filter(|&i| on[i] && (force_idle || !self.cores[i].waiting() || self.cores[i].irq_pending()))
                 .map(|i| self.model_ready_at[i].max(now))
