@@ -689,3 +689,22 @@ fn reset_partial_round_delivers_mmio_and_round_observations() {
         assert_eq!(events.rounds, [1]);
     }
 }
+
+#[test]
+fn zero_display_rate_is_safe() {
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    struct DisplayRate(Arc<AtomicUsize>);
+    impl esp_soc::board::BoardModel for DisplayRate {
+        fn name(&self) -> &'static str { "zero-rate" }
+        fn display_push_hz(&self) -> u64 { self.0.fetch_add(1, Ordering::Relaxed); 0 }
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut m = machine();
+    m.bus.board = Box::new(DisplayRate(calls.clone()));
+    m.web = Some(esp_soc::web::WebServer::queued());
+    m.vq_max = 1024;
+    for core in &mut m.cores { core.set_jit(false); }
+    park(&mut m, 0, IRAM, &SPIN);
+    assert!(matches!(m.run(8192), Stop::MaxInsns));
+    assert!(calls.load(Ordering::Relaxed) > 0);
+}
