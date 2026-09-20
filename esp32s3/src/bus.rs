@@ -229,7 +229,8 @@ impl SocBus {
         true
     }
 
-    #[inline]
+    #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
+    #[cfg_attr(target_arch = "wasm32", inline)]
     fn price_cached_data(&mut self, entry: TlbEntry, address: u32, width: u32, write: bool) {
         if !matches!(entry.src as u8, SRC_FLASH | SRC_PSRAM) { return; }
         if let Some(cache) = &mut self.approximate_cache {
