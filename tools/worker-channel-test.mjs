@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { createPacing } from '../web/wasm/pacing.mjs';
 
 const source = (await readFile(new URL('../web/wasm/worker.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-async function harness(cost = 0, additions = []) {
+async function harness(cost = 0, additions = [], overrides = {}) {
   let wall = 0, cycles = 0, input = 0, frame = null, immediate = 0;
   const timers = [], messages = [], channels = [], runs = [], deletedNetworks = [];
   let delivered;
@@ -34,6 +34,7 @@ async function harness(cost = 0, additions = []) {
     },
     esp32sim_out_kind: () => 2, esp32sim_out_ptr: () => 0, esp32sim_out_len: () => 2,
   };
+  Object.assign(wasm, overrides);
   const context = {
     createPacing, createJitHost: () => ({ imports: {} }), TextEncoder, TextDecoder, MessageChannel: Channel,
     performance: { now: () => wall }, Date, postMessage: m => messages.push(m),
@@ -138,3 +139,19 @@ for (const failure of [-1, 0xffffffff]) {
   } finally { h.close(); }
 }
 console.log('worker native-channel, consumer ACK, replacement and network failure tests passed');
+
+for (const [op, exportName, label] of [['stub', 'esp32sim_stub_spec', 'stub'], ['wifi', 'esp32sim_wifi', 'WiFi']]) {
+  let booted = 0;
+  const h = await harness(0, [], { [exportName]: () => 1, esp32sim_boot() { booted++; return 0; } });
+  try {
+    await h.send({ op, spec: 'invalid' });
+    await h.send({ op: 'start' });
+    assert.equal(booted, 0, 'failed setup never boots');
+    assert.equal(h.messages.at(-1).started, false);
+    assert.match(h.messages.at(-1).error, new RegExp(label));
+    await h.send({ op: 'create', board: 'test' });
+    await h.send({ op: 'start' });
+    assert.equal(h.messages.at(-1).started, true, 'new emulator clears setup failures');
+  } finally { h.close(); }
+}
+console.log('worker rejected stub and WiFi boot status tests passed');
