@@ -455,7 +455,7 @@ fn run_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32, ei: u32, mut k: 
     }
 
     let limit = limit.min(end - k);
-    #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+    #[cfg(feature = "wasm-jit-profile")]
     let (census_core, census_why) = {
         let core = crate::census::core(cpu);
         let en = &cpu.blocks.entries[ei as usize];
@@ -467,7 +467,7 @@ fn run_decoded<B: Bus>(cpu: &mut Cpu, bus: &mut B, budget: u32, ei: u32, mut k: 
     let mut seq = false;
     while done < limit {
         let e = cpu.blocks.arena[k as usize];
-        #[cfg(all(target_arch = "wasm32", feature = "wasm-jit-profile"))]
+        #[cfg(feature = "wasm-jit-profile")]
         {
             let mut c = crate::census::get();
             if let Some(total) = c.interp_total.get_mut(census_core as usize) { *total += 1; }
