@@ -338,6 +338,7 @@ pub fn run_tests() -> u32 {
     tests += arithmetic::basic_ops() + arithmetic::division()
         + memory::loads_and_stores() + control::helper_continuation();
     scheduler::scheduler();
+    scheduler::wrapper_chain();
     tests += 1;
     tests += memory::extension_deferral() + memory::flat_ram_bounds() + regions::regions();
     scheduler::retention();

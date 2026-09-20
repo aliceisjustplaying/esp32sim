@@ -76,7 +76,7 @@ pub struct RegionStats {
     pub instructions: Cell<u64>,
     pub bytes: Cell<u64>,
     /// EX153 census: [run calls, calls with budget>=64, whole calls, whole retired, tail-cut calls, tail-cut retired,
-    /// resumed calls, resumed retired, resumed-and-cut-again calls, zero-retired calls, sum of budgets]
+    /// resumed calls, resumed retired, resumed-and-cut-again calls, zero-retired calls, sum of budgets, chained calls]
     pub ex153: [Cell<u64>; 12],
 }
 #[cfg(feature = "wasm-jit-profile")]
@@ -95,10 +95,6 @@ pub static CENSUS: [std::sync::atomic::AtomicU64; 8] = [const { std::sync::atomi
 #[inline(always)]
 fn census(i: usize, n: u64) { if cfg!(feature = "wasm-cpu-profile") { CENSUS[i].fetch_add(n, std::sync::atomic::Ordering::Relaxed); } }
 const HOT: u32 = 32;
-/// EX153: chain compiled calls inside the wrapper.
-const CHAIN: bool = true;
-/// EX153: an interpreter helper ran during this wrapper call; the dispatcher must look again.
-static HELPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// EX138: emit control-flow prices into code generated from now on.
 pub static PRICED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Emit the inline data-cache probe into code generated from now on (a `cache-inline` build that
@@ -407,7 +403,7 @@ extern "C" fn h_exec<B: Bus>(
     // A return that does not trap changes only the window and the PC: nothing the dispatcher
     // would re-derive (interrupt inputs, waiting, device state) before the next block.
     if !matches!(instruction.insn.op, crate::Op::Retw | crate::Op::RetwN | crate::Op::Ret | crate::Op::RetN) {
-        HELPED.store(true, std::sync::atomic::Ordering::Relaxed);
+        cpu.jit_helped = true;
     }
     cpu.pc = pc;
     #[cfg(feature = "wasm-jit-profile")]
@@ -494,10 +490,10 @@ pub unsafe fn run<B: Bus>(
     cpu.fetch_n = 0;
     let budget = if cpu.icache_fill != 0 { budget.min(64) } else { budget };
     // SAFETY: preserve the caller's live code, helper and memory guarantees.
-    HELPED.store(false, std::sync::atomic::Ordering::Relaxed);
+    cpu.jit_helped = false;
     cpu.blocks.chain_ei = NONE;
     // A dispatch at a probed PC stays one block long, as the differential suite requires.
-    let chain = CHAIN && cpu.boundary_bloom & emu_core::core::pc_bit(cpu.pc) == 0;
+    let chain = cpu.boundary_bloom & emu_core::core::pc_bit(cpu.pc) == 0;
     let mut result = unsafe { run_inner(cc, code, cpu, bus, h, budget, entry, fm) };
     // EX153: keep going inside this wrapper while nothing the dispatcher would look at can have
     // changed: a plain END/LEFT exit, no interpreter helper ran, credit remains, and the next PC
@@ -508,7 +504,7 @@ pub unsafe fn run<B: Bus>(
             let exit = (result >> 16) & 7;
             let sofar = total + (result & 0xffff);
             if (exit != CODE_END && exit != CODE_LEFT) || sofar >= budget || cpu.blocks.observed
-                || HELPED.load(std::sync::atomic::Ordering::Relaxed) { break; }
+                || cpu.jit_helped { break; }
             let pc = cpu.pc;
             if cpu.boundary_bloom & emu_core::core::pc_bit(pc) != 0 { break; }
             let Some((ei, next)) = cpu.blocks.chain_target(pc, bus.page_versions()) else { break };
