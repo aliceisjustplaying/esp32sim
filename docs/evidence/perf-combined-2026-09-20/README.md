@@ -17,7 +17,7 @@ codex/perf-combined-0920. Nothing is pushed or merged into main.
   /Users/alice/src/a/esp32sim-exp/results/overnight.md
 - Standalone M3 campaign script:
   /Users/alice/src/a/esp32sim-exp/m3-transfer/campaign.sh
-- M3 workspace: BENCHMARK_SSH_TARGET:~/bench/esp32sim
+- M3 workspace
 
 kernel-s1 uses commits a473c33c, ac47f03f and 94f2cef4. coverage-s1
 uses 10b01db5. onecall-s1r uses ea42f20b, 74a3000e and 21dc368b.
