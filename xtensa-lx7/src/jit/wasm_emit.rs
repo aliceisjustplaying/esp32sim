@@ -15,7 +15,7 @@ mod memory;
 mod instruction;
 pub(super) use policy::{admitted, supported_insn, loop_safe, terminal_helper};
 #[cfg(feature = "wasm-jit-tests")]
-pub(super) use policy::supported;
+pub(super) use policy::supported_opcode;
 use policy::coprocessors;
 
 // Parameters: cpu, bus, helpers, budget, entry, TLB, versions.
@@ -239,6 +239,7 @@ impl Gen {
             }
             None => 0,
         };
+        assert!(site < (1 << 13), "region exit site exceeds the result tag");
         (code << 16) | (site << 19)
     }
     fn ret_value(&mut self, code: u32) {

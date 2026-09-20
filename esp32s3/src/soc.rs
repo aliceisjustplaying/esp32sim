@@ -23,6 +23,11 @@ impl Soc for S3 {
     const IDLE_CHUNK: u64 = 64 * 8;
     const ROM_DATA_TABLE: &'static [&'static str] = &["_data_start"];
     fn new_core(i: usize) -> Cpu { Cpu::new(if i == 0 { 0xCDCD } else { 0xABAB }) }
+    fn new_core_with_bus(i: usize, bus: &SocBus) -> Cpu {
+        let mut core = Self::new_core(i);
+        core.fetch_cache = bus.fetch_cache.clone();
+        core
+    }
     fn reset_core(c: &mut Cpu, i: usize) { Cpu::reset(c); if i == 1 { c.prid = 0xABAB; } }
     fn boot_core(c: &mut Cpu, entry: u32) {
         Cpu::reset(c);
@@ -52,6 +57,8 @@ impl esp_soc::SocBus for SocBus {
     fn set_defer(&mut self, on: bool) { self.defer_mmio = on; self.mmio_deferred = false; }
     fn take_deferred(&mut self) -> bool { std::mem::take(&mut self.mmio_deferred) }
     fn refresh_irq(&mut self) -> bool {
+        // Inputs are sampled at refresh boundaries. Clearing and reasserting a source
+        // between samples cannot create a second edge at the CPU.
         let dirty = self.periph.lines_dirty() || self.periph.intmatrix_dirty;
         self.periph.intmatrix_dirty = false;
         dirty
@@ -193,6 +200,31 @@ impl esp_soc::SocBus for SocBus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn matrix_routes_sampled_edges_and_nmi_to_machine_cores() {
+        for irq in [10, 14, 22, 28, 30] {
+            let mut m = Machine::new([0; 6], SocBus::new(8 << 20, 2 << 20, [0; 6]));
+            m.bus.periph.intmatrix.map[0][periph::SRC_FROM_CPU0] = irq;
+            m.bus.periph.intmatrix_dirty = true;
+            m.cores[0].ps = if irq == 14 { ps::EXCM | 15 } else { 0 };
+            m.cores[0].intenable = if irq == 14 { 0 } else { 1 << irq };
+            m.sync_irq();
+            m.bus.periph.system.write(0x30, 1);
+            m.sync_irq();
+            assert_ne!(m.cores[0].check_interrupts_pending() & (1 << irq), 0);
+            assert!(m.cores[0].check_interrupts().is_some());
+            // Acknowledgment while the source remains high cannot manufacture another edge.
+            m.cores[0].interrupt &= !(1 << irq);
+            m.sync_irq();
+            assert_eq!(m.cores[0].interrupt & (1 << irq), 0);
+            m.bus.periph.system.write(0x30, 0);
+            m.sync_irq();
+            m.bus.periph.system.write(0x30, 1);
+            m.sync_irq();
+            assert_ne!(m.cores[0].interrupt & (1 << irq), 0);
+        }
+    }
 
     #[test]
     fn primary_core_is_not_controlled_by_core_one_reset_registers() {
