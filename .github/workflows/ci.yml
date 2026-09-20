@@ -26,6 +26,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test (hermetic + golden outputs)
         run: ESP32SIM_ROM_DIR=$PWD/roms cargo test --release --workspace -- --include-ignored --skip external_
+      - name: Virtual-quantum scheduler (native opt-in)
+        run: ESP32SIM_VQ_NATIVE=1 cargo test --release -p esp32s3 --test machine --test virtual_stops
       - name: Build the wasm module
         run: tools/wasm-build.sh
       - name: Test the wasm module (the real build, under Node, through the page's manifests)
