@@ -42,7 +42,7 @@ fn single_and_network_loads_accept_the_same_input_kinds() {
             assert_eq!(esp32sim_net_load(net, node, kind, data.as_ptr(), data.len()), expected);
         }
         for name in ["0x40370000", "40370000", "missing_symbol"] {
-            let expected = u32::from(name == "missing_symbol");
+            let expected = u32::from(name != "0x40370000");
             assert_eq!(esp32sim_stub(single, name.as_ptr(), name.len(), 0), expected);
             assert_eq!(esp32sim_net_stub(net, node, name.as_ptr(), name.len(), 0), expected);
         }
@@ -58,7 +58,7 @@ fn stub_symbols_take_precedence_over_hexadecimal_spelling() {
     machine.symbols.insert(0x5678, "0xcafe".into());
     assert_eq!(machine.resolve_stub("deadbeef"), Some(0x1234));
     assert_eq!(machine.resolve_stub("0xcafe"), Some(0x5678));
-    assert_eq!(machine.resolve_stub("cafe"), Some(0xcafe));
+    assert_eq!(machine.resolve_stub("cafe"), None);
     assert_eq!(machine.resolve_stub("0x0xcafe"), None);
 }
 
@@ -73,5 +73,35 @@ fn board_aliases_route_to_the_canonical_chip() {
             assert_eq!(esp32sim_set_spi2_timing(e, 1), u32::from(hz != 240e6));
             esp32sim_delete(e);
         }
+    }
+}
+
+#[test]
+fn complete_stub_specs_and_wifi_report_invalid_configuration() {
+    // SAFETY: every buffer is live for its call and handles are exclusively owned here.
+    unsafe {
+        let e = esp32sim_new(b"none".as_ptr(), 4, 4, 2);
+        assert!(!e.is_null());
+        for spec in ["0x40000000=true", "0x40000000=false", "0x40000000=0xffffffff"] {
+            assert_eq!(esp32sim_stub_spec(e, spec.as_ptr(), spec.len()), 0);
+        }
+        for spec in ["0x40000000=typo", "0x40000000=12abc", "0x40000000=1=2", "=1", "0x40000000=4294967296"] {
+            assert_eq!(esp32sim_stub_spec(e, spec.as_ptr(), spec.len()), 1, "{spec}");
+        }
+        let valid = b"ssid=test,chan=1";
+        assert_eq!(esp32sim_wifi(e, valid.as_ptr(), valid.len()), 0);
+        for spec in ["ssid=test,chan=0", "ssid=test,unknown=1", "ssid=test,bssid=bad"] {
+            assert_eq!(esp32sim_wifi(e, spec.as_ptr(), spec.len()), 1);
+        }
+        esp32sim_delete(e);
+        let net = esp32sim_net_new(0.0);
+        let mac = [2u8, 0, 0, 0, 0, 1];
+        assert_eq!(esp32sim_net_add(net, mac.as_ptr(), 1, 0.0, 0.0, 0.0, b"typo".as_ptr(), 4), u32::MAX);
+        assert_eq!(esp32sim_net_add(net, mac.as_ptr(), 1, 0.0, 0.0, 0.0, b"none".as_ptr(), 4), 0);
+        let spec = b"0x40000000=true";
+        assert_eq!(esp32sim_net_stub_spec(net, 0, spec.as_ptr(), spec.len()), 0);
+        let spec = b"0x40000000=typo";
+        assert_eq!(esp32sim_net_stub_spec(net, 0, spec.as_ptr(), spec.len()), 1);
+        esp32sim_net_delete(net);
     }
 }

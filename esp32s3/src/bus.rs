@@ -79,6 +79,7 @@ pub struct SocBus {
     approximate_cache_inline: bool,
     approximate_cache_yield_miss: bool,
     cache_resource: CacheResource,
+    pub(crate) fetch_cache: xtensa_lx7::state::SharedFetchCache,
 }
 
 /// One shared external resource, occupied only by priced fills/writebacks.
@@ -130,6 +131,7 @@ impl SocBus {
             approximate_cache: None, approximate_cache_pending: 0, approximate_cache_fast_internal: false, approximate_cache_inline: false,
             approximate_cache_yield_miss: false,
             cache_resource: CacheResource::default(),
+            fetch_cache: xtensa_lx7::state::SharedFetchCache::default(),
         };
         let mut b = bus_uninit;
         b.rebuild_page_table();
@@ -273,7 +275,7 @@ impl SocBus {
     /// instructions and blocks that were built through the old mapping. Shared fetch tags
     /// are virtual, so remapping also makes the shared instruction cache cold.
     pub fn invalidate_tlb(&mut self) {
-        xtensa_lx7::state::reset_shared_fetch_cache();
+        self.fetch_cache.reset();
         for e in self.tlb.iter_mut() { *e = TlbEntry::EMPTY; }
         let (a, b) = (self.ver_base[SRC_FLASH as usize] as usize, self.ver_base[SRC_DROM as usize] as usize);
         for v in &mut self.page_ver[a..b] { *v = v.wrapping_add(1); }          // flash then psram
@@ -552,7 +554,7 @@ impl SocBus {
     fn read16_access<const CPU: bool>(&mut self, addr: u32) -> Result<u16, Fault> {
         if Self::is_periph(addr) { self.last_fault = Some((addr, false)); return Err(Fault::Prohibited); }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(2) <= e.hi => { if CPU { self.price_cached_data(e, addr, 2, false); } let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
+            Some(e) if e.hi - addr >= 2 => { if CPU { self.price_cached_data(e, addr, 2, false); } let o = e.off as usize + (addr - e.lo) as usize; Ok(u16::from_le_bytes(self.buf(e.src as u8)[o..o + 2].try_into().unwrap())) }
             Some(_) => Ok(u16::from_le_bytes([self.read8_access::<CPU>(addr)?, self.read8_access::<CPU>(addr + 1)?])),       // straddles a page
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -563,7 +565,7 @@ impl SocBus {
             return Ok(self.periph_read(addr));
         }
         match self.lookup(addr) {
-            Some(e) if addr.wrapping_add(4) <= e.hi => { if CPU { self.price_cached_data(e, addr, 4, false); } let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
+            Some(e) if e.hi - addr >= 4 => { if CPU { self.price_cached_data(e, addr, 4, false); } let o = e.off as usize + (addr - e.lo) as usize; Ok(u32::from_le_bytes(self.buf(e.src as u8)[o..o + 4].try_into().unwrap())) }
             Some(_) => Ok(u32::from_le_bytes([self.read8_access::<CPU>(addr)?, self.read8_access::<CPU>(addr + 1)?, self.read8_access::<CPU>(addr + 2)?, self.read8_access::<CPU>(addr + 3)?])),
             None => { self.last_fault = Some((addr, false)); Err(Fault::Unmapped) }
         }
@@ -581,7 +583,7 @@ impl SocBus {
     fn write16_access<const CPU: bool>(&mut self, addr: u32, v: u16) -> Result<(), Fault> {
         if Self::is_periph(addr) { self.last_fault = Some((addr, true)); return Err(Fault::Prohibited); }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 && addr.wrapping_add(2) <= e.hi => { if CPU { self.price_cached_data(e, addr, 2, true); } let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
+            Some(e) if e.writable != 0 && e.hi - addr >= 2 => { if CPU { self.price_cached_data(e, addr, 2, true); } let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 2].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 2); Ok(()) }
             Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); self.write8_access::<CPU>(addr, b[0])?; self.write8_access::<CPU>(addr + 1, b[1]) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }
@@ -592,7 +594,7 @@ impl SocBus {
             self.periph_write(addr, v); return Ok(());
         }
         match self.lookup(addr) {
-            Some(e) if e.writable != 0 && addr.wrapping_add(4) <= e.hi => { if CPU { self.price_cached_data(e, addr, 4, true); } let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
+            Some(e) if e.writable != 0 && e.hi - addr >= 4 => { if CPU { self.price_cached_data(e, addr, 4, true); } let rel = (addr - e.lo) as usize; let o = e.off as usize + rel; self.buf_mut(e.src as u8)[o..o + 4].copy_from_slice(&v.to_le_bytes()); self.bump(e.vbase, rel, 4); Ok(()) }
             Some(e) if e.writable != 0 => { let b = v.to_le_bytes(); for i in 0..4 { self.write8_access::<CPU>(addr + i, b[i as usize])?; } Ok(()) }
             _ => { self.last_fault = Some((addr, true)); Err(Fault::Prohibited) }
         }

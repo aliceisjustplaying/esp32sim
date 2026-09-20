@@ -634,3 +634,16 @@ fn block_profile_reports_modeled_unavailability() {
     assert!(matches!(machine.run(1), Stop::MaxInsns));
     assert_eq!(machine.reports(), "[profile-blocks] unavailable during modeled single-step execution\n");
 }
+
+#[test]
+fn stub_symbols_take_precedence_and_addresses_require_prefix() {
+    let mut machine = new_machine(0, 0);
+    machine.symbols.insert(0x1234, "deadbeef".into());
+    machine.symbols.insert(0x5678, "0xcafe".into());
+    assert_eq!(machine.resolve_stub("deadbeef"), Some(0x1234));
+    assert_eq!(machine.resolve_stub("0xcafe"), Some(0x5678));
+    for missing in ["add", "cafe", "dead", "f", "0x0xcafe"] {
+        assert_eq!(machine.resolve_stub(missing), None);
+    }
+    assert_eq!(machine.resolve_stub("0x123abc"), Some(0x123abc));
+}
