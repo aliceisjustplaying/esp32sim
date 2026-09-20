@@ -334,7 +334,8 @@ impl<S: Soc> Machine<S> {
     /// Execute up to `budget` instructions on `core` the fast way (blocks, JIT). Returns the
     /// iterations consumed (as `step_core` would have counted them) and a stop, if any.
     #[cfg_attr(all(target_arch = "wasm32", feature = "wasm-cpu-profile"), inline(never))]
-    #[cfg_attr(not(all(target_arch = "wasm32", feature = "wasm-cpu-profile")), inline)]
+    #[cfg_attr(all(target_arch = "wasm32", not(feature = "wasm-cpu-profile")), inline)]
+    #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
     fn step_blocks(&mut self, core: usize, budget: u32) -> (u32, Option<Stop>) {
         // Core::run returns a trap without its faulting PC. One-instruction fragments make
         // the entry PC exact while retaining callbacks for combined BLOCK/TRAP observers.
@@ -358,7 +359,8 @@ impl<S: Soc> Machine<S> {
 
     /// Common completion boundary for blocks and individual instructions. Keeping block
     /// callbacks here makes BLOCK observers compose with observers that force single-stepping.
-    #[inline]
+    #[cfg_attr(target_arch = "wasm32", inline)]
+    #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
     fn observe_execution(&mut self, core: usize, pc: u32, used: u32, trap: Option<Trap>) -> Option<Stop> {
         if self.probes.contains(Wants::BLOCK | Wants::TRAP | Wants::TRAP_PC) {
             let cx = Ctx { symbols: &self.symbols, cycles: self.bus.cycles(), cpu_hz: S::CPU_HZ };
