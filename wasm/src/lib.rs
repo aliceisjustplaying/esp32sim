@@ -241,7 +241,6 @@ pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_
         xtensa_lx7::jit::FETCH_RING.store(false, Relaxed);
         xtensa_lx7::jit::CACHE_SET_MASK.store(63, Relaxed);
     }
-    xtensa_lx7::state::reset_shared_fetch_cache();
     Box::into_raw(Box::new(Emu {
         m,
         out: Vec::new(),
@@ -935,7 +934,7 @@ pub unsafe extern "C" fn esp32sim_set_icache_fill(e: *mut Emu, cycles: u32) -> u
     let e = unsafe { &mut *e };
     let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
     if m.insns() != 0 { return 1; }
-    xtensa_lx7::state::reset_shared_fetch_cache();
+    m.cores[0].fetch_cache.reset();
     for cpu in &mut m.cores { cpu.icache_fill = cycles; }
     #[cfg(target_arch = "wasm32")]
     xtensa_lx7::jit::FETCH_RING.store(cycles != 0, std::sync::atomic::Ordering::Relaxed);
