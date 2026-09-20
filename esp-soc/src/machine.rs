@@ -411,8 +411,9 @@ impl<S: Soc> Machine<S> {
         None
     }
 
-    /// Run until something stops us, for at most `max_insns` scheduling steps. The no-model path
-    /// uses 64-instruction quanta; the modeled path schedules one priced event at a time.
+    /// Run until something stops us or the `max_insns` scheduling-step budget is reached. The no-model path
+    /// uses complete quanta (64 by default), so a busy round can exceed the budget by up to
+    /// `quantum - 1` steps. The modeled path schedules one priced event at a time.
     pub fn run(&mut self, max_insns: u64) -> Stop {
         self.web_poll_input();
         self.refresh_irq();
