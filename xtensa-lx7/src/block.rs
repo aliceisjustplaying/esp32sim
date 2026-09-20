@@ -341,6 +341,7 @@ fn alias_lookup(cpu: &mut Cpu, pv: &[u32], pc: u32) -> Option<(u32, u32, u32)> {
     None
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 fn find_block<B: Bus>(cpu: &mut Cpu, bus: &mut B) -> Result<(u32, u32, u32), Trap> {
     let pc = cpu.pc;
     Ok({
