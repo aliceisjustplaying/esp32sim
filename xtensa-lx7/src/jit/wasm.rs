@@ -540,7 +540,10 @@ pub unsafe fn run<B: Bus>(
     }
     // Reuse the offset already reconstructed above instead of scanning decoded PCs
     // again in run_block_inner. Regions never return CODE_CUT.
-    if result >> 16 == CODE_CUT { result | ((offset as u32) << 19) } else { result }
+    if result >> 16 == CODE_CUT {
+        debug_assert_eq!(b.pcs[offset], cpu.pc);
+        result | ((offset as u32) << 19)
+    } else { result }
 }
 
 #[path = "wasm_emit.rs"]
