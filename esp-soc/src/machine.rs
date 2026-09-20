@@ -191,7 +191,7 @@ impl<S: Soc> Machine<S> {
     pub fn new(mac: [u8; 6], bus: S::Bus) -> Self {
         Machine {
             mac, reboots: 0, stubs: HashMap::new(), stub_bloom: 0, probe_bloom: 0, stub_hits: 0, fn_probes: HashMap::new(),
-            cores: (0..S::CORES).map(S::new_core).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), quantum: QUANTUM, vq_stats: [0; 4], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
+            cores: (0..S::CORES).map(|i| S::new_core_with_bus(i, &bus)).collect(), core_held: (0..S::CORES).map(|i| i > 0).collect(), quantum: QUANTUM, vq_stats: [0; 4], vq_skip: 0, vq_penalty: 0, vq_max: std::env::var("ESP32SIM_VQ").ok().and_then(|v| v.parse().ok()).unwrap_or(VQ_DEFAULT),
             bus, symbols: BTreeMap::new(),
             dbg: Debug { stop_on_unimplemented: true, stop_after_exceptions: u64::MAX },
             observers: Vec::new(), probes: Wants::NONE, prev_irq: vec![0; S::CORES],
@@ -542,6 +542,7 @@ impl<S: Soc> Machine<S> {
         // Per-instruction observers need the slow hooks; only exact-PC trap observers use bounded fragments.
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
+        let can_defer = !APPROXIMATE && self.vq_max > 1 && self.bus.can_defer();
         let trace = self.has_observer("trace");
         let mut n = 0u64;
         let mut on = [true; 4];
@@ -581,7 +582,7 @@ impl<S: Soc> Machine<S> {
             // register access stops in front of its instruction and finishes its quantum the old way.
             let mut resume_at = 0u64;
             // Find the sole busy core only when virtual quanta are eligible.
-            let busy = if !APPROXIMATE && self.vq_max > 1 && blocks && !slow_path && self.probes.0 == 0 {
+            let busy = if !APPROXIMATE && can_defer && blocks && !slow_path && self.probes.0 == 0 {
                 if self.vq_skip > 0 { self.vq_skip -= 1; usize::MAX }
                 else {
                     let mut b = (0..S::CORES).filter(|&i| !idle[i]);
@@ -682,7 +683,7 @@ impl<S: Soc> Machine<S> {
     /// cycle or instruction limit may fall due before the last of them.
     fn vq_quanta(&self, insns_left: u64, on: &[bool], busy: usize) -> u64 {
         let Some(deadline) = self.bus.next_deadline() else { return 1 };
-        if self.rt.enabled || !self.bus.can_defer() { return 1; }
+        if self.rt.enabled { return 1; }
         let now = self.bus.cycles();
         let mut k = self.vq_max.min(deadline.div_ceil(self.quantum)).min(insns_left.div_ceil(self.quantum))
             .min(self.max_cycles.saturating_sub(now).div_ceil(self.quantum));
@@ -690,7 +691,7 @@ impl<S: Soc> Machine<S> {
             if enabled && i != busy { if let Some(wake) = core.cycles_until_wake() { k = k.min(wake.div_ceil(self.quantum)); } }
         }
         if let Some((at, _)) = self.script.events.get(self.script.pos) { k = k.min(at.saturating_sub(now).div_ceil(self.quantum)); }
-        if self.web.is_some() { k = k.min((S::CPU_HZ / self.bus.board_ref().display_push_hz()).saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(self.quantum)); }
+        if self.web.is_some() { k = k.min(((S::CPU_HZ / self.bus.board_ref().display_push_hz().max(1)).max(1)).saturating_sub(now.wrapping_sub(self.ws.last_push_cycles)).div_ceil(self.quantum)); }
         k.max(1)
     }
 
@@ -1101,7 +1102,7 @@ impl<S: Soc> Machine<S> {
     #[inline]
     fn after_round_rest(&mut self) -> bool {
         let stopped = self.apply_script_events();
-        if self.web.is_some() && self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= S::CPU_HZ / self.bus.board_ref().display_push_hz() { self.ws.last_push_cycles = self.bus.cycles(); self.web_push(); self.web_poll_input(); }
+        if self.web.is_some() && self.bus.cycles().wrapping_sub(self.ws.last_push_cycles) >= (S::CPU_HZ / self.bus.board_ref().display_push_hz().max(1)).max(1) { self.ws.last_push_cycles = self.bus.cycles(); self.web_push(); self.web_poll_input(); }
         if self.rt.enabled && self.bus.cycles().wrapping_sub(self.rt.last_check) >= 1 << 16 {
             self.rt.last_check = self.bus.cycles();
             let start = *self.rt.wall_start.get_or_insert_with(std::time::Instant::now);
