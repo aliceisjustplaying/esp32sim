@@ -1761,7 +1761,7 @@ mod gp_spi_board_tests {
     }
 
     #[test]
-    fn cpu_transfer_replaces_a_parked_dma_transfer_on_the_bus() {
+    fn cpu_command_does_not_replace_a_parked_dma_transfer_on_the_bus() {
         let events = Arc::new(Mutex::new(Vec::new()));
         let mut bus = SocBus::new(1024, 1024, [0; 6]);
         bus.board = Box::new(ProbeBoard { events: events.clone() });
@@ -1778,9 +1778,9 @@ mod gp_spi_board_tests {
         bus.write32(SPI2 + 0x98, 0xa5).expect("CPU data setup failed");
         bus.write32(SPI2, 1 << 24).expect("CPU command failed");
 
-        assert_eq!(bus.periph.spi2.dma_tx_pending, None);
-        assert_eq!(bus.periph.spi2.transfers, 1);
-        assert_eq!(&*events.lock().expect("probe mutex poisoned"), &["spi:2:[a5]:0"]);
+        assert_eq!(bus.periph.spi2.dma_tx_pending, Some(8));
+        assert_eq!(bus.periph.spi2.transfers, 0);
+        assert!(events.lock().expect("probe mutex poisoned").is_empty());
     }
 
     #[test]
