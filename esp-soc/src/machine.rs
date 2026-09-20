@@ -513,6 +513,7 @@ impl<S: Soc> Machine<S> {
         // Per-instruction observers need the slow hooks; only exact-PC trap observers use bounded fragments.
         let blocks = !self.probes.contains(Wants::INSN);
         let slow_path = self.probes.contains(Wants::NO_IDLE_SKIP);
+        let can_defer = self.vq_max > 1 && self.bus.can_defer();
         let trace = self.has_observer("trace");
         let mut n = 0u64;
         let mut on = [true; 4];
@@ -552,7 +553,7 @@ impl<S: Soc> Machine<S> {
             // register access stops in front of its instruction and finishes its quantum the old way.
             let mut resume_at = 0u64;
             // Find the sole busy core only when virtual quanta are eligible.
-            let busy = if self.vq_max > 1 && blocks && !slow_path && self.probes.0 == 0 {
+            let busy = if can_defer && blocks && !slow_path && self.probes.0 == 0 {
                 if self.vq_skip > 0 { self.vq_skip -= 1; usize::MAX }
                 else {
                     let mut b = (0..S::CORES).filter(|&i| !idle[i]);
@@ -628,7 +629,7 @@ impl<S: Soc> Machine<S> {
     /// cycle or instruction limit may fall due before the last of them.
     fn vq_quanta(&self, insns_left: u64, on: &[bool], busy: usize) -> u64 {
         let Some(deadline) = self.bus.next_deadline() else { return 1 };
-        if self.rt.enabled || !self.bus.can_defer() { return 1; }
+        if self.rt.enabled { return 1; }
         let now = self.bus.cycles();
         let mut k = self.vq_max.min(deadline.div_ceil(QUANTUM)).min(insns_left.div_ceil(QUANTUM))
             .min(self.max_cycles.saturating_sub(now).div_ceil(QUANTUM));
