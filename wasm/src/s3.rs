@@ -1,6 +1,9 @@
 //! ESP32-S3 capabilities exposed by the browser ABI.
 use super::{Emu, log, bytes};
 
+// Keep user-supplied per-event prices bounded well below the u32 timing accumulator.
+const MAX_TIMING_PRICE: u32 = 1_000_000;
+
 /// Attach the virtual access point and subnet: `ssid=NAME,psk=PASS,chan=N`. No NAT — the browser
 /// has no sockets — so DHCP, DNS, SNTP and ICMP answer, and connections past the gateway are refused.
 ///
@@ -8,23 +11,24 @@ use super::{Emu, log, bytes};
 /// `e` must point to a live emulator to which the caller has exclusive access. For nonzero `len`,
 /// `spec` must be non-null and readable for `len` bytes throughout this call.
 #[no_mangle]
-pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize) {
+pub unsafe extern "C" fn esp32sim_wifi(e: *mut Emu, spec: *const u8, len: usize) -> u32 {
     // SAFETY: The caller provides exclusive access to a live emulator.
     let e = unsafe { &mut *e };
-    let Some(m) = e.m.s3_mut() else { log("[emu] wifi: this chip has no modeled WiFi radio"); return };
+    let Some(m) = e.m.s3_mut() else { log("[emu] wifi: this chip has no modeled WiFi radio"); return 1; };
     // SAFETY: The caller provides a readable setup string for this call.
     let spec = match std::str::from_utf8(unsafe { bytes(spec, len) }) {
         Ok(spec) => spec,
-        Err(_) => { log("[emu] wifi: configuration is not UTF-8"); return; }
+        Err(_) => { log("[emu] wifi: configuration is not UTF-8"); return 1; }
     };
     let cfg = match esp32s3::wifi::ApConfig::parse(spec) {
         Ok(cfg) => cfg,
-        Err(reason) => { log(&format!("[emu] wifi: {reason}")); return; }
+        Err(reason) => { log(&format!("[emu] wifi: {reason}")); return 1; }
     };
     log(&format!("[emu] virtual AP '{}' ({}), subnet 10.0.2.0/24, no NAT in the browser", cfg.ssid, if cfg.psk.is_some() { "WPA2-PSK" } else { "open" }));
     m.bus.periph.wifi.ap = Some(esp32s3::wifi::VirtualAp::new(cfg, m.bus.debug.has("wifi-frames")));
     m.bus.periph.wifi.net = Some(esp32s3::net::VirtualNet::new(m.bus.debug.has("net")));
     m.bus.refresh_tick_budget();
+    0
 }
 
 /// Enable provisional per-instruction timing before ROM boot. Returns 1 on rejection.
@@ -99,7 +103,7 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_frontiers(e: *mut Emu, ena
 pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u32, writeback: u32, fast_internal: u32) -> u32 {
     let e = unsafe { &mut *e };
     let Some(m) = e.m.s3_mut() else { return 1 };
-    if m.insns() != 0 || !m.has_approximate_jit_timing() || fast_internal > 3 { return 1; }
+    if m.insns() != 0 || !m.has_approximate_jit_timing() || fast_internal > 3 || fill > MAX_TIMING_PRICE || writeback > MAX_TIMING_PRICE { return 1; }
     if fast_internal >= 2 && !cfg!(all(target_arch = "wasm32", feature = "cache-inline")) { return 1; }
     // `fast_internal` values 2 and 3 both select the inline probe; 3 also selects the 64 KB data
     // cache some firmware configures (EXTMEM_DCACHE_CTRL size mode 1; pocket-tank does).
@@ -109,6 +113,8 @@ pub unsafe extern "C" fn esp32sim_set_approximate_jit_cache(e: *mut Emu, fill: u
     #[cfg(all(target_arch = "wasm32", feature = "cache-inline"))]
     xtensa_lx7::jit::CACHE_SET_MASK.store(capacity_bytes as u32 / (64 * 8) - 1, std::sync::atomic::Ordering::Relaxed);
     m.bus.set_approximate_cache_fast_internal(fast_internal != 0);
+    #[cfg(all(target_arch = "wasm32", feature = "cache-inline"))]
+    xtensa_lx7::jit::CACHE_PROBES.store(false, std::sync::atomic::Ordering::Relaxed);
     if fast_internal == 2 {
         if !m.bus.set_approximate_cache_inline() { return 1; }
         #[cfg(all(target_arch = "wasm32", feature = "cache-inline"))]
@@ -168,8 +174,8 @@ pub unsafe extern "C" fn esp32sim_set_quantum(e: *mut Emu, instructions: u32) ->
 pub unsafe extern "C" fn esp32sim_set_icache_fill(e: *mut Emu, cycles: u32) -> u32 {
     let e = unsafe { &mut *e };
     let Some(m) = e.m.s3_mut() else { return 1 };
-    if m.insns() != 0 || (cycles != 0 && !m.has_approximate_jit_timing()) { return 1; }
-    xtensa_lx7::state::reset_shared_fetch_cache();
+    if m.insns() != 0 || cycles > MAX_TIMING_PRICE || (cycles != 0 && !m.has_approximate_jit_timing()) { return 1; }
+    m.cores[0].fetch_cache.reset();
     for cpu in &mut m.cores { cpu.icache_fill = cycles; }
     #[cfg(target_arch = "wasm32")]
     xtensa_lx7::jit::FETCH_RING.store(cycles != 0, std::sync::atomic::Ordering::Relaxed);
@@ -207,7 +213,7 @@ pub unsafe extern "C" fn esp32sim_set_approximate_cache_contention(e: *mut Emu, 
 pub unsafe extern "C" fn esp32sim_set_approximate_cache_fill_service(e: *mut Emu, cycles: u32) -> u32 {
     let e = unsafe { &mut *e };
     let Some(m) = e.m.s3_mut() else { return 1 };
-    if m.insns() != 0 || m.bus.approximate_cache_stats().is_none() { return 1; }
+    if m.insns() != 0 || cycles > MAX_TIMING_PRICE || m.bus.approximate_cache_stats().is_none() { return 1; }
     u32::from(!m.bus.set_approximate_cache_fill_service(cycles))
 }
 
@@ -219,7 +225,7 @@ pub unsafe extern "C" fn esp32sim_set_approximate_cache_fill_service(e: *mut Emu
 pub unsafe extern "C" fn esp32sim_set_approximate_flash_timing(e: *mut Emu, ready: u32, service: u32) -> u32 {
     let e = unsafe { &mut *e };
     let Some(m) = e.m.s3_mut() else { return 1 };
-    if m.insns() != 0 { return 1; }
+    if m.insns() != 0 || ready > MAX_TIMING_PRICE || service > MAX_TIMING_PRICE { return 1; }
     u32::from(!m.bus.set_approximate_flash_timing(ready, service))
 }
 
@@ -276,3 +282,15 @@ pub unsafe extern "C" fn esp32sim_profile_report(e: *mut Emu) {
     }
 }
 
+
+/// Opt in to interactive host display publication for a supporting S3 board, before execution.
+/// This changes host snapshots only, not guest display timing. Returns 1 if unsupported.
+/// # Safety
+/// The pointer must reference a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_smooth_display(e: *mut Emu, on: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.s3_mut() else { return 1 };
+    if m.insns() != 0 || on > 1 { return 1; }
+    if m.bus.board.set_smooth_display(on != 0) { 0 } else { 1 }
+}

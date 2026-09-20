@@ -47,8 +47,12 @@ pub struct Net { net: esp32c6::net::Network, console: Vec<u8> }
     m.copy_from_slice(&mac_bytes[..6.min(mac_bytes.len())]);
     // SAFETY: The caller provides a readable board name for this call.
     let board = unsafe { text(board, board_len) };
+    let board = if board.is_empty() { "none" } else { board };
     let Some(flash) = mib_bytes(flash_mb.max(1)) else { log("[emu] net flash size exceeds 32 MiB"); return u32::MAX };
-    n.net.add(m, flash, start_ns.max(0.0) as u64, x, y, board) as u32
+    match n.net.add(m, flash, start_ns.max(0.0) as u64, x, y, board) {
+        Ok(index) => index as u32,
+        Err(reason) => { log(&format!("[emu] net: {reason}")); u32::MAX }
+    }
 }
 
 /// Load an image into one node: the same `kind` numbering as `esp32sim_load`.
@@ -78,6 +82,20 @@ pub struct Net { net: esp32c6::net::Network, console: Vec<u8> }
     let name = unsafe { text(name, len) };
     let Some(node) = n.net.nodes.get_mut(node as usize) else { return 1 };
     node.m.stub(name, value)
+}
+
+/// Parse a complete stub specification for one network node.
+/// # Safety
+/// `n` must be live and exclusively borrowed; `spec` must be readable for `len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_net_stub_spec(n: *mut Net, node: u32, spec: *const u8, len: usize) -> u32 {
+    let n = unsafe { &mut *n };
+    let Some(node) = n.net.nodes.get_mut(node as usize) else { return 1; };
+    let Ok(spec) = std::str::from_utf8(unsafe { bytes(spec, len) }) else { return 1; };
+    match esp_soc::load::stub_spec(spec) {
+        Ok((name, value)) => node.m.stub(name, value),
+        Err(reason) => { log(&format!("[emu] stub: {reason}")); 1 }
+    }
 }
 
 /// Boot every node from its reset vector.
