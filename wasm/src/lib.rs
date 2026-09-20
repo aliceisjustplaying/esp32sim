@@ -983,7 +983,7 @@ pub struct Net { net: esp32c6::net::Network, console: Vec<u8> }
 #[no_mangle]
 pub unsafe extern "C" fn esp32sim_set_smooth_display(e: *mut Emu, on: u32) -> u32 {
     let e = unsafe { &mut *e };
-    let Some(m) = e.m.as_any_mut().downcast_mut::<Machine<esp32s3::Esp32S3>>() else { return 1 };
+    let Some(m) = e.m.as_any_mut().downcast_mut::<esp32s3::Machine>() else { return 1 };
     if m.insns() != 0 || on > 1 { return 1; }
     if m.bus.board.set_smooth_display(on != 0) { 0 } else { 1 }
 }
