@@ -134,8 +134,8 @@ struct Block {
 /// Entry facts of one region chunk. `sites` points into the owning region's vector, which
 /// lives until that region is dropped, and every drop moves `CodeCache::region_epoch` on.
 #[derive(Clone, Copy)]
-struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); 8], npages: u32, nsites: u32, sites: *const ExitSite }
-impl Hot { const NONE: Hot = Hot { epoch: 0, bloom: 0, slot: 0, k: 0, len: 0, lo: 0, span: 0, pages: [(0, 0); 8], npages: 0, nsites: 0, sites: std::ptr::null() }; }
+struct Hot { epoch: u64, bloom: u64, slot: u32, k: u32, len: u32, lo: u32, span: u32, pages: [(u32, u32); emitter::region::MAX_PAGES], npages: u32, nsites: u32, sites: *const ExitSite }
+impl Hot { const NONE: Hot = Hot { epoch: 0, bloom: 0, slot: 0, k: 0, len: 0, lo: 0, span: 0, pages: [(0, 0); emitter::region::MAX_PAGES], npages: 0, nsites: 0, sites: std::ptr::null() }; }
 /// Several chunks compiled as one function; see wasm_region.rs.
 struct Region {
     /// The generated code holds pointers to these instructions for its helper calls,
@@ -626,8 +626,8 @@ unsafe fn run_inner<B: Bus>(
                     // SAFETY: the region was installed with the block signature; its
                     // entry parameter is the chunk index.
                     let f: Run<B> = unsafe { std::mem::transmute(r.slot as usize) };
-                    if r.pages.len() <= 8 {
-                        let mut pages = [(0, 0); 8];
+                    if r.pages.len() <= emitter::region::MAX_PAGES {
+                        let mut pages = [(0, 0); emitter::region::MAX_PAGES];
                         pages[..r.pages.len()].copy_from_slice(&r.pages);
                         b.hot.set(Hot { epoch: cc.region_epoch.get(), bloom: r.bloom, slot: r.slot, k, len: r.lens[k as usize], lo: r.lo,
                             span: r.hi.wrapping_sub(r.lo), pages, npages: r.pages.len() as u32, nsites: r.sites.len() as u32, sites: r.sites.as_ptr() });
@@ -705,7 +705,7 @@ unsafe fn run_block_body<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: 
         f(cpu, bus, h, budget.min(0xffff), entry, tlb, versions)
     };
     let done = result & 0xffff;
-    {
+    if cfg!(feature = "wasm-cpu-profile") {
         let bytes = b.pcs.last().unwrap().wrapping_add(b.instructions.last().unwrap().insn.len as u32).wrapping_sub(b.pc);
         let noloop = initial_lcount == 0 || cpu.lend.wrapping_sub(b.pc) > bytes;
         if entry == 0 && budget as usize >= b.instructions.len() { census(3, 1); census(4, done as u64); }
@@ -731,7 +731,10 @@ unsafe fn run_block_body<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: 
     }
     // Reuse the offset already reconstructed above instead of scanning decoded PCs
     // again in run_block_inner. Regions never return CODE_CUT.
-    if result >> 16 == CODE_CUT { result | ((offset as u32) << 19) } else { result }
+    if result >> 16 == CODE_CUT {
+        debug_assert_eq!(b.pcs[offset], cpu.pc);
+        result | ((offset as u32) << 19)
+    } else { result }
 }
 
 #[cfg(feature = "wasm-jit-profile")]

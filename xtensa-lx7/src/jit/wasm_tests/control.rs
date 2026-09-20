@@ -268,6 +268,25 @@ pub(super) fn helper_continuation() -> u32 {
     tests
 }
 
+// Assert the generated path itself, so silently falling back cannot pass this oracle.
+pub(super) fn guarded_loop_sites() -> u32 {
+    let mut tests = 0;
+    for site in [1, 2, 3] {
+        for entry in 0..3 {
+            for budget in [1, 2, 3, 8] {
+                let mut block = [insn(Op::Add), insn(Op::Xor), insn(Op::Add)];
+                let lend = BASE + site * 3;
+                let configure = |c: &mut Cpu| { c.ps = 0; c.lend = lend; c.lbeg = BASE; c.lcount = 2; };
+                let case = Case { entry, budget, ..Case::default() };
+                assert!(compare_hinted(&mut block, case, &configure, lend), "guarded site={site} entry={entry} budget={budget}");
+                assert!(!compare_hinted(&mut block, case, &configure, 0), "checked site={site} entry={entry} budget={budget}");
+                tests += 2;
+            }
+        }
+    }
+    tests
+}
+
 pub(super) fn pie_wide_shifts() -> u32 {
     use crate::pie::Role::{Qa, Qs};
     let mut tests = 0;

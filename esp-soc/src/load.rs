@@ -1,6 +1,21 @@
 //! Input contracts shared by native and browser front ends.
 use crate::{Machine, Soc, SocBus};
 
+/// Parse the return value shared by CLI, browser and network stubs.
+pub fn stub_spec(spec: &str) -> Result<(&str, u32), String> {
+    let (name, value) = spec.split_once('=').unwrap_or((spec, "0"));
+    if name.is_empty() { return Err("stub name must not be empty".into()); }
+    let value = match value {
+        "true" => 1,
+        "false" => 0,
+        value => match value.strip_prefix("0x") {
+            Some(hex) => u32::from_str_radix(hex, 16),
+            None => value.parse(),
+        }.map_err(|_| format!("invalid return value in {spec:?}: expected u32, true or false"))?,
+    };
+    Ok((name, value))
+}
+
 /// Stable load-kind numbers used by both browser ABIs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
@@ -52,10 +67,10 @@ impl<S: Soc> Machine<S> {
         }
     }
 
-    /// Resolve a symbol first, then a hexadecimal address with an optional `0x` prefix.
+    /// Resolve a symbol first, then a hexadecimal address with a required `0x` prefix.
     pub fn resolve_stub(&self, name: &str) -> Option<u32> {
         self.sym_addr(name).or_else(|| {
-            u32::from_str_radix(name.strip_prefix("0x").unwrap_or(name), 16).ok()
+            u32::from_str_radix(name.strip_prefix("0x")?, 16).ok()
         })
     }
 
