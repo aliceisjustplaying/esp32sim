@@ -376,6 +376,7 @@ impl Gen {
             }
             None => 0,
         };
+        assert!(site < (1 << 13), "region exit site exceeds the result tag");
         (code << 16) | (site << 19)
     }
     fn ret_value(&mut self, code: u32) {
