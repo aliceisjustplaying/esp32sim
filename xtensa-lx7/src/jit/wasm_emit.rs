@@ -623,6 +623,9 @@ fn emit_body(
             for (offset, address) in [(0, pc), (4, next.wrapping_sub(1))] {
                 g.get(0);
                 g.cpu(offset_of!(Cpu, fetch_n));
+                // Bound the write even if a future emitted path overruns its credit.
+                g.c(63);
+                g.op(0x71); // i32.and
                 g.c(3);
                 g.op(0x74);
                 g.op(0x6a);
