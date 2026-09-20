@@ -141,7 +141,6 @@ pub unsafe extern "C" fn esp32sim_new(board: *const u8, board_len: usize, flash_
         xtensa_lx7::jit::FETCH_RING.store(false, Relaxed);
         xtensa_lx7::jit::CACHE_SET_MASK.store(63, Relaxed);
     }
-    xtensa_lx7::state::reset_shared_fetch_cache();
     Box::into_raw(Box::new(Emu {
         m,
         out: Vec::new(),
@@ -213,6 +212,19 @@ pub unsafe extern "C" fn esp32sim_stub(e: *mut Emu, name: *const u8, len: usize,
     let e = unsafe { &mut *e };
     // SAFETY: The caller provides a readable symbol name for this call.
     e.m.stub(unsafe { text(name, len) }, value)
+}
+
+/// Parse a complete NAME[=value] stub using the same rules as the CLI.
+/// # Safety
+/// `e` must be live and exclusively borrowed; `spec` must be readable for `len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_stub_spec(e: *mut Emu, spec: *const u8, len: usize) -> u32 {
+    let e = unsafe { &mut *e };
+    let Ok(spec) = std::str::from_utf8(unsafe { bytes(spec, len) }) else { return 1; };
+    match esp_soc::load::stub_spec(spec) {
+        Ok((name, value)) => e.m.stub(name, value),
+        Err(reason) => { log(&format!("[emu] stub: {reason}")); 1 }
+    }
 }
 
 /// Attach an analysis: `profile-blocks`, `coverage`, `irq-latency` (no argument), `trace-fn`
@@ -299,7 +311,8 @@ pub unsafe extern "C" fn esp32sim_run(e: *mut Emu, cycles: u32, unix_ms: f64) ->
 }
 
 #[cfg(target_arch = "wasm32")]
-#[no_mangle] pub extern "C" fn esp32sim_kernel_census(i: u32) -> f64 { xtensa_lx7::jit::CENSUS[i as usize].load(std::sync::atomic::Ordering::Relaxed) as f64 }
+#[cfg(feature = "cpu-profile")]
+#[no_mangle] pub extern "C" fn esp32sim_kernel_census(i: u32) -> f64 { xtensa_lx7::jit::CENSUS.get(i as usize).map_or(0.0, |n| n.load(std::sync::atomic::Ordering::Relaxed) as f64) }
 
 /// Drain what the machine sent since the last call; then index it with the accessors below.
 ///
