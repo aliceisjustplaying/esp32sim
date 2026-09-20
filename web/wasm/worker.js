@@ -16,7 +16,8 @@ function put(bytes) { const p = wasm.esp32sim_alloc(bytes.length); mem().set(byt
 function withBytes(bytes, f) { const p = put(bytes); try { return f(p, bytes.length); } finally { wasm.esp32sim_free(p, bytes.length); } }
 const blockJit = createJitHost(() => wasm);
 let experiments = [], setupError = null;
-let framesInFlight = 0, pendingFrame = null;
+let smoothDisplay = false;
+let frameAck = false, framesInFlight = 0, pendingFrame = null;
 const imports = { env: { ...blockJit.imports, host_log: (p, n) => postMessage({ log: dec.decode(mem().subarray(p, p + n)) }) } };
 
 function drain() {
@@ -26,15 +27,15 @@ function drain() {
     if (kind === 1) postMessage({ text: dec.decode(mem().subarray(p, p + len)) });
     else {
       const display = mem()[p] === 1;
-      // Backpressure: a page that has not painted the last two display frames gets only the
-      // newest one once it has; a queue of 330 KB frames helps nobody.
-      if (display && framesInFlight >= 2) { pendingFrame = mem().slice(p, p + len).buffer; continue; }
-      const buf = new ArrayBuffer(len);
-      new Uint8Array(buf).set(mem().subarray(p, p + len));
+      // Backpressure is opt-in: legacy consumers need not acknowledge frames. A page
+      // that has not handled its last two frames gets only the newest retained frame.
       const frameTrace = traceEnabled && display
         ? { stage: 'worker-frame', atMs: traceNow(), cycles: wasm.esp32sim_cycles(emu) } : undefined;
-      if (display) { framesInFlight++; pendingFrame = null; }
-      postMessage({ bin: buf, frameTrace, ack: display }, [buf]);
+      if (frameAck && display && framesInFlight >= 2) { pendingFrame = { bin: mem().slice(p, p + len).buffer, frameTrace, ack: true }; continue; }
+      const buf = new ArrayBuffer(len);
+      new Uint8Array(buf).set(mem().subarray(p, p + len));
+      if (frameAck && display) { framesInFlight++; pendingFrame = null; }
+      postMessage({ bin: buf, frameTrace, ack: frameAck && display }, [buf]);
     }
   }
 }
@@ -115,11 +116,12 @@ onmessage = async (ev) => {
   const m = ev.data;
   try {
     if (m.op === 'frame-ack') {
+      if (!frameAck) return;
       framesInFlight = Math.max(0, framesInFlight - 1);
-      if (pendingFrame && framesInFlight < 2) { const buf = pendingFrame; pendingFrame = null; framesInFlight++; postMessage({ bin: buf, ack: true }, [buf]); }
+      if (pendingFrame && framesInFlight < 2) { const message = pendingFrame; pendingFrame = null; framesInFlight++; postMessage(message, [message.bin]); }
       return;
     }
-    if (m.op === 'init') { traceEnabled = !!m.touchTrace; const r = await WebAssembly.instantiate(m.wasm, imports); wasm = r.instance.exports;  postMessage({ ready: true }); }
+    if (m.op === 'init') { frameAck = m.frameAck === true; traceEnabled = !!m.touchTrace; const r = await WebAssembly.instantiate(m.wasm, imports); wasm = r.instance.exports;  postMessage({ ready: true }); }
     else if (m.op === 'create') {
       running = false;
       // Keep credits for already posted frames until their ACKs arrive, but never send
@@ -129,6 +131,7 @@ onmessage = async (ev) => {
       pendingInputTrace = [];
       if (emu) { wasm.esp32sim_delete(emu); emu = 0; }
       emu = withBytes(enc.encode(m.board), (p, n) => wasm.esp32sim_new(p, n, m.flash_mb | 0, m.psram_mb | 0));
+      smoothDisplay = m.smoothDisplay === true;
       if (emu !== 0) wasm.esp32sim_set_jit(emu, m.jit === false ? 0 : 1);
       setupError = null;
       experiments = m.experiments === undefined ? [] : m.experiments;
@@ -139,10 +142,12 @@ onmessage = async (ev) => {
     else if (m.op === 'stub') { if (withBytes(enc.encode(m.spec), (p, n) => wasm.esp32sim_stub_spec(emu, p, n)) !== 0) setupError ||= 'invalid stub: ' + m.spec; }
     else if (m.op === 'wifi') { if (withBytes(enc.encode(m.spec), (p, n) => wasm.esp32sim_wifi(emu, p, n)) !== 0) setupError ||= 'invalid WiFi configuration (see console)'; }
     else if (m.op === 'start') {
+      running = false;
       // Optional timing-model exports (`?timing=hw`), applied after the loads and before the first instruction.
       running = false;
       if (!emu) throw new Error('no emulator to start');
       if (setupError) throw new Error(setupError);
+      if (smoothDisplay && (!wasm.esp32sim_set_smooth_display || wasm.esp32sim_set_smooth_display(emu, 1) !== 0)) throw new Error('smooth display publication is unsupported');
       for (const [name, ...args] of experiments) { if (typeof wasm[name] !== 'function' || wasm[name](emu, ...args)) postMessage({ log: '[worker] experiment export failed: ' + name }); }
       const rc = wasm.esp32sim_boot(emu, m.appDirect ? 1 : 0); if (rc === 0) { running = true; t0 = performance.now(); lastStat = { wall: t0, insns: wasm.esp32sim_insns(emu), cycles: wasm.esp32sim_cycles(emu) }; loop(); } postMessage({ started: rc === 0 }); }
     else if (m.op === 'net-create') {

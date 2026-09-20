@@ -26,12 +26,13 @@
   worker.onmessage = (ev) => {
     const m = ev.data;
     if (m.touchTrace) { window.recordTouchTrace?.(m.touchTrace); return; }
-    if (m.frameTrace) window.recordTouchTrace?.(m.frameTrace);
     if (m.text !== undefined) { onmessage && onmessage(m.text); return; }
     if (m.bin !== undefined) {
-      onmessage && onmessage(m.bin);
-      if (m.ack) worker.postMessage({ op: 'frame-ack' });
-      if (m.frameTrace) window.recordTouchTrace?.({ stage: 'canvas-drawn', atMs: performance.timeOrigin + performance.now(), cycles: m.frameTrace.cycles });
+      try {
+        if (m.frameTrace) window.recordTouchTrace?.(m.frameTrace);
+        onmessage && onmessage(m.bin);
+        if (m.frameTrace) window.recordTouchTrace?.({ stage: 'canvas-drawn', atMs: performance.timeOrigin + performance.now(), cycles: m.frameTrace.cycles });
+      } finally { if (m.ack) worker.postMessage({ op: 'frame-ack' }); }
       return;
     }
     if (m.log !== undefined) { console.log(m.log); onmessage && onmessage(JSON.stringify({ t: 'emu', msg: m.log })); return; }
@@ -52,7 +53,7 @@
     connect(handler, status) {
       onmessage = handler; setStatus = status; if (failure) setStatus(failure);
       fetch('wasm/esp32sim.wasm').then((r) => { if (!r.ok) throw new Error('wasm/esp32sim.wasm: ' + r.status + (r.status === 404 ? ' — build it: tools/wasm-build.sh' : '')); return r.arrayBuffer(); })
-        .then((buf) => worker.postMessage({ op: 'init', wasm: buf, touchTrace: q.has('touchTrace') }, [buf]))
+        .then((buf) => worker.postMessage({ op: 'init', wasm: buf, frameAck: true, touchTrace: q.has('touchTrace') }, [buf]))
         .catch((e) => setStatus('cannot load wasm: ' + e.message));
       return { send: (d, timing) => { if (!started) return; if (typeof d === 'string') post({ op: 'text', data: d, touchTrace: timing }); else { const b = d.buffer ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d; post({ op: 'bin', data: b }, [b]); } } };
     },
@@ -101,7 +102,7 @@
   async function boot(cfg, files) {
     if (started) { location.reload(); return; }
     setStatus('loading firmware…');
-    const ok = await ask('created', { op: 'create', board: cfg.board, flash_mb: cfg.flash_mb, psram_mb: cfg.psram_mb, jit: q.get('jit') !== '0', experiments: [...(q.get('timing') === 'hw' ? [["esp32sim_set_approximate_jit_timing",1,512],["esp32sim_set_approximate_jit_frontiers",1],["esp32sim_set_approximate_jit_cache",96,160,2],["esp32sim_set_approximate_cache_contention",1],["esp32sim_set_approximate_cache_fill_service",160],["esp32sim_set_spi2_timing",1],["esp32sim_set_measured_te",1],["esp32sim_set_control_prices",1],["esp32sim_set_icache_fill",404]] : []), ...(q.get('quantum') ? [['esp32sim_set_quantum', +q.get('quantum')]] : [])] });
+    const ok = await ask('created', { op: 'create', board: cfg.board, smoothDisplay: cfg.smoothDisplay === true, flash_mb: cfg.flash_mb, psram_mb: cfg.psram_mb, jit: q.get('jit') !== '0', experiments: [...(q.get('timing') === 'hw' ? [["esp32sim_set_approximate_jit_timing",1,512],["esp32sim_set_approximate_jit_frontiers",1],["esp32sim_set_approximate_jit_cache",96,160,2],["esp32sim_set_approximate_cache_contention",1],["esp32sim_set_approximate_cache_fill_service",160],["esp32sim_set_spi2_timing",1],["esp32sim_set_measured_te",1],["esp32sim_set_control_prices",1],["esp32sim_set_icache_fill",404]] : []), ...(q.get('quantum') ? [['esp32sim_set_quantum', +q.get('quantum')]] : [])] });
     if (!ok) { setStatus('could not create emulator: check board and memory sizes (maximum 32 MiB)'); return; }
     for (const [kind, data, at] of files) {
       const key = at !== undefined ? 'loadat' + at : 'load' + KINDS[kind];

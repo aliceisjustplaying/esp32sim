@@ -161,7 +161,7 @@ pub unsafe extern "C" fn esp32sim_set_icache_fill(e: *mut Emu, cycles: u32) -> u
     let e = unsafe { &mut *e };
     let Some(m) = e.m.s3_mut() else { return 1 };
     if m.insns() != 0 { return 1; }
-    xtensa_lx7::state::reset_shared_fetch_cache();
+    m.cores[0].fetch_cache.reset();
     for cpu in &mut m.cores { cpu.icache_fill = cycles; }
     #[cfg(target_arch = "wasm32")]
     xtensa_lx7::jit::FETCH_RING.store(cycles != 0, std::sync::atomic::Ordering::Relaxed);
@@ -262,3 +262,15 @@ pub unsafe extern "C" fn esp32sim_profile_report(e: *mut Emu) {
     }
 }
 
+
+/// Opt in to interactive host display publication for a supporting S3 board, before execution.
+/// This changes host snapshots only, not guest display timing. Returns 1 if unsupported.
+/// # Safety
+/// The pointer must reference a live exclusively borrowed emulator.
+#[no_mangle]
+pub unsafe extern "C" fn esp32sim_set_smooth_display(e: *mut Emu, on: u32) -> u32 {
+    let e = unsafe { &mut *e };
+    let Some(m) = e.m.s3_mut() else { return 1 };
+    if m.insns() != 0 || on > 1 { return 1; }
+    if m.bus.board.set_smooth_display(on != 0) { 0 } else { 1 }
+}
