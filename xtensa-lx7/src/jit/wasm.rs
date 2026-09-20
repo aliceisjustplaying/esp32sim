@@ -689,7 +689,7 @@ unsafe fn run_block_body<B: Bus>(cc: &CodeCache, code: u32, cpu: &mut Cpu, bus: 
         f(cpu, bus, h, budget.min(0xffff), entry, tlb, versions)
     };
     let done = result & 0xffff;
-    {
+    if cfg!(feature = "wasm-cpu-profile") {
         let bytes = b.pcs.last().unwrap().wrapping_add(b.instructions.last().unwrap().insn.len as u32).wrapping_sub(b.pc);
         let noloop = initial_lcount == 0 || cpu.lend.wrapping_sub(b.pc) > bytes;
         if entry == 0 && budget as usize >= b.instructions.len() { census(3, 1); census(4, done as u64); }
