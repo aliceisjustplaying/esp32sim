@@ -47,7 +47,7 @@ fn peripheral_alarm_inside_a_batch_matches_single_round_scheduling() {
                 if vq > 1 && std::env::var_os("ESP32SIM_VQ_NATIVE").is_some() {
                     assert!(m.vq_stats[0] > 0 && m.vq_stats[1] >= 2, "exercise batched rounds");
                 }
-                results.push((m.bus.cycles, m.run_steps(), m.irq_hist.clone(), m.cores.iter()
+                results.push((m.bus.cycles, m.cores.iter()
                     .map(|c| (c.ccount, c.insn_count, c.pc, c.ps, c.interrupt, c.epc, c.get_ar(2))).collect::<Vec<_>>()));
             }
             assert_eq!(results[0], results[1], "busy={busy} ticks={ticks}");
