@@ -3,4 +3,4 @@
 # supplied RUSTFLAGS (including an empty value) overrides this default.
 # -inline-threshold is an internal LLVM option. New stable LLVM versions may
 # reject it; fail the build loudly rather than silently change the artifact.
-RUSTFLAGS="${RUSTFLAGS--Cllvm-args=-inline-threshold=4000}"; export RUSTFLAGS
+RUSTFLAGS="${RUSTFLAGS--Cllvm-args=-inline-threshold=2000}"; export RUSTFLAGS
