@@ -60,6 +60,14 @@ impl SocBus {
             return;
         }
         let channel = self.periph.gdma.out_channel_for(0);
+        if channel.is_none() && !self.periph.gdma.out.iter().any(|c| c.peri_sel == 0 && c.desc != 0) {
+            // A DMA command without a bound channel cannot progress. Abort it just
+            // like a descriptor failure so firmware can issue a later CPU command.
+            // A stopped channel with a descriptor remains bound and can be restarted.
+            self.periph.spi2.fail_dma_tx();
+            self.irq_dirty = true;
+            return;
+        }
         match self.spi2_dma_completion() {
             Ok(Some(completion)) => {
                 if self.spi2_timing {
