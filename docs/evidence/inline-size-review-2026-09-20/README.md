@@ -3,7 +3,7 @@
 Threshold 2000 produces a 7.49% smaller gzip download than 4000 on this runtime
 revision. The existing desktop timing evidence does not establish a clear speed
 difference between those two thresholds. This measurement adds the missing size
-comparison; it does not change the selected threshold of 4000.
+comparison. At the time of this measurement, the selected threshold remained 4000.
 
 | LLVM inline threshold | Raw bytes | gzip -9 bytes | Gzip increase over default |
 | --- | ---: | ---: | ---: |
@@ -35,3 +35,16 @@ No performance timings were collected in this follow-up. The iPhone default-vers
 comparison requested in the review remains unmeasured; these build sizes cannot
 resolve the EX166 JavaScriptCore performance question. The existing desktop timing
 results remain in the [original EX154 evidence](../perf-combined-2026-09-20/README.md#final-inline-selection).
+
+## September 21 selection
+
+The maintainer selected **2000** as the shared production/test default. The table
+above records a saving of **222,799 bytes (7.49%)** over 4000 for the measured
+`661623ea` artifacts. The existing desktop timings do not establish a decisive
+speed advantage for 4000. This is a size-versus-speed decision from the existing
+EX154 evidence, not a new benchmark or a claim that current artifact sizes are
+identical to those historical builds.
+
+The default lives in [the shared compiler policy](../../../tools/wasm-rustflags.sh).
+Explicit `RUSTFLAGS`, including an empty value, still override it. Historical
+4000 build hashes and speed measurements remain unchanged.
