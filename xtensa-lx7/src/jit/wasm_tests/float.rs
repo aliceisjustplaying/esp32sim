@@ -184,3 +184,39 @@ pub fn fma_sweep(seed: u64, n: u32, report: &mut dyn FnMut(String)) -> (u32, u32
     }
     (bad, halfway)
 }
+
+/// Directed double-rounding cases exercise the emitted fallback in the ordinary CI suite.
+pub(super) fn fma_halfway_fallback() -> u32 {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static CALLS: AtomicU32 = AtomicU32::new(0);
+    extern "C" fn counted_fused(s: u32, t: u32, r: u32, subtract: u32) -> u32 {
+        CALLS.fetch_add(1, Ordering::Relaxed);
+        h_fused(s, t, r, subtract)
+    }
+    for op in [Op::MaddS, Op::MsubS] {
+        let mut ram = Ram::new(true, false);
+        let mut cc = CodeCache::new(0).unwrap();
+        let code = queue(&mut cc, &mut [insn(op)], BASE, true);
+        for _ in 0..HOT { ready(&cc, code, 0); }
+        assert!(ready(&cc, code, 0));
+        let mut c = cpu(1);
+        c.pc = BASE;
+        c.cpenable = 1;
+        c.fr[3] = 0x3f80_0001;
+        c.fr[4] = if op == Op::MaddS { 0x3f80_0001 } else { 0xbf80_0001 };
+        c.fr[5] = 0x337f_fffe;
+        let s = f64::from(f32::from_bits(c.fr[4])) * if op == Op::MsubS { -1.0 } else { 1.0 };
+        let wide = s * f64::from(f32::from_bits(c.fr[5])) + f64::from(f32::from_bits(c.fr[3]));
+        assert_eq!(wide.to_bits() & 0x1fff_ffff, 0x1000_0000);
+        assert_eq!((wide as f32).to_bits(), 0x3f80_0002, "inlining without fallback double-rounds");
+        let mut helpers = Helpers::new::<Ram>();
+        helpers.fused = counted_fused as *const ();
+        CALLS.store(0, Ordering::Relaxed);
+        let fm = ram.fast_mem();
+        let result = unsafe { run(&cc, code, &mut c, &mut ram, &helpers, 1, 0, fm) };
+        assert_eq!(result & 0xffff, 1);
+        assert_eq!(CALLS.load(Ordering::Relaxed), 1, "generated code must call the fallback");
+        assert_eq!(c.fr[3], 0x3f80_0001, "fallback preserves the helper's single rounding");
+    }
+    2
+}
