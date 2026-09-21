@@ -1388,7 +1388,7 @@ fn regions() -> u32 {
         let head: Vec<BlockInsn> = (0..8).scan(BASE, |pc, _| {
             let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap());
             *pc += i.len as u32;
-            Some(BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), off: 0 })
+            Some(BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), straddle: false, off: 0 })
         }).collect();
         let formed = emitter::region::form(&c, &mut ram, BASE, &head, true).expect("large region");
         assert_eq!(formed.chunks.len(), 40);
@@ -1449,7 +1449,7 @@ fn regions() -> u32 {
         ram.ram.mem[..loop_large.len()].copy_from_slice(&loop_large);
         let head: Vec<BlockInsn> = (0..2).scan(BASE, |pc, _| {
             let i = crate::decode::decode(*pc, ram.fetch(*pc).unwrap()); *pc += i.len as u32;
-            Some(BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), off: 0 })
+            Some(BlockInsn { insn: i, max_ar: crate::exec::max_ar(&i), straddle: false, off: 0 })
         }).collect();
         let formed = emitter::region::form(&cpu(0), &mut ram, BASE, &head, true).expect("large loop region");
         assert!(formed.chunks.len() > 40);
