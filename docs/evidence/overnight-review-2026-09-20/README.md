@@ -20,4 +20,4 @@ Reproduce on a host with the assets named in each run's build and result receipt
 
 This extends the existing valid-comparison family **EX094** and native-regression family **EX027**. The material difference from the earlier **EX172** confirmation is the aggregate main-to-stack comparison rather than an incremental interior-block-reuse comparison. Earlier results remain intact. No optimization is adopted or rejected solely from this quick screen. [Experiment catalog](../../experiments.md#ex094) · [earlier incremental confirmation](../heads-on-crumbs-2026-09-20/README.md).
 
-The [review-fix follow-up](final.md) separately compares `661623ea` with reviewed source `946497a3`: native Pocket Tank is near-flat and browser Pocket Tank retains its speed. Path and account labels in this evidence directory are normalized to `/Users/user`; recorded hashes are unchanged.
+The [review-fix follow-up](final.md) separately compares `661623ea` with reviewed source `946497a3`: native Pocket Tank is near-flat and browser Pocket Tank retains its speed. Path and account labels in this evidence directory are normalized to `/Users/alice recorded hashes are unchanged.
