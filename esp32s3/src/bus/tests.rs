@@ -236,6 +236,28 @@ fn start_dma(bus: &mut SocBus, bits: u32) {
     bus.write32(SPI2, 1 << 24).expect("SPI command failed");
 }
 
+#[test]
+fn spi2_dma_without_a_bound_channel_aborts_and_accepts_cpu_commands() {
+    for timing in [false, true] {
+        let mut bus = SocBus::new(1024, 1024, [0; 6]);
+        bus.spi2_timing = timing;
+        assert!(bus.periph.gdma.out_channel_for(0).is_none());
+        start_dma(&mut bus, 8);
+        bus.tick(256);
+        assert_eq!(bus.read32(SPI2).unwrap() & (1 << 24), 0, "unbound DMA must not stay busy");
+        assert!(bus.periph.spi2.dma_tx_pending.is_none());
+        assert_ne!(bus.periph.spi2.int_raw & (1 << 12), 0);
+        assert_eq!(bus.periph.spi2.transfers, 0, "abort must not reach the board");
+        let events = Arc::new(Mutex::new(Vec::new()));
+        bus.board = Box::new(ProbeBoard { events: events.clone() });
+        bus.write32(SPI2 + 0x30, 0).unwrap();
+        bus.write32(SPI2 + 0x98, 0xa5).unwrap();
+        bus.write32(SPI2, 1 << 24).unwrap();
+        assert_eq!(bus.periph.spi2.transfers, 1);
+        assert_eq!(&*events.lock().unwrap(), &["spi:2:[a5]:0"]);
+    }
+}
+
 fn assert_dma_fault_and_recovery(bus: &mut SocBus, expected: DmaDescriptorFault) {
     assert_eq!(bus.spi2_dma_fault, Some(expected));
     assert_eq!(bus.periph.gdma.out[0].int_raw & 0xf, 1 << 2);
@@ -292,6 +314,7 @@ fn idf_shaped_read_uses_ms_dlen_and_a_following_cpu_transfer_completes() {
 fn cpu_command_does_not_replace_a_parked_dma_transfer_on_the_bus() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let mut bus = SocBus::new(1024, 1024, [0; 6]);
+    bus.periph.gdma.out[0].desc = FIRST_DESC; // bound but stopped, eligible for a later RESTART
     bus.board = Box::new(ProbeBoard { events: events.clone() });
 
     bus.write32(SPI2 + 0x30, 1 << 28).expect("SPI DMA setup failed");
