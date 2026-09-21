@@ -43,15 +43,29 @@ fn section_data<'a>(d: &'a [u8], header: &[u8]) -> Result<&'a [u8], String> {
     bytes(d, u32le(header, 16) as usize, u32le(header, 20) as usize)
 }
 
-fn name(strings: &[u8], off: usize) -> Result<String, String> {
-    if off == 0 { return Ok(String::new()); } // ELF index zero means no name, even for an empty table.
+fn name(strings: &[u8], off: usize) -> Result<&[u8], String> {
+    if off == 0 { return Ok(&[]); } // ELF index zero means no name, even for an empty table.
     let tail = strings.get(off..).ok_or("ELF string offset is out of bounds")?;
     let end = tail.iter().position(|&c| c == 0).ok_or("unterminated ELF string")?;
-    Ok(String::from_utf8_lossy(&tail[..end]).into_owned())
+    Ok(&tail[..end])
+}
+
+// Charge before allocating, including both symbol maps. Invalid UTF-8 can expand each
+// input byte to a three-byte replacement character. Charge duplicate records too so
+// overlapping symbol tables cannot repeatedly allocate names outside the work budget.
+fn copy_name(raw: &[u8], copies: usize, remaining: &mut usize) -> Result<String, String> {
+    let bytes = match std::str::from_utf8(raw) {
+        Ok(_) => raw.len(),
+        Err(_) => raw.len().checked_mul(3).ok_or("ELF name size overflows")?,
+    };
+    let charge = bytes.checked_mul(copies).and_then(|n| n.checked_add(128))
+        .ok_or("ELF name size overflows")?;
+    *remaining = remaining.checked_sub(charge).ok_or("ELF copied names and payload exceed 256 MiB limit")?;
+    Ok(String::from_utf8_lossy(raw).into_owned())
 }
 
 pub fn parse(d: &[u8]) -> Result<Elf, String> {
-    // Segments and sections may overlap in the file. Bound their combined owned payloads,
+    // Segments, sections and symbol tables may overlap. Bound owned names and payloads,
     // rather than allowing each header to multiply the input's memory footprint.
     parse_with_copy_limit(d, 256 * 1024 * 1024)
 }
@@ -100,7 +114,7 @@ fn parse_with_copy_limit(d: &[u8], mut remaining: usize) -> Result<Elf, String> 
         if size > 0 && addr != 0 && (stype == 1 || (stype == 8 && flags & 2 != 0)) {   // ROM ELFs mark RAM initialisers W-only (no SHF_ALLOC)
             let name = if shstrndx == 0 { String::new() } else {
                 let Ok(name) = name(section_names, u32le(s, 0) as usize) else { continue };
-                name
+                copy_name(name, 1, &mut remaining)?
             };
             let data = if stype == 1 {
                 let payload = section_data(d, s)?;
@@ -124,8 +138,9 @@ fn parse_with_copy_limit(d: &[u8], mut remaining: usize) -> Result<Elf, String> 
             let value = u32le(e, 4);
             let info = e[12];
             let typ = info & 0xf;
-            let Ok(name) = name(strings, name_off) else { continue };
-            if name.is_empty() { continue; }
+            let Ok(raw_name) = name(strings, name_off) else { continue };
+            if raw_name.is_empty() { continue; }
+            let name = copy_name(raw_name, if typ == 1 || typ == 2 { 2 } else { 1 }, &mut remaining)?;
             by_name.entry(name.clone()).or_insert(value);
             if typ == 1 || typ == 2 { symbols.entry(value).or_insert(name); }   // OBJECT / FUNC
         }
@@ -136,6 +151,32 @@ fn parse_with_copy_limit(d: &[u8], mut remaining: usize) -> Result<Elf, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repeated_symbol_names_share_the_payload_budget() {
+        // Two FUNC records refer to the same string but different addresses. Both
+        // symbol maps own strings; duplicate names must not bypass the budget.
+        let mut d = vec![0; 256];
+        d[..6].copy_from_slice(b"\x7fELF\x01\x01");
+        d[46] = 40; d[48] = 2;
+        for (off, value) in [(32, 52u32), (56, 2), (68, 132), (72, 32),
+                             (76, 1), (88, 16), (96, 3), (108, 164), (112, 5),
+                             (132, 1), (136, 0x4000), (148, 1), (152, 0x4004)] {
+            d[off..off + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        d[144] = 2; d[160] = 2;
+        d[164..169].copy_from_slice(b"\0abc\0");
+        let budget = 2 * (128 + 2 * 3);
+        let elf = parse_with_copy_limit(&d, budget).unwrap();
+        assert_eq!(elf.symbols.len(), 2);
+        assert_eq!(elf.by_name.len(), 1);
+        assert!(parse_with_copy_limit(&d, budget - 1).is_err());
+        // Lossy UTF-8 expansion must be charged before allocating either copy.
+        d[165..168].fill(0xff);
+        assert!(parse_with_copy_limit(&d, budget).is_err());
+        let elf = parse_with_copy_limit(&d, 2 * (128 + 2 * 9)).unwrap();
+        assert_eq!(elf.symbols[&0x4000].len(), 9);
+    }
 
     #[test]
     fn copy_limit_counts_segment_and_section_payloads_together() {
