@@ -35,3 +35,12 @@ checks, not firmware throughput measurements:
 The native commands used an external Cargo target directory; no source overrides
 or alternate compiler flags were supplied. The final privacy and provenance
 checks verify retained JSON/gzip readability and sanitized-file hashes.
+
+Standalone owning-PR checks also passed: #86's native-opt-in virtual scheduler
+suite (3 tests) and #91's SPI2-filtered unit suite (3 tests). The alarm test uses
+only APIs present at #86, while retaining the handler CCOUNT comparison.
+
+Final assembled-tree checks verified all 205 sanitized-file hashes, parsed 490
+tracked evidence JSON files and decompressed 15 gzip files. The privacy pattern
+check passed across 1,144 tracked evidence files. All 30 PR branches retain their
+previous published heads as ancestors and contain their updated dependencies.
