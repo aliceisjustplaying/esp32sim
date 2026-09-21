@@ -148,6 +148,47 @@ pub(super) fn interior_alias() {
     }
 }
 
+pub(super) fn interior_alias_instruction_bytes() {
+    // A three-byte ADDI between narrow instructions. RFE may target any byte;
+    // only its first byte is an instruction boundary in the existing owner.
+    let mut program = asm::nop_n();
+    program.extend([0x22, 0xc2, 0x01]); // addi a2,a2,1
+    program.extend(asm::nop_n());
+    program.extend([0x06, 0xff, 0xff]); // j .
+    for offset in [2, 3, 4, 5] {
+        let (mut a, mut b) = (cpu(7), cpu(7));
+        let (mut ra, mut rb) = (Ram::new(true, false), Ram::new(true, false));
+        for ram in [&mut ra, &mut rb] {
+            ram.ram.mem[..program.len()].copy_from_slice(&program);
+            ram.ram.mem[256..259].copy_from_slice(&[0x00, 0x30, 0x00]); // rfe
+        }
+        for _ in 0..40 {
+            a.pc = BASE; b.pc = BASE;
+            let (done, trap) = crate::block::run_block(&mut b, &mut rb, 4);
+            assert!(trap.is_none());
+            for _ in 0..done { crate::step(&mut a, &mut ra).unwrap(); }
+        }
+        assert!(b.blocks.jit_instructions > 0);
+        for c in [&mut a, &mut b] {
+            c.pc = BASE + 256;
+            c.epc[1] = BASE + offset;
+            c.ps |= crate::state::ps::EXCM;
+        }
+        crate::step(&mut a, &mut ra).unwrap();
+        assert!(crate::block::run_block(&mut b, &mut rb, 1).1.is_none());
+        assert_eq!(b.blocks.alias_pc, BASE + offset);
+        let (builds, hits) = (b.blocks.builds, b.blocks.alias_hits);
+        let oracle = crate::step(&mut a, &mut ra).err();
+        let (done, trap) = crate::block::run_block(&mut b, &mut rb, 1);
+        assert_eq!(done, 1);
+        assert_eq!(trap, oracle);
+        same(&a, &b);
+        let boundary = offset == 2 || offset == 5;
+        assert_eq!(b.blocks.alias_hits, hits + u64::from(boundary));
+        assert_eq!(b.blocks.builds, builds + u64::from(!boundary), "interior bytes need their own decode");
+    }
+}
+
 pub(super) fn interior_alias_deferred() {
     let mut c = cpu(7);
     let mut ram = Ram::new(true, false);

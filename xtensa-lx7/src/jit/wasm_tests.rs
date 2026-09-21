@@ -353,7 +353,8 @@ pub fn run_tests() -> u32 {
     tests += 1;
     scheduler::interior_alias();
     scheduler::interior_alias_deferred();
-    tests += 2;
+    scheduler::interior_alias_instruction_bytes();
+    tests += 3;
     tests += memory::extension_deferral() + memory::flat_ram_bounds() + regions::regions();
     scheduler::retention();
     tests += 1;
